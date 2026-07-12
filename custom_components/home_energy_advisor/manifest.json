@@ -1,0 +1,10 @@
+{
+  "domain": "home_energy_advisor",
+  "name": "Home Energy Advisor",
+  "codeowners": ["@consultingtedds"],
+  "documentation": "https://github.com/consultingtedds/ha-home-energy-advisor",
+  "integration_type": "helper",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/consultingtedds/ha-home-energy-advisor/issues",
+  "version": "0.0.1"
+}
