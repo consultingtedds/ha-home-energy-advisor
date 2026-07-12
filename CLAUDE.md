@@ -40,13 +40,33 @@ helpers** (utility_meter, Integral), never reimplemented maths.
 - Commits: Conventional Commits `type(HEA-nn): description`, direct to `main`,
   no feature branches. `feat` only on the final commit of a capability.
 
-## Commands
+## Development environment
+
+**The Python toolchain runs in WSL, not Windows.** Home Assistant imports
+`fcntl` (Unix-only), and `pytest-homeassistant-custom-component` registers as a
+pytest plugin — so on Windows `pytest` fails at collection, even for tests that
+never touch HA. WSL also keeps the local gate byte-identical to CI (Linux,
+Python 3.14, HA 2026.7.2).
+
+Ubuntu-24.04, venv at `~/.venvs/hea`, built with uv (Ubuntu's own Python is
+3.12; HA needs ≥3.14.2). Recreate with:
 
 ```bash
-pytest                          # unit tests (fast, no HA instance needed)
-pytest --cov --cov-fail-under=90
-ruff check . && ruff format --check .
-mypy custom_components tests
+wsl -d Ubuntu-24.04
+uv venv ~/.venvs/hea --python 3.14
+uv pip install --python ~/.venvs/hea/bin/python -r requirements_test.txt
+```
+
+## Commands
+
+Run from a WSL shell in the repo (prefix with
+`wsl -d Ubuntu-24.04 -- bash -lc '…'` when calling from Windows):
+
+```bash
+~/.venvs/hea/bin/pytest                 # unit tests (fast, no HA instance needed)
+~/.venvs/hea/bin/pytest --cov --cov-fail-under=90
+~/.venvs/hea/bin/ruff check . && ~/.venvs/hea/bin/ruff format --check .
+~/.venvs/hea/bin/mypy custom_components tests
 ./scripts/sonar-check.sh scan        # local SonarQube gate (see CRITICAL_INSTRUCTIONS)
 ./scripts/sonar-check.sh qualitygate # "status" must be "OK" — read full output, never tail/head
 ```
