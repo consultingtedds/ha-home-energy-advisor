@@ -1,0 +1,54 @@
+# Tooling configuration only. Home Energy Advisor is a Home Assistant custom
+# integration installed by copying `custom_components/`, not a distributed
+# Python package, so there is deliberately no [project] table.
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+src = ["custom_components", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  # Conflicts with the formatter.
+  "COM812",
+  "ISC001",
+  # Mutually exclusive with the docstring rules we do enforce (D211, D212).
+  "D203",
+  "D213",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test names and Given/When/Then comments are the documentation, so tests carry
+# no docstrings; `assert` is the point; literal prices and kWh values are the
+# realistic domain data the testing standards require.
+"tests/*" = ["D100", "D103", "S101", "PLR2004"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Puts the repo root on sys.path so `custom_components.home_energy_advisor`
+# imports as Home Assistant loads it.
+pythonpath = ["."]
+# Required by pytest-homeassistant-custom-component.
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["custom_components/home_energy_advisor"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
