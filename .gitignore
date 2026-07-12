@@ -23,3 +23,6 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+
+# Real-instance captured data — kept local for now (occupancy patterns; see HEA-19)
+tests/fixtures/exploration_2026_07/
