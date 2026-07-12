@@ -1,0 +1,3 @@
+# Normalise line endings to LF in the repository. Without this, files committed
+# from Windows carry CRLF and `ruff format --check` disagrees with Linux CI.
+* text=auto eol=lf
