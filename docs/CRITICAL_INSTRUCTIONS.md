@@ -71,6 +71,7 @@ custom integration.
 | Modifying production code to make a test pass | Fixtures, fakes, or a genuine design fix |
 | `foo` / `bar` / `test123` data | Realistic data: Guest Bedroom Aircon, €0.234/kWh, 0.25 kWh steps |
 | Naked float equality | `Decimal` comparisons or `pytest.approx` with explicit tolerance |
+| Invoking `pytest` from Windows-side automation (git hooks, pre-commit, scripts) | Route it through a Unix shell (WSL). HA imports `fcntl`, so pytest dies at *collection* on native Windows — even for tests with no HA imports |
 
 ### Process
 
