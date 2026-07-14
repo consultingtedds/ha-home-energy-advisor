@@ -1,0 +1,16 @@
+{
+  "name": "ha-home-energy-advisor",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local commit tooling for the Home Energy Advisor integration. The integration itself is Python; Node is here only for husky and commitlint.",
+  "license": "MIT",
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "husky": "^9.1.7",
+    "sonarqube-scanner": "^4.3.8"
+  }
+}

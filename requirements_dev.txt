@@ -1,0 +1,6 @@
+# Local development extras. CI installs requirements_test.txt only: SonarQube is
+# a local gate, and contributors without a server must never be blocked by it.
+# The Sonar scanner itself is a devDependency in package.json, alongside husky.
+-r requirements_test.txt
+
+pre-commit==4.4.0

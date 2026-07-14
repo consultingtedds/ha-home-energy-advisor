@@ -52,4 +52,3 @@ Home Energy Advisor is not intended to replace Home Assistant's Energy Dashboard
 It complements the existing ecosystem by providing financial insight and decision support built on top of the data Home Assistant already collects.
 
 Similarly, the product should avoid becoming a general-purpose home automation platform. Automation may be enabled where it provides clear value, but understanding and trust should always come before autonomous behaviour.
-
