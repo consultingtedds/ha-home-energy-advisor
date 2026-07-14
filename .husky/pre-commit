@@ -1,0 +1,13 @@
+# husky owns core.hooksPath, so git ignores .git/hooks and `pre-commit install`
+# has no effect. pre-commit is therefore invoked from here instead.
+#
+# pip --user installs land outside PATH on some setups, so fall back to the
+# module form rather than failing with a bare "command not found".
+if command -v pre-commit >/dev/null 2>&1; then
+  pre-commit run
+elif python -m pre_commit --version >/dev/null 2>&1; then
+  python -m pre_commit run
+else
+  echo "pre-commit not found — install it: pip install -r requirements_dev.txt" >&2
+  exit 1
+fi

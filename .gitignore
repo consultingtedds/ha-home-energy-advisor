@@ -16,6 +16,10 @@ build/
 # Node (commitlint/husky tooling)
 node_modules/
 
+# SonarQube scanner working directory and the CLI pysonar-scanner downloads
+.scannerwork/
+.scanner/
+
 # IDE
 .idea/
 .vscode/

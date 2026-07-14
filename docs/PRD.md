@@ -128,4 +128,3 @@ Future development should build upon the accounting engine rather than replace i
 Potential future capabilities include recommendations, optimisation and automation, but only where they improve user outcomes and build upon a trusted financial model.
 
 The roadmap should evolve through user feedback and practical experience rather than speculative feature planning.
-

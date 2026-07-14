@@ -1,0 +1,32 @@
+# Hook versions are pinned to the same versions as requirements_test.txt. If they
+# drift, the hook passes and CI fails — the worst failure mode for a local gate.
+#
+# pytest is deliberately absent: pytest-homeassistant-custom-component registers
+# as a pytest plugin and Home Assistant imports fcntl, so a hook that shells out
+# to pytest fails at collection on Windows. The suite runs in CI and via the
+# manual gate in docs/CRITICAL_INSTRUCTIONS.md.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.21
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.2.0
+    hooks:
+      - id: mypy
+        args: [--strict]
+        files: ^(custom_components|tests)/
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files

@@ -67,4 +67,3 @@ Avoid adding complexity to solve problems that have not yet been demonstrated.
 This charter defines how decisions are made within the product.
 
 It is intentionally concise and should evolve only when our engineering principles or product philosophy change through experience.
-

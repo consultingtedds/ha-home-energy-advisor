@@ -160,4 +160,3 @@ This document captures the thinking at the start of the project.
 It is intentionally preserved as a historical record.
 
 Future ADRs should explain why the project evolved, but this document should continue to explain why the project exists in the first place.
-

@@ -47,6 +47,9 @@ asyncio_mode = "auto"
 [tool.coverage.run]
 source = ["custom_components/home_energy_advisor"]
 branch = true
+# Paths relative to the repo root, not the source root. Without this the XML
+# report names files as bare `__init__.py` and SonarQube cannot resolve them.
+relative_files = true
 
 [tool.coverage.report]
 fail_under = 90
