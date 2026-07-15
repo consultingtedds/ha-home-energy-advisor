@@ -4,10 +4,12 @@ A Home Assistant custom integration that explains the **financial impact** of
 your energy usage, per device: what it actually cost to run, what it would
 have cost without solar, and how much your solar saved.
 
-> **Status: pre-alpha — not yet installable.** The integration skeleton and CI
-> pipeline are in place; the accounting engine and Home Assistant integration
-> layer are not built yet. See [docs/PLAN.md](docs/PLAN.md) for the delivery
-> plan and [docs/](docs/) for the product vision, charter, PRD and ADRs.
+> **Status: pre-alpha — not yet installable.** The foundation (skeleton, CI,
+> quality gates) is complete and the pure-Python accounting engine is under
+> active development. The Home Assistant integration layer — config flow,
+> entities, dashboards — is not built yet. See [docs/PLAN.md](docs/PLAN.md) for
+> the delivery plan and [docs/](docs/) for the product vision, charter, PRD and
+> ADRs.
 
 Home Energy Advisor complements Home Assistant's Energy Dashboard: HA explains
 energy flows; this integration explains money.
