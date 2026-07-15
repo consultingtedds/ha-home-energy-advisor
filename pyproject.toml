@@ -16,13 +16,17 @@ ignore = [
   # Mutually exclusive with the docstring rules we do enforce (D211, D212).
   "D203",
   "D213",
+  # The class docstring documents construction. A separate __init__ docstring
+  # would restate the signature, which DOCUMENTATION_STANDARDS calls out as noise.
+  "D107",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Test names and Given/When/Then comments are the documentation, so tests carry
 # no docstrings; `assert` is the point; literal prices and kWh values are the
-# realistic domain data the testing standards require.
-"tests/*" = ["D100", "D103", "S101", "PLR2004"]
+# realistic domain data the testing standards require. Test packages are not
+# importable modules, so they need no __init__.py.
+"tests/*" = ["D100", "D103", "S101", "PLR2004", "INP001"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -35,6 +39,11 @@ python_version = "3.14"
 strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+# custom_components/ is a namespace package (no __init__.py) but the integration
+# below it is not, so mypy otherwise resolves the same file under two module
+# names and refuses to check it.
+explicit_package_bases = true
+mypy_path = "."
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
