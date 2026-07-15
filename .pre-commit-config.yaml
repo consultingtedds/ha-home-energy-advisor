@@ -20,6 +20,12 @@ repos:
       - id: mypy
         args: [--strict]
         files: ^(custom_components|tests)/
+        # mirrors-mypy runs in an isolated venv, so imports the checked code
+        # makes must be resolvable here too. The engine is pure stdlib; the
+        # tests import pytest. Pinned to phacc's pytest. Home Assistant joins
+        # this list when the integration layer (Epic 4) first imports it — until
+        # then the authoritative full-env mypy runs in CI and the WSL gate.
+        additional_dependencies: ["pytest==9.0.3"]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0

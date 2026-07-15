@@ -24,17 +24,24 @@ Combine `# When / Then` only for a single fluent expression (e.g.
 `pytest.raises` context).
 
 ```python
-def test_delta_calculator_cycle_reset_treats_new_value_as_fresh_cycle() -> None:
-    # Given — counter mid-cycle at 2.75 kWh
-    calculator = DeltaCalculator()
-    calculator.observe(reading(at="02:14", kwh="2.75"))
+def test_cumulative_source_cycle_reset_treats_the_new_value_as_a_fresh_cycle() -> None:
+    # Given — the WF-RAC counter is mid-cycle at 2.75 kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2.75"))
 
-    # When — the compressor cycle ends and the counter resets to 0 then climbs
-    delta = calculator.observe(reading(at="02:19", kwh="0.0"))
+    # When — the compressor cycle ends and the counter restarts, already at 0.25
+    delta = source.observe(reading(at="02:19", value="0.25"))
 
-    # Then — the reset itself yields no energy; the fresh value is the new baseline
-    assert delta == Decimal("0")
+    # Then — the post-reset value is the energy, not a negative difference
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.25"), start=moment("02:14"), end=moment("02:19")
+    )
 ```
+
+Note the delta carries its **span**, not just a magnitude. A counter that climbed
+while its sensor was unavailable reports one jump on recovery; pricing that at the
+instant it was reported would charge it all at whatever tariff happened to be
+active then. Assertions therefore pin `start` and `end`, not only `kwh`.
 
 ### Failing tests are work in progress — never work around them
 
