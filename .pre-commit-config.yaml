@@ -1,10 +1,11 @@
-# Hook versions are pinned to the same versions as requirements_test.txt. If they
-# drift, the hook passes and CI fails — the worst failure mode for a local gate.
+# Pre-commit hooks must be fast, so this is ruff + hygiene only.
 #
-# pytest is deliberately absent: pytest-homeassistant-custom-component registers
-# as a pytest plugin and Home Assistant imports fcntl, so a hook that shells out
-# to pytest fails at collection on Windows. The suite runs in CI and via the
-# manual gate in docs/CRITICAL_INSTRUCTIONS.md.
+# mypy and pytest are deliberately NOT here. Both need the full Home Assistant
+# environment: mypy needs HA's types (installing HA into pre-commit's isolated
+# env takes minutes on Windows), and pytest dies at collection on native Windows
+# because HA imports fcntl. Both are enforced authoritatively in CI (Linux, full
+# env) and via the manual WSL gate in docs/CRITICAL_INSTRUCTIONS.md, which must be
+# run before pushing.
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -13,19 +14,6 @@ repos:
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
-
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v2.2.0
-    hooks:
-      - id: mypy
-        args: [--strict]
-        files: ^(custom_components|tests)/
-        # mirrors-mypy runs in an isolated venv, so imports the checked code
-        # makes must be resolvable here too. The engine is pure stdlib; the
-        # tests import pytest. Pinned to phacc's pytest. Home Assistant joins
-        # this list when the integration layer (Epic 4) first imports it — until
-        # then the authoritative full-env mypy runs in CI and the WSL gate.
-        additional_dependencies: ["pytest==9.0.3"]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
