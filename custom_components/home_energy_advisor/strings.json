@@ -1,0 +1,31 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Home Energy Advisor",
+        "description": "Choose the household energy inputs. Solar and battery are optional — without them, cost is calculated from grid import alone.",
+        "data": {
+          "price_entity": "Import price",
+          "currency": "Currency",
+          "grid_import_entity": "Grid import energy",
+          "solar_entity": "Solar generation energy",
+          "battery_charge_entity": "Battery charge energy",
+          "battery_discharge_entity": "Battery discharge energy",
+          "house_consumption_entity": "House consumption energy"
+        },
+        "data_description": {
+          "price_entity": "The sensor giving the current import price per kWh.",
+          "currency": "Currency for the cost sensors, e.g. EUR.",
+          "grid_import_entity": "Cumulative energy imported from the grid.",
+          "solar_entity": "Cumulative solar generation. Leave empty if you have no solar.",
+          "battery_charge_entity": "Cumulative energy charged into the battery.",
+          "battery_discharge_entity": "Cumulative energy discharged from the battery.",
+          "house_consumption_entity": "Total household consumption, if measured directly."
+        }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
+    }
+  }
+}

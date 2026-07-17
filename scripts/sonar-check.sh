@@ -5,6 +5,7 @@
 #
 #   ./scripts/sonar-check.sh scan          analyse, wait for the server, print measures
 #   ./scripts/sonar-check.sh qualitygate   print the quality gate status
+#   ./scripts/sonar-check.sh issues        list unresolved issues (rule, file, line)
 #
 # Requires SONAR_TOKEN. SONAR_HOST_URL defaults to http://localhost:9000.
 # `scan` requires coverage.xml — generate it first, in whatever environment runs
@@ -94,8 +95,23 @@ cmd_qualitygate() {
   echo
 }
 
+cmd_issues() {
+  require_token
+  api "/api/issues/search?components=${PROJECT_KEY}&resolved=false&ps=100" |
+    python -c '
+import json, sys
+issues = json.load(sys.stdin)["issues"]
+if not issues:
+    print("  no unresolved issues")
+for i in issues:
+    where = i.get("component", "").split(":")[-1]
+    print("  [%s] %s:%s  %s" % (i["rule"], where, i.get("line", "?"), i["message"]))
+'
+}
+
 case "${1:-}" in
   scan) cmd_scan ;;
   qualitygate) cmd_qualitygate ;;
-  *) die "usage: $0 {scan|qualitygate}" ;;
+  issues) cmd_issues ;;
+  *) die "usage: $0 {scan|qualitygate|issues}" ;;
 esac
