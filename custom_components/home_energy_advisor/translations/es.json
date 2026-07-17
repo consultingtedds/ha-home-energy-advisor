@@ -27,5 +27,32 @@
     "abort": {
       "single_instance_allowed": "Home Energy Advisor ya está configurado; solo se necesita una instancia."
     }
+  },
+  "config_subentries": {
+    "device": {
+      "initiate_flow": {
+        "user": "Añadir dispositivo"
+      },
+      "entry_type": "Dispositivo",
+      "step": {
+        "user": {
+          "title": "Añadir un dispositivo",
+          "description": "Nombra el dispositivo y elige el único sensor que lo mide: un contador de energía o un sensor de potencia.",
+          "data": {
+            "name": "Nombre",
+            "energy_entity": "Sensor de energía",
+            "power_entity": "Sensor de potencia"
+          },
+          "data_description": {
+            "name": "Cómo aparece este dispositivo en Home Assistant.",
+            "energy_entity": "Un sensor de energía acumulada para este dispositivo.",
+            "power_entity": "Un sensor de potencia; su energía se deriva automáticamente."
+          }
+        }
+      },
+      "error": {
+        "select_one_sensor": "Elige exactamente uno: un sensor de energía o uno de potencia, no ambos."
+      }
+    }
   }
 }

@@ -27,5 +27,32 @@
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
     }
+  },
+  "config_subentries": {
+    "device": {
+      "initiate_flow": {
+        "user": "Add device"
+      },
+      "entry_type": "Device",
+      "step": {
+        "user": {
+          "title": "Add a tracked device",
+          "description": "Name the device and choose the one sensor that measures it — an energy counter, or a power sensor.",
+          "data": {
+            "name": "Name",
+            "energy_entity": "Energy sensor",
+            "power_entity": "Power sensor"
+          },
+          "data_description": {
+            "name": "How this device appears in Home Assistant.",
+            "energy_entity": "A cumulative energy sensor for this device.",
+            "power_entity": "A power sensor; its energy is derived automatically."
+          }
+        }
+      },
+      "error": {
+        "select_one_sensor": "Choose exactly one: an energy sensor or a power sensor, not both."
+      }
+    }
   }
 }
