@@ -16,3 +16,8 @@ CONF_BATTERY_DISCHARGE_ENTITY: Final = "battery_discharge_entity"
 CONF_HOUSE_CONSUMPTION_ENTITY: Final = "house_consumption_entity"
 
 DEFAULT_CURRENCY: Final = "EUR"
+
+# Per-device configuration — one config subentry per tracked device.
+SUBENTRY_TYPE_DEVICE: Final = "device"
+CONF_ENERGY_ENTITY: Final = "energy_entity"
+CONF_POWER_ENTITY: Final = "power_entity"
