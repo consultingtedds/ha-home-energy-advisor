@@ -22,22 +22,72 @@
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."
         }
+      },
+      "reconfigure": {
+        "title": "Edit Home Energy Advisor",
+        "description": "Update the household energy inputs. Solar and battery remain optional.",
+        "data": {
+          "price_entity": "Import price",
+          "currency": "Currency",
+          "grid_import_entity": "Grid import energy",
+          "solar_entity": "Solar generation energy",
+          "battery_charge_entity": "Battery charge energy",
+          "battery_discharge_entity": "Battery discharge energy",
+          "house_consumption_entity": "House consumption energy"
+        },
+        "data_description": {
+          "price_entity": "The sensor giving the current import price per kWh.",
+          "currency": "Currency for the cost sensors, e.g. EUR.",
+          "grid_import_entity": "Cumulative energy imported from the grid.",
+          "solar_entity": "Cumulative solar generation. Leave empty if you have no solar.",
+          "battery_charge_entity": "Cumulative energy charged into the battery.",
+          "battery_discharge_entity": "Cumulative energy discharged from the battery.",
+          "house_consumption_entity": "Total household consumption, if measured directly."
+        }
       }
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Cycle totals",
+        "description": "Choose which longer-period totals to create for every device. Daily and monthly totals are always created.",
+        "data": {
+          "cycle_weekly": "Weekly totals",
+          "cycle_quarterly": "Quarterly totals",
+          "cycle_yearly": "Yearly totals"
+        }
+      }
+    }
+  },
   "config_subentries": {
     "device": {
       "initiate_flow": {
-        "user": "Add device"
+        "user": "Add device",
+        "reconfigure": "Edit device"
       },
       "entry_type": "Device",
       "step": {
         "user": {
           "title": "Add a tracked device",
           "description": "Name the device and choose the one sensor that measures it — an energy counter, or a power sensor.",
+          "data": {
+            "name": "Name",
+            "energy_entity": "Energy sensor",
+            "power_entity": "Power sensor"
+          },
+          "data_description": {
+            "name": "How this device appears in Home Assistant.",
+            "energy_entity": "A cumulative energy sensor for this device.",
+            "power_entity": "A power sensor; its energy is derived automatically."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit device",
+          "description": "Change the device name or the sensor that measures it.",
           "data": {
             "name": "Name",
             "energy_entity": "Energy sensor",

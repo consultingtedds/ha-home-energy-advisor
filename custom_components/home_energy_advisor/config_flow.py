@@ -17,6 +17,7 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentryFlow,
+    OptionsFlow,
     SubentryFlowResult,
 )
 from homeassistant.const import CONF_NAME
@@ -27,6 +28,9 @@ from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
+    CONF_CYCLE_QUARTERLY,
+    CONF_CYCLE_WEEKLY,
+    CONF_CYCLE_YEARLY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
@@ -79,6 +83,20 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         defaults = await _energy_prefs_defaults(self.hass)
         return self.async_show_form(step_id="user", data_schema=_build_schema(defaults))
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Edit the house-level configuration in place, without reinstalling."""
+        entry = self._get_reconfigure_entry()
+        if user_input is not None:
+            return self.async_update_reload_and_abort(entry, data=user_input)
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                _build_schema({}), entry.data
+            ),
+        )
+
     @classmethod
     @callback
     def async_get_supported_subentry_types(
@@ -87,6 +105,14 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> dict[str, type[ConfigSubentryFlow]]:
         """Register the per-device subentry flow."""
         return {SUBENTRY_TYPE_DEVICE: DeviceSubentryFlowHandler}
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: ConfigEntry,  # noqa: ARG004 - HA signature; the entry is read via self
+    ) -> HomeEnergyAdvisorOptionsFlow:
+        """Provide the options flow for the global cycle opt-ins."""
+        return HomeEnergyAdvisorOptionsFlow()
 
 
 def _build_schema(defaults: dict[str, str]) -> vol.Schema:
@@ -158,6 +184,30 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
             step_id="user", data_schema=_DEVICE_SCHEMA, errors=errors
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit an existing device's name or source sensor."""
+        subentry = self._get_reconfigure_subentry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            error = _validate_device_sources(user_input)
+            if error is None:
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    subentry,
+                    title=user_input[CONF_NAME],
+                    data=user_input,
+                )
+            errors["base"] = error
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                _DEVICE_SCHEMA, subentry.data
+            ),
+            errors=errors,
+        )
+
 
 def _validate_device_sources(user_input: dict[str, Any]) -> str | None:
     """Require exactly one of an energy or a power sensor."""
@@ -166,3 +216,29 @@ def _validate_device_sources(user_input: dict[str, Any]) -> str | None:
     if has_energy == has_power:
         return "select_one_sensor"
     return None
+
+
+class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
+    """Global options: opt in to the weekly, quarterly and yearly cycle totals.
+
+    Daily and monthly totals are always created; the longer cycles are opt-in to
+    keep the entity count in check across many devices (ADR-0004).
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show and store the cycle opt-ins."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        options = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    key, default=options.get(key, False)
+                ): selector.BooleanSelector()
+                for key in (CONF_CYCLE_WEEKLY, CONF_CYCLE_QUARTERLY, CONF_CYCLE_YEARLY)
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

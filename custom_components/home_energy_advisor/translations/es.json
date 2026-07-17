@@ -22,22 +22,72 @@
           "battery_discharge_entity": "Energía acumulada descargada de la batería.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente."
         }
+      },
+      "reconfigure": {
+        "title": "Editar Home Energy Advisor",
+        "description": "Actualiza las entradas de energía del hogar. La solar y la batería siguen siendo opcionales.",
+        "data": {
+          "price_entity": "Precio de importación",
+          "currency": "Moneda",
+          "grid_import_entity": "Energía importada de la red",
+          "solar_entity": "Energía de generación solar",
+          "battery_charge_entity": "Energía de carga de la batería",
+          "battery_discharge_entity": "Energía de descarga de la batería",
+          "house_consumption_entity": "Energía de consumo del hogar"
+        },
+        "data_description": {
+          "price_entity": "El sensor que indica el precio de importación actual por kWh.",
+          "currency": "Moneda para los sensores de coste, p. ej. EUR.",
+          "grid_import_entity": "Energía acumulada importada de la red.",
+          "solar_entity": "Generación solar acumulada. Déjalo vacío si no tienes solar.",
+          "battery_charge_entity": "Energía acumulada cargada en la batería.",
+          "battery_discharge_entity": "Energía acumulada descargada de la batería.",
+          "house_consumption_entity": "Consumo total del hogar, si se mide directamente."
+        }
       }
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor ya está configurado; solo se necesita una instancia."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Totales por ciclo",
+        "description": "Elige qué totales de periodos más largos crear para cada dispositivo. Los totales diarios y mensuales siempre se crean.",
+        "data": {
+          "cycle_weekly": "Totales semanales",
+          "cycle_quarterly": "Totales trimestrales",
+          "cycle_yearly": "Totales anuales"
+        }
+      }
+    }
+  },
   "config_subentries": {
     "device": {
       "initiate_flow": {
-        "user": "Añadir dispositivo"
+        "user": "Añadir dispositivo",
+        "reconfigure": "Editar dispositivo"
       },
       "entry_type": "Dispositivo",
       "step": {
         "user": {
           "title": "Añadir un dispositivo",
           "description": "Nombra el dispositivo y elige el único sensor que lo mide: un contador de energía o un sensor de potencia.",
+          "data": {
+            "name": "Nombre",
+            "energy_entity": "Sensor de energía",
+            "power_entity": "Sensor de potencia"
+          },
+          "data_description": {
+            "name": "Cómo aparece este dispositivo en Home Assistant.",
+            "energy_entity": "Un sensor de energía acumulada para este dispositivo.",
+            "power_entity": "Un sensor de potencia; su energía se deriva automáticamente."
+          }
+        },
+        "reconfigure": {
+          "title": "Editar dispositivo",
+          "description": "Cambia el nombre del dispositivo o el sensor que lo mide.",
           "data": {
             "name": "Nombre",
             "energy_entity": "Sensor de energía",

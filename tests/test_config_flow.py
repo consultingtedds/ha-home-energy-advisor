@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import voluptuous as vol
-from homeassistant.config_entries import SOURCE_USER
+from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -193,3 +193,43 @@ async def test_prefill_failure_never_blocks_the_flow(hass: HomeAssistant) -> Non
     data_schema = result["data_schema"]
     assert data_schema is not None
     assert _suggested_values(data_schema) == {}
+
+
+async def test_reconfigure_updates_the_house_level_config(hass: HomeAssistant) -> None:
+    # Given — a configured, running household (no solar yet)
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the config is edited to add solar and change the currency
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "GBP",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_SOLAR_ENTITY: "sensor.solar",
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Then — the entry is updated in place, no reinstall
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_CURRENCY] == "GBP"
+    assert entry.data[CONF_SOLAR_ENTITY] == "sensor.solar"

@@ -21,3 +21,9 @@ DEFAULT_CURRENCY: Final = "EUR"
 SUBENTRY_TYPE_DEVICE: Final = "device"
 CONF_ENERGY_ENTITY: Final = "energy_entity"
 CONF_POWER_ENTITY: Final = "power_entity"
+
+# Optional cycle totals (options flow). Daily and monthly are always on; these
+# are opt-in to keep the entity count in check (ADR-0004 / PLAN.md).
+CONF_CYCLE_WEEKLY: Final = "cycle_weekly"
+CONF_CYCLE_QUARTERLY: Final = "cycle_quarterly"
+CONF_CYCLE_YEARLY: Final = "cycle_yearly"

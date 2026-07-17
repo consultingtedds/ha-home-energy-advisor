@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from homeassistant.config_entries import SOURCE_USER
+from homeassistant.config_entries import (
+    SOURCE_RECONFIGURE,
+    SOURCE_USER,
+    ConfigSubentryData,
+)
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -134,5 +138,85 @@ async def test_adding_a_device_with_no_sensor_is_rejected(hass: HomeAssistant) -
     )
 
     # Then — the form re-shows with the same error
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "select_one_sensor"}
+
+
+def _entry_with_device(hass: HomeAssistant) -> tuple[MockConfigEntry, str]:
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title="Guest Bedroom Aircon",
+                data={
+                    CONF_NAME: "Guest Bedroom Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.guest_bedroom_aircon_energy",
+                },
+                unique_id=None,
+            )
+        ],
+    )
+    entry.add_to_hass(hass)
+    return entry, next(iter(entry.subentries))
+
+
+async def test_reconfigure_device_switches_its_source_sensor(
+    hass: HomeAssistant,
+) -> None:
+    # Given — an existing energy-tracked device
+    _register_device_sensors(hass)
+    entry, subentry_id = _entry_with_device(hass)
+
+    # When — it is reconfigured to use a power sensor instead
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DEVICE),
+        context={"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id},
+    )
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Guest Bedroom Aircon",
+            CONF_POWER_ENTITY: "sensor.living_room_lights_power",
+        },
+    )
+
+    # Then — the subentry is updated, swapping energy for power
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    subentry = entry.subentries[subentry_id]
+    assert subentry.data[CONF_POWER_ENTITY] == "sensor.living_room_lights_power"
+    assert CONF_ENERGY_ENTITY not in subentry.data
+
+
+async def test_reconfigure_device_still_requires_exactly_one_sensor(
+    hass: HomeAssistant,
+) -> None:
+    # Given — an existing device being reconfigured
+    _register_device_sensors(hass)
+    entry, subentry_id = _entry_with_device(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DEVICE),
+        context={"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id},
+    )
+
+    # When — both sensors are given
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Guest Bedroom Aircon",
+            CONF_ENERGY_ENTITY: "sensor.guest_bedroom_aircon_energy",
+            CONF_POWER_ENTITY: "sensor.living_room_lights_power",
+        },
+    )
+
+    # Then — the same validation rejects it
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "select_one_sensor"}
