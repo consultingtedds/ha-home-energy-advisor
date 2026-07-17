@@ -1,6 +1,7 @@
 {
   "domain": "home_energy_advisor",
   "name": "Home Energy Advisor",
+  "after_dependencies": ["energy"],
   "codeowners": ["@consultingtedds"],
   "config_flow": true,
   "documentation": "https://github.com/consultingtedds/ha-home-energy-advisor",
