@@ -13,22 +13,33 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components.energy.data import async_get_manager
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    ConfigFlow,
+    ConfigFlowResult,
+    ConfigSubentryFlow,
+    SubentryFlowResult,
+)
+from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
+    CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
     CONF_SOLAR_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
+    SUBENTRY_TYPE_DEVICE,
 )
 
 if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
 _TITLE = "Home Energy Advisor"
@@ -38,6 +49,16 @@ _PRICE_SELECTOR = selector.EntitySelector(
 )
 _ENERGY_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor", device_class="energy")
+)
+_POWER_SELECTOR = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain="sensor", device_class="power")
+)
+_DEVICE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): selector.TextSelector(),
+        vol.Optional(CONF_ENERGY_ENTITY): _ENERGY_SELECTOR,
+        vol.Optional(CONF_POWER_ENTITY): _POWER_SELECTOR,
+    }
 )
 
 
@@ -57,6 +78,15 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
 
         defaults = await _energy_prefs_defaults(self.hass)
         return self.async_show_form(step_id="user", data_schema=_build_schema(defaults))
+
+    @classmethod
+    @callback
+    def async_get_supported_subentry_types(
+        cls,
+        config_entry: ConfigEntry,  # noqa: ARG003 - HA signature; the types are entry-independent
+    ) -> dict[str, type[ConfigSubentryFlow]]:
+        """Register the per-device subentry flow."""
+        return {SUBENTRY_TYPE_DEVICE: DeviceSubentryFlowHandler}
 
 
 def _build_schema(defaults: dict[str, str]) -> vol.Schema:
@@ -101,3 +131,38 @@ async def _energy_prefs_defaults(hass: HomeAssistant) -> dict[str, str]:
     except Exception:  # noqa: BLE001 - prefill is optional; it must never block setup
         return {}
     return defaults
+
+
+class DeviceSubentryFlowHandler(ConfigSubentryFlow):
+    """Add one tracked device as a config subentry.
+
+    A device is identified by exactly one source sensor: an energy counter, or a
+    power sensor (whose energy is derived later via an auto-created Integral
+    helper, ADR-0004). Selection is always explicit — devices are never
+    auto-onboarded from a matching ``device_class`` (false friends, ADR-0004).
+    """
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect the device name and its single source sensor."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            error = _validate_device_sources(user_input)
+            if error is None:
+                return self.async_create_entry(
+                    title=user_input[CONF_NAME], data=user_input
+                )
+            errors["base"] = error
+        return self.async_show_form(
+            step_id="user", data_schema=_DEVICE_SCHEMA, errors=errors
+        )
+
+
+def _validate_device_sources(user_input: dict[str, Any]) -> str | None:
+    """Require exactly one of an energy or a power sensor."""
+    has_energy = bool(user_input.get(CONF_ENERGY_ENTITY))
+    has_power = bool(user_input.get(CONF_POWER_ENTITY))
+    if has_energy == has_power:
+        return "select_one_sensor"
+    return None
