@@ -32,6 +32,7 @@ from .const import (
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
     CONF_ENERGY_ENTITY,
+    CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
@@ -129,6 +130,7 @@ def _build_schema(defaults: dict[str, str]) -> vol.Schema:
                 CONF_CURRENCY, default=DEFAULT_CURRENCY
             ): selector.TextSelector(),
             source(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
+            source(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
             source(CONF_SOLAR_ENTITY, required=False): _ENERGY_SELECTOR,
             source(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             source(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
@@ -143,20 +145,31 @@ async def _energy_prefs_defaults(hass: HomeAssistant) -> dict[str, str]:
     try:
         manager = await async_get_manager(hass)
         data: Any = manager.data or {}
-        for entry in data.get("energy_sources", []):
-            kind = entry.get("type")
-            if kind == "grid" and (flows := entry.get("flow_from")):
-                defaults[CONF_GRID_IMPORT_ENTITY] = flows[0]["stat_energy_from"]
-            elif kind == "solar" and (stat := entry.get("stat_energy_from")):
-                defaults[CONF_SOLAR_ENTITY] = stat
-            elif kind == "battery":
-                if charge := entry.get("stat_energy_to"):
-                    defaults[CONF_BATTERY_CHARGE_ENTITY] = charge
-                if discharge := entry.get("stat_energy_from"):
-                    defaults[CONF_BATTERY_DISCHARGE_ENTITY] = discharge
+        for source in data.get("energy_sources", []):
+            _collect_prefs_source(source, defaults)
     except Exception:  # noqa: BLE001 - prefill is optional; it must never block setup
         return {}
     return defaults
+
+
+def _collect_prefs_source(
+    source: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    defaults: dict[str, str],
+) -> None:
+    """Map one Energy Dashboard source onto the matching config defaults."""
+    kind = source.get("type")
+    if kind == "grid":
+        if imports := source.get("flow_from"):
+            defaults[CONF_GRID_IMPORT_ENTITY] = imports[0]["stat_energy_from"]
+        if exports := source.get("flow_to"):
+            defaults[CONF_GRID_EXPORT_ENTITY] = exports[0]["stat_energy_to"]
+    elif kind == "solar" and (stat := source.get("stat_energy_from")):
+        defaults[CONF_SOLAR_ENTITY] = stat
+    elif kind == "battery":
+        if charge := source.get("stat_energy_to"):
+            defaults[CONF_BATTERY_CHARGE_ENTITY] = charge
+        if discharge := source.get("stat_energy_from"):
+            defaults[CONF_BATTERY_DISCHARGE_ENTITY] = discharge
 
 
 class DeviceSubentryFlowHandler(ConfigSubentryFlow):
