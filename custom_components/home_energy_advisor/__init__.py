@@ -17,20 +17,26 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .coordinator import HeaCoordinator
+
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigEntry
     from homeassistant.const import Platform
     from homeassistant.core import HomeAssistant
+
+    from .coordinator import HeaConfigEntry
 
 PLATFORMS: list[Platform] = []
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up Home Energy Advisor from its config entry."""
+async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
+    """Set up Home Energy Advisor: build the coordinator and start accounting."""
+    coordinator = HeaCoordinator(hass, entry)
+    await coordinator.async_start()
+    entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     """Unload the config entry and its platforms."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
