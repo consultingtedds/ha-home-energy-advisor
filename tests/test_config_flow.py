@@ -14,6 +14,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
+    CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
     CONF_SOLAR_ENTITY,
@@ -41,6 +42,7 @@ def _register_source_sensors(hass: HomeAssistant) -> None:
     )
     for entity_id in (
         "sensor.grid_import",
+        "sensor.grid_export",
         "sensor.solar",
         "sensor.battery_charge",
         "sensor.battery_discharge",
@@ -154,6 +156,7 @@ async def test_energy_dashboard_preferences_prefill_the_source_entities(
                 {
                     "type": "grid",
                     "flow_from": [{"stat_energy_from": "sensor.grid_import"}],
+                    "flow_to": [{"stat_energy_to": "sensor.grid_export"}],
                 },
                 {"type": "solar", "stat_energy_from": "sensor.solar"},
                 {
@@ -176,6 +179,7 @@ async def test_energy_dashboard_preferences_prefill_the_source_entities(
     assert data_schema is not None
     suggested = _suggested_values(data_schema)
     assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert suggested[CONF_GRID_EXPORT_ENTITY] == "sensor.grid_export"
     assert suggested[CONF_SOLAR_ENTITY] == "sensor.solar"
     assert suggested[CONF_BATTERY_CHARGE_ENTITY] == "sensor.battery_charge"
     assert suggested[CONF_BATTERY_DISCHARGE_ENTITY] == "sensor.battery_discharge"
