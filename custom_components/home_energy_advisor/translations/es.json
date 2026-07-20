@@ -108,5 +108,16 @@
         "select_one_sensor": "Elige exactamente uno: un sensor de energía o uno de potencia, no ambos."
       }
     }
+  },
+  "entity": {
+    "sensor": {
+      "energy_used": { "name": "Energía usada" },
+      "actual_cost": { "name": "Coste real" },
+      "cost_without_solar": { "name": "Coste sin solar" },
+      "cost_savings": { "name": "Ahorro de coste" }
+    }
+  },
+  "device": {
+    "untracked": { "name": "Sin seguimiento" }
   }
 }
