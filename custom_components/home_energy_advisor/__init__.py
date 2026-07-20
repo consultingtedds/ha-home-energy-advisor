@@ -9,23 +9,24 @@ lives in ``engine/`` and imports nothing from ``homeassistant``, so the
 financial model can be unit-tested without a running instance.
 
 The config entry holds the global house-level configuration; tracked devices
-arrive as config subentries. No entity platforms are wired up yet — ``PLATFORMS``
-is empty until the sensor layer (HEA-22) adds ``Platform.SENSOR``.
+arrive as config subentries. The sensor platform (HEA-22) publishes the four
+per-device figures plus the Untracked remainder.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from homeassistant.const import Platform
+
 from .coordinator import HeaCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.const import Platform
     from homeassistant.core import HomeAssistant
 
     from .coordinator import HeaConfigEntry
 
-PLATFORMS: list[Platform] = []
+PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
