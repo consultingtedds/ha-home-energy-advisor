@@ -92,3 +92,28 @@ dogfooding (renamed/deleted out from under us faster than Repairs can cope).
 - Revisit if: a supported device genuinely needs `total` state_class, or the
   native-helper approach proves too fragile and the internal fallback becomes the
   default.
+
+## Update — feasibility validated (2026-07-21)
+
+Appended, not edited: the decision above stands and its Status remains Accepted.
+This note records that the programmatic native-helper path it chose is **proven**,
+not merely assumed.
+
+HEA-34 shipped auto-creation of a native Integral (Riemann-sum) helper for
+power-only devices — driving the `integration` component's own config flow — with
+its output energy sensor feeding the `CumulativeEnergySource` pipeline unchanged.
+Verified against real Home Assistant: creation is programmatic and idempotent, and
+the helper accrues **no phantom energy across an `unavailable` span** — a device
+switched off for months resumes cleanly on recovery. So the reset-on-unavailable
+behaviour this ADR requires is inherited from the native helper rather than
+reimplemented.
+
+Consequences for the recorded fallback:
+
+- The internal-implementation fallback (Riemann sum in the engine) was **not
+  needed** for the Integral path and stays unused.
+- HEA-23 (native `utility_meter` cycle helpers) shares this feasibility spike, so
+  its native path is de-risked by the same result; reuse the HEA-34 pattern
+  (`custom_components/home_energy_advisor/integral_helper.py`).
+- The helper's component must be declared in the manifest `dependencies` —
+  hassfest enforces this whenever the code imports from that component.
