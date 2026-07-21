@@ -136,9 +136,13 @@ dependencies and can start as soon as Epic 1 lands.
   work than the binary gate (interval ledger, battery ledger, cross-device
   allocation). Accepted deliberately: accuracy is the product. Fallback if
   blocked: deficit-capped per-device model (documented in ADR-0002).
-- **Helper auto-creation feasibility.** Programmatic utility_meter/Integral
+- **Helper auto-creation feasibility.** ~~Programmatic utility_meter/Integral
   creation is proven in the wild (PowerCalc) but not first-party API; spike
-  early in Epic 4, internal implementation as fallback.
+  early in Epic 4, internal implementation as fallback.~~ **Resolved (2026-07-21,
+  HEA-34):** the Integral path shipped — programmatic native-helper creation is
+  proven against real HA (idempotent, and no phantom energy across `unavailable`
+  spans). The internal-implementation fallback was not needed. The shared spike
+  de-risks the native `utility_meter` path (HEA-23). See ADR-0004 → Update.
 - **Sensor coarseness.** WF-RAC units report 0.25 kWh steps with no power
   sensor; spreading deltas across 5-min buckets is an approximation.
   Dogfooding decides whether it is good enough.
