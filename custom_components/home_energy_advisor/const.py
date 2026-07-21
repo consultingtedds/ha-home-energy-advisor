@@ -23,6 +23,11 @@ SUBENTRY_TYPE_DEVICE: Final = "device"
 CONF_ENERGY_ENTITY: Final = "energy_entity"
 CONF_POWER_ENTITY: Final = "power_entity"
 
+# Bookkeeping (entry data): the native Integral helpers we auto-created for
+# power-only devices, as {subentry_id: helper_config_entry_id}. Lets us reuse a
+# device's helper across reloads and remove it when the device is (HEA-34).
+CONF_INTEGRAL_HELPERS: Final = "integral_helpers"
+
 # Optional cycle totals (options flow). Daily and monthly are always on; these
 # are opt-in to keep the entity count in check (ADR-0004 / PLAN.md).
 CONF_CYCLE_WEEKLY: Final = "cycle_weekly"
