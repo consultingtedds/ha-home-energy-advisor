@@ -65,7 +65,13 @@ type HeaConfigEntry = ConfigEntry[HeaCoordinator]
 class HeaCoordinator(DataUpdateCoordinator[Totals]):
     """Drives the accounting runtime from Home Assistant state changes."""
 
-    def __init__(self, hass: HomeAssistant, entry: HeaConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: HeaConfigEntry,
+        *,
+        power_energy_entities: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(hass, _LOGGER, name=DOMAIN, config_entry=entry)
         self._entry = entry
         self._price_entity = entry.data[CONF_PRICE_ENTITY]
@@ -80,6 +86,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
             and CONF_ENERGY_ENTITY in subentry.data
         }
+        # Power-only devices reach the same pipeline through the energy sensor of
+        # an auto-created native Integral helper (ADR-0004 / HEA-34).
+        devices.update(power_energy_entities or {})
         self._energy_entities = {*house_sources.values(), *devices.values()}
         self._accountant = Accountant(
             house_sources=house_sources,
