@@ -4,17 +4,20 @@ A Home Assistant custom integration that explains the **financial impact** of
 your energy usage, per device: what it actually cost to run, what it would
 have cost without solar, and how much your solar saved.
 
-> **Status: pre-alpha — produces live per-device cost figures.** The foundation
-> (skeleton, CI, quality gates), the pure-Python accounting engine (delta
-> extraction, interval ledger, battery stored-cost ledger, proportional
-> allocation), the configuration flow (house-level setup + per-device
-> subentries), the runtime wiring, and the per-device sensors are complete and
-> tested. Each tracked device and the "Untracked" remainder now publish four
-> figures — Energy Used, Actual Cost, Cost Without Solar, Cost Savings — that
-> stay continuous across restarts. Still to come: automatic cycle totals
-> (daily/monthly…), energy derivation for power-only devices, diagnostics and
-> Repairs, and the Lovelace dashboards. See [docs/PLAN.md](docs/PLAN.md) for the
-> delivery plan and [docs/](docs/) for the product vision, charter, PRD and ADRs.
+> **Status: pre-alpha — the full integration is installable and produces live
+> per-device cost figures.** Complete and tested: the foundation (skeleton, CI,
+> quality gates); the pure-Python accounting engine (delta extraction, interval
+> ledger, battery stored-cost ledger, proportional allocation); the configuration
+> flow (house-level setup + per-device subentries) and options flow; the runtime
+> wiring; the per-device and "Untracked" sensors (Energy Used, Actual Cost, Cost
+> Without Solar, Cost Savings, continuous across restarts); automatic cycle totals
+> (daily/monthly, with weekly/quarterly/yearly opt-in) via native `utility_meter`
+> helpers; energy derivation for power-only devices via native Integral helpers; a
+> redacted diagnostics download and Repairs for degraded inputs; and English +
+> Spanish translations. Still to come: the Lovelace dashboards, a full install
+> README, dogfooding on a live instance, historical backfill, and the HACS
+> release. See [docs/PLAN.md](docs/PLAN.md) for the delivery plan and [docs/](docs/)
+> for the product vision, charter, PRD and ADRs.
 
 Home Energy Advisor complements Home Assistant's Energy Dashboard: HA explains
 energy flows; this integration explains money.
