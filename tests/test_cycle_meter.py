@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
@@ -33,6 +34,7 @@ from custom_components.home_energy_advisor.cycle_meter import (
     async_ensure_utility_meter,
     utility_meter_output_sensor,
 )
+from custom_components.home_energy_advisor.issues import ISSUE_CYCLE_HELPER_RECREATED
 
 if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
@@ -235,3 +237,25 @@ async def test_removing_a_device_removes_its_cycle_meters(
 
     # Then — only the Untracked remainder's meters remain: 1 x 4 sensors x 2 cycles
     assert len(hass.config_entries.async_entries("utility_meter")) == 8
+
+
+async def test_a_user_deleted_cycle_meter_is_recreated_and_raises_a_repair(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration with its full set of cycle meters
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device()
+    await _set_up(hass, entry)
+    assert len(hass.config_entries.async_entries("utility_meter")) == 16
+
+    # When — the user deletes one cycle meter, then the entry reloads
+    meter_id = hass.config_entries.async_entries("utility_meter")[0].entry_id
+    await hass.config_entries.async_remove(meter_id)
+    await hass.async_block_till_done()
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the meter is recreated and a single aggregate Repair notes it
+    assert len(hass.config_entries.async_entries("utility_meter")) == 16
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_CYCLE_HELPER_RECREATED)
+    assert issue is not None
