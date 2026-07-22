@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING
 import pytest
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -42,6 +43,7 @@ from custom_components.home_energy_advisor.integral_helper import (
     async_ensure_integral_helper,
     integral_output_sensor,
 )
+from custom_components.home_energy_advisor.issues import helper_recreated_issue_id
 
 if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
@@ -162,6 +164,37 @@ async def test_removing_a_power_device_removes_its_integral_helper(
 
     # Then — the orphaned Integral helper is cleaned up, not left behind
     assert hass.config_entries.async_entries("integration") == []
+
+
+async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration whose power-only device has an Integral helper
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
+    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    entry = _power_only_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    subentry_id = next(iter(entry.subentries))
+    helper_id = hass.config_entries.async_entries("integration")[0].entry_id
+
+    # When — the user deletes the auto-created helper, then the entry reloads
+    # (a restart, or any config change)
+    await hass.config_entries.async_remove(helper_id)
+    await hass.async_block_till_done()
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the helper is recreated (the device would be un-costed without it),
+    # and an informational Repair explains why it reappeared
+    assert len(hass.config_entries.async_entries("integration")) == 1
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, helper_recreated_issue_id(subentry_id)
+    )
+    assert issue is not None
 
 
 async def test_no_phantom_energy_accrues_across_an_unavailable_span(

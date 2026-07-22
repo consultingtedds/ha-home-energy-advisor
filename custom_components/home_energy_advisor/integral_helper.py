@@ -37,6 +37,7 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.const import CONF_METHOD, CONF_NAME, UnitOfTime
 from homeassistant.helpers import entity_registry as er
 
+from . import issues
 from .const import (
     CONF_ENERGY_ENTITY,
     CONF_INTEGRAL_HELPERS,
@@ -95,9 +96,36 @@ async def async_sync_power_device_helpers(
     power_devices = _power_only_devices(entry)
     owned = dict(entry.data.get(CONF_INTEGRAL_HELPERS, {}))
     await _remove_orphaned_helpers(hass, owned, keep=power_devices.keys())
+    recreated = _deleted_helper_devices(hass, owned, power_devices)
     energy_entities = await _ensure_helpers(hass, entry, power_devices, owned)
     _persist_owned_helpers(hass, entry, owned)
+    _raise_recreated_repairs(hass, entry, recreated)
     return energy_entities
+
+
+def _deleted_helper_devices(
+    hass: HomeAssistant, owned: dict[str, str], power_devices: dict[str, str]
+) -> set[str]:
+    """Devices whose still-wanted helper the user deleted (its entry is gone)."""
+    return {
+        subentry_id
+        for subentry_id, helper_id in owned.items()
+        if subentry_id in power_devices
+        and hass.config_entries.async_get_entry(helper_id) is None
+    }
+
+
+def _raise_recreated_repairs(
+    hass: HomeAssistant, entry: ConfigEntry, recreated: set[str]
+) -> None:
+    """Raise an informational Repair for each helper HEA had to re-create."""
+    for subentry_id in recreated:
+        issues.async_raise(
+            hass,
+            issues.helper_recreated_issue_id(subentry_id),
+            issues.ISSUE_HELPER_RECREATED,
+            {"name": entry.subentries[subentry_id].title},
+        )
 
 
 def _power_only_devices(entry: ConfigEntry) -> dict[str, str]:

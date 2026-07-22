@@ -34,6 +34,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import translation
 
+from . import issues
 from .const import (
     CONF_CYCLE_METERS,
     CONF_CYCLE_QUARTERLY,
@@ -112,9 +113,28 @@ async def async_sync_cycle_meters(hass: HomeAssistant, entry: ConfigEntry) -> No
     desired = {_key(source, cycle) for source in sources for cycle in cycles}
     owned = dict(entry.data.get(CONF_CYCLE_METERS, {}))
     await _remove_orphaned_meters(hass, owned, desired)
+    recreated = _any_meter_deleted(hass, owned, desired)
     labels = await _cycle_labels(hass)
     await _ensure_meters(hass, sources, cycles, labels, owned)
     _persist_owned_meters(hass, entry, owned)
+    if recreated:
+        # One aggregate Repair — a user may delete several cycle meters at once,
+        # and one meter per (sensor x cycle) would flood Repairs.
+        issues.async_raise(
+            hass,
+            issues.ISSUE_CYCLE_HELPER_RECREATED,
+            issues.ISSUE_CYCLE_HELPER_RECREATED,
+        )
+
+
+def _any_meter_deleted(
+    hass: HomeAssistant, owned: dict[str, str], desired: set[str]
+) -> bool:
+    """Whether a still-wanted cycle meter's config entry the user deleted is gone."""
+    return any(
+        key in desired and hass.config_entries.async_get_entry(meter_id) is None
+        for key, meter_id in owned.items()
+    )
 
 
 def _key(source: str, cycle: str) -> str:

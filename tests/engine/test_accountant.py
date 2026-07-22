@@ -9,6 +9,9 @@ from custom_components.home_energy_advisor.engine.accountant import (
     SourceRole,
     Totals,
 )
+from custom_components.home_energy_advisor.engine.energy_source import (
+    DecisionReason,
+)
 
 # A 5-minute-aligned instant; readings are placed at whole-minute offsets from it.
 BASE = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
@@ -24,6 +27,75 @@ def _total_actual(result: Totals) -> Decimal:
         (d.actual_cost for d in result.devices.values()),
         start=result.untracked.actual_cost,
     )
+
+
+def test_source_diagnostics_snapshots_every_observed_meter() -> None:
+    # Given — a home with a grid meter and one tracked device, each seen twice
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+
+    # When — the per-source diagnostics are read
+    diagnostics = acc.source_diagnostics()
+
+    # Then — every observed meter is keyed by its entity id with its last reading
+    # and gating log exposed for the diagnostics download
+    assert set(diagnostics) == {"sensor.grid_import", "sensor.guest_energy"}
+    guest = diagnostics["sensor.guest_energy"]
+    assert guest.last_value == Decimal("0.6")
+    assert guest.last_at == at(5)
+    assert guest.recent_decisions[-1].reason is DecisionReason.COUNTED
+
+
+def test_consecutive_overdrawn_buckets_are_counted_for_the_remainder_repair() -> None:
+    # Given — a home whose tracked device is (implausibly) drawing more than the
+    # house imports, bucket after bucket: the double-counting the remainder clamp
+    # hides and the Repair must surface (HEA-24 / HEA-36)
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+
+    # When — across three intervals the house imports 0.1 kWh each but the device
+    # reports drawing 0.5 kWh each
+    buckets = ((5, "0.1", "0.5"), (10, "0.2", "1.0"), (15, "0.3", "1.5"))
+    for minute, grid, device in buckets:
+        acc.observe("sensor.grid_import", at(minute), Decimal(grid))
+        acc.observe("sensor.guest_energy", at(minute), Decimal(device))
+    acc.finalize(at(60))
+
+    # Then — every over-drawn bucket is counted, so the coordinator can raise the
+    # persistent-negative-remainder Repair once the run is long enough
+    assert acc.consecutive_overdrawn_buckets() == 3
+
+
+def test_overdrawn_run_resets_when_consumption_catches_up() -> None:
+    # Given — a device that over-draws for a bucket, then behaves
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+
+    # When — one over-drawn bucket is followed by a healthy one (import ≥ draw)
+    acc.observe("sensor.grid_import", at(5), Decimal("0.1"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.observe("sensor.grid_import", at(10), Decimal("1.1"))
+    acc.observe("sensor.guest_energy", at(10), Decimal("0.6"))
+    acc.finalize(at(60))
+
+    # Then — the run resets to zero; the mismatch was transient, not persistent
+    assert acc.consecutive_overdrawn_buckets() == 0
 
 
 def test_import_only_prices_a_device_at_the_import_rate() -> None:

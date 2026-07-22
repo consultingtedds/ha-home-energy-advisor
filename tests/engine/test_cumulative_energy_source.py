@@ -8,6 +8,8 @@ import pytest
 
 from custom_components.home_energy_advisor.engine.energy_source import (
     CumulativeEnergySource,
+    Decision,
+    DecisionReason,
     EnergyDelta,
     EnergyUnit,
     Reading,
@@ -188,3 +190,138 @@ def test_cumulative_source_negative_counter_value_is_rejected() -> None:
     # mint negative energy and break the aggregate invariant
     with pytest.raises(ValueError, match="negative"):
         source.observe(reading(at="02:14", value="-1.00"))
+
+
+# --- Diagnostics: the decision log (HEA-24) ------------------------------------
+#
+# The engine that makes each gating decision is the only place that can record it
+# faithfully, so it keeps a bounded log the diagnostics download reads back. Each
+# reading leaves exactly one Decision explaining what the engine did with it.
+
+
+def test_cumulative_source_first_reading_is_logged_as_a_baseline_decision() -> None:
+    # Given — a fresh source for the Guest Bedroom Aircon
+    source = CumulativeEnergySource()
+
+    # When — the very first reading arrives
+    source.observe(reading(at="02:14", value="2.75"))
+
+    # Then — it is logged as a baseline that claimed no energy
+    assert source.recent_decisions() == (
+        Decision(at=moment("02:14"), reason=DecisionReason.FIRST_READING, kwh=None),
+    )
+
+
+def test_cumulative_source_rising_counter_is_logged_as_counted_with_energy() -> None:
+    # Given — the counter has been seen at 2.75 kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2.75"))
+
+    # When — it steps up by one 0.25 kWh increment
+    source.observe(reading(at="02:19", value="3.00"))
+
+    # Then — the increment is logged as counted energy
+    assert source.recent_decisions()[-1] == Decision(
+        at=moment("02:19"), reason=DecisionReason.COUNTED, kwh=Decimal("0.25")
+    )
+
+
+def test_cumulative_source_cycle_reset_is_logged_as_a_reset_with_energy() -> None:
+    # Given — the WF-RAC counter is mid-cycle at 2.75 kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2.75"))
+
+    # When — the compressor cycle ends and the counter restarts at 0.25
+    source.observe(reading(at="02:19", value="0.25"))
+
+    # Then — the post-reset energy is logged, distinguished from a normal increment
+    assert source.recent_decisions()[-1] == Decision(
+        at=moment("02:19"), reason=DecisionReason.RESET, kwh=Decimal("0.25")
+    )
+
+
+def test_cumulative_source_unavailable_reading_is_logged_without_energy() -> None:
+    # Given — a counter at 2.75 kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2.75"))
+
+    # When — the sensor goes unavailable
+    source.observe(reading(at="02:19", value=None))
+
+    # Then — the gap is logged as unavailable, claiming no energy
+    assert source.recent_decisions()[-1] == Decision(
+        at=moment("02:19"), reason=DecisionReason.UNAVAILABLE, kwh=None
+    )
+
+
+def test_cumulative_source_out_of_order_reading_is_logged_as_stale() -> None:
+    # Given — readings observed up to 02:19
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2.75"))
+    source.observe(reading(at="02:19", value="3.00"))
+
+    # When — a stale reading arrives late, out of order
+    source.observe(reading(at="02:16", value="2.90"))
+
+    # Then — it is logged as stale rather than silently dropped
+    assert source.recent_decisions()[-1] == Decision(
+        at=moment("02:16"), reason=DecisionReason.STALE, kwh=None
+    )
+
+
+def test_cumulative_source_unchanged_counter_is_logged_as_no_movement() -> None:
+    # Given — a counter at 3.00 kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="3.00"))
+
+    # When — the sensor reports the same value again
+    source.observe(reading(at="02:19", value="3.00"))
+
+    # Then — the still counter is logged as no movement
+    assert source.recent_decisions()[-1] == Decision(
+        at=moment("02:19"), reason=DecisionReason.NO_MOVEMENT, kwh=None
+    )
+
+
+def test_cumulative_source_decision_log_keeps_only_the_most_recent_entries() -> None:
+    # Given — a source fed far more readings than the log retains
+    source = CumulativeEnergySource()
+    for minute in range(30):
+        source.observe(reading(at=f"03:{minute:02d}", value=str(Decimal(minute))))
+
+    # When — the bounded log is read back
+    decisions = source.recent_decisions()
+
+    # Then — it retains only the last 20, newest last, oldest evicted
+    assert len(decisions) == 20
+    assert decisions[-1].at == moment("03:29")
+    assert decisions[0].at == moment("03:10")
+
+
+def test_cumulative_source_snapshot_exposes_last_reading_and_decisions() -> None:
+    # Given — a Wh counter seen twice
+    source = CumulativeEnergySource(unit=EnergyUnit.WH)
+    source.observe(reading(at="02:14", value="2750"))
+    source.observe(reading(at="02:19", value="3000"))
+
+    # When — a diagnostics snapshot is taken
+    snapshot = source.snapshot()
+
+    # Then — it reports the unit, the last known reading, and the decision log
+    assert snapshot.unit is EnergyUnit.WH
+    assert snapshot.last_value == Decimal(3000)
+    assert snapshot.last_at == moment("02:19")
+    assert snapshot.recent_decisions == source.recent_decisions()
+
+
+def test_cumulative_source_snapshot_before_any_reading_has_no_last_value() -> None:
+    # Given — a source that has never observed a reading
+    source = CumulativeEnergySource()
+
+    # When — a snapshot is taken
+    snapshot = source.snapshot()
+
+    # Then — there is no last reading and the decision log is empty
+    assert snapshot.last_value is None
+    assert snapshot.last_at is None
+    assert snapshot.recent_decisions == ()

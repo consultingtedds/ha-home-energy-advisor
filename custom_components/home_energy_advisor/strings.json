@@ -119,5 +119,31 @@
   },
   "device": {
     "untracked": { "name": "Untracked" }
+  },
+  "issues": {
+    "source_removed": {
+      "title": "An energy input is no longer available",
+      "description": "Home Energy Advisor can no longer find `{entity_id}`, which it needs for cost accounting — the entity may have been deleted or renamed. Edit the integration (or the device) to select the sensor again, so your figures stay accurate."
+    },
+    "source_unavailable": {
+      "title": "An energy input has been unavailable for over an hour",
+      "description": "`{entity_id}` has been unavailable for more than an hour. Home Energy Advisor keeps accounting, but the energy and cost it would have measured while the sensor was down are missing. Check the device or integration that provides `{entity_id}`."
+    },
+    "price_unavailable": {
+      "title": "The import price has been unavailable for over an hour",
+      "description": "The price sensor `{entity_id}` has been unavailable for more than an hour. Home Energy Advisor keeps pricing energy at the last price it saw, so costs during this period may be inaccurate. Check the tariff integration that provides the price."
+    },
+    "helper_recreated": {
+      "title": "A required helper was re-created",
+      "description": "Home Energy Advisor re-created a helper it needs to measure the energy of “{name}”. This helper is created automatically and “{name}” cannot be costed without it, so if you deleted it on purpose, remove the device from Home Energy Advisor instead."
+    },
+    "cycle_helper_recreated": {
+      "title": "One or more cycle-total helpers were re-created",
+      "description": "Home Energy Advisor re-created one or more daily, monthly or longer-cycle total helpers that had been deleted. These provide the per-period totals; to stop creating a longer cycle, turn it off in the integration options rather than deleting its helpers."
+    },
+    "negative_remainder": {
+      "title": "Tracked devices are drawing more than the house consumes",
+      "description": "For over an hour, the energy attributed to your tracked devices has exceeded the household total. This usually means a device sensor is double-counted, or a house-level input is wrong. The Untracked figure is held at zero so costs still add up, but check your device and house-level sensor selections."
+    }
   }
 }
