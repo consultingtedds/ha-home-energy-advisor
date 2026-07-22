@@ -28,6 +28,11 @@ CONF_POWER_ENTITY: Final = "power_entity"
 # device's helper across reloads and remove it when the device is (HEA-34).
 CONF_INTEGRAL_HELPERS: Final = "integral_helpers"
 
+# Bookkeeping (entry data): the native utility_meter cycle helpers we auto-created,
+# as {"source_entity|cycle": helper_config_entry_id}. Reused across reloads and
+# reconciled away when a device (and so its source sensors) is removed (HEA-23).
+CONF_CYCLE_METERS: Final = "cycle_meters"
+
 # Optional cycle totals (options flow). Daily and monthly are always on; these
 # are opt-in to keep the entity count in check (ADR-0004 / PLAN.md).
 CONF_CYCLE_WEEKLY: Final = "cycle_weekly"
