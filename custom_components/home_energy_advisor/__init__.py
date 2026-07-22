@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from homeassistant.const import Platform
 
 from .coordinator import HeaCoordinator
+from .cycle_meter import async_sync_cycle_meters
 from .integral_helper import async_sync_power_device_helpers
 
 if TYPE_CHECKING:
@@ -39,9 +40,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     await coordinator.async_start()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # After the sensors exist, reconcile the utility_meter cycle totals over them
+    # (daily/monthly + opt-in longer cycles), creating and cleaning up as needed.
+    await async_sync_cycle_meters(hass, entry)
     # Reload on any config change so adding, editing or removing a device takes
-    # effect live — and so a removed power-only device's Integral helper is
-    # reconciled away on the next setup (HEA-34).
+    # effect live — and so a removed device's auto-created helpers (Integral and
+    # cycle meters) are reconciled away on the next setup (HEA-34, HEA-23).
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
 
