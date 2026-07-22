@@ -4,7 +4,7 @@
   "after_dependencies": ["energy"],
   "codeowners": ["@consultingtedds"],
   "config_flow": true,
-  "dependencies": ["integration"],
+  "dependencies": ["integration", "utility_meter"],
   "documentation": "https://github.com/consultingtedds/ha-home-energy-advisor",
   "integration_type": "helper",
   "iot_class": "calculated",
