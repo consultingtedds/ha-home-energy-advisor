@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from datetime import datetime, timedelta
 
     from .allocation import DeviceAllocation
-    from .energy_source import EnergyDelta
+    from .energy_source import EnergyDelta, SourceSnapshot
 
 _DEFAULT_LATENESS = 3 * BUCKET
 
@@ -127,6 +127,7 @@ class Accountant:
         self._running = {device: _Running() for device in device_energy_entities}
         self._untracked = _Running()
         self._watermark: datetime | None = None
+        self._overdrawn_run = 0
 
     def record_price(self, at: datetime, price: Decimal) -> None:
         """Records the import price active from ``at``."""
@@ -164,6 +165,25 @@ class Accountant:
             untracked=self._untracked.snapshot(),
         )
 
+    def consecutive_overdrawn_buckets(self) -> int:
+        """Consecutive finalised buckets whose device draw exceeded consumption.
+
+        A device drawing more than the house was served means the Untracked
+        remainder would be negative — the engine clamps it to zero (ADR-0002),
+        but a *persistent* run signals double-counting or bad inputs, which the
+        coordinator surfaces as a Repair (HEA-24 / HEA-36).
+        """
+        return self._overdrawn_run
+
+    def source_diagnostics(self) -> dict[str, SourceSnapshot]:
+        """Per-source accumulator state and decision log, keyed by entity id.
+
+        Feeds the diagnostics download (HEA-24): every meter the runtime has
+        observed — house-level and per-device — with its last reading and the
+        gating decisions that explain its accounting.
+        """
+        return {entity: source.snapshot() for entity, source in self._sources.items()}
+
     def _spread_source(self, role: SourceRole, delta: EnergyDelta) -> None:
         for portion in spread_energy(delta):
             if self._is_finalised(portion.start):
@@ -191,6 +211,15 @@ class Accountant:
         for device, share in allocation.devices.items():
             self._running.setdefault(device, _Running()).add(share)
         self._untracked.add(allocation.untracked)
+        self._track_overdraw(served, draws)
+
+    def _track_overdraw(self, served: _Served, draws: Mapping[str, Decimal]) -> None:
+        consumption = served.grid + served.solar + served.battery
+        total_draw = sum(draws.values(), Decimal(0))
+        if total_draw > consumption:
+            self._overdrawn_run += 1
+        else:
+            self._overdrawn_run = 0
 
     def _decompose(self, raw: Mapping[SourceRole, Decimal]) -> _Served:
         imp = raw.get(SourceRole.GRID_IMPORT, Decimal(0))

@@ -15,6 +15,7 @@ instead.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
 from enum import Enum
@@ -24,6 +25,11 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 _WH_PER_KWH = Decimal(1000)
+
+# How many recent gating decisions each source retains for the diagnostics
+# download (HEA-24). Bounded so a long-running source never grows without limit;
+# 20 is enough to explain a device's most recent behaviour in a support thread.
+_DECISION_LOG_SIZE = 20
 
 
 class EnergyUnit(Enum):
@@ -55,6 +61,46 @@ class EnergyDelta:
     end: datetime
 
 
+class DecisionReason(Enum):
+    """Why a reading did or did not become accounted energy (HEA-24 diagnostics).
+
+    One reason is logged per observed reading, so the diagnostics download can
+    explain any figure: energy was counted, a reset was recognised, or the
+    reading was gated out (no prior baseline, an unavailable source, a stale or
+    duplicate timestamp, or a counter that simply did not move).
+    """
+
+    COUNTED = "counted"
+    RESET = "reset"
+    FIRST_READING = "first_reading"
+    UNAVAILABLE = "unavailable"
+    STALE = "stale"
+    NO_MOVEMENT = "no_movement"
+
+
+@dataclass(frozen=True)
+class Decision:
+    """What the engine did with one reading, for the diagnostics decision log.
+
+    ``kwh`` carries the energy the reading revealed for ``COUNTED`` and ``RESET``;
+    for every gated reason it is ``None``.
+    """
+
+    at: datetime
+    reason: DecisionReason
+    kwh: Decimal | None
+
+
+@dataclass(frozen=True)
+class SourceSnapshot:
+    """A source's diagnostics state: its unit, last reading, and decision log."""
+
+    unit: EnergyUnit
+    last_value: Decimal | None
+    last_at: datetime | None
+    recent_decisions: tuple[Decision, ...]
+
+
 @dataclass(frozen=True)
 class _Observation:
     """A reading known to carry a value — the only kind worth remembering."""
@@ -75,6 +121,7 @@ class CumulativeEnergySource:
     def __init__(self, unit: EnergyUnit = EnergyUnit.KWH) -> None:
         self._unit = unit
         self._last: _Observation | None = None
+        self._decisions: deque[Decision] = deque(maxlen=_DECISION_LOG_SIZE)
 
     def observe(self, reading: Reading) -> EnergyDelta | None:
         """Records a reading and returns the energy it revealed, if any.
@@ -82,7 +129,8 @@ class CumulativeEnergySource:
         Returns ``None`` when the reading yields no energy to account for: the
         first reading of a counter (its history is unknowable), an unavailable
         source, a reading that is stale or contemporaneous with the last one, or
-        a counter that simply has not moved.
+        a counter that simply has not moved. Every reading leaves one entry in
+        the decision log (HEA-24), whether or not it produced energy.
 
         Raises:
             ValueError: if the counter reports a negative value, which a
@@ -90,20 +138,43 @@ class CumulativeEnergySource:
         """
         current = self._observation(reading)
         if current is None:
+            self._log(reading.at, DecisionReason.UNAVAILABLE, None)
             return None
 
         previous = self._last
         if previous is None:
             self._last = current
+            self._log(current.at, DecisionReason.FIRST_READING, None)
             return None
         if current.at <= previous.at:
+            self._log(current.at, DecisionReason.STALE, None)
             return None
 
         self._last = current
+        is_reset = current.value < previous.value
         kwh = self._to_kwh(self._counted(previous, current))
         if kwh == 0:
+            self._log(current.at, DecisionReason.NO_MOVEMENT, None)
             return None
+        reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
+        self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=previous.at, end=current.at)
+
+    def recent_decisions(self) -> tuple[Decision, ...]:
+        """The bounded log of what the engine did with recent readings."""
+        return tuple(self._decisions)
+
+    def snapshot(self) -> SourceSnapshot:
+        """The source's current diagnostics state (HEA-24)."""
+        return SourceSnapshot(
+            unit=self._unit,
+            last_value=self._last.value if self._last else None,
+            last_at=self._last.at if self._last else None,
+            recent_decisions=self.recent_decisions(),
+        )
+
+    def _log(self, at: datetime, reason: DecisionReason, kwh: Decimal | None) -> None:
+        self._decisions.append(Decision(at=at, reason=reason, kwh=kwh))
 
     def _observation(self, reading: Reading) -> _Observation | None:
         if reading.value is None:

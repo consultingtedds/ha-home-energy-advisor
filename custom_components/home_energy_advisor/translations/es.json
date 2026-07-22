@@ -119,5 +119,31 @@
   },
   "device": {
     "untracked": { "name": "Sin seguimiento" }
+  },
+  "issues": {
+    "source_removed": {
+      "title": "Una entrada de energía ya no está disponible",
+      "description": "Home Energy Advisor ya no encuentra `{entity_id}`, que necesita para el cálculo de costes: es posible que la entidad se haya eliminado o cambiado de nombre. Edita la integración (o el dispositivo) para volver a seleccionar el sensor y mantener tus cifras exactas."
+    },
+    "source_unavailable": {
+      "title": "Una entrada de energía lleva más de una hora sin estar disponible",
+      "description": "`{entity_id}` lleva más de una hora sin estar disponible. Home Energy Advisor sigue calculando, pero falta la energía y el coste que habría medido mientras el sensor estuvo caído. Revisa el dispositivo o la integración que proporciona `{entity_id}`."
+    },
+    "price_unavailable": {
+      "title": "El precio de importación lleva más de una hora sin estar disponible",
+      "description": "El sensor de precio `{entity_id}` lleva más de una hora sin estar disponible. Home Energy Advisor sigue valorando la energía al último precio conocido, por lo que los costes de este periodo pueden ser inexactos. Revisa la integración de tarifa que proporciona el precio."
+    },
+    "helper_recreated": {
+      "title": "Se volvió a crear un ayudante necesario",
+      "description": "Home Energy Advisor volvió a crear un ayudante que necesita para medir la energía de «{name}». Este ayudante se crea automáticamente y «{name}» no se puede costear sin él, así que si lo eliminaste a propósito, quita el dispositivo de Home Energy Advisor en su lugar."
+    },
+    "cycle_helper_recreated": {
+      "title": "Se volvieron a crear uno o más ayudantes de totales por ciclo",
+      "description": "Home Energy Advisor volvió a crear uno o más ayudantes de totales diarios, mensuales o de ciclos más largos que se habían eliminado. Estos proporcionan los totales por periodo; para dejar de crear un ciclo largo, desactívalo en las opciones de la integración en lugar de eliminar sus ayudantes."
+    },
+    "negative_remainder": {
+      "title": "Los dispositivos monitorizados consumen más que la casa",
+      "description": "Durante más de una hora, la energía atribuida a tus dispositivos monitorizados ha superado el total del hogar. Esto suele indicar que un sensor de dispositivo se cuenta dos veces, o que una entrada de nivel de casa es incorrecta. La cifra Sin seguimiento se mantiene en cero para que los costes sigan cuadrando, pero revisa la selección de sensores de dispositivo y de nivel de casa."
+    }
   }
 }
