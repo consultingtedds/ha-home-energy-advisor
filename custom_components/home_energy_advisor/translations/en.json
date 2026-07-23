@@ -118,7 +118,7 @@
     }
   },
   "device": {
-    "untracked": { "name": "Untracked" }
+    "untracked": { "name": "Untracked Energy Devices" }
   },
   "issues": {
     "source_removed": {
