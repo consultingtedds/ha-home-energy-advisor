@@ -17,6 +17,7 @@ from homeassistant.components.sensor import SensorExtraStoredData
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from homeassistant.core import State
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
@@ -125,6 +126,35 @@ async def test_setup_creates_the_four_sensors_for_every_device_and_untracked(
     ]
     assert len(hea_sensors) == 12
     assert {e.translation_key for e in hea_sensors} == set(_CONCEPTS)
+
+
+async def test_untracked_is_a_service_device_while_real_devices_are_not(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration with one real tracked device and the Untracked
+    # remainder
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the Untracked remainder is a SERVICE device: a virtual aggregate, so
+    # Home Assistant should not prompt the user to place it in an area...
+    devices = dr.async_get(hass)
+    untracked = devices.async_get_device(
+        identifiers={(DOMAIN, f"{entry.entry_id}_untracked")}
+    )
+    assert untracked is not None
+    assert untracked.entry_type is dr.DeviceEntryType.SERVICE
+
+    # ...while a real tracked device stays a normal device the user can assign
+    guest = devices.async_get_device(
+        identifiers={(DOMAIN, f"{entry.entry_id}_{_guest_subentry_id(entry)}")}
+    )
+    assert guest is not None
+    assert guest.entry_type is None
 
 
 async def test_each_concept_carries_its_adr_0003_identity(
