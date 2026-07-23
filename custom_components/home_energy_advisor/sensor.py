@@ -27,7 +27,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy
-from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_CURRENCY, DEFAULT_CURRENCY, DOMAIN, SUBENTRY_TYPE_DEVICE
@@ -101,13 +101,13 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
 
-    # A SERVICE device: the Untracked remainder is a virtual aggregate, not real
-    # hardware, so Home Assistant treats it as a service device and does not prompt
-    # the user to assign it to an area (unlike the real tracked devices).
+    # A normal device (like the real tracked devices) whose display name is set by
+    # the "untracked" translation key. It reads as a genuine entry rather than a
+    # placeholder; the name — not a service-device flag — is what keeps it from
+    # looking like a setup error (HEA-44).
     untracked_info = DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{_UNTRACKED_KEY}")},
         translation_key="untracked",
-        entry_type=DeviceEntryType.SERVICE,
     )
     async_add_entities(
         HeaCostSensor(
