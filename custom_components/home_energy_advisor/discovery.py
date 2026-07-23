@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -83,6 +84,7 @@ def async_discover_candidates(
 ) -> list[DeviceCandidate]:
     """Return untracked energy/power sensors to offer as devices, best first."""
     registry = er.async_get(hass)
+    devices = dr.async_get(hass)
     excluded = _excluded_entities(entry, registry)
     paired = [
         (entity, candidate)
@@ -90,19 +92,21 @@ def async_discover_candidates(
         if entity.domain == "sensor"
         and entity.platform != DOMAIN
         and entity.entity_id not in excluded
-        and (candidate := _candidate(hass, entity)) is not None
+        and (candidate := _candidate(hass, devices, entity)) is not None
     ]
     kept = _prefer_energy(paired)
     return sorted(kept, key=lambda c: (c.likely_false_friend, c.name))
 
 
-def _candidate(hass: HomeAssistant, entity: RegistryEntry) -> DeviceCandidate | None:
+def _candidate(
+    hass: HomeAssistant, devices: dr.DeviceRegistry, entity: RegistryEntry
+) -> DeviceCandidate | None:
     kind = _energy_or_power(hass, entity)
     if kind is None:
         return None
     return DeviceCandidate(
         entity_id=entity.entity_id,
-        name=_suggested_name(entity),
+        name=_suggested_name(devices, entity),
         source_key=_SOURCE_KEY[kind],
         likely_false_friend=_looks_like_a_false_friend(entity),
     )
@@ -116,7 +120,20 @@ def _energy_or_power(hass: HomeAssistant, entity: RegistryEntry) -> str | None:
     return device_class if device_class in _SOURCE_KEY else None
 
 
-def _suggested_name(entity: RegistryEntry) -> str:
+def _suggested_name(devices: dr.DeviceRegistry, entity: RegistryEntry) -> str:
+    """The device name to suggest: the parent HA device's, else the entity's.
+
+    Most device sensors set ``has_entity_name``, so the entity's own name is just
+    the concept ("Energy") while the real identity lives on the parent device.
+    Prefer that; only when there is no device do we fall back to the entity's own
+    name, trimmed of a trailing concept word.
+    """
+    if (
+        entity.device_id
+        and (device := devices.async_get(entity.device_id))
+        and (device_name := device.name_by_user or device.name)
+    ):
+        return device_name
     name = entity.name or entity.original_name or entity.entity_id
     lowered = name.lower()
     for suffix in _NAME_SUFFIXES:
