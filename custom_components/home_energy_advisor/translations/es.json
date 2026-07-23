@@ -57,6 +57,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "Home Energy Advisor",
+        "menu_options": {
+          "cycles": "Totales por ciclo",
+          "discover_devices": "Descubrir dispositivos para seguir"
+        }
+      },
+      "cycles": {
         "title": "Totales por ciclo",
         "description": "Elige qué totales de periodos más largos crear para cada dispositivo. Los totales diarios y mensuales siempre se crean.",
         "data": {
@@ -64,7 +71,17 @@
           "cycle_quarterly": "Totales trimestrales",
           "cycle_yearly": "Totales anuales"
         }
+      },
+      "discover_devices": {
+        "title": "Descubrir dispositivos para seguir",
+        "description": "Estos sensores de energía y potencia aún no se siguen. Selecciona los que quieras añadir como dispositivos. Las sugerencias marcadas con «puede que no sea un dispositivo» a menudo no lo son —la batería de un teléfono, una previsión—, así que añade solo lo que reconozcas.",
+        "data": {
+          "discovered_devices": "Dispositivos a añadir"
+        }
       }
+    },
+    "abort": {
+      "no_candidates": "No se encontraron sensores de energía o potencia sin seguimiento para añadir."
     }
   },
   "config_subentries": {

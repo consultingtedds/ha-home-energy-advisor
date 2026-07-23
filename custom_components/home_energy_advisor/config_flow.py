@@ -9,6 +9,7 @@ is added afterwards as config subentries, not here.
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
@@ -16,6 +17,7 @@ from homeassistant.components.energy.data import async_get_manager
 from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
+    ConfigSubentry,
     ConfigSubentryFlow,
     OptionsFlow,
     SubentryFlowResult,
@@ -42,12 +44,17 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
+from .discovery import async_discover_candidates
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
+    from .discovery import DeviceCandidate
+
 _TITLE = "Home Energy Advisor"
+# Options-flow-internal key for the multi-select of discovered devices to add.
+_CONF_DISCOVERED = "discovered_devices"
 
 _PRICE_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor")
@@ -232,13 +239,24 @@ def _validate_device_sources(user_input: dict[str, Any]) -> str | None:
 
 
 class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
-    """Global options: opt in to the weekly, quarterly and yearly cycle totals.
+    """Options: the cycle-total opt-ins and the guided device-discovery step.
 
-    Daily and monthly totals are always created; the longer cycles are opt-in to
-    keep the entity count in check across many devices (ADR-0004).
+    Daily and monthly cycle totals are always created; the longer cycles are
+    opt-in to keep the entity count in check across many devices (ADR-0004).
+    Discovery (HEA-45) offers untracked energy/power sensors to add as devices —
+    it only suggests; the user picks. Both are re-runnable from Configure.
     """
 
     async def async_step_init(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA menu step signature
+    ) -> ConfigFlowResult:
+        """Offer the two options branches."""
+        return self.async_show_menu(
+            step_id="init", menu_options=["cycles", "discover_devices"]
+        )
+
+    async def async_step_cycles(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Show and store the cycle opt-ins."""
@@ -254,4 +272,64 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
                 for key in (CONF_CYCLE_WEEKLY, CONF_CYCLE_QUARTERLY, CONF_CYCLE_YEARLY)
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="cycles", data_schema=schema)
+
+    async def async_step_discover_devices(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Offer untracked energy/power sensors; add the ones the user selects."""
+        candidates = async_discover_candidates(self.hass, self.config_entry)
+        if user_input is not None:
+            self._add_devices(candidates, user_input.get(_CONF_DISCOVERED, []))
+            return self.async_create_entry(data=dict(self.config_entry.options))
+        if not candidates:
+            return self.async_abort(reason="no_candidates")
+        return self.async_show_form(
+            step_id="discover_devices", data_schema=_discovery_schema(candidates)
+        )
+
+    def _add_devices(
+        self, candidates: list[DeviceCandidate], selected: list[str]
+    ) -> None:
+        """Create a device subentry for each selected candidate."""
+        by_entity = {candidate.entity_id: candidate for candidate in candidates}
+        for entity_id in selected:
+            candidate = by_entity.get(entity_id)
+            if candidate is None:
+                continue
+            self.hass.config_entries.async_add_subentry(
+                self.config_entry,
+                ConfigSubentry(
+                    data=MappingProxyType(
+                        {CONF_NAME: candidate.name, candidate.source_key: entity_id}
+                    ),
+                    subentry_type=SUBENTRY_TYPE_DEVICE,
+                    title=candidate.name,
+                    unique_id=None,
+                ),
+            )
+
+
+def _discovery_schema(candidates: list[DeviceCandidate]) -> vol.Schema:
+    options = [
+        selector.SelectOptionDict(
+            value=candidate.entity_id, label=_candidate_label(candidate)
+        )
+        for candidate in candidates
+    ]
+    return vol.Schema(
+        {
+            vol.Optional(_CONF_DISCOVERED, default=[]): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=options,
+                    multiple=True,
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            )
+        }
+    )
+
+
+def _candidate_label(candidate: DeviceCandidate) -> str:
+    label = f"{candidate.name} ({candidate.entity_id})"
+    return f"{label} — may not be a device" if candidate.likely_false_friend else label
