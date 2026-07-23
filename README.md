@@ -13,11 +13,14 @@ have cost without solar, and how much your solar saved.
 > Without Solar, Cost Savings, continuous across restarts); automatic cycle totals
 > (daily/monthly, with weekly/quarterly/yearly opt-in) via native `utility_meter`
 > helpers; energy derivation for power-only devices via native Integral helpers; a
-> redacted diagnostics download and Repairs for degraded inputs; and English +
-> Spanish translations. Still to come: the Lovelace dashboards, a full install
-> README, dogfooding on a live instance, historical backfill, and the HACS
-> release. See [docs/PLAN.md](docs/PLAN.md) for the delivery plan and [docs/](docs/)
-> for the product vision, charter, PRD and ADRs.
+> redacted diagnostics download and Repairs for degraded inputs; guided device
+> discovery (scan for untracked energy/power sensors and choose which to add —
+> manual add via "Add device" remains); and English + Spanish translations. It
+> now runs live on a real instance. Still to come: the Lovelace dashboards, a full
+> install README, wider dogfooding, and the HACS release (historical backfill is
+> deferred — see [docs/PLAN.md](docs/PLAN.md) → Epic 7). See
+> [docs/PLAN.md](docs/PLAN.md) for the delivery plan and [docs/](docs/) for the
+> product vision, charter, PRD and ADRs.
 
 Home Energy Advisor complements Home Assistant's Energy Dashboard: HA explains
 energy flows; this integration explains money.

@@ -108,6 +108,7 @@ Presentation
 5. Cycle totals via auto-created utility_meter helpers (daily + monthly default; weekly/quarterly/yearly global opt-in)
 6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
+8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add — multi-select, never auto-onboarded (false-friend rule). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility — dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
 
 ### Epic 5 — Dashboard & documentation
 1. Lovelace dashboard: devices-by-cost comparison + per-device detail + untracked share (consult HA best-practices skill)
@@ -118,9 +119,23 @@ Presentation
 2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; battery ledger vs Predbat's own accounting
 3. Fixes arising; note: July dogfooding cannot exercise the winter battery regime — revisit accuracy after the first winter month (tracked as follow-up)
 
-### Epic 7 — Historical backfill
-1. Backfill via `recorder.import_statistics` on device setup (bounded by price/solar/battery statistics history — 13+ months confirmed for key inputs)
-2. Validate backfilled statistics against manual tables
+### Epic 7 — Historical backfill (deferred 2026-07-23 — not deleted)
+1. ~~Backfill via `recorder.import_statistics` on device setup~~
+2. ~~Validate backfilled statistics against manual tables~~
+
+> **Deferred, not deleted (2026-07-23).** Backfill would have to recompute **and
+> overwrite** long-term statistics — including rewriting the Untracked remainder
+> across the whole window (adding a device otherwise double-counts against the
+> Untracked that held everything pre-device). A bug there corrupts the exact
+> history the product promises to protect. And beyond ~10 days only **hourly**
+> input statistics survive, so backfilled figures are a coarse approximation that
+> won't reconcile with the live 5-minute accounting — a poor fit for an
+> accuracy-first product. A one-time onboarding nicety doesn't justify the
+> permanent complexity (re-runnable action, statistics surgery, baseline
+> reconciliation, HA-version maintenance). Kept in the backlog (HEA-29/30);
+> revisit only on strong user demand. Design insight if revisited: "rebuild all
+> HEA statistics from recorder input history for the current config" —
+> idempotent, re-runnable, overwriting Untracked too.
 
 ### Epic 8 — Release
 1. Semver tagging + GitHub release CI
@@ -145,7 +160,17 @@ dependencies and can start as soon as Epic 1 lands.
   de-risks the native `utility_meter` path (HEA-23). See ADR-0004 → Update.
 - **Sensor coarseness.** WF-RAC units report 0.25 kWh steps with no power
   sensor; spreading deltas across 5-min buckets is an approximation.
-  Dogfooding decides whether it is good enough.
+  Dogfooding decides whether it is good enough. **Observed (2026-07-23, HEA-48):**
+  on the first live install a coarse device's spread-back energy landed in
+  intervals where the finely-updating house meters had not yet moved, so it
+  showed energy at ~0 cost while Untracked stayed 0. Energy totals stay correct;
+  per-bucket *cost* allocation is the approximation. Validation + possible
+  mitigation tracked in HEA-48.
+- **Finalisation lag (first-run UX).** The engine waits a ~20-minute margin
+  (15-min lateness + 5-min bucket) before finalising an interval, so costs lag
+  real time and a fresh install reads as "nothing is working" for ~20 min —
+  observed on the first live install. Tuning / a "warming up" signal tracked in
+  HEA-47.
 - **Seasonality.** One summer week cannot validate the winter battery regime;
   explicit post-winter accuracy review required before claiming the model is
   proven.
