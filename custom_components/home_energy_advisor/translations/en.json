@@ -57,6 +57,13 @@
   "options": {
     "step": {
       "init": {
+        "title": "Home Energy Advisor",
+        "menu_options": {
+          "cycles": "Cycle totals",
+          "discover_devices": "Discover devices to track"
+        }
+      },
+      "cycles": {
         "title": "Cycle totals",
         "description": "Choose which longer-period totals to create for every device. Daily and monthly totals are always created.",
         "data": {
@@ -64,7 +71,17 @@
           "cycle_quarterly": "Quarterly totals",
           "cycle_yearly": "Yearly totals"
         }
+      },
+      "discover_devices": {
+        "title": "Discover devices to track",
+        "description": "These energy and power sensors are not tracked yet. Select the ones to add as devices. Suggestions marked “may not be a device” often aren’t — a phone battery, a forecast — so add only what you recognise.",
+        "data": {
+          "discovered_devices": "Devices to add"
+        }
       }
+    },
+    "abort": {
+      "no_candidates": "No untracked energy or power sensors were found to add."
     }
   },
   "config_subentries": {
