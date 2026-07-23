@@ -197,6 +197,32 @@ async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
     assert issue is not None
 
 
+async def test_removing_the_integration_cleans_up_all_auto_created_helpers(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration whose power-only device has caused both an
+    # Integral helper and utility_meter cycle totals to be auto-created
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
+    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    entry = _power_only_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(hass.config_entries.async_entries("integration")) == 1
+    assert len(hass.config_entries.async_entries("utility_meter")) > 0
+
+    # When — the whole integration is removed (not just a device)
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — every owned helper is cleaned up, so uninstalling leaves nothing
+    # orphaned behind (HEA-42)
+    assert hass.config_entries.async_entries("integration") == []
+    assert hass.config_entries.async_entries("utility_meter") == []
+
+
 async def test_no_phantom_energy_accrues_across_an_unavailable_span(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
