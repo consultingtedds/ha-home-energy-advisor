@@ -123,6 +123,33 @@ async def test_discovery_prefers_the_energy_sensor_when_a_device_has_both(
     assert [c.entity_id for c in candidates] == [energy]
 
 
+async def test_discovery_names_a_device_from_its_parent_ha_device(
+    hass: HomeAssistant,
+) -> None:
+    # Given — a sensor whose own name is just "Energy" (has_entity_name), while its
+    # real identity lives on the parent HA device
+    entry = _entry(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("demo", "panel_heater")},
+        name="Power Only Panel Heater",
+    )
+    heater = _register(
+        hass,
+        "power_only_panel_heater_energy",
+        "energy",
+        name="Energy",
+        device_id=device.id,
+    )
+
+    # When — candidates are discovered
+    candidates = async_discover_candidates(hass, entry)
+
+    # Then — the suggested name is the device's, not the bare "Energy"
+    by_entity = {c.entity_id: c for c in candidates}
+    assert by_entity[heater].name == "Power Only Panel Heater"
+
+
 async def test_discovery_sorts_likely_false_friends_last(
     hass: HomeAssistant,
 ) -> None:
