@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
 
+from .const import CONF_CYCLE_METERS, CONF_INTEGRAL_HELPERS
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
 from .integral_helper import async_sync_power_device_helpers
@@ -53,6 +54,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     """Unload the config entry and its platforms."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None:
+    """Clean up the native helpers this integration auto-created (HEA-42).
+
+    The Integral (power-only devices) and utility_meter (cycle totals) helpers are
+    independent config entries owned via the entry's data. Reconciliation only
+    prunes them when a *device* is removed, so without this hook they would be
+    orphaned when the whole integration is deleted — leaving no clean uninstall.
+    """
+    owned = (
+        *entry.data.get(CONF_INTEGRAL_HELPERS, {}).values(),
+        *entry.data.get(CONF_CYCLE_METERS, {}).values(),
+    )
+    for helper_id in owned:
+        if hass.config_entries.async_get_entry(helper_id) is not None:
+            await hass.config_entries.async_remove(helper_id)
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None:

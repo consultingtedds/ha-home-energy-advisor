@@ -239,6 +239,32 @@ async def test_removing_a_device_removes_its_cycle_meters(
     assert len(hass.config_entries.async_entries("utility_meter")) == 8
 
 
+async def test_removing_a_device_less_integration_cleans_up_untracked_meters(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a house-level-only install (no tracked devices), so the only cycle
+    # meters are the eight over the Untracked remainder's four sensors
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+    await _set_up(hass, entry)
+    assert len(hass.config_entries.async_entries("utility_meter")) == 8
+
+    # When — the integration is removed before any device was ever added (the
+    # "cancelled part-way through setup" case)
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the Untracked cycle meters are cleaned up, not left orphaned (HEA-42)
+    assert hass.config_entries.async_entries("utility_meter") == []
+
+
 async def test_a_user_deleted_cycle_meter_is_recreated_and_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
