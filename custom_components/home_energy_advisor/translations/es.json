@@ -118,7 +118,7 @@
     }
   },
   "device": {
-    "untracked": { "name": "Sin seguimiento" }
+    "untracked": { "name": "Dispositivos de energía sin seguimiento" }
   },
   "issues": {
     "source_removed": {
