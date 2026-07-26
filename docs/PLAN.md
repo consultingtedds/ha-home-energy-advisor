@@ -109,6 +109,7 @@ Presentation
 6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
 8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add — multi-select, never auto-onboarded (false-friend rule). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility — dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
+9. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
 
 ### Epic 5 — Dashboard & documentation
 1. Lovelace dashboard: devices-by-cost comparison + per-device detail + untracked share (consult HA best-practices skill)

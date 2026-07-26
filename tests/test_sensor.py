@@ -117,15 +117,18 @@ async def test_setup_creates_the_four_sensors_for_every_device_and_untracked(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — four sensors exist for each device plus the Untracked remainder
+    # Then — four concept sensors exist for each device plus the Untracked
+    # remainder (the hub's devices-registry sensor is separate — asserted below)
     registry = er.async_get(hass)
-    hea_sensors = [
+    concept_sensors = [
         e
         for e in registry.entities.values()
-        if e.platform == DOMAIN and e.domain == "sensor"
+        if e.platform == DOMAIN
+        and e.domain == "sensor"
+        and e.translation_key in _CONCEPTS
     ]
-    assert len(hea_sensors) == 12
-    assert {e.translation_key for e in hea_sensors} == set(_CONCEPTS)
+    assert len(concept_sensors) == 12
+    assert {e.translation_key for e in concept_sensors} == set(_CONCEPTS)
 
 
 async def test_untracked_is_a_normal_device(
@@ -277,3 +280,71 @@ async def test_totals_survive_a_restart_via_restore(
     state = hass.states.get(entity_id)
     assert state is not None
     assert Decimal(state.state) == Decimal("0.36")
+
+
+async def _tick(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
+    """Fire a finalisation tick so coordinator entities recompute their state."""
+    freezer.tick(60)
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+
+async def test_devices_registry_sensor_lists_devices_with_slug_name_and_flags(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration with two tracked devices and Untracked
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    # a tick so the sensor recomputes once the per-device entities are registered
+    await _tick(hass, freezer)
+
+    # Then — one devices-registry sensor exists, its state the tracked-device count
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_devices"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == "2"
+
+    # ...and its `devices` attribute is the authoritative list: real names, entity
+    # slugs, and the Untracked row flagged
+    by_key = {device["key"]: device for device in state.attributes["devices"]}
+    assert by_key["coarse_step_aircon"]["name"] == "Coarse Step Aircon"
+    assert by_key["coarse_step_aircon"]["untracked"] is False
+    assert by_key["coarse_step_aircon"]["device_id"]
+    assert "power_only_lights" in by_key
+    untracked = by_key["untracked_energy_devices"]
+    assert untracked["untracked"] is True
+    assert untracked["name"] == "Untracked Energy Devices"
+
+
+async def test_devices_registry_sensor_lives_on_the_hub_device(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the sensor is grouped under a single hub device, not a tracked device
+    devices = dr.async_get(hass)
+    hub = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    assert hub is not None
+    assert hub.name == "Home Energy Advisor"
+    registry = er.async_get(hass)
+    resolved = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_devices"
+    )
+    assert resolved is not None
+    registry_entry = registry.async_get(resolved)
+    assert registry_entry is not None
+    assert registry_entry.device_id == hub.id

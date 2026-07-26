@@ -151,17 +151,20 @@ def _enabled_cycles(entry: ConfigEntry) -> list[str]:
 
 
 def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
-    """Entity ids of the integration's own per-device and Untracked sensors.
+    """Entity ids of the integration's own per-device and Untracked cost sensors.
 
     A removed device's sensor registry entries linger briefly (they are cleared
     after the reload the removal triggers), so a sensor counts only while its
-    subentry is still live — Untracked sensors carry no subentry.
+    subentry is still live — Untracked sensors carry no subentry. Diagnostic
+    entities (the hub's devices-registry sensor) are excluded: only the four
+    cost/energy figures — which carry no ``entity_category`` — get cycle totals.
     """
     registry = er.async_get(hass)
     return sorted(
         entity.entity_id
         for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
         if entity.domain == "sensor"
+        and entity.entity_category is None
         and (
             entity.config_subentry_id is None
             or entity.config_subentry_id in entry.subentries
