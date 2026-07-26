@@ -131,11 +131,13 @@
       "energy_used": { "name": "Energía usada" },
       "actual_cost": { "name": "Coste real" },
       "cost_without_solar": { "name": "Coste sin solar" },
-      "cost_savings": { "name": "Ahorro de coste" }
+      "cost_savings": { "name": "Ahorro de coste" },
+      "devices": { "name": "Dispositivos" }
     }
   },
   "device": {
-    "untracked": { "name": "Dispositivos de energía sin seguimiento" }
+    "untracked": { "name": "Dispositivos de energía sin seguimiento" },
+    "hub": { "name": "Home Energy Advisor" }
   },
   "issues": {
     "source_removed": {
