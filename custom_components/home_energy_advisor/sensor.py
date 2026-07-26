@@ -23,17 +23,22 @@ from typing import TYPE_CHECKING, cast
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
+    SensorEntity,
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfEnergy
+from homeassistant.const import EntityCategory, UnitOfEnergy
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
 
 from .const import CONF_CURRENCY, DEFAULT_CURRENCY, DOMAIN, SUBENTRY_TYPE_DEVICE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import Any
 
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -100,6 +105,21 @@ async def async_setup_entry(
     """Create the four sensors for the Untracked remainder and each device."""
     coordinator = entry.runtime_data
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+
+    # One integration-level "hub" device carries the devices-registry sensor —
+    # the authoritative list dashboards read to enumerate tracked devices without
+    # hardcoding them (HEA-55); a natural home for future house-level sensors too.
+    async_add_entities(
+        [
+            HeaDevicesSensor(
+                coordinator,
+                device_info=DeviceInfo(
+                    identifiers={(DOMAIN, entry.entry_id)},
+                    translation_key="hub",
+                ),
+            )
+        ]
+    )
 
     # A normal device (like the real tracked devices) whose display name is set by
     # the "untracked" translation key. It reads as a genuine entry rather than a
@@ -187,3 +207,75 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         if self._device_key == _UNTRACKED_KEY:
             return data.untracked
         return data.devices.get(self._device_key)
+
+
+class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
+    """The authoritative list of tracked devices, for dashboard lookups (HEA-55).
+
+    State is the tracked-device count; the ``devices`` attribute is one row per
+    tracked device plus the Untracked remainder, each carrying the device's entity
+    slug (so a card can build ``sensor.<key>_<concept>``), its display name, its
+    registry ``device_id``, and whether it is the Untracked remainder. Membership
+    is the config subentries (so it follows device add/remove, which reload the
+    entry); the names and slugs are resolved live from the registries.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "devices"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # The list can be long and rarely changes — keep it out of the recorder.
+    _unrecorded_attributes = frozenset({"devices"})
+
+    def __init__(self, coordinator: HeaCoordinator, *, device_info: DeviceInfo) -> None:
+        super().__init__(coordinator)
+        self._attr_device_info = device_info
+        entry = cast("HeaConfigEntry", coordinator.config_entry)
+        self._entry_id = entry.entry_id
+        self._attr_unique_id = f"{entry.entry_id}_devices"
+
+    @property
+    def native_value(self) -> int:
+        """The number of tracked devices (the Untracked remainder is excluded)."""
+        return sum(1 for device in self._devices() if not device["untracked"])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """The authoritative tracked-device list for dashboards to enumerate."""
+        return {"devices": self._devices()}
+
+    def _devices(self) -> list[dict[str, Any]]:
+        entry = cast("HeaConfigEntry", self.coordinator.config_entry)
+        rows = [
+            self._row(subentry_id, subentry.title, untracked=False)
+            for subentry_id, subentry in entry.subentries.items()
+            if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
+        ]
+        rows.append(self._row(_UNTRACKED_KEY, None, untracked=True))
+        rows.sort(key=lambda device: device["key"])
+        return rows
+
+    def _row(
+        self, device_key: str, fallback_name: str | None, *, untracked: bool
+    ) -> dict[str, Any]:
+        device = dr.async_get(self.hass).async_get_device(
+            identifiers={(DOMAIN, f"{self._entry_id}_{device_key}")}
+        )
+        # Derive the slug from the device's own Actual Cost entity so it matches
+        # the real entity ids exactly (HA de-duplication, user renames), rather
+        # than guessing it from the name; fall back to the name only in the brief
+        # window before that entity has registered.
+        actual_cost_id = er.async_get(self.hass).async_get_entity_id(
+            "sensor", DOMAIN, f"{self._entry_id}_{device_key}_actual_cost"
+        )
+        key = (
+            actual_cost_id.removeprefix("sensor.").removesuffix("_actual_cost")
+            if actual_cost_id is not None
+            else slugify(fallback_name or device_key)
+        )
+        name = (device and (device.name_by_user or device.name)) or fallback_name or key
+        return {
+            "key": key,
+            "name": name,
+            "device_id": device.id if device is not None else None,
+            "untracked": untracked,
+        }
