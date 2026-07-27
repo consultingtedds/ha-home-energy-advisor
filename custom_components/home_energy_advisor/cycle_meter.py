@@ -166,11 +166,15 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     A removed device's sensor registry entries linger briefly (they are cleared
     after the reload the removal triggers), so a sensor counts only while its
     subentry is still live — Untracked sensors carry no subentry. Diagnostic
-    entities (the hub's devices-registry sensor) are excluded: only the four
+    entities (the hub's devices-registry sensor) are excluded: only the primary
     cost/energy figures — which carry no ``entity_category`` — get cycle totals.
-    The whole-home aggregate is excluded too: its period totals are the sum of the
-    device and Untracked cycle meters and duplicate the Energy Dashboard, so it
-    carries lifetime running totals only (HEA-48).
+    Cost Savings is excluded: it is derived per period by subtracting the Actual
+    Cost cycle from the Cost Without Solar cycle, so metering it would add helpers
+    for a figure computable from the others, and utility_meter assumes a monotonic
+    source it is not (ADR-0007). The whole-home aggregate is excluded too: its
+    period totals are the sum of the device and Untracked cycle meters and
+    duplicate the Energy Dashboard, so it carries lifetime running totals only
+    (HEA-48).
     """
     registry = er.async_get(hass)
     whole_home_prefix = f"{entry.entry_id}_{WHOLE_HOME_KEY}_"
@@ -179,6 +183,7 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
         for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
         if entity.domain == "sensor"
         and entity.entity_category is None
+        and entity.translation_key != "cost_savings"
         and not (entity.unique_id or "").startswith(whole_home_prefix)
         and (
             entity.config_subentry_id is None

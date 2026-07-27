@@ -58,14 +58,12 @@ if TYPE_CHECKING:
 _UNTRACKED_KEY = "untracked"
 _WHOLE_HOME_KEY = WHOLE_HOME_KEY
 
-# The Untracked remainder's energy and the two grid-priced costs move to
-# `state_class: total` (not `total_increasing`): a late device correction
-# legitimately pulls the remainder down, which HA long-term statistics would
-# otherwise misread as a meter reset (HEA-48 / ADR-0006). Cost Savings is already
-# `total`, and the whole-home aggregate stays monotonic, so neither is remapped.
-_UNTRACKED_TOTAL_CONCEPTS = frozenset(
-    {"energy_used", "actual_cost", "cost_without_solar"}
-)
+# Only Energy Used differs between a real device and the Untracked remainder: a
+# late correction legitimately pulls Untracked's energy down, which HA statistics
+# would misread as a meter reset under `total_increasing`, so Untracked's is
+# `total` (HEA-48 / ADR-0006). The monetary costs are `total` for every device
+# already (ADR-0007), so they need no per-key remap.
+_UNTRACKED_TOTAL_CONCEPTS = frozenset({"energy_used"})
 
 
 def _concepts_for(device_key: str) -> tuple[HeaSensorDescription, ...]:
@@ -97,11 +95,16 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         suggested_display_precision=3,
         value_fn=lambda totals: totals.energy_kwh,
     ),
+    # Monetary sensors are `total`, never `total_increasing`: Home Assistant
+    # rejects `total_increasing` for the monetary device class (a currency total is
+    # not a strictly-rising meter), and Cost Savings genuinely dips on battery
+    # arbitrage. `total` models a monotonic accumulator too, so the actual/naive
+    # costs use it as well — one consistent choice for all money (ADR-0007).
     HeaSensorDescription(
         key="actual_cost",
         translation_key="actual_cost",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,
         value_fn=lambda totals: totals.actual_cost,
     ),
@@ -109,7 +112,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         key="cost_without_solar",
         translation_key="cost_without_solar",
         device_class=SensorDeviceClass.MONETARY,
-        state_class=SensorStateClass.TOTAL_INCREASING,
+        state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,
         value_fn=lambda totals: totals.naive_cost,
     ),
@@ -117,8 +120,6 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         key="cost_savings",
         translation_key="cost_savings",
         device_class=SensorDeviceClass.MONETARY,
-        # `total`, not `total_increasing`: battery arbitrage can make a period's
-        # saving negative, and the lifetime accumulator dip with it (ADR-0003).
         state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,
         value_fn=lambda totals: totals.cost_savings,

@@ -169,10 +169,12 @@ async def test_each_concept_carries_its_adr_0003_identity(
     # Then — each of the guest device's four sensors matches the ADR-0003 table
     registry = er.async_get(hass)
     subentry_id = _guest_subentry_id(entry)
+    # Money is `total`, energy is `total_increasing` (ADR-0007): HA rejects
+    # monetary + total_increasing, and only Energy Used is a strictly-rising meter.
     expected = {
         "energy_used": ("energy", "total_increasing", "kWh"),
-        "actual_cost": ("monetary", "total_increasing", "EUR"),
-        "cost_without_solar": ("monetary", "total_increasing", "EUR"),
+        "actual_cost": ("monetary", "total", "EUR"),
+        "cost_without_solar": ("monetary", "total", "EUR"),
         "cost_savings": ("monetary", "total", "EUR"),
     }
     for concept, (device_class, state_class, unit) in expected.items():
