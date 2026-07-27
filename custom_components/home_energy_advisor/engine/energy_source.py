@@ -67,7 +67,9 @@ class DecisionReason(Enum):
     One reason is logged per observed reading, so the diagnostics download can
     explain any figure: energy was counted, a reset was recognised, or the
     reading was gated out (no prior baseline, an unavailable source, a stale or
-    duplicate timestamp, or a counter that simply did not move).
+    duplicate timestamp, or a counter that simply did not move). ``DROPPED_LATE``
+    is logged not per reading but per portion the accountant could not place: a
+    delta reaching a bucket older than the retention ring (HEA-48).
     """
 
     COUNTED = "counted"
@@ -76,6 +78,7 @@ class DecisionReason(Enum):
     UNAVAILABLE = "unavailable"
     STALE = "stale"
     NO_MOVEMENT = "no_movement"
+    DROPPED_LATE = "dropped_late"
 
 
 @dataclass(frozen=True)
@@ -159,6 +162,15 @@ class CumulativeEnergySource:
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
         self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=previous.at, end=current.at)
+
+    def note_dropped_late(self, at: datetime, kwh: Decimal) -> None:
+        """Record that a portion of energy fell past the accountant's ring (HEA-48).
+
+        The accountant, not the source, decides a portion is unplaceable — it lands
+        in a bucket already evicted from the retention ring — but the drop is logged
+        here so it rides the same per-source decision log the diagnostics read.
+        """
+        self._log(at, DecisionReason.DROPPED_LATE, kwh)
 
     def recent_decisions(self) -> tuple[Decision, ...]:
         """The bounded log of what the engine did with recent readings."""

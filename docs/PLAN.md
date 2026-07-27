@@ -161,12 +161,15 @@ dependencies and can start as soon as Epic 1 lands.
   de-risks the native `utility_meter` path (HEA-23). See ADR-0004 → Update.
 - **Sensor coarseness.** a cycle-resetting counter units report 0.25 kWh steps with no power
   sensor; spreading deltas across 5-min buckets is an approximation.
-  Dogfooding decides whether it is good enough. **Observed (2026-07-23, HEA-48):**
-  on the first live install a coarse device's spread-back energy landed in
-  intervals where the finely-updating house meters had not yet moved, so it
-  showed energy at ~0 cost while Untracked stayed 0. Energy totals stay correct;
-  per-bucket *cost* allocation is the approximation. Validation + possible
-  mitigation tracked in HEA-48.
+  **Observed (2026-07-23) and corrected (2026-07-27, HEA-48):** a coarse device's
+  deltas span past the ~20-min finalisation watermark, and the engine originally
+  *dropped* the older portions — silently reattributing an estimated 30-50 % of
+  such a device's energy to Untracked (the aggregate invariant still held, which
+  hid it). The earlier "energy totals stay correct" note here was wrong. Fixed by
+  retained-context reallocation (ADR-0006): late portions correct their finalised
+  bucket for 24 h, and only energy older than that is dropped — then logged.
+  Per-bucket *cost* allocation remains the approximation; energy is now conserved.
+  Reconciliation validation is HEA-28.
 - **Finalisation lag (first-run UX).** The engine waits a ~20-minute margin
   (15-min lateness + 5-min bucket) before finalising an interval, so costs lag
   real time and a fresh install reads as "nothing is working" for ~20 min —

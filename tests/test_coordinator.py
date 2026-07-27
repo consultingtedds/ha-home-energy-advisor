@@ -92,6 +92,32 @@ async def test_coordinator_accounts_for_a_device_over_an_interval(
     assert coordinator.data.untracked.energy_kwh == Decimal("0.4")
 
 
+async def test_unchanged_reports_advance_a_sources_last_seen_time(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration whose device counter last changed at 22:00
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — a polled integration re-reports the *same* counter value 20 minutes
+    # later: a state_report, not a state_change
+    freezer.move_to(datetime(2026, 7, 8, 22, 20, tzinfo=UTC))
+    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    await hass.async_block_till_done()
+
+    # Then — the source's last-seen time advances to the report, so the next real
+    # step spans only the poll gap rather than the whole quiet stretch (HEA-48)
+    coordinator = entry.runtime_data
+    sources = {s["entity_id"]: s for s in coordinator.diagnostics()["sources"]}
+    assert sources["sensor.guest_energy"]["last_at"] == "2026-07-08T22:20:00+00:00"
+
+
 async def test_setup_creates_the_coordinator_and_unload_tears_it_down(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

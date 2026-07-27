@@ -60,6 +60,44 @@ _SAVINGS = {
 }
 
 
+async def test_reused_meter_reconciles_net_consumption_when_source_flips_to_total(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a daily meter created while its source was total_increasing, so
+    # net_consumption is off (the pre-HEA-48 Untracked cost meters)
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.untracked_actual_cost", "0", _COST)
+    entry_id = await async_ensure_utility_meter(
+        hass,
+        name="Untracked Actual Cost Daily",
+        source_entity="sensor.untracked_actual_cost",
+        cycle="daily",
+        net_consumption=False,
+    )
+    await hass.async_block_till_done()
+    meter = hass.config_entries.async_get_entry(entry_id)
+    assert meter is not None
+    assert meter.options["net_consumption"] is False
+
+    # When — reconciliation runs again after the source moved to `total` (HEA-48),
+    # now requesting net_consumption
+    reused = await async_ensure_utility_meter(
+        hass,
+        name="Untracked Actual Cost Daily",
+        source_entity="sensor.untracked_actual_cost",
+        cycle="daily",
+        net_consumption=True,
+    )
+    await hass.async_block_till_done()
+
+    # Then — the same meter is reused (no history-losing recreate), now switched to
+    # follow a fall rather than reading it as a reset
+    assert reused == entry_id
+    reconciled = hass.config_entries.async_get_entry(entry_id)
+    assert reconciled is not None
+    assert reconciled.options["net_consumption"] is True
+
+
 async def test_a_utility_meter_accumulates_its_source_within_the_cycle(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
@@ -197,7 +235,8 @@ async def test_setup_creates_daily_and_monthly_meters_for_every_cost_sensor(
     await _set_up(hass, _entry_with_one_device())
 
     # Then — the device and the Untracked remainder each carry four sensors, and
-    # every one gets a daily and a monthly meter: 2 devices x 4 sensors x 2 cycles
+    # every one gets a daily and a monthly meter: 2 groups x 4 sensors x 2 cycles.
+    # The Whole Home aggregate is deliberately excluded (running totals only).
     meters = hass.config_entries.async_entries("utility_meter")
     assert len(meters) == 16
     assert {m.options["cycle"] for m in meters} == {"daily", "monthly"}
@@ -215,7 +254,7 @@ async def test_opting_into_weekly_adds_a_weekly_meter_per_sensor(
     # When — the integration is set up
     await _set_up(hass, entry)
 
-    # Then — three cycles now exist: 2 devices x 4 sensors x 3 cycles = 24 meters
+    # Then — three cycles now exist: 2 groups x 4 sensors x 3 cycles = 24 meters
     meters = hass.config_entries.async_entries("utility_meter")
     assert len(meters) == 24
     assert {m.options["cycle"] for m in meters} == {"daily", "weekly", "monthly"}

@@ -21,6 +21,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
 from homeassistant.helpers.event import (
     async_track_state_change_event,
+    async_track_state_report_event,
     async_track_time_interval,
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -50,7 +51,13 @@ if TYPE_CHECKING:
     from datetime import datetime
     from typing import Any
 
-    from homeassistant.core import Event, EventStateChangedData, HomeAssistant, State
+    from homeassistant.core import (
+        Event,
+        EventStateChangedData,
+        EventStateReportedData,
+        HomeAssistant,
+        State,
+    )
 
     from .engine.accountant import DeviceTotals
 
@@ -143,6 +150,17 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                 self._handle_state_change,
             )
         )
+        # Polled integrations (a cycle-resetting counter ~1/min, Tuya cloud) re-report an unchanged
+        # counter between its rare steps. Tracking those reports advances each
+        # source's last-seen time, so when the counter finally moves the delta spans
+        # only the poll interval rather than the whole quiet stretch — keeping late
+        # portions few and shallow (HEA-48 / ADR-0006). Price is not tracked here:
+        # its unchanged re-reports carry no new information.
+        self._entry.async_on_unload(
+            async_track_state_report_event(
+                self.hass, list(self._energy_entities), self._handle_state_report
+            )
+        )
         self._entry.async_on_unload(
             async_track_time_interval(self.hass, self._handle_tick, _FINALIZE_INTERVAL)
         )
@@ -156,6 +174,10 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             self._feed_price(state)
         else:
             self._feed_energy(entity_id, state)
+
+    @callback
+    def _handle_state_report(self, event: Event[EventStateReportedData]) -> None:
+        self._feed_energy(event.data["entity_id"], event.data["new_state"])
 
     @callback
     def _handle_tick(self, now: datetime) -> None:
@@ -242,7 +264,10 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         if state is None:
             return
         value = None if state.state in _UNAVAILABLE else _to_decimal(state.state)
-        self._accountant.observe(entity_id, state.last_updated, value)
+        # ``last_reported`` (every write), not ``last_updated`` (only on change), so
+        # an unchanged re-report still advances the source's last-seen time and
+        # shrinks the next delta's span (HEA-48). They coincide on a real change.
+        self._accountant.observe(entity_id, state.last_reported, value)
 
     def _feed_price(self, state: State | None) -> None:
         if state is None or state.state in _UNAVAILABLE:
@@ -335,6 +360,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                 for sub_id, device in totals.devices.items()
             },
             "untracked": _totals_to_dict(totals.untracked),
+            "whole_home": _totals_to_dict(totals.whole_home),
         }
 
     def _device_name(self, sub_id: str) -> str:
