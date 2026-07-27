@@ -14,12 +14,14 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
+    CONF_CYCLE_METERS,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
     CONF_SOLAR_ENTITY,
     DOMAIN,
 )
+from custom_components.home_energy_advisor.helper_ownership import helper_was_created
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -237,3 +239,48 @@ async def test_reconfigure_updates_the_house_level_config(hass: HomeAssistant) -
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_CURRENCY] == "GBP"
     assert entry.data[CONF_SOLAR_ENTITY] == "sensor.solar"
+
+
+async def test_reconfigure_preserves_helper_bookkeeping(hass: HomeAssistant) -> None:
+    # Given — a running house-only install that has auto-created its cycle meters,
+    # recorded on the entry as HEA-owned (created)
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    owned_before = dict(entry.data[CONF_CYCLE_METERS])
+    assert owned_before
+    assert all(helper_was_created(record) for record in owned_before.values())
+
+    # When — the house config is reconfigured (currency change)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "GBP",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Then — the bookkeeping survived: the same meters are still tracked, still as
+    # HEA-created. A wholesale data replace would have dropped the map, and the
+    # reload would then have re-adopted HEA's own meters as the user's — never to
+    # be cleaned up (HEA-52 (a) and (b) interact).
+    assert entry.data.get(CONF_CYCLE_METERS)
+    assert set(entry.data[CONF_CYCLE_METERS]) == set(owned_before)
+    assert all(
+        helper_was_created(record) for record in entry.data[CONF_CYCLE_METERS].values()
+    )

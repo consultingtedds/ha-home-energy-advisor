@@ -22,6 +22,7 @@ from homeassistant.const import Platform
 from .const import CONF_CYCLE_METERS, CONF_INTEGRAL_HELPERS
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
+from .helper_ownership import helper_entry_id, helper_was_created
 from .integral_helper import async_sync_power_device_helpers
 
 if TYPE_CHECKING:
@@ -63,12 +64,18 @@ async def async_remove_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None
     independent config entries owned via the entry's data. Reconciliation only
     prunes them when a *device* is removed, so without this hook they would be
     orphaned when the whole integration is deleted — leaving no clean uninstall.
+
+    Only helpers HEA created are removed: a helper the user already had over a
+    source (adopted) is theirs to keep, never deleted on uninstall (HEA-52).
     """
     owned = (
         *entry.data.get(CONF_INTEGRAL_HELPERS, {}).values(),
         *entry.data.get(CONF_CYCLE_METERS, {}).values(),
     )
-    for helper_id in owned:
+    for record in owned:
+        if not helper_was_created(record):
+            continue
+        helper_id = helper_entry_id(record)
         if hass.config_entries.async_get_entry(helper_id) is not None:
             await hass.config_entries.async_remove(helper_id)
 

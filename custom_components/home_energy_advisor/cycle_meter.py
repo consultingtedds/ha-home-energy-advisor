@@ -14,7 +14,7 @@ ownership tracked on the config entry, reconcile-and-remove on device removal.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.sensor import ATTR_STATE_CLASS, SensorStateClass
 from homeassistant.components.utility_meter.const import (
@@ -41,6 +41,11 @@ from .const import (
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
     WHOLE_HOME_KEY,
+)
+from .helper_ownership import (
+    helper_entry_id,
+    helper_was_created,
+    resolve_provenance,
 )
 
 if TYPE_CHECKING:
@@ -132,12 +137,13 @@ async def async_sync_cycle_meters(hass: HomeAssistant, entry: ConfigEntry) -> No
 
 
 def _any_meter_deleted(
-    hass: HomeAssistant, owned: dict[str, str], desired: set[str]
+    hass: HomeAssistant, owned: dict[str, Any], desired: set[str]
 ) -> bool:
     """Whether a still-wanted cycle meter's config entry the user deleted is gone."""
     return any(
-        key in desired and hass.config_entries.async_get_entry(meter_id) is None
-        for key, meter_id in owned.items()
+        key in desired
+        and hass.config_entries.async_get_entry(helper_entry_id(record)) is None
+        for key, record in owned.items()
     )
 
 
@@ -182,12 +188,20 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
 
 
 async def _remove_orphaned_meters(
-    hass: HomeAssistant, owned: dict[str, str], desired: set[str]
+    hass: HomeAssistant, owned: dict[str, Any], desired: set[str]
 ) -> None:
-    """Remove meters whose source or cycle is no longer wanted, mutating ``owned``."""
-    for key, meter_id in list(owned.items()):
+    """Remove meters whose source or cycle is no longer wanted, mutating ``owned``.
+
+    Only meters HEA created are deleted; a utility_meter the user already had over
+    the source (adopted) is forgotten but left intact (HEA-52).
+    """
+    for key, record in list(owned.items()):
         if key not in desired:
-            if hass.config_entries.async_get_entry(meter_id) is not None:
+            meter_id = helper_entry_id(record)
+            if (
+                helper_was_created(record)
+                and hass.config_entries.async_get_entry(meter_id) is not None
+            ):
                 await hass.config_entries.async_remove(meter_id)
             del owned[key]
 
@@ -197,7 +211,7 @@ async def _ensure_meters(
     sources: list[str],
     cycles: list[str],
     labels: dict[str, str],
-    owned: dict[str, str],
+    owned: dict[str, Any],
 ) -> None:
     """Ensure a meter for each source x cycle, recording ownership in ``owned``."""
     for source in sources:
@@ -208,12 +222,19 @@ async def _ensure_meters(
         display = state.name if state else source
         for cycle in cycles:
             name = f"{display} {labels.get(cycle, cycle.capitalize())}"
-            owned[_key(source, cycle)] = await async_ensure_utility_meter(
+            key = _key(source, cycle)
+            # A meter already over this source+cycle before we ensure one is the
+            # user's own (adopt, never delete); otherwise HEA is creating it.
+            pre_existing = _utility_meter_for(hass, source, cycle)
+            meter_id = await async_ensure_utility_meter(
                 hass,
                 name=name,
                 source_entity=source,
                 cycle=cycle,
                 net_consumption=net_consumption,
+            )
+            owned[key] = resolve_provenance(
+                owned.get(key), meter_id, pre_existing=pre_existing
             )
 
 
@@ -230,7 +251,7 @@ async def _cycle_labels(hass: HomeAssistant) -> dict[str, str]:
 
 
 def _persist_owned_meters(
-    hass: HomeAssistant, entry: ConfigEntry, owned: dict[str, str]
+    hass: HomeAssistant, entry: ConfigEntry, owned: dict[str, Any]
 ) -> None:
     """Store the meter map on the entry, if it changed."""
     if owned != entry.data.get(CONF_CYCLE_METERS, {}):
