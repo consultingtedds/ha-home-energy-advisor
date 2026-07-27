@@ -23,6 +23,11 @@ SUBENTRY_TYPE_DEVICE: Final = "device"
 CONF_ENERGY_ENTITY: Final = "energy_entity"
 CONF_POWER_ENTITY: Final = "power_entity"
 
+# Device key for the whole-home aggregate (Σ devices + Untracked). Shared so the
+# cycle-meter reconciliation can exclude it: its period totals are derivable and
+# duplicate the Energy Dashboard, so it carries running totals only (HEA-48).
+WHOLE_HOME_KEY: Final = "whole_home"
+
 # Bookkeeping (entry data): the native Integral helpers we auto-created for
 # power-only devices, as {subentry_id: helper_config_entry_id}. Lets us reuse a
 # device's helper across reloads and remove it when the device is (HEA-34).

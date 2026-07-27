@@ -117,8 +117,9 @@ async def test_setup_creates_the_four_sensors_for_every_device_and_untracked(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — four concept sensors exist for each device plus the Untracked
-    # remainder (the hub's devices-registry sensor is separate — asserted below)
+    # Then — four concept sensors exist for each device, the Untracked remainder and
+    # the Whole Home aggregate (the hub's devices-registry sensor is separate):
+    # 4 groups x 4 concepts = 16
     registry = er.async_get(hass)
     concept_sensors = [
         e
@@ -127,7 +128,7 @@ async def test_setup_creates_the_four_sensors_for_every_device_and_untracked(
         and e.domain == "sensor"
         and e.translation_key in _CONCEPTS
     ]
-    assert len(concept_sensors) == 12
+    assert len(concept_sensors) == 16
     assert {e.translation_key for e in concept_sensors} == set(_CONCEPTS)
 
 
@@ -183,6 +184,83 @@ async def test_each_concept_carries_its_adr_0003_identity(
         assert state.attributes["device_class"] == device_class
         assert state.attributes["state_class"] == state_class
         assert state.attributes["unit_of_measurement"] == unit
+
+
+async def test_untracked_costs_use_total_not_total_increasing_state_class(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration with the Untracked remainder
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the Untracked remainder's energy and grid-priced costs are `total`, not
+    # `total_increasing`: a late device correction legitimately pulls them down, and
+    # `total_increasing` would misread that as a meter reset (HEA-48). Cost Savings
+    # is `total` here as it is on every device.
+    registry = er.async_get(hass)
+    expected = {
+        "energy_used": "total",
+        "actual_cost": "total",
+        "cost_without_solar": "total",
+        "cost_savings": "total",
+    }
+    for concept, state_class in expected.items():
+        entity_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_untracked_{concept}"
+        )
+        assert entity_id is not None, f"no untracked {concept} sensor"
+        state = hass.states.get(entity_id)
+        assert state is not None
+        assert state.attributes["state_class"] == state_class
+
+
+async def test_whole_home_aggregate_publishes_the_monotonic_total(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the Whole Home aggregate is its own device, and its energy/cost totals
+    # stay `total_increasing` (they only ever grow — corrections add to the home)
+    devices = dr.async_get(hass)
+    whole_home = devices.async_get_device(
+        identifiers={(DOMAIN, f"{entry.entry_id}_whole_home")}
+    )
+    assert whole_home is not None
+    registry = er.async_get(hass)
+    energy_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_whole_home_energy_used"
+    )
+    assert energy_id is not None
+    energy_state = hass.states.get(energy_id)
+    assert energy_state is not None
+    assert energy_state.attributes["state_class"] == "total_increasing"
+
+    # When — one interval is accounted (import 1 kWh, device draws 0.6 @ €0.30)
+    await _run_one_interval(hass, freezer)
+
+    # Then — the whole home rolls up the full consumption and its real cost, the sum
+    # of the tracked device and the Untracked remainder
+    def state_of(concept: str) -> Decimal:
+        entity_id = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_whole_home_{concept}"
+        )
+        assert entity_id is not None
+        state = hass.states.get(entity_id)
+        assert state is not None
+        return Decimal(state.state)
+
+    assert state_of("energy_used") == Decimal("1.0")
+    assert state_of("actual_cost") == Decimal("0.30")
 
 
 async def test_sensors_publish_the_running_totals_over_an_interval(
