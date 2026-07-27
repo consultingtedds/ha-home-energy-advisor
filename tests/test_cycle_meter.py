@@ -23,6 +23,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_CYCLE_METERS,
     CONF_CYCLE_WEEKLY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
@@ -34,6 +35,7 @@ from custom_components.home_energy_advisor.cycle_meter import (
     async_ensure_utility_meter,
     utility_meter_output_sensor,
 )
+from custom_components.home_energy_advisor.helper_ownership import owned_helper
 from custom_components.home_energy_advisor.issues import ISSUE_CYCLE_HELPER_RECREATED
 
 if TYPE_CHECKING:
@@ -234,12 +236,47 @@ async def test_setup_creates_daily_and_monthly_meters_for_every_cost_sensor(
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     await _set_up(hass, _entry_with_one_device())
 
-    # Then — the device and the Untracked remainder each carry four sensors, and
-    # every one gets a daily and a monthly meter: 2 groups x 4 sensors x 2 cycles.
-    # The Whole Home aggregate is deliberately excluded (running totals only).
+    # Then — the device and the Untracked remainder each get a daily and a monthly
+    # meter for their three metered concepts (Energy Used, Actual Cost, Cost
+    # Without Solar): 2 groups x 3 concepts x 2 cycles. Cost Savings is derived by
+    # subtraction (ADR-0007) and the Whole Home aggregate is running-totals-only.
     meters = hass.config_entries.async_entries("utility_meter")
-    assert len(meters) == 16
+    assert len(meters) == 12
     assert {m.options["cycle"] for m in meters} == {"daily", "monthly"}
+    assert not any(m.options["source"].endswith("_cost_savings") for m in meters)
+
+
+async def test_a_pre_existing_cost_savings_meter_is_reconciled_away(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration, plus a legacy utility_meter over a device's
+    # Cost Savings sensor that a prior version of HEA had created and owned
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device()
+    await _set_up(hass, entry)
+    savings_source = "sensor.coarse_step_aircon_cost_savings"
+    legacy = await async_ensure_utility_meter(
+        hass,
+        name="Coarse Step Aircon Cost Savings Daily",
+        source_entity=savings_source,
+        cycle="daily",
+        net_consumption=True,
+    )
+    owned = dict(entry.data[CONF_CYCLE_METERS])
+    owned[f"{savings_source}|daily"] = owned_helper(legacy, created=True)
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_CYCLE_METERS: owned}
+    )
+
+    # When — the entry reloads and reconciles its cycle meters
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the Cost Savings meter is removed: it is no longer a wanted concept
+    # (ADR-0007 derives period savings by subtraction), and none remain
+    assert hass.config_entries.async_get_entry(legacy) is None
+    meters = hass.config_entries.async_entries("utility_meter")
+    assert not any(m.options["source"].endswith("_cost_savings") for m in meters)
 
 
 async def test_opting_into_weekly_adds_a_weekly_meter_per_sensor(
@@ -254,35 +291,36 @@ async def test_opting_into_weekly_adds_a_weekly_meter_per_sensor(
     # When — the integration is set up
     await _set_up(hass, entry)
 
-    # Then — three cycles now exist: 2 groups x 4 sensors x 3 cycles = 24 meters
+    # Then — three cycles now exist: 2 groups x 3 concepts x 3 cycles = 18 meters
     meters = hass.config_entries.async_entries("utility_meter")
-    assert len(meters) == 24
+    assert len(meters) == 18
     assert {m.options["cycle"] for m in meters} == {"daily", "weekly", "monthly"}
 
 
 async def test_removing_a_device_removes_its_cycle_meters(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration with one device (16 meters incl. Untracked)
+    # Given — a running integration with one device (12 meters: device + Untracked,
+    # 3 metered concepts x 2 cycles each)
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     entry = _entry_with_one_device()
     await _set_up(hass, entry)
-    assert len(hass.config_entries.async_entries("utility_meter")) == 16
+    assert len(hass.config_entries.async_entries("utility_meter")) == 12
     subentry_id = next(iter(entry.subentries))
 
     # When — the device is removed (which reloads the entry)
     hass.config_entries.async_remove_subentry(entry, subentry_id)
     await hass.async_block_till_done()
 
-    # Then — only the Untracked remainder's meters remain: 1 x 4 sensors x 2 cycles
-    assert len(hass.config_entries.async_entries("utility_meter")) == 8
+    # Then — only the Untracked remainder's meters remain: 1 x 3 concepts x 2 cycles
+    assert len(hass.config_entries.async_entries("utility_meter")) == 6
 
 
 async def test_removing_a_device_less_integration_cleans_up_untracked_meters(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
     # Given — a house-level-only install (no tracked devices), so the only cycle
-    # meters are the eight over the Untracked remainder's four sensors
+    # meters are the six over the Untracked remainder's three metered concepts
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -293,7 +331,7 @@ async def test_removing_a_device_less_integration_cleans_up_untracked_meters(
         },
     )
     await _set_up(hass, entry)
-    assert len(hass.config_entries.async_entries("utility_meter")) == 8
+    assert len(hass.config_entries.async_entries("utility_meter")) == 6
 
     # When — the integration is removed before any device was ever added (the
     # "cancelled part-way through setup" case)
@@ -311,7 +349,7 @@ async def test_a_user_deleted_cycle_meter_is_recreated_and_raises_a_repair(
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     entry = _entry_with_one_device()
     await _set_up(hass, entry)
-    assert len(hass.config_entries.async_entries("utility_meter")) == 16
+    assert len(hass.config_entries.async_entries("utility_meter")) == 12
 
     # When — the user deletes one cycle meter, then the entry reloads
     meter_id = hass.config_entries.async_entries("utility_meter")[0].entry_id
@@ -321,6 +359,6 @@ async def test_a_user_deleted_cycle_meter_is_recreated_and_raises_a_repair(
     await hass.async_block_till_done()
 
     # Then — the meter is recreated and a single aggregate Repair notes it
-    assert len(hass.config_entries.async_entries("utility_meter")) == 16
+    assert len(hass.config_entries.async_entries("utility_meter")) == 12
     issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_CYCLE_HELPER_RECREATED)
     assert issue is not None
