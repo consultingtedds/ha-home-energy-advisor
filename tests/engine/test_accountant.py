@@ -271,8 +271,9 @@ def test_buckets_are_not_finalised_until_past_the_lateness_margin() -> None:
     assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
 
 
-def test_a_delta_for_an_already_finalised_bucket_is_dropped() -> None:
-    # Given — bucket at(0) is finalised while the device stayed silent through it
+def test_a_late_delta_into_a_retained_bucket_is_reallocated_not_dropped() -> None:
+    # Given — bucket at(0) is finalised while the device stayed silent through it;
+    # the retention ring still holds that bucket's context (HEA-48)
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
         device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
@@ -283,12 +284,154 @@ def test_a_delta_for_an_already_finalised_bucket_is_dropped() -> None:
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
     acc.finalize(at(30))  # bucket at(0) finalised; watermark = at(0)
 
-    # When — the device finally reports, its delta spanning the finalised bucket
+    # When — the coarse device finally reports, its delta spanning the finalised
+    # (but still retained) bucket
     acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
     acc.finalize(at(40))
 
-    # Then — that energy is dropped rather than reopening the drained bucket
+    # Then — the energy is reclaimed by re-running that bucket's allocation with its
+    # retained prices: the device is credited, and exactly that value moves out of
+    # the Untracked remainder rather than being silently lost
+    result = acc.totals()
+    guest = result.devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("0.6")
+    assert guest.actual_cost == Decimal("0.18")
+    assert result.untracked.energy_kwh == Decimal("0.4")
+    assert result.whole_home.energy_kwh == Decimal("1.0")
+    assert _total_actual(result) == Decimal("0.30")
+
+
+def test_progressive_finalisation_loses_no_coarse_device_energy() -> None:
+    # Given — the founding use case: a WF-RAC aircon reporting 0.25 kWh steps at
+    # the real guest-bedroom cadence (21/22/31/37/44-minute gaps), while the house
+    # imports steadily and the coordinator finalises every minute (HEA-48 §1)
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    steps = {21: "0.25", 43: "0.50", 74: "0.75", 111: "1.00", 155: "1.25"}
+
+    # When — readings arrive on that cadence and every minute triggers a finalise,
+    # so each coarse step spans buckets long since past the watermark
+    for minute in range(1, 200):
+        if minute % 5 == 0:
+            acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
+        if minute in steps:
+            acc.observe("sensor.guest_energy", at(minute), Decimal(steps[minute]))
+        acc.finalize(at(minute))
+
+    # Then — every kWh the aircon reported is accounted to it, none reattributed to
+    # Untracked. The old watermark-drop lost 30-50 % here; the residual now is pure
+    # Decimal-context rounding from summing time-proportional portions — 1e-27 kWh,
+    # zero at any observable precision — while the aggregate split still reconciles
+    # exactly (Untracked is derived from the whole home minus the devices).
+    result = acc.totals()
+    guest = result.devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh.quantize(Decimal("0.000000001")) == Decimal("1.250000000")
+    reconciled = guest.energy_kwh + result.untracked.energy_kwh
+    assert reconciled == result.whole_home.energy_kwh
+
+
+def test_a_late_correction_moves_value_only_from_untracked_to_that_device() -> None:
+    # Given — two devices; A drew in bucket at(0), B was silent, and the bucket is
+    # finalised with A and Untracked recorded
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={
+            "device_a": "sensor.a_energy",
+            "device_b": "sensor.b_energy",
+        },
+    )
+    acc.record_price(at(0), PEAK)
+    for entity in ("sensor.grid_import", "sensor.a_energy", "sensor.b_energy"):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.a_energy", at(5), Decimal("0.2"))
+    acc.finalize(at(30))  # bucket at(0) finalised; A=0.2, Untracked=0.8
+
+    before_a = acc.totals().devices["device_a"]
+
+    # When — device B reports late, its delta spanning the finalised bucket
+    acc.observe("sensor.b_energy", at(5), Decimal("0.3"))
+    acc.finalize(at(40))
+
+    # Then — B gains its share, exactly that value leaves Untracked, and device A's
+    # published figures are never revised
+    result = acc.totals()
+    assert result.devices["device_a"] == before_a
+    assert result.devices["device_b"].energy_kwh == Decimal("0.3")
+    assert result.devices["device_b"].actual_cost == Decimal("0.09")
+    assert result.untracked.energy_kwh == Decimal("0.5")
+    assert result.untracked.actual_cost == Decimal("0.15")
+    assert result.whole_home.energy_kwh == Decimal("1.0")
+    assert _total_actual(result) == Decimal("0.30")
+
+
+def test_an_overdrawing_late_device_is_capped_at_the_untracked_headroom() -> None:
+    # Given — bucket at(0) finalised with device A taking almost all the house
+    # consumption, leaving only 0.1 kWh of Untracked headroom
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={
+            "device_a": "sensor.a_energy",
+            "device_b": "sensor.b_energy",
+        },
+    )
+    acc.record_price(at(0), PEAK)
+    for entity in ("sensor.grid_import", "sensor.a_energy", "sensor.b_energy"):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.a_energy", at(5), Decimal("0.9"))
+    acc.finalize(at(30))
+
+    before_a = acc.totals().devices["device_a"]
+
+    # When — device B reports 0.4 kWh late, overdrawing the bucket (0.9 + 0.4 > 1.0)
+    acc.observe("sensor.b_energy", at(5), Decimal("0.4"))
+    acc.finalize(at(40))
+
+    # Then — B keeps all its real energy, but its cost gain is capped at the €0.03
+    # of headroom Untracked held; A is untouched; the real bill is still fully split
+    result = acc.totals()
+    b = result.devices["device_b"]
+    assert result.devices["device_a"] == before_a
+    assert b.energy_kwh == Decimal("0.4")
+    assert b.actual_cost == Decimal("0.03")
+    assert result.untracked.actual_cost == Decimal(0)
+    assert result.untracked.energy_kwh == Decimal(0)
+    assert result.whole_home.actual_cost == Decimal("0.30")
+    assert _total_actual(result) == Decimal("0.30")
+
+
+def test_a_delta_older_than_the_retention_ring_is_dropped_and_logged() -> None:
+    # Given — a short 30-minute retention ring, and a house that runs long enough
+    # for bucket at(0) to be evicted from the ring
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        retention=timedelta(minutes=30),
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    for minute in range(5, 135, 5):
+        acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
+    acc.finalize(at(150))  # watermark ~ at(125); bucket at(0) evicted (< 125-30)
+
+    # When — the device finally reports a step spanning the long-evicted bucket
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.25"))
+    acc.finalize(at(160))
+
+    # Then — the energy is genuinely dropped (beyond the ring), but never silently:
+    # a DROPPED_LATE decision is logged so diagnostics can prove it
     assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
+    decisions = acc.source_diagnostics()["sensor.guest_energy"].recent_decisions
+    dropped = [d for d in decisions if d.reason is DecisionReason.DROPPED_LATE]
+    assert len(dropped) == 1
+    assert dropped[0].kwh == Decimal("0.25")
 
 
 def test_unavailable_reading_produces_no_phantom_delta() -> None:

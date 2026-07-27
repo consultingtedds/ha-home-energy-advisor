@@ -40,6 +40,7 @@ from .const import (
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
+    WHOLE_HOME_KEY,
 )
 
 if TYPE_CHECKING:
@@ -75,6 +76,9 @@ async def async_ensure_utility_meter(
     """
     existing = _utility_meter_for(hass, source_entity, cycle)
     if existing is not None:
+        await _reconcile_net_consumption(
+            hass, existing, net_consumption=net_consumption
+        )
         return existing
     result = await hass.config_entries.flow.async_init(
         UTILITY_METER_DOMAIN,
@@ -158,13 +162,18 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     subentry is still live — Untracked sensors carry no subentry. Diagnostic
     entities (the hub's devices-registry sensor) are excluded: only the four
     cost/energy figures — which carry no ``entity_category`` — get cycle totals.
+    The whole-home aggregate is excluded too: its period totals are the sum of the
+    device and Untracked cycle meters and duplicate the Energy Dashboard, so it
+    carries lifetime running totals only (HEA-48).
     """
     registry = er.async_get(hass)
+    whole_home_prefix = f"{entry.entry_id}_{WHOLE_HOME_KEY}_"
     return sorted(
         entity.entity_id
         for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
         if entity.domain == "sensor"
         and entity.entity_category is None
+        and not (entity.unique_id or "").startswith(whole_home_prefix)
         and (
             entity.config_subentry_id is None
             or entity.config_subentry_id in entry.subentries
@@ -228,6 +237,29 @@ def _persist_owned_meters(
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_CYCLE_METERS: owned}
         )
+
+
+async def _reconcile_net_consumption(
+    hass: HomeAssistant, entry_id: str, *, net_consumption: bool
+) -> None:
+    """Switch a reused meter's net_consumption when its source's semantics change.
+
+    A meter is reused across reloads by source + cycle, but its options are frozen
+    at creation. The Untracked remainder's cost meters were created while its
+    sources were ``total_increasing``; once those move to ``total`` (HEA-48), the
+    meter must become net-consumption or the first downward correction reads as a
+    reset and corrupts the cycle total. Reconciled in place so the accumulated
+    period value is preserved; a reload lets the running meter pick up the change.
+    """
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        return
+    if entry.options.get(CONF_METER_NET_CONSUMPTION) == net_consumption:
+        return
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_METER_NET_CONSUMPTION: net_consumption}
+    )
+    await hass.config_entries.async_reload(entry_id)
 
 
 def _utility_meter_for(

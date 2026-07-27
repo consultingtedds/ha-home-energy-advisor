@@ -16,7 +16,7 @@ continuous across restarts without the engine persisting anything.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
@@ -34,7 +34,13 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
-from .const import CONF_CURRENCY, DEFAULT_CURRENCY, DOMAIN, SUBENTRY_TYPE_DEVICE
+from .const import (
+    CONF_CURRENCY,
+    DEFAULT_CURRENCY,
+    DOMAIN,
+    SUBENTRY_TYPE_DEVICE,
+    WHOLE_HOME_KEY,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,9 +52,32 @@ if TYPE_CHECKING:
     from .coordinator import HeaConfigEntry, HeaCoordinator
     from .engine.accountant import DeviceTotals
 
-# Device key for the Untracked remainder; real devices are keyed by subentry id
-# (a UUID), so this literal cannot collide with one.
+# Device keys for the two synthetic aggregates; real devices are keyed by subentry
+# id (a UUID), so these literals cannot collide with one. The whole-home key is
+# shared via const so cycle-meter creation can exclude it (HEA-48).
 _UNTRACKED_KEY = "untracked"
+_WHOLE_HOME_KEY = WHOLE_HOME_KEY
+
+# The Untracked remainder's energy and the two grid-priced costs move to
+# `state_class: total` (not `total_increasing`): a late device correction
+# legitimately pulls the remainder down, which HA long-term statistics would
+# otherwise misread as a meter reset (HEA-48 / ADR-0006). Cost Savings is already
+# `total`, and the whole-home aggregate stays monotonic, so neither is remapped.
+_UNTRACKED_TOTAL_CONCEPTS = frozenset(
+    {"energy_used", "actual_cost", "cost_without_solar"}
+)
+
+
+def _concepts_for(device_key: str) -> tuple[HeaSensorDescription, ...]:
+    """The concept descriptions for a device key, remapping Untracked's to total."""
+    if device_key != _UNTRACKED_KEY:
+        return _CONCEPTS
+    return tuple(
+        replace(concept, state_class=SensorStateClass.TOTAL)
+        if concept.key in _UNTRACKED_TOTAL_CONCEPTS
+        else concept
+        for concept in _CONCEPTS
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -137,7 +166,26 @@ async def async_setup_entry(
             device_info=untracked_info,
             currency=currency,
         )
-        for concept in _CONCEPTS
+        for concept in _concepts_for(_UNTRACKED_KEY)
+    )
+
+    # The whole-home aggregate: the monotonic total the derived split rolls up to
+    # (Σ devices + Untracked). A device of its own, carrying lifetime running totals
+    # only — its period figures are derivable and duplicate the Energy Dashboard, so
+    # it is excluded from cycle metering (HEA-48).
+    whole_home_info = DeviceInfo(
+        identifiers={(DOMAIN, f"{entry.entry_id}_{_WHOLE_HOME_KEY}")},
+        translation_key="whole_home",
+    )
+    async_add_entities(
+        HeaCostSensor(
+            coordinator,
+            concept,
+            device_key=_WHOLE_HOME_KEY,
+            device_info=whole_home_info,
+            currency=currency,
+        )
+        for concept in _concepts_for(_WHOLE_HOME_KEY)
     )
 
     for subentry_id, subentry in entry.subentries.items():
@@ -206,6 +254,8 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         data = self.coordinator.data
         if self._device_key == _UNTRACKED_KEY:
             return data.untracked
+        if self._device_key == _WHOLE_HOME_KEY:
+            return data.whole_home
         return data.devices.get(self._device_key)
 
 

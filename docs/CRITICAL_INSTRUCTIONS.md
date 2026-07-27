@@ -143,7 +143,7 @@ commit** that delivers the user-visible capability. Work directly on `main`.
 | If you need... | Read |
 | --- | --- |
 | Delivery plan, decisions, epic map | `docs/PLAN.md` |
-| Accounting model rationale | `docs/adr/0002-*.md` (once written; until then PLAN.md → Decisions) |
+| Accounting model rationale | `docs/adr/0002-*.md`; late-arrival correction policy in `docs/adr/0006-*.md` |
 | Device/sensor behaviour patterns on the reference instance | `docs/notes/DEVICE_SENSOR_SURVEY.md` |
 | Original validation data + published tables | `docs/notes/AIRCON_COST_EXPLORATION.md`, `tests/fixtures/exploration_2026_07/` |
 | Test patterns | `docs/TESTING_STANDARDS.md` |

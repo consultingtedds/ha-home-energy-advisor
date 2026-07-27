@@ -11,14 +11,27 @@ is fully unit-testable. It keeps per-device *since-startup* running totals: the
 sensors add a restored baseline on top, so restarts neither double-count nor need
 the runtime to persist anything.
 
-Completed intervals are finalised on a lateness margin. Energy that arrives for
-an interval already finalised is dropped rather than reopening it — the amounts
-are tiny and the alternative is materially more complex (ADR-0005, HEA-17).
+Completed intervals are finalised on a lateness margin, but not sealed: each
+finalised bucket's context (its served sources, prices and draws) is retained in
+a bounded ring (24 h by default). Energy that arrives late for a retained bucket
+re-runs that bucket's allocation with its own retained prices and applies only the
+difference — the late device gains, the Untracked remainder gives back, and no
+already-published device figure is revised. This matters because the founding
+devices (WF-RAC aircons) report in coarse steps every 15-90 min, so most deltas
+span past the watermark; dropping them silently reattributed 30-50 % of their
+energy to Untracked (ADR-0006, HEA-48). Only portions older than the ring are
+dropped, and never silently — a ``DROPPED_LATE`` decision is logged.
+
+The Untracked remainder is *derived*, not accumulated: whole-home totals minus
+the tracked-device totals holds identically because every label shares each
+bucket's blended price, so the engine tracks the whole home plus each device and
+subtracts. A monotonic whole-home total falls out for free.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -29,13 +42,18 @@ from .energy_source import CumulativeEnergySource, EnergyUnit, Reading
 from .interval_ledger import BUCKET, IntervalBucket, SourceKind, spread_energy
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-    from datetime import datetime, timedelta
+    from collections.abc import Iterable, Mapping
+    from datetime import datetime
 
     from .allocation import DeviceAllocation
     from .energy_source import EnergyDelta, SourceSnapshot
 
 _DEFAULT_LATENESS = 3 * BUCKET
+# How long a finalised bucket's context stays available for late-arriving device
+# energy to correct. A few KB per bucket, so 24 h is well under 1 MB and covers
+# even twice-a-day counters; push-only sources that step more rarely lose the
+# residue beyond it (logged as DROPPED_LATE). See ADR-0006 / HEA-48.
+_DEFAULT_RETENTION = timedelta(hours=24)
 
 
 class SourceRole(Enum):
@@ -61,10 +79,32 @@ class DeviceTotals:
 
 @dataclass(frozen=True)
 class Totals:
-    """A snapshot of every tracked device plus the Untracked remainder."""
+    """A snapshot of every tracked device, the Untracked remainder, and the home.
+
+    ``untracked`` is derived (``whole_home`` minus the tracked devices), so the
+    three always reconcile exactly: Σ devices + untracked ≡ whole_home.
+    """
 
     devices: Mapping[str, DeviceTotals]
     untracked: DeviceTotals
+    whole_home: DeviceTotals
+
+
+@dataclass
+class _RetainedBucket:
+    """A finalised bucket's context, kept so late device energy can correct it.
+
+    Only the scalars a correction needs: the fixed consumption and blended unit
+    price the bucket settled at, the import price its naive cost uses, and the
+    running total device draw (which late arrivals grow). The whole-home and real
+    cost are fixed once finalised, so a correction only moves value from the
+    Untracked remainder to the late device — never between devices.
+    """
+
+    consumption: Decimal
+    blended: Decimal
+    import_price: Decimal
+    draw: Decimal
 
 
 @dataclass(frozen=True)
@@ -110,9 +150,11 @@ class Accountant:
         device_energy_entities: Mapping[str, str],
         units: Mapping[str, EnergyUnit] | None = None,
         lateness: timedelta = _DEFAULT_LATENESS,
+        retention: timedelta = _DEFAULT_RETENTION,
     ) -> None:
         self._units = dict(units or {})
         self._lateness = lateness
+        self._retention = retention
         self._role_of = {entity: role for role, entity in house_sources.items()}
         self._device_of = {
             entity: device for device, entity in device_energy_entities.items()
@@ -125,7 +167,8 @@ class Accountant:
         self._battery = BatteryLedger()
         self._strategy = ProportionalAllocationStrategy()
         self._running = {device: _Running() for device in device_energy_entities}
-        self._untracked = _Running()
+        self._house = _Running()
+        self._retained: dict[datetime, _RetainedBucket] = {}
         self._watermark: datetime | None = None
         self._overdrawn_run = 0
 
@@ -147,7 +190,7 @@ class Accountant:
         if (role := self._role_of.get(entity_id)) is not None:
             self._spread_source(role, delta)
         elif (device := self._device_of.get(entity_id)) is not None:
-            self._spread_device(device, delta)
+            self._spread_device(device, delta, source)
 
     def finalize(self, now: datetime) -> None:
         """Finalises every interval that ended before the lateness margin."""
@@ -157,12 +200,36 @@ class Accountant:
                 break
             self._finalize_bucket(start)
             self._watermark = start
+        self._evict_stale()
 
     def totals(self) -> Totals:
-        """Returns the since-startup running totals per device and Untracked."""
+        """Returns the since-startup running totals per device, home and Untracked.
+
+        Untracked is derived from the whole-home total minus the tracked devices,
+        so the split reconciles exactly however late corrections have moved value.
+        """
+        devices = {device: run.snapshot() for device, run in self._running.items()}
+        whole_home = self._house.snapshot()
         return Totals(
-            devices={device: run.snapshot() for device, run in self._running.items()},
-            untracked=self._untracked.snapshot(),
+            devices=devices,
+            untracked=self._derive_untracked(whole_home, devices.values()),
+            whole_home=whole_home,
+        )
+
+    @staticmethod
+    def _derive_untracked(
+        whole_home: DeviceTotals, devices: Iterable[DeviceTotals]
+    ) -> DeviceTotals:
+        tracked = list(devices)
+        energy = _sum(d.energy_kwh for d in tracked)
+        actual = _sum(d.actual_cost for d in tracked)
+        naive = _sum(d.naive_cost for d in tracked)
+        savings = _sum(d.cost_savings for d in tracked)
+        return DeviceTotals(
+            energy_kwh=whole_home.energy_kwh - energy,
+            actual_cost=whole_home.actual_cost - actual,
+            naive_cost=whole_home.naive_cost - naive,
+            cost_savings=whole_home.cost_savings - savings,
         )
 
     def consecutive_overdrawn_buckets(self) -> int:
@@ -191,15 +258,45 @@ class Accountant:
             bucket = self._raw.setdefault(portion.start, {})
             bucket[role] = bucket.get(role, Decimal(0)) + portion.kwh
 
-    def _spread_device(self, device: str, delta: EnergyDelta) -> None:
+    def _spread_device(
+        self, device: str, delta: EnergyDelta, source: CumulativeEnergySource
+    ) -> None:
         for portion in spread_energy(delta):
-            if self._is_finalised(portion.start):
-                continue
-            bucket = self._draws.setdefault(portion.start, {})
-            bucket[device] = bucket.get(device, Decimal(0)) + portion.kwh
+            if not self._is_finalised(portion.start):
+                bucket = self._draws.setdefault(portion.start, {})
+                bucket[device] = bucket.get(device, Decimal(0)) + portion.kwh
+            elif (retained := self._retained.get(portion.start)) is not None:
+                self._correct(device, retained, portion.kwh)
+            else:
+                source.note_dropped_late(portion.start, portion.kwh)
 
     def _is_finalised(self, start: datetime) -> bool:
         return self._watermark is not None and start <= self._watermark
+
+    def _correct(self, device: str, retained: _RetainedBucket, kwh: Decimal) -> None:
+        """Reattribute late device energy within a finalised, still-retained bucket.
+
+        The bucket's real cost and consumption are fixed, so the device is credited
+        its full energy at the blended price, capped at the headroom the Untracked
+        remainder still holds; the whole-home total absorbs any overdraw. Untracked
+        is derived, so it gives back exactly what the device gains — no other device
+        moves (ADR-0006, HEA-48).
+        """
+        headroom = max(Decimal(0), retained.consumption - retained.draw)
+        priced = min(kwh, headroom)
+        run = self._running.setdefault(device, _Running())
+        run.energy_kwh += kwh
+        run.naive_cost += kwh * retained.import_price
+        run.actual_cost += priced * retained.blended
+        run.cost_savings += kwh * retained.import_price - priced * retained.blended
+
+        grew = max(retained.consumption, retained.draw + kwh) - max(
+            retained.consumption, retained.draw
+        )
+        self._house.energy_kwh += grew
+        self._house.naive_cost += grew * retained.import_price
+        self._house.cost_savings += grew * retained.import_price
+        retained.draw += kwh
 
     def _finalize_bucket(self, start: datetime) -> None:
         raw = self._raw.pop(start, {})
@@ -210,8 +307,34 @@ class Accountant:
         allocation = self._strategy.allocate(bucket, prices)
         for device, share in allocation.devices.items():
             self._running.setdefault(device, _Running()).add(share)
-        self._untracked.add(allocation.untracked)
+        for share in allocation.devices.values():
+            self._house.add(share)
+        self._house.add(allocation.untracked)
+        self._retain(start, sources, prices, draws)
         self._track_overdraw(served, draws)
+
+    def _retain(
+        self,
+        start: datetime,
+        sources: Mapping[SourceKind, Decimal],
+        prices: Mapping[SourceKind, Decimal],
+        draws: Mapping[str, Decimal],
+    ) -> None:
+        consumption = _sum(sources.values())
+        total_cost = _sum(energy * prices[kind] for kind, energy in sources.items())
+        self._retained[start] = _RetainedBucket(
+            consumption=consumption,
+            blended=total_cost / consumption if consumption > 0 else Decimal(0),
+            import_price=prices[SourceKind.IMPORT],
+            draw=_sum(draws.values()),
+        )
+
+    def _evict_stale(self) -> None:
+        if self._watermark is None:
+            return
+        horizon = self._watermark - self._retention
+        for start in [start for start in self._retained if start < horizon]:
+            del self._retained[start]
 
     def _track_overdraw(self, served: _Served, draws: Mapping[str, Decimal]) -> None:
         consumption = served.grid + served.solar + served.battery
@@ -282,3 +405,7 @@ class Accountant:
                 break
             applicable = price
         return applicable
+
+
+def _sum(values: Iterable[Decimal]) -> Decimal:
+    return sum(values, Decimal(0))

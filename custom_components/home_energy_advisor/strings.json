@@ -137,6 +137,7 @@
   },
   "device": {
     "untracked": { "name": "Untracked Energy Devices" },
+    "whole_home": { "name": "Whole Home" },
     "hub": { "name": "Home Energy Advisor" }
   },
   "issues": {
