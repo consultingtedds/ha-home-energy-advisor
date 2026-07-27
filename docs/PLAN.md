@@ -92,6 +92,8 @@ Presentation
 2. ADR-0002: Cost attribution — full proportional source allocation; 5-min interval model; battery stored-cost pricing; binary gate rejected with reasons; deficit-capped fallback; export opportunity cost deferred with bias documented
 3. ADR-0003: Entity naming — finalise Energy Used / Actual Cost / Cost Without Solar / Solar Saving + Untracked remainder naming
 4. ADR-0004: EnergySource taxonomy — cumulative counters natively; power-only via auto-created native Integral helpers; `total` state_class and forecast/false-friend sensors out of MVP scope
+5. ADR-0005: Energy-balance decomposition — adaptive (residual / full-balance / import-only) derivation of house-served source energies from raw meters, so the aggregate invariant holds (mid-implementation discovery, HEA-21)
+6. ADR-0006: Late-arrival correction policy — retained-context ring reallocates coarse-device energy that lands past the finalisation watermark; Untracked derived (`total` state_class); whole-home total exposed; `state_reported` tracking (HEA-48)
 
 ### Epic 3 — Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -104,7 +106,7 @@ Presentation
 1. Config flow: house-level inputs pre-filled from Energy Dashboard preferences (solar/battery optional), price entity, currency, per-device energy-or-power sensor selection; options flow
 2. Feasibility spike + implementation: programmatic creation of native utility_meter / Integral helpers (fallback: internal implementation, recorded in ADR-0004)
 3. Runtime wiring: listeners/coordinator connecting engine to HA state machine
-4. Per-device + Untracked remainder sensors (×4) with restore-on-restart
+4. Per-device + Untracked remainder sensors (×4) with restore-on-restart. Untracked is derived (whole-home − Σ devices) and a monotonic whole-home aggregate is exposed (running totals only); late-arriving coarse-device energy is reallocated into a retained-context ring rather than dropped (HEA-48 / ADR-0006)
 5. Cycle totals via auto-created utility_meter helpers (daily + monthly default; weekly/quarterly/yearly global opt-in)
 6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
