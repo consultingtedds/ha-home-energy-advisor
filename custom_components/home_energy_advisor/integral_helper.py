@@ -22,7 +22,7 @@ Two deliberate choices keep this thin:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.integration.const import (
     CONF_MAX_SUB_INTERVAL,
@@ -43,6 +43,11 @@ from .const import (
     CONF_INTEGRAL_HELPERS,
     CONF_POWER_ENTITY,
     SUBENTRY_TYPE_DEVICE,
+)
+from .helper_ownership import (
+    helper_entry_id,
+    helper_was_created,
+    resolve_provenance,
 )
 
 if TYPE_CHECKING:
@@ -104,14 +109,14 @@ async def async_sync_power_device_helpers(
 
 
 def _deleted_helper_devices(
-    hass: HomeAssistant, owned: dict[str, str], power_devices: dict[str, str]
+    hass: HomeAssistant, owned: dict[str, Any], power_devices: dict[str, str]
 ) -> set[str]:
     """Devices whose still-wanted helper the user deleted (its entry is gone)."""
     return {
         subentry_id
-        for subentry_id, helper_id in owned.items()
+        for subentry_id, record in owned.items()
         if subentry_id in power_devices
-        and hass.config_entries.async_get_entry(helper_id) is None
+        and hass.config_entries.async_get_entry(helper_entry_id(record)) is None
     }
 
 
@@ -140,13 +145,21 @@ def _power_only_devices(entry: ConfigEntry) -> dict[str, str]:
 
 
 async def _remove_orphaned_helpers(
-    hass: HomeAssistant, owned: dict[str, str], *, keep: Iterable[str]
+    hass: HomeAssistant, owned: dict[str, Any], *, keep: Iterable[str]
 ) -> None:
-    """Remove the helpers of devices that no longer exist, mutating ``owned``."""
+    """Remove the helpers of devices that no longer exist, mutating ``owned``.
+
+    Only helpers HEA created are deleted; a helper the user already had over the
+    source (adopted) is forgotten but left intact (HEA-52).
+    """
     live = set(keep)
-    for subentry_id, helper_id in list(owned.items()):
+    for subentry_id, record in list(owned.items()):
         if subentry_id not in live:
-            if hass.config_entries.async_get_entry(helper_id) is not None:
+            helper_id = helper_entry_id(record)
+            if (
+                helper_was_created(record)
+                and hass.config_entries.async_get_entry(helper_id) is not None
+            ):
                 await hass.config_entries.async_remove(helper_id)
             del owned[subentry_id]
 
@@ -155,7 +168,7 @@ async def _ensure_helpers(
     hass: HomeAssistant,
     entry: ConfigEntry,
     power_devices: dict[str, str],
-    owned: dict[str, str],
+    owned: dict[str, Any],
 ) -> dict[str, str]:
     """Ensure a helper per power-only device; map ``{subentry_id: energy sensor}``."""
     energy_entities: dict[str, str] = {}
@@ -164,17 +177,22 @@ async def _ensure_helpers(
         # (already localised) name, so no hardcoded, untranslated word is coined
         # for it here — i18n stays honest without a translation lookup.
         name = entry.subentries[subentry_id].title
+        # Whether a helper already existed over this source *before* we ensure one
+        # decides provenance: pre-existing means the user's (adopt, never delete).
+        pre_existing = _integral_helper_for_source(hass, power_entity)
         helper_id = await async_ensure_integral_helper(
             hass, name=name, source_entity=power_entity
         )
-        owned[subentry_id] = helper_id
+        owned[subentry_id] = resolve_provenance(
+            owned.get(subentry_id), helper_id, pre_existing=pre_existing
+        )
         if (output := integral_output_sensor(hass, helper_id)) is not None:
             energy_entities[subentry_id] = output
     return energy_entities
 
 
 def _persist_owned_helpers(
-    hass: HomeAssistant, entry: ConfigEntry, owned: dict[str, str]
+    hass: HomeAssistant, entry: ConfigEntry, owned: dict[str, Any]
 ) -> None:
     """Store the device->helper map on the entry, if it changed."""
     if owned != entry.data.get(CONF_INTEGRAL_HELPERS, {}):

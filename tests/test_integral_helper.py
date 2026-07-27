@@ -166,6 +166,69 @@ async def test_removing_a_power_device_removes_its_integral_helper(
     assert hass.config_entries.async_entries("integration") == []
 
 
+async def test_an_adopted_user_helper_survives_device_removal(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — the user already had their own Integral helper over the wall-light
+    # power sensor before HEA existed
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
+    hass.states.async_set("sensor.power_only_lights_power", "100", _POWER)
+    users_helper = await async_ensure_integral_helper(
+        hass,
+        name="My Own Lights Energy",
+        source_entity="sensor.power_only_lights_power",
+    )
+    await hass.async_block_till_done()
+
+    # When — HEA is set up with a power-only device on that same sensor (so it
+    # reuses the user's helper, not a second one), then the device is removed
+    entry = _power_only_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(hass.config_entries.async_entries("integration")) == 1
+    subentry_id = next(iter(entry.subentries))
+    hass.config_entries.async_remove_subentry(entry, subentry_id)
+    await hass.async_block_till_done()
+
+    # Then — the user's helper is left intact, not deleted as if HEA owned it
+    assert hass.config_entries.async_get_entry(users_helper) is not None
+    assert len(hass.config_entries.async_entries("integration")) == 1
+
+
+async def test_uninstall_deletes_created_helpers_but_spares_an_adopted_one(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — the user's own Integral helper pre-exists; HEA adopts it for a
+    # power-only device and creates utility_meter cycle totals of its own
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
+    hass.states.async_set("sensor.power_only_lights_power", "100", _POWER)
+    users_helper = await async_ensure_integral_helper(
+        hass,
+        name="My Own Lights Energy",
+        source_entity="sensor.power_only_lights_power",
+    )
+    await hass.async_block_till_done()
+    entry = _power_only_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(hass.config_entries.async_entries("integration")) == 1  # adopted, not +1
+    assert len(hass.config_entries.async_entries("utility_meter")) > 0  # HEA-created
+
+    # When — the whole integration is uninstalled
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — HEA's own cycle meters are gone, but the user's Integral helper survives
+    assert hass.config_entries.async_get_entry(users_helper) is not None
+    assert hass.config_entries.async_entries("utility_meter") == []
+
+
 async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
