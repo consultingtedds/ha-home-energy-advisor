@@ -35,6 +35,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
+from .helper_ownership import helper_entry_id
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -182,8 +183,11 @@ def _excluded_entities(entry: ConfigEntry, registry: er.EntityRegistry) -> set[s
 def _owned_helper_entities(entry: ConfigEntry, registry: er.EntityRegistry) -> set[str]:
     """Entity ids published by the Integral / utility_meter helpers HEA created."""
     helper_ids = (
-        *entry.data.get(CONF_INTEGRAL_HELPERS, {}).values(),
-        *entry.data.get(CONF_CYCLE_METERS, {}).values(),
+        helper_entry_id(record)
+        for record in (
+            *entry.data.get(CONF_INTEGRAL_HELPERS, {}).values(),
+            *entry.data.get(CONF_CYCLE_METERS, {}).values(),
+        )
     )
     return {
         registry_entry.entity_id
