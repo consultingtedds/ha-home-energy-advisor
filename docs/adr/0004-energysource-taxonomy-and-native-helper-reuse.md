@@ -117,3 +117,28 @@ Consequences for the recorded fallback:
   (`custom_components/home_energy_advisor/integral_helper.py`).
 - The helper's component must be declared in the manifest `dependencies` —
   hassfest enforces this whenever the code imports from that component.
+
+## Update — MVP source boundary now enforced (2026-07-28, HEA-54)
+
+Appended, not edited: the decision stands. The taxonomy above scopes `total`
+(net) counters, forecasts, and other non-`total_increasing` sources out of the
+MVP, but originally nothing *enforced* it — device selection filtered
+`device_class` only, so an ineligible sensor could be chosen and the engine would
+read its decreases as cycle resets, booking phantom energy. HEA-54 closes that:
+
+- **Discovery is strict.** A candidate is offered only if its `state_class` is the
+  eligible one (`total_increasing` for energy, `measurement` for power); an absent
+  `state_class` is treated as ineligible. A wrong `state_class` is a provable
+  mis-accounting, not a user judgement call, so it is never *suggested* — distinct
+  from the false-friend *name* hint, which remains a sort-last suggestion the user
+  may still accept.
+- **Manual add/reconfigure is lenient on an absent `state_class`.** A
+  present-but-wrong class is rejected with a translated error, but a sensor that
+  sets no `state_class` at all is allowed — an explicit manual pick of an
+  unlabelled counter is the user's call (a custom template sensor, say). the maintainer's
+  call; the strict-discovery / lenient-add split is deliberate.
+
+`state_class` is read from the live state, falling back to the entity registry's
+`capabilities` (discovery inspects registry entries that often have no live state).
+Revisit alongside the standing "a supported device genuinely needs `total`
+state_class" trigger above.
