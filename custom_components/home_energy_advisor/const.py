@@ -38,6 +38,12 @@ CONF_INTEGRAL_HELPERS: Final = "integral_helpers"
 # reconciled away when a device (and so its source sensors) is removed (HEA-23).
 CONF_CYCLE_METERS: Final = "cycle_meters"
 
+# Dispatcher signal telling a household's sensors to drop the restore baseline
+# they add on top of the runtime's running total, when those totals are rebased
+# to zero (HEA-57). Formatted per config entry so one household's reset never
+# touches another's figures.
+SIGNAL_RESET_TOTALS: Final = f"{DOMAIN}_reset_totals_{{entry_id}}"
+
 # Optional cycle totals (options flow). Daily and monthly are always on; these
 # are opt-in to keep the entity count in check (ADR-0004 / PLAN.md).
 CONF_CYCLE_WEEKLY: Final = "cycle_weekly"

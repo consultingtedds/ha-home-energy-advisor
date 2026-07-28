@@ -216,6 +216,27 @@ class Accountant:
         """
         self.finalize(now + self._lateness + BUCKET)
 
+    def reset_totals(self) -> None:
+        """Rebases every running total to zero, as a hard accounting boundary.
+
+        Backs the supported reset of a household's accumulated figures. Alongside
+        the totals it drops the in-flight buckets and the retained ring, so no
+        energy earned before the rebase can land after it — including as a late
+        correction to a bucket that no longer contributes to any total.
+
+        Two kinds of state deliberately survive. Each meter's last reading stays,
+        so a climbing counter is read neither as a fresh start (dropping the next
+        delta) nor as a climb from zero (re-counting everything before the
+        rebase). And the battery's stored-cost ledger stays, because it records
+        physical fact — the battery still holds energy bought at a known price,
+        and discharging it after a rebase is not free.
+        """
+        self._running = {device: _Running() for device in self._running}
+        self._house = _Running()
+        self._raw.clear()
+        self._draws.clear()
+        self._retained.clear()
+
     def totals(self) -> Totals:
         """Returns the since-startup running totals per device, home and Untracked.
 

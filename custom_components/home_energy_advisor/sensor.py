@@ -28,9 +28,11 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import EntityCategory, UnitOfEnergy
+from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
@@ -38,6 +40,7 @@ from .const import (
     CONF_CURRENCY,
     DEFAULT_CURRENCY,
     DOMAIN,
+    SIGNAL_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
     WHOLE_HOME_KEY,
 )
@@ -232,6 +235,7 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         self._attr_device_info = device_info
         # The coordinator always has its config entry (passed to super().__init__).
         entry = cast("HeaConfigEntry", coordinator.config_entry)
+        self._entry_id = entry.entry_id
         self._attr_unique_id = f"{entry.entry_id}_{device_key}_{description.key}"
         if description.device_class == SensorDeviceClass.MONETARY:
             self._attr_native_unit_of_measurement = currency
@@ -243,6 +247,22 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         last = await self.async_get_last_sensor_data()
         if last is not None and isinstance(last.native_value, Decimal):
             self._baseline = last.native_value
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_RESET_TOTALS.format(entry_id=self._entry_id),
+                self._handle_reset,
+            )
+        )
+
+    @callback
+    def _handle_reset(self) -> None:
+        """Drop the restored baseline when the household's totals are rebased.
+
+        The engine clears its running total in the same breath; the coordinator
+        publishes straight after, so no state write is needed here (HEA-57).
+        """
+        self._baseline = Decimal(0)
 
     @property
     def native_value(self) -> Decimal:

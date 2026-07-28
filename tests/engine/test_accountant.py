@@ -609,3 +609,139 @@ def test_zero_priced_is_logged_once_then_never_after_a_price_arrives() -> None:
     # again once pricing is known
     decisions = acc.source_diagnostics()["sensor.grid_import"].recent_decisions
     assert [d.reason for d in decisions].count(DecisionReason.ZERO_PRICED) == 1
+
+
+def test_reset_totals_rebases_every_running_total_to_zero() -> None:
+    # Given — a home that has accumulated real cost across a finalised interval
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(30))
+    assert acc.totals().whole_home.energy_kwh == Decimal("1.0")
+
+    # When — the totals are rebased
+    acc.reset_totals()
+
+    # Then — every published figure starts from zero: the tracked device, the
+    # derived Untracked remainder, and the whole-home aggregate alike
+    zero = DeviceTotals(
+        energy_kwh=Decimal(0),
+        actual_cost=Decimal(0),
+        naive_cost=Decimal(0),
+        cost_savings=Decimal(0),
+    )
+    result = acc.totals()
+    assert result.devices["coarse_step_aircon"] == zero
+    assert result.untracked == zero
+    assert result.whole_home == zero
+
+
+def test_reset_totals_keeps_meter_tracking_so_the_next_delta_is_not_a_phantom() -> None:
+    # Given — a home whose meters have been read up to 1.0 kWh, then rebased
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(30))
+    acc.reset_totals()
+
+    # When — the counters climb again after the rebase
+    acc.observe("sensor.grid_import", at(35), Decimal("2.0"))
+    acc.observe("sensor.guest_energy", at(35), Decimal("1.0"))
+    acc.finalize(at(70))
+
+    # Then — only the energy that arrived after the rebase is counted. The reset
+    # keeps each meter's last reading, so a climbing counter is read neither as a
+    # fresh start (dropping the delta) nor as a climb from zero (re-counting the
+    # pre-reset kWh)
+    result = acc.totals()
+    assert result.whole_home.energy_kwh == Decimal("1.0")
+    assert result.devices["coarse_step_aircon"].energy_kwh == Decimal("0.4")
+
+
+def test_reset_totals_discards_pre_reset_energy_still_in_flight() -> None:
+    # Given — a home whose most recent interval has been observed but not yet
+    # finalised, so its energy is still held in the in-flight buckets
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+
+    # When — the totals are rebased and accounting runs on past the lateness margin
+    acc.reset_totals()
+    acc.finalize(at(40))
+
+    # Then — the pre-reset energy is gone rather than banked into the new era: a
+    # rebase is a hard boundary, so nothing earned before it lands after it
+    result = acc.totals()
+    assert result.whole_home.energy_kwh == Decimal(0)
+    assert result.devices["coarse_step_aircon"].energy_kwh == Decimal(0)
+
+
+def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
+    # Given — a home that charged its battery from the grid at €0.10, and rebased
+    # its totals before discharging
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.BATTERY_CHARGE: "sensor.battery_charge",
+            SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), Decimal("0.10"))
+    for entity in (
+        "sensor.grid_import",
+        "sensor.battery_charge",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+        "sensor.guest_energy",
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("2.0"))
+    acc.observe("sensor.battery_charge", at(5), Decimal("2.0"))
+    acc.observe("sensor.battery_discharge", at(5), Decimal(0))
+    acc.observe("sensor.house_load", at(5), Decimal(0))
+    acc.observe("sensor.guest_energy", at(5), Decimal(0))
+    acc.finalize(at(40))
+    acc.reset_totals()
+
+    # When — the stored energy is discharged to serve the device at peak price.
+    # The meters re-report unchanged at at(40) first, as a polled source does, so
+    # the discharge delta falls wholly inside the peak-priced bucket
+    acc.record_price(at(40), PEAK)
+    acc.observe("sensor.grid_import", at(40), Decimal("2.0"))
+    acc.observe("sensor.battery_charge", at(40), Decimal("2.0"))
+    acc.observe("sensor.battery_discharge", at(40), Decimal(0))
+    acc.observe("sensor.house_load", at(40), Decimal(0))
+    acc.observe("sensor.guest_energy", at(40), Decimal(0))
+    acc.observe("sensor.grid_import", at(45), Decimal("2.0"))
+    acc.observe("sensor.battery_discharge", at(45), Decimal("2.0"))
+    acc.observe("sensor.house_load", at(45), Decimal("2.0"))
+    acc.observe("sensor.guest_energy", at(45), Decimal("2.0"))
+    acc.finalize(at(80))
+
+    # Then — the discharge is still priced at the €0.10 the battery stored, not
+    # given away free: a rebase clears accumulated totals, never the physical state
+    # of the battery's stored-cost ledger
+    guest = acc.totals().devices["coarse_step_aircon"]
+    assert guest.energy_kwh == Decimal("2.0")
+    assert guest.actual_cost == Decimal("0.20")
+    assert guest.naive_cost == Decimal("0.60")

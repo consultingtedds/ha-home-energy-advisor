@@ -428,3 +428,73 @@ async def test_devices_registry_sensor_lives_on_the_hub_device(
     registry_entry = registry.async_get(resolved)
     assert registry_entry is not None
     assert registry_entry.device_id == hub.id
+
+
+async def test_reset_rebases_a_sensor_past_its_restored_baseline(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a sensor reading a restored pre-restart baseline plus a fresh run
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entity_id = "sensor.coarse_step_aircon_actual_cost"
+    restored = SensorExtraStoredData(
+        native_value=Decimal("0.18"), native_unit_of_measurement="EUR"
+    )
+    mock_restore_cache_with_extra_data(
+        hass, ((State(entity_id, "0.18"), restored.as_dict()),)
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.36")
+
+    # When — the household's totals are rebased
+    entry.runtime_data.async_reset_totals()
+    await hass.async_block_till_done()
+
+    # Then — the sensor reads zero. Clearing the runtime's running total alone
+    # would leave it falling back to the €0.18 restored baseline, so the baseline
+    # has to go too
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert Decimal(state.state) == Decimal(0)
+
+
+async def test_reset_leaves_the_split_reconciling_as_it_accumulates_again(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running household whose totals have just been rebased
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+    entry.runtime_data.async_reset_totals()
+    await hass.async_block_till_done()
+
+    # When — a further interval is accounted after the rebase
+    freezer.move_to(datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "2.0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "1.0", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 23, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then — the aggregate invariant still holds from the new zero: the tracked
+    # device plus the Untracked remainder equal the whole-home total
+    def energy(entity_id: str) -> Decimal:
+        state = hass.states.get(entity_id)
+        assert state is not None
+        return Decimal(state.state)
+
+    guest = energy("sensor.coarse_step_aircon_energy_used")
+    untracked = energy("sensor.untracked_energy_devices_energy_used")
+    assert guest > 0
+    assert guest + untracked == energy("sensor.whole_home_energy_used")
