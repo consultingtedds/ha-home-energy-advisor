@@ -44,7 +44,11 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
-from .discovery import async_discover_candidates
+from .discovery import (
+    REQUIRED_STATE_CLASS,
+    async_discover_candidates,
+    source_state_class,
+)
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -199,7 +203,7 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
         """Collect the device name and its single source sensor."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            error = _validate_device_sources(user_input)
+            error = _validate_device_sources(self.hass, user_input)
             if error is None:
                 return self.async_create_entry(
                     title=user_input[CONF_NAME], data=user_input
@@ -216,7 +220,7 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            error = _validate_device_sources(user_input)
+            error = _validate_device_sources(self.hass, user_input)
             if error is None:
                 return self.async_update_and_abort(
                     self._get_entry(),
@@ -234,13 +238,38 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
         )
 
 
-def _validate_device_sources(user_input: dict[str, Any]) -> str | None:
-    """Require exactly one of an energy or a power sensor."""
-    has_energy = bool(user_input.get(CONF_ENERGY_ENTITY))
-    has_power = bool(user_input.get(CONF_POWER_ENTITY))
-    if has_energy == has_power:
+def _validate_device_sources(
+    hass: HomeAssistant, user_input: dict[str, Any]
+) -> str | None:
+    """Require exactly one source sensor, and that its state_class fits the engine.
+
+    Exactly one of an energy or a power sensor, then a state_class check: a
+    *present-but-wrong* class is rejected (a `total` net counter or a measurement
+    where a total_increasing counter is needed would book phantom energy). An
+    absent state_class is allowed on this explicit manual pick — discovery is
+    stricter and simply never suggests one (HEA-54).
+    """
+    energy = user_input.get(CONF_ENERGY_ENTITY, "")
+    power = user_input.get(CONF_POWER_ENTITY, "")
+    if bool(energy) == bool(power):
         return "select_one_sensor"
-    return None
+    source_key = CONF_ENERGY_ENTITY if energy else CONF_POWER_ENTITY
+    return _wrong_state_class_error(hass, energy or power, source_key)
+
+
+def _wrong_state_class_error(
+    hass: HomeAssistant, entity_id: str, source_key: str
+) -> str | None:
+    state_class = source_state_class(hass, entity_id)
+    if state_class is None or state_class == REQUIRED_STATE_CLASS[source_key]:
+        return None
+    return _STATE_CLASS_ERROR[source_key]
+
+
+_STATE_CLASS_ERROR = {
+    CONF_ENERGY_ENTITY: "energy_not_total_increasing",
+    CONF_POWER_ENTITY: "power_not_measurement",
+}
 
 
 class HomeEnergyAdvisorOptionsFlow(OptionsFlow):

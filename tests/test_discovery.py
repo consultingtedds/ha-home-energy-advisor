@@ -32,15 +32,30 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 
-def _register(
+_ELIGIBLE_STATE_CLASS = {"energy": "total_increasing", "power": "measurement"}
+
+
+def _register(  # noqa: PLR0913 - a test fixture builder; each kwarg is a distinct axis
     hass: HomeAssistant,
     object_id: str,
     device_class: str,
     *,
     name: str | None = None,
     device_id: str | None = None,
+    state_class: str | None = "eligible",
 ) -> str:
-    """Register a sensor with a device_class; return its entity_id."""
+    """Register a sensor with a device_class and state_class; return its entity_id.
+
+    ``state_class`` defaults to the eligible class for the device_class; pass an
+    explicit value (or ``None``) to register an ineligible candidate. It is stored
+    as a registry capability, since discovery candidates have no live state here.
+    """
+    resolved = (
+        _ELIGIBLE_STATE_CLASS.get(device_class)
+        if state_class == "eligible"
+        else state_class
+    )
+    capabilities = {"state_class": resolved} if resolved is not None else None
     entity = er.async_get(hass).async_get_or_create(
         "sensor",
         "sensor_source",
@@ -49,6 +64,7 @@ def _register(
         original_device_class=device_class,
         original_name=name or object_id.replace("_", " ").title(),
         device_id=device_id,
+        capabilities=capabilities,
     )
     return entity.entity_id
 
@@ -166,3 +182,25 @@ async def test_discovery_sorts_likely_false_friends_last(
     assert candidates[0].entity_id == real
     assert candidates[-1].entity_id.endswith("phone_battery_power")
     assert candidates[-1].likely_false_friend is True
+
+
+async def test_discovery_excludes_sensors_with_an_ineligible_state_class(
+    hass: HomeAssistant,
+) -> None:
+    # Given — valid candidates alongside sources the engine would mis-account: a
+    # net (`total`) energy counter, a forecast energy sensor with no state_class,
+    # and a "power" sensor that is really a running total. Unlike a false-friend
+    # name, a wrong state_class is not a user judgement call — it is provably
+    # mis-accounted — so discovery never suggests it (HEA-54).
+    entry = _entry(hass)
+    good_energy = _register(hass, "pool_pump_energy", "energy", name="Pool Pump Energy")
+    good_power = _register(hass, "fridge_power", "power", name="Fridge Power")
+    _register(hass, "solar_net_energy", "energy", state_class="total")
+    _register(hass, "solar_forecast_energy", "energy", state_class=None)
+    _register(hass, "grid_power_total", "power", state_class="total_increasing")
+
+    # When — candidates are discovered
+    candidates = async_discover_candidates(hass, entry)
+
+    # Then — only the two eligible sensors are offered
+    assert {c.entity_id for c in candidates} == {good_energy, good_power}

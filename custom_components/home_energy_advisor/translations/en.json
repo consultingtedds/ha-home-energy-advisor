@@ -122,7 +122,9 @@
         }
       },
       "error": {
-        "select_one_sensor": "Choose exactly one: an energy sensor or a power sensor, not both."
+        "select_one_sensor": "Choose exactly one: an energy sensor or a power sensor, not both.",
+        "energy_not_total_increasing": "This energy sensor must be a total-increasing counter. A net or measurement sensor would be misread as usage and inflate the cost.",
+        "power_not_measurement": "This power sensor must report an instantaneous measurement. A total sensor cannot be integrated into energy correctly."
       }
     }
   },
