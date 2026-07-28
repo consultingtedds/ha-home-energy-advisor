@@ -30,7 +30,7 @@ reference, not as target outputs.
 | Interval model | Engine buckets on **5-minute intervals**; coarse energy deltas are spread across the intervals they span | Allocation needs synchronized cross-device intervals; 5 min balances fidelity vs noise; to be justified in ADR-0002 |
 | Solar & battery inputs | **Optional** in config | Without them, Actual = naive cost and the product still serves the (large) no-solar HA population as a per-device TOU cost tracker — PRD target users explicitly include tariff-only households |
 | Remainder bucket | House consumption minus tracked devices = an "Untracked" pseudo-device with the same cost sensors | Answers "which devices drive my bill" honestly (shows the unexplained share) and doubles as a live reconciliation check |
-| Build on native foundations | Prefer existing HA machinery over reimplementation: config flow pre-fills from **Energy Dashboard preferences**; daily/weekly/monthly/quarterly/yearly totals via **auto-created native `utility_meter` helpers** (PowerCalc-style); power-only devices via **auto-created native Integral helper** | "Don't rebuild what exists." Default cycles: daily + monthly; weekly/quarterly/yearly as a global opt-in (entity-count discipline: all-on would create ~200+ helper entities across 14 devices). Lifetime totals are the integration's own sensors. Feasibility of programmatic helper creation validated early in Epic 4; internal implementation is the recorded fallback |
+| Build on native foundations | Prefer existing HA machinery over reimplementation: config flow pre-fills from **Energy Dashboard preferences**; daily/weekly/monthly/quarterly/yearly totals via **auto-created native `utility_meter` helpers** (PowerCalc-style); power-only devices via **auto-created native Integral helper** | "Don't rebuild what exists." Default cycles: daily + monthly; weekly/quarterly/yearly as a global opt-in (entity-count discipline: all-on would create ~200+ helper entities across 14 devices). Lifetime totals are the integration's own sensors. Feasibility of programmatic helper creation validated early in Epic 4; internal implementation is the recorded fallback. **Amended by ADR-0008 (2026-07-28):** cycle helpers are a day-to-day *convenience*, not the mechanism for period accounting — a `utility_meter` is a fixed-period accumulator and cannot answer an arbitrary range. Long-term statistics, which the integration's own sensors already emit, are the substrate for "what did this cost between any two dates" |
 | Export opportunity cost | **Deferred, post-MVP** — explicitly documented | Solar-covered energy forgoes export revenue, so MVP Solar Saving is knowingly optimistic; documented in ADR-0002 and README, tracked as a backlog issue |
 | i18n | **Day one**: `strings.json` + `translations/` (en, es) | Same discipline as the retirement platform; retrofitting translations is worse than starting with them |
 | Quality gates | ruff (strict) + mypy (strict) + pytest coverage ≥90% enforced in CI; **SonarQube as a local pre-commit gate** (existing local server, same `sonar-check.sh` workflow as the retirement repos), never a CI-blocking step | Revised 2026-07-12: with the server and workflow already in place the marginal cost is near zero, and Sonar adds what ruff+mypy don't — cognitive-complexity enforcement (the mechanism behind the "orchestrators read as linear steps" rule), cross-file duplication detection, and the new-code quality-gate ratchet. CI stays green without it so external contributors are never blocked; revisit SonarCloud (free for OSS) if the project attracts contributors |
@@ -94,6 +94,8 @@ Presentation
 4. ADR-0004: EnergySource taxonomy — cumulative counters natively; power-only via auto-created native Integral helpers; `total` state_class and forecast/false-friend sensors out of MVP scope
 5. ADR-0005: Energy-balance decomposition — adaptive (residual / full-balance / import-only) derivation of house-served source energies from raw meters, so the aggregate invariant holds (mid-implementation discovery, HEA-21)
 6. ADR-0006: Late-arrival correction policy — retained-context ring reallocates coarse-device energy that lands past the finalisation watermark; Untracked derived (`total` state_class); whole-home total exposed; `state_reported` tracking (HEA-48)
+7. ADR-0007: Monetary cost sensors are `state_class: total`; Cost Savings is not cycle-metered (HEA-49)
+8. ADR-0008: Long-term statistics are the period-accounting substrate — a `utility_meter` is a *fixed-period* accumulator and cannot answer an arbitrary range, which is the question the product exists to answer; cycle meters are demoted to a day-to-day convenience, HEA-51's by-source sensors are never metered, and HEA ships its own Lovelace card (HEA-40)
 
 ### Epic 3 — Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -111,11 +113,30 @@ Presentation
 6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
 8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add — multi-select, never auto-onboarded (false-friend rule); candidates with an ineligible `state_class` are excluded outright (HEA-54). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility — dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
-9. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
+9. Pre-release hygiene arising from the 2026-07-28 review of the live instance:
+   a supported **reset of HEA totals** (HEA-57 — zero sensor baselines and engine
+   running totals, reset only HEA-*created* cycle meters, clear HEA's own
+   statistics), because a sensor introduced in a later version restores a zero
+   baseline while its siblings keep history (whole-home read 68.8 kWh against
+   250 kWh of parts on the live instance); **rounding published values**
+   (HEA-59 — states were recorded at 28 significant digits, ~1/min, mirrored by
+   every cycle meter); and **area inheritance** (HEA-58 — HEA's own devices carry
+   no area, so no room/floor roll-up is possible)
+10. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
 
-### Epic 5 — Dashboard & documentation
-1. Lovelace dashboard: devices-by-cost comparison + per-device detail + untracked share (consult HA best-practices skill)
-2. README per documentation standards (including a plain-language explanation of the allocation model and its known limitations — export opportunity cost, interval approximation)
+### Epic 5 — Presentation & documentation
+1. **HEA-shipped Lovelace card (HEA-50) — the flagship.** Date-range picker ×
+   device filter over long-term statistics: "from 20 May to 15 July these devices
+   cost x, would have cost y, saved z". Served by the integration itself (no HACS
+   dependency). The foundation for a family of shareable example views —
+   per-device comparison, a Sankey of cost flowing device → room → floor
+   (needs HEA-58's area inheritance), energy self-sufficiency (needs HEA-51).
+   Required because no core card accepts a user-driven date range with a device
+   filter (ADR-0008)
+2. Core-cards dashboard (HEA-25) — the **secondary**, zero-dependency day-to-day
+   view: devices-by-cost comparison + per-device detail + untracked share
+   (consult HA best-practices skill)
+3. README per documentation standards (including a plain-language explanation of the allocation model and its known limitations — export opportunity cost, interval approximation)
 
 ### Epic 6 — Dogfood on production instance
 1. Install and configure a diverse device set on homeassistant.example.net: 9 aircons (cycle-resetting), pool pump + water heaters (lifetime counters via Zigbee2MQTT), utility plug (cloud-polled Tuya), wall lights (power-only)
@@ -191,4 +212,9 @@ dependencies and can start as soon as Epic 1 lands.
 Per `PRD.md`: forecasting, optimisation, automation, scheduling recommendations.
 Additionally deferred: **export opportunity cost** (documented bias, backlog
 issue), tariff-integration adapters, devices with neither power nor energy
-data, custom Lovelace card, `total` state_class device sources.
+data, `total` state_class device sources.
+
+> The custom Lovelace card was previously listed here as out of scope ("only if
+> evidence demands it"). ADR-0008 moved it **into** scope as the flagship
+> presentation deliverable: core cards cannot express an arbitrary date range
+> with a device filter, which is the product's central question.
