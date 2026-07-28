@@ -23,8 +23,16 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigFlowResult
     from homeassistant.core import HomeAssistant
 
-_ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
-_POWER = {"unit_of_measurement": "W", "device_class": "power"}
+_ENERGY = {
+    "unit_of_measurement": "kWh",
+    "device_class": "energy",
+    "state_class": "total_increasing",
+}
+_POWER = {
+    "unit_of_measurement": "W",
+    "device_class": "power",
+    "state_class": "measurement",
+}
 
 
 def _entry(hass: HomeAssistant) -> MockConfigEntry:

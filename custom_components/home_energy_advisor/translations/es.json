@@ -122,7 +122,9 @@
         }
       },
       "error": {
-        "select_one_sensor": "Elige exactamente uno: un sensor de energía o uno de potencia, no ambos."
+        "select_one_sensor": "Elige exactamente uno: un sensor de energía o uno de potencia, no ambos.",
+        "energy_not_total_increasing": "Este sensor de energía debe ser un contador creciente (total_increasing). Un sensor neto o de medición se interpretaría como consumo e inflaría el coste.",
+        "power_not_measurement": "Este sensor de potencia debe indicar una medición instantánea (measurement). Un sensor de total no puede integrarse en energía correctamente."
       }
     }
   },
