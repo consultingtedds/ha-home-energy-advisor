@@ -53,7 +53,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
-    """Unload the config entry and its platforms."""
+    """Unload the config entry and its platforms.
+
+    Flushes the coordinator's in-flight accounting first, while the sensors still
+    exist, so they bank up to ~20 min of otherwise-discarded buckets into their
+    restore baseline before teardown — otherwise every restart and every
+    options/config change silently drops them (HEA-53).
+    """
+    coordinator = entry.runtime_data
+    if coordinator is not None:
+        coordinator.async_flush()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

@@ -508,3 +508,104 @@ def test_readings_from_unconfigured_entities_are_ignored() -> None:
 
     # Then — it is ignored, adding no phantom energy anywhere
     assert acc.totals().untracked.energy_kwh == Decimal(0)
+
+
+def test_finalising_prunes_superseded_prices_but_keeps_costs_correct() -> None:
+    # Given — the import price changes once, an hour into a steady run; left
+    # unpruned the price list would grow without bound and be rescanned from index
+    # zero on every finalised bucket (HEA-53)
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), Decimal("0.10"))
+    acc.record_price(at(60), Decimal("0.30"))
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+
+    # When — two hours of readings (house 1 kWh/interval, device 0.5) are finalised
+    # well past the second price change
+    for minute in range(5, 125, 5):
+        acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
+        acc.observe("sensor.guest_energy", at(minute), Decimal(minute) / 10)
+    acc.finalize(at(150))
+
+    # Then — the superseded first price is pruned (only the price active at the
+    # watermark and any later survive), yet the accounting still reflects both
+    # tariffs: 12 intervals of 0.5 kWh at 0.10 then 12 more at 0.30
+    assert len(acc._prices) == 1  # noqa: SLF001
+    guest = acc.totals().devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("12.0")
+    assert guest.actual_cost == Decimal("2.4")
+
+
+def test_flush_finalises_in_flight_buckets_so_they_can_be_banked() -> None:
+    # Given — an interval's readings are in but not yet past the lateness margin,
+    # so nothing has been finalised (a reload here would drop them)
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(11))  # < margin: still nothing allocated
+    assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
+
+    # When — the accountant is flushed, as the coordinator does on unload
+    acc.flush(at(11))
+
+    # Then — the in-flight interval is sealed and banked, so the sensors' restore
+    # baseline captures it instead of losing ~20 min of accounting (HEA-53)
+    guest = acc.totals().devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("0.6")
+    assert guest.actual_cost == Decimal("0.18")
+
+
+def test_a_bucket_finalised_before_any_price_is_logged_as_zero_priced() -> None:
+    # Given — grid import and a device, but no price has ever been recorded
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+
+    # When — an interval is finalised while the price list is still empty
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(30))
+
+    # Then — energy is still tracked and costed at zero (unchanged), but the era is
+    # now explainable: a ZERO_PRICED decision is logged on the import source so the
+    # diagnostics download accounts for the zero-cost early bucket (HEA-53)
+    guest = acc.totals().devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("0.6")
+    assert guest.actual_cost == Decimal(0)
+    decisions = acc.source_diagnostics()["sensor.grid_import"].recent_decisions
+    assert [d.reason for d in decisions].count(DecisionReason.ZERO_PRICED) == 1
+
+
+def test_zero_priced_is_logged_once_then_never_after_a_price_arrives() -> None:
+    # Given — a home that finalises several buckets before its first price
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    for minute in range(5, 30, 5):
+        acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
+    acc.finalize(at(40))  # several zero-priced buckets in one go
+
+    # When — a price finally arrives and the run continues
+    acc.record_price(at(40), PEAK)
+    for minute in range(30, 60, 5):
+        acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
+    acc.finalize(at(90))
+
+    # Then — the cold-start era is marked exactly once, not once per bucket, and not
+    # again once pricing is known
+    decisions = acc.source_diagnostics()["sensor.grid_import"].recent_decisions
+    assert [d.reason for d in decisions].count(DecisionReason.ZERO_PRICED) == 1
