@@ -54,6 +54,16 @@ _HOUSE_CONF_KEYS = (
     CONF_HOUSE_CONSUMPTION_ENTITY,
 )
 _SOURCE_KEY = {"energy": CONF_ENERGY_ENTITY, "power": CONF_POWER_ENTITY}
+# The state_class the engine's reset semantics require of each device source: a
+# total_increasing counter for energy (a fall is read as a new cycle, so a `total`
+# net counter or an unlabelled forecast would book phantom energy), and an
+# instantaneous measurement for power (integrated to energy by a helper). Any
+# other class is provably mis-accounted, so discovery never suggests one and the
+# add flow rejects a present-but-wrong one (ADR-0004; HEA-54).
+REQUIRED_STATE_CLASS = {
+    CONF_ENERGY_ENTITY: "total_increasing",
+    CONF_POWER_ENTITY: "measurement",
+}
 # Trailing words trimmed from a suggested device name — the concept, not the device.
 _NAME_SUFFIXES = (" energy", " power", " consumption")
 # Substrings that mark a sensor as a likely non-device; offered, but sorted last.
@@ -105,12 +115,44 @@ def _candidate(
     kind = _energy_or_power(hass, entity)
     if kind is None:
         return None
+    source_key = _SOURCE_KEY[kind]
+    if not is_eligible_source(hass, entity.entity_id, source_key):
+        return None
     return DeviceCandidate(
         entity_id=entity.entity_id,
         name=_suggested_name(devices, entity),
-        source_key=_SOURCE_KEY[kind],
+        source_key=source_key,
         likely_false_friend=_looks_like_a_false_friend(entity),
     )
+
+
+def is_eligible_source(hass: HomeAssistant, entity_id: str, source_key: str) -> bool:
+    """Whether a sensor's state_class exactly matches its source's requirement.
+
+    Strict — an absent state_class fails too. Discovery uses it so it never
+    *suggests* a source the engine would mis-account; the add flow is more lenient
+    on an absent class, where the pick is an explicit user choice (HEA-54).
+    """
+    return source_state_class(hass, entity_id) == REQUIRED_STATE_CLASS[source_key]
+
+
+def source_state_class(hass: HomeAssistant, entity_id: str) -> str | None:
+    """A sensor's state_class, from its live state, else the entity registry.
+
+    Discovery inspects registry entries that often have no live state, so the
+    registry ``capabilities`` (where the sensor platform records state_class) is
+    the fallback when the entity is unavailable or not yet in the state machine.
+    """
+    if (state := hass.states.get(entity_id)) is not None:
+        live = state.attributes.get("state_class")
+        if isinstance(live, str):
+            return live
+    entity = er.async_get(hass).async_get(entity_id)
+    if entity is not None and entity.capabilities:
+        stored = entity.capabilities.get("state_class")
+        if isinstance(stored, str):
+            return stored
+    return None
 
 
 def _energy_or_power(hass: HomeAssistant, entity: RegistryEntry) -> str | None:

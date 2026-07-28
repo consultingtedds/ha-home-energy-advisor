@@ -49,6 +49,33 @@ def _register_device_sensors(hass: HomeAssistant) -> None:
         "40",
         {"device_class": "power", "state_class": "measurement"},
     )
+    # Sources with a present-but-wrong state_class the engine would mis-account,
+    # so the manual add flow rejects them (HEA-54): a net counter that can fall
+    # (read as a reset → phantom energy), an energy sensor reporting an
+    # instantaneous measurement, and a power sensor that is a running total.
+    hass.states.async_set(
+        "sensor.solar_net_energy",
+        "3.0",
+        {"device_class": "energy", "state_class": "total"},
+    )
+    hass.states.async_set(
+        "sensor.house_power_as_energy",
+        "800",
+        {"device_class": "energy", "state_class": "measurement"},
+    )
+    hass.states.async_set(
+        "sensor.grid_power_running_total",
+        "1200",
+        {"device_class": "power", "state_class": "total_increasing"},
+    )
+    # An unlabelled counter — device_class energy, no state_class at all. Manual
+    # add allows it (an explicit pick of an unlabelled sensor is the user's call);
+    # discovery is stricter and would not suggest it (HEA-54).
+    hass.states.async_set(
+        "sensor.homebrew_boiler_energy",
+        "7.0",
+        {"device_class": "energy"},
+    )
 
 
 async def _start_add(hass: HomeAssistant, entry: MockConfigEntry) -> str:
@@ -142,6 +169,85 @@ async def test_adding_a_device_with_no_sensor_is_rejected(hass: HomeAssistant) -
     assert result["errors"] == {"base": "select_one_sensor"}
 
 
+async def test_adding_a_net_energy_counter_is_rejected(hass: HomeAssistant) -> None:
+    # Given — the add-device form
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    flow_id = await _start_add(hass, entry)
+
+    # When — a `total` (net) energy counter is chosen: it can fall, which the
+    # engine would read as a cycle reset and book as phantom energy
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {CONF_NAME: "Solar Net", CONF_ENERGY_ENTITY: "sensor.solar_net_energy"},
+    )
+
+    # Then — it is rejected with a translated error naming the required class
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "energy_not_total_increasing"}
+
+
+async def test_adding_an_energy_sensor_reporting_measurement_is_rejected(
+    hass: HomeAssistant,
+) -> None:
+    # Given — the add-device form
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    flow_id = await _start_add(hass, entry)
+
+    # When — an energy sensor that is really an instantaneous measurement is chosen
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {CONF_NAME: "House Power", CONF_ENERGY_ENTITY: "sensor.house_power_as_energy"},
+    )
+
+    # Then — rejected: the engine needs a cumulative counter, not a measurement
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "energy_not_total_increasing"}
+
+
+async def test_adding_a_power_sensor_that_is_a_running_total_is_rejected(
+    hass: HomeAssistant,
+) -> None:
+    # Given — the add-device form
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    flow_id = await _start_add(hass, entry)
+
+    # When — a "power" sensor that is actually a running total is chosen: its
+    # Integral helper would integrate a cumulative value, not a rate
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {CONF_NAME: "Grid", CONF_POWER_ENTITY: "sensor.grid_power_running_total"},
+    )
+
+    # Then — rejected with the power-specific error
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "power_not_measurement"}
+
+
+async def test_adding_an_unlabelled_energy_counter_is_allowed(
+    hass: HomeAssistant,
+) -> None:
+    # Given — a device whose energy counter sets no state_class at all (a custom
+    # template sensor, say). Discovery would not suggest it, but an explicit manual
+    # pick is the user's call, so the add flow allows it (HEA-54).
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    flow_id = await _start_add(hass, entry)
+
+    # When — the unlabelled counter is chosen explicitly
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {CONF_NAME: "Boiler", CONF_ENERGY_ENTITY: "sensor.homebrew_boiler_energy"},
+    )
+
+    # Then — the device is created; only a present-but-wrong class is rejected
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    subentry = next(iter(entry.subentries.values()))
+    assert subentry.data[CONF_ENERGY_ENTITY] == "sensor.homebrew_boiler_energy"
+
+
 def _entry_with_device(hass: HomeAssistant) -> tuple[MockConfigEntry, str]:
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -220,3 +326,28 @@ async def test_reconfigure_device_still_requires_exactly_one_sensor(
     # Then — the same validation rejects it
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "select_one_sensor"}
+
+
+async def test_reconfigure_device_rejects_a_wrong_state_class(
+    hass: HomeAssistant,
+) -> None:
+    # Given — an existing device being reconfigured
+    _register_device_sensors(hass)
+    entry, subentry_id = _entry_with_device(hass)
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_DEVICE),
+        context={"source": SOURCE_RECONFIGURE, "subentry_id": subentry_id},
+    )
+
+    # When — the source is switched to a net counter
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Coarse Step Aircon",
+            CONF_ENERGY_ENTITY: "sensor.solar_net_energy",
+        },
+    )
+
+    # Then — the state_class guard applies on reconfigure too, not only on add
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "energy_not_total_increasing"}
