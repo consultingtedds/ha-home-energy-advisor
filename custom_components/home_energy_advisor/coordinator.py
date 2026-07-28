@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_state_report_event,
@@ -43,6 +44,7 @@ from .const import (
     CONF_SOLAR_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
+    SIGNAL_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
 )
 from .engine.accountant import Accountant, SourceRole, Totals
@@ -190,6 +192,22 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         restore baseline on removal, so nothing is lost across the reload (HEA-53).
         """
         self._accountant.flush(dt_util.utcnow())
+        self.async_set_updated_data(self._accountant.totals())
+
+    @callback
+    def async_reset_totals(self) -> None:
+        """Rebases this household's accumulated totals to zero (HEA-57).
+
+        Both halves are needed. Clearing only the engine's running totals leaves
+        every sensor reading the restore baseline it adds on top; clearing only
+        the baselines leaves the current run to be re-added on the next publish.
+        The signal goes out before the publish so the sensors are already rebased
+        when they recompute.
+        """
+        self._accountant.reset_totals()
+        async_dispatcher_send(
+            self.hass, SIGNAL_RESET_TOTALS.format(entry_id=self._entry.entry_id)
+        )
         self.async_set_updated_data(self._accountant.totals())
 
     @callback
