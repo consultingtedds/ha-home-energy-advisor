@@ -25,6 +25,7 @@ from homeassistant.helpers.event import (
     async_track_time_interval,
 )
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.util import dt as dt_util
 
 from . import issues
 from .const import (
@@ -178,6 +179,18 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     @callback
     def _handle_state_report(self, event: Event[EventStateReportedData]) -> None:
         self._feed_energy(event.data["entity_id"], event.data["new_state"])
+
+    @callback
+    def async_flush(self) -> None:
+        """Seal in-flight accounting and publish once, before the entry unloads.
+
+        A reload — restart, or any options/config change — otherwise discards up to
+        ~20 min of unfinalised buckets. Finalising them here and publishing while
+        the sensors still exist lets each RestoreSensor bank the totals into its
+        restore baseline on removal, so nothing is lost across the reload (HEA-53).
+        """
+        self._accountant.flush(dt_util.utcnow())
+        self.async_set_updated_data(self._accountant.totals())
 
     @callback
     def _handle_tick(self, now: datetime) -> None:
