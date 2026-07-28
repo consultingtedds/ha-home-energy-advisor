@@ -160,6 +160,8 @@ class Accountant:
             entity: device for device, entity in device_energy_entities.items()
         }
         self._configured = set(house_sources)
+        self._import_entity = house_sources.get(SourceRole.GRID_IMPORT)
+        self._cold_start_logged = False
         self._sources: dict[str, CumulativeEnergySource] = {}
         self._raw: dict[datetime, dict[SourceRole, Decimal]] = {}
         self._draws: dict[datetime, dict[str, Decimal]] = {}
@@ -201,6 +203,18 @@ class Accountant:
             self._finalize_bucket(start)
             self._watermark = start
         self._evict_stale()
+        self._prune_prices()
+
+    def flush(self, now: datetime) -> None:
+        """Finalises all in-flight intervals, sealing the partial current bucket.
+
+        Called on unload (restart or any options/config change): finalising past
+        the lateness margin banks up to ~20 min of otherwise-discarded accounting
+        so the sensors capture it into their restore baseline. The trade-off — a
+        bucket sealed here can no longer receive late portions after the reload, and
+        the rebuilt runtime's retention ring starts empty — is accepted in ADR-0006.
+        """
+        self.finalize(now + self._lateness + BUCKET)
 
     def totals(self) -> Totals:
         """Returns the since-startup running totals per device, home and Untracked.
@@ -299,6 +313,8 @@ class Accountant:
         retained.draw += kwh
 
     def _finalize_bucket(self, start: datetime) -> None:
+        if not self._prices:
+            self._note_zero_priced(start)
         raw = self._raw.pop(start, {})
         draws = self._draws.pop(start, {})
         served = self._decompose(raw)
@@ -335,6 +351,39 @@ class Accountant:
         horizon = self._watermark - self._retention
         for start in [start for start in self._retained if start < horizon]:
             del self._retained[start]
+
+    def _prune_prices(self) -> None:
+        """Drops price entries a future bucket can no longer need (HEA-53).
+
+        Every interval left to finalise starts after the watermark, so the only
+        price at or before the watermark that can still apply is the newest one;
+        anything older is superseded. Without this the list grows unbounded and is
+        rescanned from index zero per bucket — pathological for a spot tariff.
+        """
+        if self._watermark is None:
+            return
+        keep_from = 0
+        for index, (when, _price) in enumerate(self._prices):
+            if when > self._watermark:
+                break
+            keep_from = index
+        if keep_from > 0:
+            del self._prices[:keep_from]
+
+    def _note_zero_priced(self, start: datetime) -> None:
+        """Log, once, that finalising began before any import price was known.
+
+        Attached to the price-bearing import source's decision log so diagnostics
+        can explain the zero-cost early buckets. Logged a single time per
+        cold-start: once a price is recorded the list never empties again (pruning
+        keeps at least one), so this cannot re-fire.
+        """
+        if self._cold_start_logged or self._import_entity is None:
+            return
+        source = self._sources.get(self._import_entity)
+        if source is not None:
+            source.note_zero_priced(start)
+            self._cold_start_logged = True
 
     def _track_overdraw(self, served: _Served, draws: Mapping[str, Decimal]) -> None:
         consumption = served.grid + served.solar + served.battery

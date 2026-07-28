@@ -90,3 +90,24 @@ makes this tolerable rather than load-bearing.
 
 Supersedes the docstring-only drop policy. Relates to ADR-0002 (allocation),
 ADR-0005 (decomposition), and ADR-0003 (Untracked entity contract).
+
+## Update — flush-on-unload delivered (2026-07-28, HEA-53)
+
+The Consequences above noted that a restart still discards in-flight
+(unfinalised) buckets and deferred the fix to HEA-53. That is now done. On unload
+— a restart, or **any** options/config change, since the update listener reloads
+the entry — the coordinator flushes: it finalises past the lateness margin
+(`finalize(now + lateness + BUCKET)`) and publishes once **before** the sensor
+platform is torn down, so each `RestoreSensor` banks the freshly finalised totals
+into its restore baseline. Up to ~20 min × all devices of accounting that used to
+die on every reload now survives it.
+
+**Trade-off (accepted).** Flushing seals the partial *current* bucket early, so a
+device portion that would have arrived for it *after* the reload can no longer
+correct it — and the rebuilt runtime's retention ring (decision 1) starts empty,
+holding no pre-reload buckets. In exchange no whole bucket is lost. With the
+`state_reported` subscription (decision 5) keeping delta spans at the poll
+interval, the uncorrectable tail of a flushed partial bucket is small; a reload is
+also far rarer than the coarse-step cadence the ring exists for. Net: flushing
+banks far more than the early seal forfeits. Only ever *increases* device energy,
+so `total_increasing` Energy Used stays monotonic across the reload.

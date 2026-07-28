@@ -141,6 +141,40 @@ async def test_setup_creates_the_coordinator_and_unload_tears_it_down(
     assert entry.state is ConfigEntryState.NOT_LOADED
 
 
+async def test_unload_flushes_in_flight_accounting_before_teardown(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration with an interval's readings in, but not yet past
+    # the lateness margin, so the finalisation timer has banked nothing
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "0.6", _ENERGY)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    subentry_id = next(iter(entry.subentries))
+    assert coordinator.data.devices[subentry_id].energy_kwh == Decimal(0)
+
+    # When — the entry unloads (a restart, or any options/config change)
+    freezer.move_to(datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the in-flight interval was flushed and published before teardown, so
+    # the sensors banked it into their restore baseline rather than dropping it
+    assert entry.state is ConfigEntryState.NOT_LOADED
+    assert coordinator.data.devices[subentry_id].energy_kwh == Decimal("0.6")
+
+
 async def test_price_changes_and_bad_readings_are_handled(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

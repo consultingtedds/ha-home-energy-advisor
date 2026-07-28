@@ -69,7 +69,9 @@ class DecisionReason(Enum):
     reading was gated out (no prior baseline, an unavailable source, a stale or
     duplicate timestamp, or a counter that simply did not move). ``DROPPED_LATE``
     is logged not per reading but per portion the accountant could not place: a
-    delta reaching a bucket older than the retention ring (HEA-48).
+    delta reaching a bucket older than the retention ring (HEA-48). ``ZERO_PRICED``
+    is likewise accountant-level: a bucket finalised before any import price was
+    known, so its energy is costed at zero (logged once per cold-start, HEA-53).
     """
 
     COUNTED = "counted"
@@ -79,6 +81,7 @@ class DecisionReason(Enum):
     STALE = "stale"
     NO_MOVEMENT = "no_movement"
     DROPPED_LATE = "dropped_late"
+    ZERO_PRICED = "zero_priced"
 
 
 @dataclass(frozen=True)
@@ -171,6 +174,15 @@ class CumulativeEnergySource:
         here so it rides the same per-source decision log the diagnostics read.
         """
         self._log(at, DecisionReason.DROPPED_LATE, kwh)
+
+    def note_zero_priced(self, at: datetime) -> None:
+        """Record that a bucket finalised before any import price was known (HEA-53).
+
+        Costing it at zero is deliberate — the price for that instant is genuinely
+        unknowable in real time — but logging it here, on the price-bearing import
+        source, lets the diagnostics download explain the zero-cost early bucket.
+        """
+        self._log(at, DecisionReason.ZERO_PRICED, None)
 
     def recent_decisions(self) -> tuple[Decision, ...]:
         """The bounded log of what the engine did with recent readings."""
