@@ -103,14 +103,14 @@ Presentation
 5. Golden-master tests: fixtures from the July 2026 exploration; energy (107.75 kWh) and naive (€19.30) figures unchanged; allocated-cost expectations recomputed under the new model; binary-gate €7.63 retained as reference only; invariant tests (Σ allocations = bucket totals)
 
 ### Epic 4 — HA integration layer
-1. Config flow: house-level inputs pre-filled from Energy Dashboard preferences (solar/battery optional), price entity, currency, per-device energy-or-power sensor selection; options flow
+1. Config flow: house-level inputs pre-filled from Energy Dashboard preferences (solar/battery optional), price entity, currency, per-device energy-or-power sensor selection — validated for an eligible `state_class` (a net/forecast/measurement counter the engine would mis-account is rejected; absent is allowed on an explicit manual pick, HEA-54); options flow
 2. Feasibility spike + implementation: programmatic creation of native utility_meter / Integral helpers (fallback: internal implementation, recorded in ADR-0004)
-3. Runtime wiring: listeners/coordinator connecting engine to HA state machine
+3. Runtime wiring: listeners/coordinator connecting engine to HA state machine. On unload the coordinator flushes in-flight buckets so a reload/restart banks up to ~20 min of accounting into the sensors' restore baseline rather than dropping it; the engine prunes superseded prices and logs a `ZERO_PRICED` decision for cold-start buckets finalised before any price (HEA-53)
 4. Per-device + Untracked remainder sensors (×4) with restore-on-restart. Untracked is derived (whole-home − Σ devices) and a monotonic whole-home aggregate is exposed (running totals only); late-arriving coarse-device energy is reallocated into a retained-context ring rather than dropped (HEA-48 / ADR-0006)
 5. Cycle totals via auto-created utility_meter helpers (daily + monthly default; weekly/quarterly/yearly global opt-in)
 6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
-8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add — multi-select, never auto-onboarded (false-friend rule). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility — dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
+8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add — multi-select, never auto-onboarded (false-friend rule); candidates with an ineligible `state_class` are excluded outright (HEA-54). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility — dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
 9. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
 
 ### Epic 5 — Dashboard & documentation
