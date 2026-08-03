@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
 
+from . import reset
 from .const import CONF_CYCLE_METERS, CONF_INTEGRAL_HELPERS
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
@@ -35,6 +36,9 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     """Set up Home Energy Advisor: build the coordinator and start accounting."""
+    # Registered here rather than in async_setup: the reset action needs a loaded
+    # entry to act on, and re-registering the same handler is a no-op (HEA-57).
+    reset.async_register(hass)
     power_energy_entities = await async_sync_power_device_helpers(hass, entry)
     coordinator = HeaCoordinator(
         hass, entry, power_energy_entities=power_energy_entities

@@ -60,7 +60,8 @@
         "title": "Home Energy Advisor",
         "menu_options": {
           "cycles": "Cycle totals",
-          "discover_devices": "Discover devices to track"
+          "discover_devices": "Discover devices to track",
+          "reset_totals": "Reset all totals to zero"
         }
       },
       "cycles": {
@@ -78,10 +79,15 @@
         "data": {
           "discovered_devices": "Devices to add"
         }
+      },
+      "reset_totals": {
+        "title": "Reset all totals to zero",
+        "description": "This starts every figure again from zero: energy, costs and savings for each device, the Untracked remainder and the whole home, along with their daily and monthly totals. The recorded history behind them is cleared too, so past periods can no longer be looked up. **This cannot be undone.** Your devices and settings are untouched, as is any helper you created yourself. Submit to reset, or go back to leave everything as it is."
       }
     },
     "abort": {
-      "no_candidates": "No untracked energy or power sensors were found to add."
+      "no_candidates": "No untracked energy or power sensors were found to add.",
+      "reset_totals_done": "Every total has been reset to zero. Accounting continues from here."
     }
   },
   "config_subentries": {
@@ -166,6 +172,26 @@
     "negative_remainder": {
       "title": "Tracked devices are drawing more than the house consumes",
       "description": "For over an hour, the energy attributed to your tracked devices has exceeded the household total. This usually means a device sensor is double-counted, or a house-level input is wrong. The Untracked figure is held at zero so costs still add up, but check your device and house-level sensor selections."
+    }
+  },
+  "services": {
+    "reset_totals": {
+      "name": "Reset totals",
+      "description": "Starts every Home Energy Advisor figure again from zero and clears the recorded history behind them. Cannot be undone.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Household",
+          "description": "The Home Energy Advisor configuration whose totals to reset."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "reset_unknown_entry": {
+      "message": "No Home Energy Advisor configuration was found with the id {entry_id}."
+    },
+    "reset_entry_not_loaded": {
+      "message": "That Home Energy Advisor configuration is not loaded, so its totals cannot be reset. Try again once it has started."
     }
   }
 }

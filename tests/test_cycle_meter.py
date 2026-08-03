@@ -33,6 +33,7 @@ from custom_components.home_energy_advisor.const import (
 )
 from custom_components.home_energy_advisor.cycle_meter import (
     async_ensure_utility_meter,
+    async_reset_cycle_meters,
     utility_meter_output_sensor,
 )
 from custom_components.home_energy_advisor.helper_ownership import owned_helper
@@ -362,3 +363,81 @@ async def test_a_user_deleted_cycle_meter_is_recreated_and_raises_a_repair(
     assert len(hass.config_entries.async_entries("utility_meter")) == 12
     issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_CYCLE_HELPER_RECREATED)
     assert issue is not None
+
+
+async def _accumulating_meter(
+    hass: HomeAssistant, source: str, *, created: bool
+) -> tuple[MockConfigEntry, str]:
+    """A net-consumption meter holding €0.36, owned with the given provenance."""
+    hass.states.async_set(source, "0", _SAVINGS)
+    meter_id = await async_ensure_utility_meter(
+        hass,
+        name="Coarse Step Aircon Actual Cost Daily",
+        source_entity=source,
+        cycle="daily",
+        net_consumption=True,
+    )
+    await hass.async_block_till_done()
+    hass.states.async_set(source, "0.36", _SAVINGS)
+    await hass.async_block_till_done()
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_CYCLE_METERS: {
+                f"{source}|daily": owned_helper(meter_id, created=created)
+            },
+        },
+    )
+    entry.add_to_hass(hass)
+    output = utility_meter_output_sensor(hass, meter_id)
+    assert output is not None
+    return entry, output
+
+
+async def test_reset_calibrates_a_created_cycle_meter_to_zero(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a cycle meter that has accumulated €0.36 from its source
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    source = "sensor.coarse_step_aircon_actual_cost"
+    entry, output = await _accumulating_meter(hass, source, created=True)
+    state = hass.states.get(output)
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.36")
+
+    # When — the household is rebased: the source sensor drops to zero, then the
+    # meters are reset (the order the reset action uses)
+    hass.states.async_set(source, "0", _SAVINGS)
+    await hass.async_block_till_done()
+    await async_reset_cycle_meters(hass, entry)
+    await hass.async_block_till_done()
+
+    # Then — the meter reads zero. A net-consumption meter *subtracts* the drop to
+    # zero, so leaving it uncalibrated would strand it at -0.36 — and calibrating
+    # before the drop had landed would do the same
+    state = hass.states.get(output)
+    assert state is not None
+    assert Decimal(state.state) == Decimal(0)
+
+
+async def test_reset_leaves_an_adopted_cycle_meter_alone(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a meter the user already had over the source, which HEA merely
+    # adopted rather than created (HEA-52)
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    source = "sensor.coarse_step_aircon_actual_cost"
+    entry, output = await _accumulating_meter(hass, source, created=False)
+
+    # When — the household's totals are rebased
+    await async_reset_cycle_meters(hass, entry)
+    await hass.async_block_till_done()
+
+    # Then — the user's own meter is untouched: a rebase of HEA's figures is no
+    # licence to zero someone else's helper
+    state = hass.states.get(output)
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.36")

@@ -49,6 +49,7 @@ from .discovery import (
     async_discover_candidates,
     source_state_class,
 )
+from .reset import async_reset_totals
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -285,9 +286,10 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
         self,
         user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA menu step signature
     ) -> ConfigFlowResult:
-        """Offer the two options branches."""
+        """Offer the options branches."""
         return self.async_show_menu(
-            step_id="init", menu_options=["cycles", "discover_devices"]
+            step_id="init",
+            menu_options=["cycles", "discover_devices", "reset_totals"],
         )
 
     async def async_step_cycles(
@@ -307,6 +309,23 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
             }
         )
         return self.async_show_form(step_id="cycles", data_schema=schema)
+
+    async def async_step_reset_totals(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Confirm, then rebase every accumulated figure to zero (HEA-57).
+
+        The empty schema is the confirmation: the form's translated text explains
+        what is about to be destroyed, and only submitting it does the work. The
+        flow aborts rather than creating an entry, because the options are
+        unchanged and rewriting them would reload the entry for nothing.
+        """
+        if user_input is None:
+            return self.async_show_form(
+                step_id="reset_totals", data_schema=vol.Schema({})
+            )
+        await async_reset_totals(self.hass, self.config_entry)
+        return self.async_abort(reason="reset_totals_done")
 
     async def async_step_discover_devices(
         self, user_input: dict[str, Any] | None = None
