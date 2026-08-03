@@ -12,6 +12,10 @@ restart (see ``engine/accountant.py``). Each sensor is therefore a
 ``RestoreSensor``: on startup it restores its last published value as a baseline
 and adds the runtime's running total on top, so ``total_increasing`` stays
 continuous across restarts without the engine persisting anything.
+
+This module is also where a figure stops being an accumulator and becomes a
+recorded Home Assistant state, so it is where rounding belongs — see
+``HeaCostSensor.native_value`` (HEA-59).
 """
 
 from __future__ import annotations
@@ -68,6 +72,15 @@ _WHOLE_HOME_KEY = WHOLE_HOME_KEY
 # already (ADR-0007), so they need no per-key remap.
 _UNTRACKED_TOTAL_CONCEPTS = frozenset({"energy_used"})
 
+# Precision at which a figure becomes a Home Assistant state (HEA-59). Publishing
+# the accumulator's full Decimal wrote 28-significant-digit strings to the recorder
+# roughly once a minute, mirrored by every cycle meter. Both limits sit far below
+# anything a reading can mean — 1 mWh, and a hundredth of a cent — and below the
+# display precision above, so nothing a user sees changes. The engine's own
+# accumulators keep full precision; this is only the presentation boundary.
+_ENERGY_PRECISION = 6
+_MONEY_PRECISION = 4
+
 
 def _concepts_for(device_key: str) -> tuple[HeaSensorDescription, ...]:
     """The concept descriptions for a device key, remapping Untracked's to total."""
@@ -86,6 +99,7 @@ class HeaSensorDescription(SensorEntityDescription):
     """A cost-sensor concept plus how to read it from a device's totals."""
 
     value_fn: Callable[[DeviceTotals], Decimal]
+    publish_precision: int
 
 
 _CONCEPTS: tuple[HeaSensorDescription, ...] = (
@@ -96,6 +110,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=3,
+        publish_precision=_ENERGY_PRECISION,
         value_fn=lambda totals: totals.energy_kwh,
     ),
     # Monetary sensors are `total`, never `total_increasing`: Home Assistant
@@ -109,6 +124,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
         value_fn=lambda totals: totals.actual_cost,
     ),
     HeaSensorDescription(
@@ -117,6 +133,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
         value_fn=lambda totals: totals.naive_cost,
     ),
     HeaSensorDescription(
@@ -125,6 +142,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
         value_fn=lambda totals: totals.cost_savings,
     ),
 )
@@ -239,6 +257,7 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         self._attr_unique_id = f"{entry.entry_id}_{device_key}_{description.key}"
         if description.device_class == SensorDeviceClass.MONETARY:
             self._attr_native_unit_of_measurement = currency
+        self._quantum = Decimal(1).scaleb(-description.publish_precision)
         self._baseline = Decimal(0)
 
     async def async_added_to_hass(self) -> None:
@@ -266,10 +285,23 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
 
     @property
     def native_value(self) -> Decimal:
-        """The restored baseline plus the runtime's since-startup running total."""
+        """The restored baseline plus the running total, rounded for publication.
+
+        Rounding happens here and only here: an accumulator is kept at full
+        Decimal precision (docs/CRITICAL_INSTRUCTIONS.md) and rounded when it is
+        presented, and handing a value to Home Assistant *is* presentation — the
+        state is recorded, roughly once a minute, for every HEA entity and every
+        cycle meter mirroring one (HEA-59).
+
+        Because this published state is also what a restart restores as the
+        baseline, rounding bounds the error a restart can introduce to half an
+        ulp — not cumulative within a run, and immaterial at 1 mWh. Rounding is
+        half-even, so repeated restarts do not bias the total in either direction,
+        and monotonic, so a `total_increasing` figure can never step backwards.
+        """
         totals = self._device_totals()
         running = self.entity_description.value_fn(totals) if totals else Decimal(0)
-        return self._baseline + running
+        return (self._baseline + running).quantize(self._quantum)
 
     def _device_totals(self) -> DeviceTotals | None:
         data = self.coordinator.data
