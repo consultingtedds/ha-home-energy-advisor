@@ -38,6 +38,12 @@ CONF_INTEGRAL_HELPERS: Final = "integral_helpers"
 # reconciled away when a device (and so its source sensors) is removed (HEA-23).
 CONF_CYCLE_METERS: Final = "cycle_meters"
 
+# The supported reset of a household's accumulated totals (HEA-57). An action
+# rather than a button entity: rebasing is irreversible, and a button on a device
+# page is one accidental tap away with no confirmation.
+SERVICE_RESET_TOTALS: Final = "reset_totals"
+ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
+
 # Dispatcher signal telling a household's sensors to drop the restore baseline
 # they add on top of the runtime's running total, when those totals are rebased
 # to zero (HEA-57). Formatted per config entry so one household's reset never
