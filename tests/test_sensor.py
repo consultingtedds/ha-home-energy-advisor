@@ -498,3 +498,99 @@ async def test_reset_leaves_the_split_reconciling_as_it_accumulates_again(
     untracked = energy("sensor.untracked_energy_devices_energy_used")
     assert guest > 0
     assert guest + untracked == energy("sensor.whole_home_energy_used")
+
+
+async def _run_a_repeating_interval(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Bank one bucket holding a repeating decimal, to make precision observable.
+
+    Both meters move once over a 7-minute span, so the ledger spreads 5/7 of each
+    delta into the 22:00 bucket and 2/7 into the 22:05 one. Time then advances far
+    enough to finalise only the first, leaving totals that recur forever — which is
+    exactly how the live instance came to publish 28-significant-digit states.
+    """
+    freezer.move_to(datetime(2026, 7, 8, 22, 7, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "0.5", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 23, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+
+def _decimal_places(state: str) -> int:
+    # A non-int exponent means NaN or Infinity, which no cost sensor may publish.
+    exponent = Decimal(state).as_tuple().exponent
+    assert isinstance(exponent, int), f"not a finite decimal: {state}"
+    return max(0, -exponent)
+
+
+async def test_published_values_are_rounded_to_the_publishing_precision(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — an interval whose figures recur forever is accounted
+    await _run_a_repeating_interval(hass, freezer)
+
+    # Then — no sensor publishes beyond its precision: 6 dp for energy (1 mWh),
+    # 4 dp for money. The engine keeps full Decimal precision; this is the
+    # boundary where a value becomes a recorded Home Assistant state (HEA-59)
+    registry = er.async_get(hass)
+    published = 0
+    for entity in registry.entities.values():
+        if entity.platform != DOMAIN or entity.translation_key not in _CONCEPTS:
+            continue
+        state = hass.states.get(entity.entity_id)
+        assert state is not None
+        limit = 6 if entity.translation_key == "energy_used" else 4
+        assert _decimal_places(state.state) <= limit, (
+            f"{entity.entity_id} published {state.state}"
+        )
+        published += 1
+    assert published == 16
+
+    # And — the rounded figures are the correctly-rounded ones. The guest device
+    # drew 5/7 of 0.5 kWh, at 5/7 of 1.0 kWh imported at €0.30
+    guest_energy = hass.states.get("sensor.guest_bedroom_aircon_energy_used")
+    guest_cost = hass.states.get("sensor.guest_bedroom_aircon_actual_cost")
+    assert guest_energy is not None
+    assert guest_cost is not None
+    assert Decimal(guest_energy.state) == Decimal("0.357143")
+    assert Decimal(guest_cost.state) == Decimal("0.1071")
+
+
+async def test_a_restart_does_not_drift_the_running_total(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a sensor restoring the rounded value a previous run published, which
+    # is what a restart really hands back (the published state is the baseline)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entity_id = "sensor.guest_bedroom_aircon_energy_used"
+    restored = SensorExtraStoredData(
+        native_value=Decimal("0.357143"), native_unit_of_measurement="kWh"
+    )
+    mock_restore_cache_with_extra_data(
+        hass, ((State(entity_id, "0.357143"), restored.as_dict()),)
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the same repeating interval is accounted again after the restart
+    await _run_a_repeating_interval(hass, freezer)
+
+    # Then — the total matches rounding the full-precision sum (2 x 5/7 x 0.5 kWh
+    # = 0.714285714...), so the restart introduced no drift beyond half an ulp
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.714286")
