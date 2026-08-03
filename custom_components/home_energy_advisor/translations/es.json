@@ -60,7 +60,8 @@
         "title": "Home Energy Advisor",
         "menu_options": {
           "cycles": "Totales por ciclo",
-          "discover_devices": "Descubrir dispositivos para seguir"
+          "discover_devices": "Descubrir dispositivos para seguir",
+          "reset_totals": "Poner todos los totales a cero"
         }
       },
       "cycles": {
@@ -78,10 +79,15 @@
         "data": {
           "discovered_devices": "Dispositivos a añadir"
         }
+      },
+      "reset_totals": {
+        "title": "Poner todos los totales a cero",
+        "description": "Esto reinicia desde cero todas las cifras: energía, costes y ahorro de cada dispositivo, el resto Sin seguimiento y el total del hogar, junto con sus totales diarios y mensuales. También se borra el histórico registrado, así que los periodos pasados ya no podrán consultarse. **Esto no se puede deshacer.** Tus dispositivos y ajustes no se tocan, ni tampoco los ayudantes que hayas creado tú. Envía para reiniciar, o vuelve atrás para dejarlo todo como está."
       }
     },
     "abort": {
-      "no_candidates": "No se encontraron sensores de energía o potencia sin seguimiento para añadir."
+      "no_candidates": "No se encontraron sensores de energía o potencia sin seguimiento para añadir.",
+      "reset_totals_done": "Todos los totales se han puesto a cero. La contabilidad continúa desde aquí."
     }
   },
   "config_subentries": {
@@ -166,6 +172,26 @@
     "negative_remainder": {
       "title": "Los dispositivos monitorizados consumen más que la casa",
       "description": "Durante más de una hora, la energía atribuida a tus dispositivos monitorizados ha superado el total del hogar. Esto suele indicar que un sensor de dispositivo se cuenta dos veces, o que una entrada de nivel de casa es incorrecta. La cifra Sin seguimiento se mantiene en cero para que los costes sigan cuadrando, pero revisa la selección de sensores de dispositivo y de nivel de casa."
+    }
+  },
+  "services": {
+    "reset_totals": {
+      "name": "Reiniciar totales",
+      "description": "Reinicia desde cero todas las cifras de Home Energy Advisor y borra el histórico registrado. No se puede deshacer.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hogar",
+          "description": "La configuración de Home Energy Advisor cuyos totales se van a reiniciar."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "reset_unknown_entry": {
+      "message": "No se encontró ninguna configuración de Home Energy Advisor con el id {entry_id}."
+    },
+    "reset_entry_not_loaded": {
+      "message": "Esa configuración de Home Energy Advisor no está cargada, así que no se pueden reiniciar sus totales. Inténtalo de nuevo cuando haya arrancado."
     }
   }
 }

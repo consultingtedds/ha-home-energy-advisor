@@ -25,12 +25,13 @@ from homeassistant.components.utility_meter.const import (
     CONF_METER_TYPE,
     CONF_SOURCE_SENSOR,
     CONF_TARIFFS,
+    SERVICE_CALIBRATE_METER,
 )
 from homeassistant.components.utility_meter.const import (
     DOMAIN as UTILITY_METER_DOMAIN,
 )
 from homeassistant.config_entries import SOURCE_USER
-from homeassistant.const import CONF_NAME
+from homeassistant.const import ATTR_ENTITY_ID, CONF_NAME
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import translation
 
@@ -100,6 +101,34 @@ async def async_ensure_utility_meter(
         },
     )
     return result["result"].entry_id
+
+
+async def async_reset_cycle_meters(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Calibrate every cycle meter HEA created back to zero (HEA-57).
+
+    Call *after* the source sensors have been rebased, never before. A cost
+    meter is a net-consumption meter (its source is `total`, ADR-0007), so it
+    subtracts the source's drop to zero — calibrating first would leave it
+    holding the negative of what it had.
+
+    ``calibrate`` is the only route: utility_meter's own ``reset`` targets the
+    tariff ``select`` entity, which meters created without tariffs do not have.
+
+    Meters HEA merely adopted are left alone. Rebasing this integration's figures
+    is no licence to zero a helper the user built for themselves (HEA-52).
+    """
+    for record in entry.data.get(CONF_CYCLE_METERS, {}).values():
+        if not helper_was_created(record):
+            continue
+        output = utility_meter_output_sensor(hass, helper_entry_id(record))
+        if output is None:
+            continue
+        await hass.services.async_call(
+            UTILITY_METER_DOMAIN,
+            SERVICE_CALIBRATE_METER,
+            {ATTR_ENTITY_ID: output, "value": "0"},
+            blocking=True,
+        )
 
 
 def utility_meter_output_sensor(hass: HomeAssistant, entry_id: str) -> str | None:
