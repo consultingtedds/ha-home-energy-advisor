@@ -141,7 +141,7 @@ Presentation
 3. README per documentation standards (including a plain-language explanation of the allocation model and its known limitations — export opportunity cost, interval approximation)
 
 ### Epic 6 — Dogfood on production instance
-1. Install and configure a diverse device set on homeassistant.example.net: 9 aircons (cycle-resetting), tumble dryer + high draws (lifetime counters via Zigbee2MQTT), utility plug (cloud-polled Tuya), wall lights (power-only)
+1. Install and configure a device set on the reference instance covering every behaviour pattern in `notes/DEVICE_SENSOR_SURVEY.md`: cycle-resetting energy counters, lifetime counters over Zigbee2MQTT, a cloud-polled counter, and a power-only device
 2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; battery ledger vs Predbat's own accounting
 3. Fixes arising; note: July dogfooding cannot exercise the winter battery regime — revisit accuracy after the first winter month (tracked as follow-up)
 

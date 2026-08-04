@@ -155,7 +155,7 @@ def test_cumulative_source_watt_hour_counter_is_normalised_to_kilowatt_hours() -
 
 
 def test_cumulative_source_daily_counter_reset_at_midnight_spans_the_boundary() -> None:
-    # Given — the utility plug's Tuya daily counter, late in the day
+    # Given — a cloud plug's device-side daily counter, late in the day
     source = CumulativeEnergySource()
     source.observe(reading(at="23:58", value="4.20", day="2026-07-10"))
 

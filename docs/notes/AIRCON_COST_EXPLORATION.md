@@ -3,7 +3,8 @@
 > Working notes from an ad-hoc exploration session. Nothing described here was built —
 > no Home Assistant config, helpers, or entities were created. This is a manual, one-off
 > validation of the MVP accounting model (see `PRD.md` → Minimum Viable Product,
-> `IMPLEMENTATION_IDEAS.md` → Device Cost Model) against real data from the maintainer's HA instance.
+> `IMPLEMENTATION_IDEAS.md` → Device Cost Model) against real data from the
+> reference instance.
 
 ## Why this happened
 
@@ -16,7 +17,7 @@ integration.
 
 ## Home Assistant instance context
 
-- HA 2026.7.1, `https://homeassistant.example.net`, Europe/Madrid.
+- HA 2026.7.1 on the reference instance, in a Central European timezone.
 - Solar + battery system: an inverter Solar inverter, managed by **Predbat** (battery
   charge/discharge scheduling AppDaemon-style integration).
 - Existing house convention for "run this on solar surplus": a reusable blueprint
@@ -33,7 +34,7 @@ integration.
 | Per-device energy | `sensor.<room>_aircon_energy_usage_cycle` | a cloud aircon integration a cycle-resetting counter integration. `device_class: energy`, `state_class: total_increasing`. Updates in coarse 0.25 kWh steps, resets to 0 per compressor cycle. No instantaneous power sensor exists on these units. |
 | Live import price | `sensor.electricity_price_import` | EUR/kWh, already resolves peak/standard/off-peak windows into one current value. Observed pattern: 00:00–08:00 €0.093, 08:00–10:00 & 14:00–18:00 & 22:00–24:00 €0.152, 10:00–14:00 & 18:00–22:00 €0.234 (repeats daily). |
 | Solar vs. consumption gate (chosen) | `sensor.inverter_power_less_consumption` | W. Negative = house consuming more than solar generates → "actual cost" applies. Same sensor the house's existing solar-HVAC automations use. |
-| Alternative gate (not used) | `predbat.grid_power` | True grid import/export (kW), positive = importing. More accurate for "money actually leaving your account" since it accounts for the battery covering a solar shortfall — but doesn't match how the maintainer framed the question ("using more than solar generates"), so parked for later. |
+| Alternative gate (not used) | `predbat.grid_power` | True grid import/export (kW), positive = importing. More accurate for "money actually leaving your account" since it accounts for the battery covering a solar shortfall — but doesn't match how the question was framed ("using more than solar generates"), so parked for later. |
 
 **Decision made:** gate on solar-vs-consumption (`inverter_power_less_consumption < 0`),
 not true grid import. Worth revisiting if the product wants strict bill-accuracy rather
@@ -75,24 +76,25 @@ currently exist for these a cloud aircon integration a cycle-resetting counter u
 | Jul 11 (partial) | 1.75 kWh | €0.16 | €0.16 |
 | **Total** | **11.0 kWh** | **€1.67** | **€1.25** |
 
-### All 9 aircon units, last 7 days (some units have less than a full week of real cycling)
+### Whole aircon fleet, last 7 days
 
-| Aircon | Energy used | Cost ignoring solar | Actual cost (solar-gated) |
+Aggregated across every tracked aircon (some had less than a full week of real
+cycling):
+
+| | Energy used | Cost ignoring solar | Actual cost (solar-gated) |
 |---|---|---|---|
-| Slow Poll | 22.00 kWh | €4.78 | €1.93 |
-| Bedroom 2 | 20.25 kWh | €3.01 | €1.41 |
-| Second bedroom | 16.25 kWh | €2.87 | €0.82 |
-| Study 1 | 10.75 kWh | €2.23 | €0.00 |
-| Kitchen | 9.75 kWh | €2.10 | €1.30 |
-| Coarse Step | 11.00 kWh | €1.67 | €1.25 |
-| Bedroom 3 | 10.00 kWh | €1.16 | €0.86 |
-| Coarse Step | 5.25 kWh | €1.04 | €0.06 |
-| the maintainer's Office | 2.50 kWh | €0.44 | €0.00 |
 | **Total** | **107.75 kWh** | **€19.30** | **€7.63** |
 
-Roughly 60% of aircon energy this week fell in solar-deficit hours — actual cost is
-~40% of the naive figure. Occupant A's and the maintainer's offices happened to run entirely during
-solar surplus (€0 gated cost); Kitchen and Coarse Step skew the other way.
+Roughly 60% of aircon energy that week fell in solar-deficit hours, so actual cost
+came out at ~40% of the naive figure. The spread between units was wide: the
+lightest-used ran entirely during solar surplus (€0 gated cost), while others —
+the Kitchen and Coarse Step among them — skewed the other way and paid close to
+the naive rate.
+
+The per-unit breakdown is deliberately not reproduced here: it is a room-by-room
+map of a private home and nothing in the project depends on it. The two units the
+golden-master tests replay (Coarse Step, Slow Poll) are covered in full above
+and in the local-only fixture.
 
 ## Backfill capability (confirmed, not yet used)
 
