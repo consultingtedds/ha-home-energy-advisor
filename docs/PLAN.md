@@ -122,8 +122,21 @@ Presentation
    baseline while its siblings keep history (whole-home read 68.8 kWh against
    250 kWh of parts on the live instance); **rounding published values**
    (HEA-59 — states were recorded at 28 significant digits, ~1/min, mirrored by
-   every cycle meter); and **area inheritance** (HEA-58 — HEA's own devices carry
-   no area, so no room/floor roll-up is possible)
+   every cycle meter); and **hierarchy exposure** (HEA-58 — the devices sensor
+   carries each device's area and floor, resolved from its *source* device, so
+   room/floor roll-ups are possible without HEA writing to any registry)
+11. Delivered 2026-08-04, completing the pre-deploy set:
+    **per-device energy by source** (HEA-51 — `energy_from_grid` /
+    `_generation` / `_battery`, each device's energy carrying its bucket's source
+    mix so a self-sufficiency share totals 100 %; never cycle-metered, enforced by
+    inverting the metering filter to an allow-list);
+    **the Cost at Grid Price rename** (HEA-61 / ADR-0009 — naming the pricing rule
+    rather than absent hardware, since the figure also captures battery arbitrage
+    and any non-metered supply);
+    and **the implausible-source guard** (HEA-60 — a device claiming more energy
+    than the whole house over a rolling hour is refused, logged and surfaced as a
+    named Repair, after a bugged upstream counter inflated one device ~97× and
+    silently under-reported every other one for days)
 10. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
 
 ### Epic 5 — Presentation & documentation
