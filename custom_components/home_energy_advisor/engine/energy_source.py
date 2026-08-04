@@ -72,6 +72,9 @@ class DecisionReason(Enum):
     delta reaching a bucket older than the retention ring (HEA-48). ``ZERO_PRICED``
     is likewise accountant-level: a bucket finalised before any import price was
     known, so its energy is costed at zero (logged once per cold-start, HEA-53).
+    ``IMPLAUSIBLE`` is the third accountant-level reason: energy refused because
+    the device claimed more than the whole house over a full window, which no
+    real load can do (HEA-60).
     """
 
     COUNTED = "counted"
@@ -82,6 +85,7 @@ class DecisionReason(Enum):
     NO_MOVEMENT = "no_movement"
     DROPPED_LATE = "dropped_late"
     ZERO_PRICED = "zero_priced"
+    IMPLAUSIBLE = "implausible"
 
 
 @dataclass(frozen=True)
@@ -174,6 +178,15 @@ class CumulativeEnergySource:
         here so it rides the same per-source decision log the diagnostics read.
         """
         self._log(at, DecisionReason.DROPPED_LATE, kwh)
+
+    def note_implausible(self, at: datetime, kwh: Decimal) -> None:
+        """Record energy refused because this source cannot be telling the truth.
+
+        The accountant, not the source, makes the judgement — it needs the whole
+        house to compare against — but it is logged here so the diagnostics
+        download can explain a device whose figures have stopped moving (HEA-60).
+        """
+        self._log(at, DecisionReason.IMPLAUSIBLE, kwh)
 
     def note_zero_priced(self, at: datetime) -> None:
         """Record that a bucket finalised before any import price was known (HEA-53).

@@ -172,6 +172,10 @@
       "title": "One or more cycle-total helpers were re-created",
       "description": "Home Energy Advisor re-created one or more daily, monthly or longer-cycle total helpers that had been deleted. These provide the per-period totals; to stop creating a longer cycle, turn it off in the integration options rather than deleting its helpers."
     },
+    "implausible_source": {
+      "title": "“{name}” is reporting more energy than the whole house",
+      "description": "For over an hour, the sensor measuring “{name}” has reported using more energy than your entire home consumed — which no single device can do. Home Energy Advisor has stopped counting it, so it no longer distorts your other devices' figures, and will start again by itself once the readings make sense. This almost always means the sensor is faulty rather than the appliance: check whether the device offers another energy sensor and select that one instead. Figures recorded in the hour before this was detected are still affected; you can clear them with the “Reset totals” action."
+    },
     "negative_remainder": {
       "title": "Tracked devices are drawing more than the house consumes",
       "description": "For over an hour, the energy attributed to your tracked devices has exceeded the household total. This usually means a device sensor is double-counted, or a house-level input is wrong. The Untracked figure is held at zero so costs still add up, but check your device and house-level sensor selections."

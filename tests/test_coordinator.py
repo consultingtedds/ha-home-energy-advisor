@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import (
     async_fire_time_changed,
 )
 
+from custom_components.home_energy_advisor import issues
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
@@ -399,6 +400,45 @@ async def test_persistently_negative_remainder_raises_a_repair(
 
     # Then — the Repair clears itself; the over-draw was not permanent
     assert not _has_issue(hass, ISSUE_NEGATIVE_REMAINDER)
+
+
+async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running home whose device source is lying about its energy, the
+    # way a bugged upstream counter does (HEA-60)
+    await _setup_running_home(hass, freezer)
+
+    # When — for over an hour the device claims far more than the house consumes
+    start = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
+    for minute in range(5, 80, 5):
+        freezer.move_to(start + timedelta(minutes=minute))
+        hass.states.async_set("sensor.grid_import", f"{minute * 0.001:.3f}", _ENERGY)
+        hass.states.async_set("sensor.guest_energy", f"{minute * 0.1:.3f}", _ENERGY)
+        await hass.async_block_till_done()
+    await _tick(hass, freezer, start + timedelta(minutes=100))
+
+    # Then — a Repair names the offending device, so the user is told which source
+    # to look at rather than left to infer it from a flat cost figure
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, issues.implausible_source_issue_id("Coarse Step Aircon")
+    )
+    assert issue is not None
+    assert issue.translation_placeholders == {"name": "Coarse Step Aircon"}
+
+    # When — the source starts telling the truth again for a full window
+    for index, minute in enumerate(range(105, 180, 5)):
+        freezer.move_to(start + timedelta(minutes=minute))
+        hass.states.async_set("sensor.grid_import", f"{10 + index:.3f}", _ENERGY)
+        honest = f"{7.6 + index * 0.01:.3f}"
+        hass.states.async_set("sensor.guest_energy", honest, _ENERGY)
+        await hass.async_block_till_done()
+    await _tick(hass, freezer, start + timedelta(minutes=200))
+
+    # Then — the Repair clears. A device is never condemned on past behaviour
+    assert not _has_issue(
+        hass, issues.implausible_source_issue_id("Coarse Step Aircon")
+    )
 
 
 def _power_only_entry() -> MockConfigEntry:
