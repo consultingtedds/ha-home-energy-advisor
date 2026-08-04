@@ -99,6 +99,7 @@ Presentation
 7. ADR-0007: Monetary cost sensors are `state_class: total`; Cost Savings is not cycle-metered (HEA-49)
 8. ADR-0008: Long-term statistics are the period-accounting substrate — a `utility_meter` is a *fixed-period* accumulator and cannot answer an arbitrary range, which is the question the product exists to answer; cycle meters are demoted to a day-to-day convenience, HEA-51's by-source sensors are never metered, and HEA ships its own Lovelace card (HEA-40)
 9. ADR-0009: Name the pricing rule, not the absent hardware — "Cost Without Solar" becomes **Cost at Grid Price**, and `SourceKind.SOLAR` becomes `GENERATION`, because the figure covers battery arbitrage (grid energy time-shifted, not solar) and any non-metered supply (wind, hydro, a generator). Supersedes that one name in ADR-0003; done in the HEA-57 reset deploy, when clearing statistics makes it free (HEA-61)
+10. ADR-0010: A sensor's shape does not establish its fitness — `device_class`/`state_class` gate whether a reading *can* be interpreted; whether it is true, arriving, or already counted is asked separately at suggestion time (discovery semantics), add time (lenient, the user is explicit) and ingest time (continuous plausibility). Names the pattern behind four defects — HEA-54, HEA-60, HEA-64, HEA-66 — each a well-formed sensor that was nonetheless the wrong answer
 
 ### Epic 3 — Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
