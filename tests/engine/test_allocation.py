@@ -37,7 +37,7 @@ def bucket(sources: dict[SourceKind, str], draws: dict[str, str]) -> IntervalBuc
 def prices(
     overrides: dict[SourceKind, Decimal] | None = None,
 ) -> dict[SourceKind, Decimal]:
-    base = {SourceKind.IMPORT: PEAK, SourceKind.SOLAR: Decimal(0)}
+    base = {SourceKind.IMPORT: PEAK, SourceKind.GENERATION: Decimal(0)}
     if overrides:
         base.update(overrides)
     return base
@@ -69,14 +69,14 @@ def test_all_import_bucket_prices_a_tracked_device_at_the_import_rate() -> None:
     assert guest.energy_kwh == Decimal("1.0")
     assert guest.actual_cost == Decimal("0.234")
     assert guest.naive_cost == Decimal("0.234")
-    assert guest.solar_saving == Decimal("0.000")
+    assert guest.cost_savings == Decimal("0.000")
 
 
 def test_solar_share_makes_actual_cheaper_than_naive() -> None:
     # Given — half the consumption is free solar
     result = STRATEGY.allocate(
         bucket(
-            {SourceKind.IMPORT: "0.5", SourceKind.SOLAR: "0.5"},
+            {SourceKind.IMPORT: "0.5", SourceKind.GENERATION: "0.5"},
             {"coarse_step_aircon": "1.0"},
         ),
         prices(),
@@ -86,7 +86,7 @@ def test_solar_share_makes_actual_cheaper_than_naive() -> None:
     guest = result.devices["coarse_step_aircon"]
     assert guest.actual_cost == Decimal("0.117")
     assert guest.naive_cost == Decimal("0.234")
-    assert guest.solar_saving == Decimal("0.117")
+    assert guest.cost_savings == Decimal("0.117")
 
 
 def test_battery_energy_is_priced_at_its_stored_cost_not_the_live_rate() -> None:
@@ -100,7 +100,7 @@ def test_battery_energy_is_priced_at_its_stored_cost_not_the_live_rate() -> None
     guest = result.devices["coarse_step_aircon"]
     assert guest.actual_cost == Decimal("0.093")
     assert guest.naive_cost == Decimal("0.234")
-    assert guest.solar_saving == Decimal("0.141")
+    assert guest.cost_savings == Decimal("0.141")
 
 
 def test_untracked_remainder_absorbs_consumption_no_device_explains() -> None:
@@ -109,7 +109,7 @@ def test_untracked_remainder_absorbs_consumption_no_device_explains() -> None:
         bucket(
             {
                 SourceKind.IMPORT: "1.0",
-                SourceKind.SOLAR: "1.0",
+                SourceKind.GENERATION: "1.0",
                 SourceKind.BATTERY: "1.0",
             },
             {"coarse_step_aircon": "1.0", "fine_meter_aircon": "0.5"},
@@ -146,7 +146,7 @@ def test_naive_cost_sums_to_consumption_at_the_import_rate() -> None:
     # Given — a mixed bucket with a remainder
     result = STRATEGY.allocate(
         bucket(
-            {SourceKind.IMPORT: "1.0", SourceKind.SOLAR: "2.0"},
+            {SourceKind.IMPORT: "1.0", SourceKind.GENERATION: "2.0"},
             {"coarse_step_aircon": "1.0"},
         ),
         prices(),
@@ -188,7 +188,7 @@ def test_zero_consumption_bucket_allocates_nothing() -> None:
     assert total_actual(result) == Decimal(0)
 
 
-def test_solar_saving_is_negative_when_battery_cost_beats_the_current_rate() -> None:
+def test_cost_savings_is_negative_when_battery_cost_beats_the_current_rate() -> None:
     # Given — battery energy charged at a peak €0.30 discharged now when import is
     # cheap at €0.10: the stored-cost model honestly shows a loss, not a saving
     result = STRATEGY.allocate(
@@ -201,12 +201,12 @@ def test_solar_saving_is_negative_when_battery_cost_beats_the_current_rate() -> 
     # Then — the saving is negative rather than floored, keeping naive - actual exact
     guest = result.devices["coarse_step_aircon"]
     assert guest.actual_cost == Decimal("0.30")
-    assert guest.solar_saving == Decimal("-0.20")
+    assert guest.cost_savings == Decimal("-0.20")
 
 
 def test_missing_price_for_a_present_source_is_rejected() -> None:
     # Given — a bucket with battery energy but no battery price supplied
-    incomplete = {SourceKind.IMPORT: PEAK, SourceKind.SOLAR: Decimal(0)}
+    incomplete = {SourceKind.IMPORT: PEAK, SourceKind.GENERATION: Decimal(0)}
 
     # When / Then — pricing cannot silently guess a source's cost
     with pytest.raises(ValueError, match="battery"):

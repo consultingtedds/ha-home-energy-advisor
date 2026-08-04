@@ -61,7 +61,7 @@ class SourceRole(Enum):
 
     GRID_IMPORT = "grid_import"
     GRID_EXPORT = "grid_export"
-    SOLAR = "solar"
+    GENERATION = "generation"
     BATTERY_CHARGE = "battery_charge"
     BATTERY_DISCHARGE = "battery_discharge"
     HOUSE_CONSUMPTION = "house_consumption"
@@ -112,10 +112,10 @@ class _Served:
     """House-served energy for one interval, after decomposition."""
 
     grid: Decimal
-    solar: Decimal
+    generation: Decimal
     battery: Decimal
     grid_charge: Decimal
-    solar_charge: Decimal
+    generation_charge: Decimal
 
 
 @dataclass
@@ -129,7 +129,7 @@ class _Running:
         self.energy_kwh += allocation.energy_kwh
         self.actual_cost += allocation.actual_cost
         self.naive_cost += allocation.naive_cost
-        self.cost_savings += allocation.solar_saving
+        self.cost_savings += allocation.cost_savings
 
     def snapshot(self) -> DeviceTotals:
         return DeviceTotals(
@@ -407,7 +407,7 @@ class Accountant:
             self._cold_start_logged = True
 
     def _track_overdraw(self, served: _Served, draws: Mapping[str, Decimal]) -> None:
-        consumption = served.grid + served.solar + served.battery
+        consumption = served.grid + served.generation + served.battery
         total_draw = sum(draws.values(), Decimal(0))
         if total_draw > consumption:
             self._overdrawn_run += 1
@@ -417,28 +417,28 @@ class Accountant:
     def _decompose(self, raw: Mapping[SourceRole, Decimal]) -> _Served:
         imp = raw.get(SourceRole.GRID_IMPORT, Decimal(0))
         exp = raw.get(SourceRole.GRID_EXPORT, Decimal(0))
-        gen = raw.get(SourceRole.SOLAR, Decimal(0))
+        gen = raw.get(SourceRole.GENERATION, Decimal(0))
         charge = raw.get(SourceRole.BATTERY_CHARGE, Decimal(0))
         discharge = raw.get(SourceRole.BATTERY_DISCHARGE, Decimal(0))
 
         grid_charge = min(charge, imp)
-        solar_charge = charge - grid_charge
+        generation_charge = charge - grid_charge
         grid = imp - grid_charge
 
         if SourceRole.HOUSE_CONSUMPTION in self._configured:
             house = raw.get(SourceRole.HOUSE_CONSUMPTION, Decimal(0))
-            solar = max(Decimal(0), house - grid - discharge)
-        elif {SourceRole.SOLAR, SourceRole.GRID_EXPORT} <= self._configured:
-            solar = max(Decimal(0), gen - solar_charge - exp)
+            generation = max(Decimal(0), house - grid - discharge)
+        elif {SourceRole.GENERATION, SourceRole.GRID_EXPORT} <= self._configured:
+            generation = max(Decimal(0), gen - generation_charge - exp)
         else:
-            solar = Decimal(0)
+            generation = Decimal(0)
 
         return _Served(
             grid=grid,
-            solar=solar,
+            generation=generation,
             battery=discharge,
             grid_charge=grid_charge,
-            solar_charge=solar_charge,
+            generation_charge=generation_charge,
         )
 
     def _price_sources(
@@ -446,8 +446,8 @@ class Accountant:
     ) -> tuple[dict[SourceKind, Decimal], dict[SourceKind, Decimal]]:
         if served.grid_charge > 0:
             self._battery.charge_from_grid(served.grid_charge, price)
-        if served.solar_charge > 0:
-            self._battery.charge_from_solar(served.solar_charge)
+        if served.generation_charge > 0:
+            self._battery.charge_from_generation(served.generation_charge)
 
         battery_price = Decimal(0)
         if served.battery > 0:
@@ -455,12 +455,12 @@ class Accountant:
 
         prices = {
             SourceKind.IMPORT: price,
-            SourceKind.SOLAR: Decimal(0),
+            SourceKind.GENERATION: Decimal(0),
             SourceKind.BATTERY: battery_price,
         }
         energies = {
             SourceKind.IMPORT: served.grid,
-            SourceKind.SOLAR: served.solar,
+            SourceKind.GENERATION: served.generation,
             SourceKind.BATTERY: served.battery,
         }
         sources = {kind: kwh for kind, kwh in energies.items() if kwh > 0}

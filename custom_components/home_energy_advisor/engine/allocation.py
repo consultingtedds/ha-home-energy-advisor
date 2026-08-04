@@ -1,14 +1,14 @@
 """Splits each interval's real cost across the devices that drew it.
 
 This is the accounting model's payoff. Within a 5-minute bucket the house is
-served by a blend of sources — grid import at the live rate, solar at zero,
-battery at its stored cost — and every kWh consumed, by a tracked device or by
-the unexplained "Untracked" remainder, is priced at that same blend. Naive cost
-values the same energy as if it had all come from the grid, so the gap between
-them is what local generation saved.
+served by a blend of sources — grid import at the live rate, local generation at
+zero, battery at its stored cost — and every kWh consumed, by a tracked device or
+by the unexplained "Untracked" remainder, is priced at that same blend. The
+grid-price figure values the same energy as if every kWh had been bought off the
+meter as it was used, so the gap between them is what the household saved.
 
 The contract is a pluggable strategy so the recorded fallbacks — a deficit-capped
-model, an export-aware variant that prices solar at the export rate — can replace
+model, an export-aware variant that prices generation at the export rate — can replace
 the MVP proportional split without the sensor layer noticing.
 
 Two invariants hold on every bucket (see docs/CRITICAL_INSTRUCTIONS.md):
@@ -44,7 +44,7 @@ class DeviceAllocation:
     energy_kwh: Decimal
     actual_cost: Decimal
     naive_cost: Decimal
-    solar_saving: Decimal
+    cost_savings: Decimal
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,7 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
                 energy_kwh=energy,
                 actual_cost=actuals[label],
                 naive_cost=energy * import_price,
-                solar_saving=energy * import_price - actuals[label],
+                cost_savings=energy * import_price - actuals[label],
             )
             for label, energy in energies.items()
         }

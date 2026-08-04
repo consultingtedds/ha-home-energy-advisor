@@ -3,13 +3,13 @@
     "step": {
       "user": {
         "title": "Home Energy Advisor",
-        "description": "Choose the household energy inputs. Solar and battery are optional — without them, cost is calculated from grid import alone.",
+        "description": "Choose the household energy inputs. Local generation and battery are optional — without them, cost is calculated from grid import alone.",
         "data": {
           "price_entity": "Import price",
           "currency": "Currency",
           "grid_import_entity": "Grid import energy",
           "grid_export_entity": "Grid export energy",
-          "solar_entity": "Solar generation energy",
+          "solar_entity": "Local generation energy",
           "battery_charge_entity": "Battery charge energy",
           "battery_discharge_entity": "Battery discharge energy",
           "house_consumption_entity": "House consumption energy"
@@ -18,8 +18,8 @@
           "price_entity": "The sensor giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
-          "grid_export_entity": "Cumulative energy exported to the grid; used to work out self-consumed solar.",
-          "solar_entity": "Cumulative solar generation. Leave empty if you have no solar.",
+          "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
+          "solar_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none.",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."
@@ -27,13 +27,13 @@
       },
       "reconfigure": {
         "title": "Edit Home Energy Advisor",
-        "description": "Update the household energy inputs. Solar and battery remain optional.",
+        "description": "Update the household energy inputs. Local generation and battery remain optional.",
         "data": {
           "price_entity": "Import price",
           "currency": "Currency",
           "grid_import_entity": "Grid import energy",
           "grid_export_entity": "Grid export energy",
-          "solar_entity": "Solar generation energy",
+          "solar_entity": "Local generation energy",
           "battery_charge_entity": "Battery charge energy",
           "battery_discharge_entity": "Battery discharge energy",
           "house_consumption_entity": "House consumption energy"
@@ -42,8 +42,8 @@
           "price_entity": "The sensor giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
-          "grid_export_entity": "Cumulative energy exported to the grid; used to work out self-consumed solar.",
-          "solar_entity": "Cumulative solar generation. Leave empty if you have no solar.",
+          "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
+          "solar_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none.",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."
@@ -138,7 +138,7 @@
     "sensor": {
       "energy_used": { "name": "Energy Used" },
       "actual_cost": { "name": "Actual Cost" },
-      "cost_without_solar": { "name": "Cost Without Solar" },
+      "cost_at_grid_price": { "name": "Cost at Grid Price" },
       "cost_savings": { "name": "Cost Savings" },
       "devices": { "name": "Devices" }
     }

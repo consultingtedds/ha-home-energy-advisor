@@ -26,7 +26,7 @@ def test_battery_grid_charge_is_returned_at_the_price_it_was_bought() -> None:
 def test_battery_solar_charge_is_free_on_discharge() -> None:
     # Given — 4 kWh charged from surplus solar
     ledger = BatteryLedger()
-    ledger.charge_from_solar(Decimal(4))
+    ledger.charge_from_generation(Decimal(4))
 
     # When — it is discharged
     cost = ledger.discharge(Decimal(4))
@@ -39,7 +39,7 @@ def test_battery_mixed_charge_discharges_at_the_weighted_average() -> None:
     # Given — a battery half-filled from grid, half from solar
     ledger = BatteryLedger()
     ledger.charge_from_grid(Decimal(5), OVERNIGHT)
-    ledger.charge_from_solar(Decimal(5))
+    ledger.charge_from_generation(Decimal(5))
 
     # When — 5 kWh is discharged
     cost = ledger.discharge(Decimal(5))
@@ -165,7 +165,7 @@ def test_battery_rejects_a_negative_price() -> None:
 def test_battery_rejects_a_negative_discharge() -> None:
     # Given — a charged ledger
     ledger = BatteryLedger()
-    ledger.charge_from_solar(Decimal(2))
+    ledger.charge_from_generation(Decimal(2))
 
     # When / Then — a negative discharge would mint energy and cost
     with pytest.raises(ValueError, match="negative"):
@@ -178,7 +178,7 @@ def test_battery_zero_movements_are_harmless_no_ops() -> None:
     ledger.charge_from_grid(Decimal(4), OVERNIGHT)
 
     # When — zero-energy movements are recorded
-    ledger.charge_from_solar(Decimal(0))
+    ledger.charge_from_generation(Decimal(0))
     cost = ledger.discharge(Decimal(0))
 
     # Then — nothing changes and no cost is drawn

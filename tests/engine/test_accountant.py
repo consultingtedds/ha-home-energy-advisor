@@ -131,7 +131,7 @@ def test_full_balance_solar_makes_a_device_cheaper_than_grid() -> None:
         house_sources={
             SourceRole.GRID_IMPORT: "sensor.grid_import",
             SourceRole.GRID_EXPORT: "sensor.grid_export",
-            SourceRole.SOLAR: "sensor.solar",
+            SourceRole.GENERATION: "sensor.solar",
         },
         device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
     )

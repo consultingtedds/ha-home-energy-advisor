@@ -129,15 +129,16 @@ def test_ledger_accumulates_repeated_source_deltas_in_the_same_bucket() -> None:
 
 
 def test_ledger_keeps_house_sources_separate() -> None:
-    # Given — import and solar both feeding the 02:15 bucket
+    # Given — import and local generation both feeding the 02:15 bucket
     ledger = IntervalLedger()
-    ledger.add_source(SourceKind.IMPORT, delta(start="02:15", end="02:20", kwh="0.40"))
-    ledger.add_source(SourceKind.SOLAR, delta(start="02:15", end="02:20", kwh="0.10"))
+    span = {"start": "02:15", "end": "02:20"}
+    ledger.add_source(SourceKind.IMPORT, delta(**span, kwh="0.40"))
+    ledger.add_source(SourceKind.GENERATION, delta(**span, kwh="0.10"))
 
     # When / Then — each source is tallied under its own kind
     sources = ledger.buckets()[0].sources
     assert sources[SourceKind.IMPORT] == Decimal("0.40")
-    assert sources[SourceKind.SOLAR] == Decimal("0.10")
+    assert sources[SourceKind.GENERATION] == Decimal("0.10")
 
 
 def test_ledger_without_solar_or_battery_records_import_only() -> None:

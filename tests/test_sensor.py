@@ -1,7 +1,7 @@
 """Per-device sensor layer (HEA-22): the four figures ADR-0003 fixes.
 
 Each tracked device — and the Untracked remainder — carries Energy Used, Actual
-Cost, Cost Without Solar and Cost Savings. These tests pin the ADR-0003 contract
+Cost, Cost at Grid Price and Cost Savings. These tests pin the ADR-0003 contract
 (unique_id, device_class, state_class, translation_key, unit) because those are
 what make long-term statistics and i18n durable, and the restore-on-restart
 behaviour that keeps the totals continuous across a Home Assistant restart.
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
-_CONCEPTS = ("energy_used", "actual_cost", "cost_without_solar", "cost_savings")
+_CONCEPTS = ("energy_used", "actual_cost", "cost_at_grid_price", "cost_savings")
 
 
 def _entry() -> MockConfigEntry:
@@ -174,7 +174,7 @@ async def test_each_concept_carries_its_adr_0003_identity(
     expected = {
         "energy_used": ("energy", "total_increasing", "kWh"),
         "actual_cost": ("monetary", "total", "EUR"),
-        "cost_without_solar": ("monetary", "total", "EUR"),
+        "cost_at_grid_price": ("monetary", "total", "EUR"),
         "cost_savings": ("monetary", "total", "EUR"),
     }
     for concept, (device_class, state_class, unit) in expected.items():
@@ -207,7 +207,7 @@ async def test_untracked_costs_use_total_not_total_increasing_state_class(
     expected = {
         "energy_used": "total",
         "actual_cost": "total",
-        "cost_without_solar": "total",
+        "cost_at_grid_price": "total",
         "cost_savings": "total",
     }
     for concept, state_class in expected.items():
