@@ -17,8 +17,10 @@ from homeassistant.components.sensor import SensorExtraStoredData
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from homeassistant.core import State
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import floor_registry as fr
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -38,6 +40,8 @@ from custom_components.home_energy_advisor.const import (
 )
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
@@ -708,3 +712,159 @@ async def test_untracked_by_source_is_total_because_late_energy_pulls_it_down(
         state = hass.states.get(f"sensor.coarse_step_aircon_{concept}")
         assert state is not None
         assert state.attributes["state_class"] == "total_increasing"
+
+
+def _place_source_in_an_area(
+    hass: HomeAssistant, *, entity_id: str, area: str, floor: str | None = None
+) -> None:
+    """Put a source sensor on a real device in a real area, as a household would."""
+    areas = ar.async_get(hass)
+    the_area = areas.async_get_or_create(area)
+    if floor is not None:
+        the_floor = fr.async_get(hass).async_create(floor)
+        the_area = areas.async_update(the_area.id, floor_id=the_floor.floor_id)
+
+    source_entry = MockConfigEntry(domain="wf_rac")
+    source_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=source_entry.entry_id,
+        identifiers={("wf_rac", entity_id)},
+        name="Coarse Step Aircon",
+    )
+    dr.async_get(hass).async_update_device(device.id, area_id=the_area.id)
+    registered = er.async_get(hass).async_get_or_create(
+        "sensor",
+        "wf_rac",
+        f"unique_{entity_id}",
+        suggested_object_id=entity_id.removeprefix("sensor."),
+        device_id=device.id,
+        config_entry=source_entry,
+    )
+    # Registering after a state of the same name exists would silently yield
+    # `..._2` and quietly defeat the test, so pin it.
+    assert registered.entity_id == entity_id, (
+        f"source registered as {registered.entity_id}, not {entity_id}"
+    )
+
+
+async def _devices_payload(
+    hass: HomeAssistant, entry: MockConfigEntry, freezer: FrozenDateTimeFactory
+) -> dict[str, Any]:
+    await _tick(hass, freezer)
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_devices"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    return {device["key"]: device for device in state.attributes["devices"]}
+
+
+async def test_devices_sensor_exposes_the_source_devices_area_and_floor(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — the household's own aircon sensor sits on a device in a room, on a
+    # floor, which is where the building hierarchy actually lives
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(
+        hass, entity_id="sensor.guest_energy", area="Coarse Step", floor="First Floor"
+    )
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the devices-registry sensor is read
+    by_key = await _devices_payload(hass, entry, freezer)
+
+    # Then — the tracked device carries the hierarchy of the sensor it measures, so
+    # a card can roll cost up by room and floor without HEA touching any registry
+    guest = by_key["coarse_step_aircon"]
+    assert guest["area_name"] == "Coarse Step"
+    assert guest["floor_name"] == "First Floor"
+    assert guest["area_id"]
+    assert guest["floor_id"]
+
+
+async def test_devices_sensor_leaves_the_hierarchy_null_when_there_is_none(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a household whose sources are plain sensors with no device at all (a
+    # template or YAML sensor), which is ordinary and must not be an error
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the devices-registry sensor is read
+    by_key = await _devices_payload(hass, entry, freezer)
+
+    # Then — every location field is null, and nothing is raised
+    guest = by_key["coarse_step_aircon"]
+    for field in ("area_id", "area_name", "floor_id", "floor_name"):
+        assert guest[field] is None, f"{field} should be null without a device"
+
+    # And — the Untracked remainder is never in a room by construction
+    untracked = by_key["untracked_energy_devices"]
+    assert untracked["area_id"] is None
+    assert untracked["floor_name"] is None
+
+
+async def test_an_area_on_the_source_entity_wins_over_its_devices(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a source whose device is in one room but whose entity the user has
+    # deliberately reassigned to another. Home Assistant treats the entity-level
+    # area as the override, and so must we
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(
+        hass, entity_id="sensor.guest_energy", area="Coarse Step"
+    )
+    _seed_states(hass)
+    landing = ar.async_get(hass).async_get_or_create("Landing")
+    registry = er.async_get(hass)
+    source = registry.async_get_entity_id(
+        "sensor", "wf_rac", "unique_sensor.guest_energy"
+    )
+    assert source is not None
+    registry.async_update_entity(source, area_id=landing.id)
+
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When / Then — the entity's own area is what the payload reports
+    by_key = await _devices_payload(hass, entry, freezer)
+    assert by_key["coarse_step_aircon"]["area_name"] == "Landing"
+
+
+async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a tracked device whose source sits in a room
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(
+        hass, entity_id="sensor.guest_energy", area="Coarse Step"
+    )
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer)
+
+    # Then — HEA's own device is still unassigned. Assigning it would rewrite every
+    # entity id (HA composes `area + device + entity`, doubling the room name), and
+    # `suggested_area` is removed in HA 2026.9 — so the hierarchy is exposed as
+    # data, never written to the registry
+    devices = dr.async_get(hass)
+    hea_device = devices.async_get_device(
+        identifiers={(DOMAIN, f"{entry.entry_id}_{_guest_subentry_id(entry)}")}
+    )
+    assert hea_device is not None
+    assert hea_device.area_id is None
+    assert hass.states.get("sensor.coarse_step_aircon_energy_used") is not None

@@ -33,8 +33,10 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory, UnitOfEnergy
 from homeassistant.core import callback
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import floor_registry as fr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -42,6 +44,8 @@ from homeassistant.util import slugify
 
 from .const import (
     CONF_CURRENCY,
+    CONF_ENERGY_ENTITY,
+    CONF_POWER_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
     SIGNAL_RESET_TOTALS,
@@ -50,7 +54,7 @@ from .const import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from typing import Any
 
     from homeassistant.core import HomeAssistant
@@ -356,6 +360,28 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         return data.devices.get(self._device_key)
 
 
+@dataclass(frozen=True)
+class _Location:
+    """Where a tracked device sits in the building hierarchy, or nowhere."""
+
+    area_id: str | None = None
+    area_name: str | None = None
+    floor_id: str | None = None
+    floor_name: str | None = None
+
+
+_NOWHERE = _Location()
+
+
+def _source_entity(data: Mapping[str, Any]) -> str | None:
+    """The sensor the user chose for a device — an energy counter or a power meter.
+
+    For a power-only device this is the *power* sensor, never the Integral helper
+    derived from it: the helper is HEA's own creation and sits in no room.
+    """
+    return data.get(CONF_ENERGY_ENTITY) or data.get(CONF_POWER_ENTITY)
+
+
 class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     """The authoritative list of tracked devices, for dashboard lookups (HEA-55).
 
@@ -393,16 +419,72 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     def _devices(self) -> list[dict[str, Any]]:
         entry = cast("HeaConfigEntry", self.coordinator.config_entry)
         rows = [
-            self._row(subentry_id, subentry.title, untracked=False)
+            self._row(
+                subentry_id,
+                subentry.title,
+                source=_source_entity(subentry.data),
+                untracked=False,
+            )
             for subentry_id, subentry in entry.subentries.items()
             if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
         ]
-        rows.append(self._row(_UNTRACKED_KEY, None, untracked=True))
+        rows.append(self._row(_UNTRACKED_KEY, None, source=None, untracked=True))
         rows.sort(key=lambda device: device["key"])
         return rows
 
+    def _location_of(self, source: str | None) -> _Location:
+        """Where the sensor measuring a device sits — its area and floor (HEA-58).
+
+        Read from the *source* sensor, because that is where the household's
+        hierarchy actually lives; HEA's own devices are deliberately left
+        unassigned. Assigning them would rewrite every entity id — Home Assistant
+        composes an id as ``area + device + entity`` with no de-duplication, so a
+        "Slow Poll Aircon" in the "Slow Poll" would double the room — and
+        ``suggested_area``, the only way to set one at creation, is removed in HA
+        2026.9. Exposing the hierarchy as data costs no registry writes and no
+        renames.
+
+        An area set on the entity itself wins over its device's: that is Home
+        Assistant's own precedence, and it is how a user says "this particular
+        sensor lives elsewhere".
+        """
+        if source is None:
+            return _NOWHERE
+        entity = er.async_get(self.hass).async_get(source)
+        if entity is None:
+            return _NOWHERE
+        area_id = entity.area_id or self._device_area(entity.device_id)
+        if area_id is None:
+            return _NOWHERE
+        area = ar.async_get(self.hass).async_get_area(area_id)
+        if area is None:
+            return _NOWHERE
+        return _Location(
+            area_id=area.id,
+            area_name=area.name,
+            floor_id=area.floor_id,
+            floor_name=self._floor_name(area.floor_id),
+        )
+
+    def _device_area(self, device_id: str | None) -> str | None:
+        if device_id is None:
+            return None
+        device = dr.async_get(self.hass).async_get(device_id)
+        return device.area_id if device is not None else None
+
+    def _floor_name(self, floor_id: str | None) -> str | None:
+        if floor_id is None:
+            return None
+        floor = fr.async_get(self.hass).async_get_floor(floor_id)
+        return floor.name if floor is not None else None
+
     def _row(
-        self, device_key: str, fallback_name: str | None, *, untracked: bool
+        self,
+        device_key: str,
+        fallback_name: str | None,
+        *,
+        source: str | None,
+        untracked: bool,
     ) -> dict[str, Any]:
         device = dr.async_get(self.hass).async_get_device(
             identifiers={(DOMAIN, f"{self._entry_id}_{device_key}")}
@@ -420,9 +502,14 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             else slugify(fallback_name or device_key)
         )
         name = (device and (device.name_by_user or device.name)) or fallback_name or key
+        location = self._location_of(source)
         return {
             "key": key,
             "name": name,
             "device_id": device.id if device is not None else None,
             "untracked": untracked,
+            "area_id": location.area_id,
+            "area_name": location.area_name,
+            "floor_id": location.floor_id,
+            "floor_name": location.floor_name,
         }
