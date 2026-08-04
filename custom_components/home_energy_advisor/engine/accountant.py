@@ -30,6 +30,7 @@ subtracts. A monotonic whole-home total falls out for free.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
@@ -54,6 +55,15 @@ _DEFAULT_LATENESS = 3 * BUCKET
 # even twice-a-day counters; push-only sources that step more rarely lose the
 # residue beyond it (logged as DROPPED_LATE). See ADR-0006 / HEA-48.
 _DEFAULT_RETENTION = timedelta(hours=24)
+
+# How many finalised buckets the plausibility guard weighs a device against the
+# whole house over (HEA-60). One hour, and deliberately not one bucket: a coarse
+# device's step legitimately lands entirely inside a single interval and exceeds
+# what the house was served in it — that is the spreading approximation ADR-0006
+# is built around, not a fault. Over an hour those artefacts cancel; a counter
+# that is lying does not. The window must be *full* before anything is judged,
+# so a fresh start never condemns a device on one interval's evidence.
+_PLAUSIBILITY_WINDOW = 12
 
 
 class SourceRole(Enum):
@@ -119,6 +129,20 @@ class _RetainedBucket:
     import_price: Decimal
     draw: Decimal
     sources: Mapping[SourceKind, Decimal]
+
+
+@dataclass
+class _WindowBucket:
+    """One finalised interval's evidence for the plausibility guard (HEA-60).
+
+    ``claimed`` is what each device's source *said* it drew, not what was booked.
+    Judging on the claim is what lets a condemned device recover: its readings
+    keep being weighed, so an honest source is believed again as soon as it is
+    honest.
+    """
+
+    consumption: Decimal
+    claimed: dict[str, Decimal]
 
 
 @dataclass(frozen=True)
@@ -198,6 +222,9 @@ class Accountant:
         self._retained: dict[datetime, _RetainedBucket] = {}
         self._watermark: datetime | None = None
         self._overdrawn_run = 0
+        self._entity_of = dict(device_energy_entities)
+        self._window: deque[_WindowBucket] = deque(maxlen=_PLAUSIBILITY_WINDOW)
+        self._implausible: frozenset[str] = frozenset()
 
     def record_price(self, at: datetime, price: Decimal) -> None:
         """Records the import price active from ``at``."""
@@ -332,14 +359,16 @@ class Accountant:
                 bucket = self._draws.setdefault(portion.start, {})
                 bucket[device] = bucket.get(device, Decimal(0)) + portion.kwh
             elif (retained := self._retained.get(portion.start)) is not None:
-                self._correct(device, retained, portion.kwh)
+                self._correct(device, retained, portion.kwh, portion.start)
             else:
                 source.note_dropped_late(portion.start, portion.kwh)
 
     def _is_finalised(self, start: datetime) -> bool:
         return self._watermark is not None and start <= self._watermark
 
-    def _correct(self, device: str, retained: _RetainedBucket, kwh: Decimal) -> None:
+    def _correct(
+        self, device: str, retained: _RetainedBucket, kwh: Decimal, start: datetime
+    ) -> None:
         """Reattribute late device energy within a finalised, still-retained bucket.
 
         The bucket's real cost and consumption are fixed, so the device is credited
@@ -347,7 +376,17 @@ class Accountant:
         remainder still holds; the whole-home total absorbs any overdraw. Untracked
         is derived, so it gives back exactly what the device gains — no other device
         moves (ADR-0006, HEA-48).
+
+        This is also the path a lying cloud-polled counter mostly arrives by — the
+        utility plug reported every ~30 minutes, so most of each delta fell past the
+        watermark — so the plausibility guard has to cover it too, or it would have
+        missed the very case it exists for (HEA-60).
         """
+        self._claim(device, kwh)
+        if device in self._implausible:
+            self._note_implausible(device, start, kwh)
+            return
+
         headroom = max(Decimal(0), retained.consumption - retained.draw)
         priced = min(kwh, headroom)
         run = self._running.setdefault(device, _Running())
@@ -372,8 +411,10 @@ class Accountant:
         if not self._prices:
             self._note_zero_priced(start)
         raw = self._raw.pop(start, {})
-        draws = self._draws.pop(start, {})
+        claimed = self._draws.pop(start, {})
         served = self._decompose(raw)
+        self._weigh_plausibility(served, claimed)
+        draws = self._believable(claimed, start)
         prices, sources = self._price_sources(served, self._price_at(start))
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
@@ -383,7 +424,83 @@ class Accountant:
             self._house.add(share)
         self._house.add(allocation.untracked)
         self._retain(start, sources, prices, draws)
-        self._track_overdraw(served, draws)
+        # Overdraw is judged on what the sources *claimed*, not on what survived the
+        # plausibility guard. "Your tracked devices report drawing more than the
+        # house" stays true whether or not the engine refused to book it, and
+        # quarantining a lying device must not silently retire the broader Repair
+        # that first tells a user something is wrong (HEA-36).
+        self._track_overdraw(served, claimed)
+
+    def implausible_devices(self) -> frozenset[str]:
+        """Devices whose source is claiming more energy than the whole house.
+
+        No real load can exceed the house it sits in, so a device that does over a
+        full window is being lied to about (HEA-60). The coordinator turns this
+        into a Repair; the engine has already stopped booking the energy, because
+        allocation is proportional and one inflated device silently under-reports
+        every other one.
+        """
+        return self._implausible
+
+    def _claim(self, device: str, kwh: Decimal) -> None:
+        """Add late-arriving energy to the newest window entry, as evidence.
+
+        Attributed to the current window rather than the bucket it belongs to:
+        the guard asks "is this source telling the truth *now*", and a claim is
+        evidence whenever it lands. Recording it even while the device is
+        condemned is what lets an honest source earn its way back.
+        """
+        if not self._window:
+            return
+        newest = self._window[-1].claimed
+        newest[device] = newest.get(device, Decimal(0)) + kwh
+
+    def _weigh_plausibility(
+        self, served: _Served, claimed: Mapping[str, Decimal]
+    ) -> None:
+        """Record this interval's evidence and re-judge every device against it."""
+        consumption = served.grid + served.generation + served.battery
+        self._window.append(
+            _WindowBucket(consumption=consumption, claimed=dict(claimed))
+        )
+        self._implausible = self._judge()
+
+    def _judge(self) -> frozenset[str]:
+        """Devices claiming more than the house across a *full* window.
+
+        A part-filled window judges nothing: with one interval's evidence this
+        would be the per-bucket test that coarse devices legitimately fail. A
+        house total of zero judges nothing either — a silent house meter is its
+        own fault, reported elsewhere, and is no evidence against a device.
+        """
+        if len(self._window) < _PLAUSIBILITY_WINDOW:
+            return frozenset()
+        house = _sum(bucket.consumption for bucket in self._window)
+        if house <= 0:
+            return frozenset()
+        totals: dict[str, Decimal] = {}
+        for bucket in self._window:
+            for device, kwh in bucket.claimed.items():
+                totals[device] = totals.get(device, Decimal(0)) + kwh
+        return frozenset(device for device, drawn in totals.items() if drawn > house)
+
+    def _believable(
+        self, claimed: Mapping[str, Decimal], start: datetime
+    ) -> dict[str, Decimal]:
+        """The draws worth booking, logging each refusal on its own source."""
+        believable = {}
+        for device, kwh in claimed.items():
+            if device in self._implausible:
+                self._note_implausible(device, start, kwh)
+            else:
+                believable[device] = kwh
+        return believable
+
+    def _note_implausible(self, device: str, at: datetime, kwh: Decimal) -> None:
+        entity = self._entity_of.get(device)
+        source = self._sources.get(entity) if entity is not None else None
+        if source is not None:
+            source.note_implausible(at, kwh)
 
     def _retain(
         self,
