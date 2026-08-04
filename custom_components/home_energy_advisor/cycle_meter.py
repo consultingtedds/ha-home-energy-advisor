@@ -63,6 +63,19 @@ _OPT_IN_CYCLES = {
 # utility_meter's own translated cycle labels live here (built-in, incl. es).
 _CYCLE_LABEL_PREFIX = f"component.{UTILITY_METER_DOMAIN}.selector.cycle.options."
 
+# The sensor concepts that get cycle totals. Deliberately absent:
+#   cost_savings   — derived per period by subtracting the Actual Cost cycle from
+#                    the Cost at Grid Price cycle, so metering it would add
+#                    helpers for a figure computable from the others, and
+#                    utility_meter assumes a monotonic source it is not
+#                    (ADR-0007).
+#   energy_from_*  — their per-period figures are a chart question that long-term
+#                    statistics already answer; metering them would add ~90
+#                    helpers on a 14-device home for no capability the statistics
+#                    path lacks (ADR-0008 §3, firm).
+#   devices        — the hub's diagnostic registry sensor, not a figure at all.
+_METERED_CONCEPTS = frozenset({"energy_used", "actual_cost", "cost_at_grid_price"})
+
 
 async def async_ensure_utility_meter(
     hass: HomeAssistant,
@@ -192,18 +205,19 @@ def _enabled_cycles(entry: ConfigEntry) -> list[str]:
 def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     """Entity ids of the integration's own per-device and Untracked cost sensors.
 
-    A removed device's sensor registry entries linger briefly (they are cleared
-    after the reload the removal triggers), so a sensor counts only while its
-    subentry is still live — Untracked sensors carry no subentry. Diagnostic
-    entities (the hub's devices-registry sensor) are excluded: only the primary
-    cost/energy figures — which carry no ``entity_category`` — get cycle totals.
-    Cost Savings is excluded: it is derived per period by subtracting the Actual
-    Cost cycle from the Cost at Grid Price cycle, so metering it would add helpers
-    for a figure computable from the others, and utility_meter assumes a monotonic
-    source it is not (ADR-0007). The whole-home aggregate is excluded too: its
-    period totals are the sum of the device and Untracked cycle meters and
-    duplicate the Energy Dashboard, so it carries lifetime running totals only
-    (HEA-48).
+    Membership is an explicit allow-list (``_METERED_CONCEPTS``), not "everything
+    except the known exceptions". Metering is the expensive default — one helper
+    per (sensor x cycle), 90 of them on a 14-device home — so a sensor concept
+    added later must be opted *in* deliberately rather than swept up silently.
+    That is exactly how the by-source sensors would otherwise have acquired ~90
+    helpers the moment they shipped, against ADR-0008 §3.
+
+    Two further filters remain. A removed device's registry entries linger briefly
+    (they are cleared after the reload the removal triggers), so a sensor counts
+    only while its subentry is still live — Untracked sensors carry no subentry.
+    And the whole-home aggregate is excluded: its period totals are the sum of the
+    device and Untracked cycle meters and duplicate the Energy Dashboard, so it
+    carries lifetime running totals only (HEA-48).
     """
     registry = er.async_get(hass)
     whole_home_prefix = f"{entry.entry_id}_{WHOLE_HOME_KEY}_"
@@ -211,8 +225,7 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
         entity.entity_id
         for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
         if entity.domain == "sensor"
-        and entity.entity_category is None
-        and entity.translation_key != "cost_savings"
+        and entity.translation_key in _METERED_CONCEPTS
         and not (entity.unique_id or "").startswith(whole_home_prefix)
         and (
             entity.config_subentry_id is None

@@ -214,3 +214,87 @@ def test_missing_price_for_a_present_source_is_rejected() -> None:
             bucket({SourceKind.BATTERY: "1.0"}, {"guest_bedroom_aircon": "1.0"}),
             incomplete,
         )
+
+
+def test_energy_is_split_across_the_sources_that_served_the_bucket() -> None:
+    # Given — a bucket served 0.4 kWh from the grid and 0.3 kWh from solar, of
+    # which one device drew 0.5 kWh
+    result = STRATEGY.allocate(
+        bucket(
+            {SourceKind.IMPORT: "0.4", SourceKind.GENERATION: "0.3"},
+            {"guest_bedroom_aircon": "0.5"},
+        ),
+        prices(),
+    )
+
+    # Then — the device's energy carries the bucket's source mix, exactly as its
+    # cost carries the bucket's blended price (HEA-51)
+    guest = result.devices["guest_bedroom_aircon"]
+    assert guest.energy_by_source[SourceKind.IMPORT] == Decimal(
+        "0.2857142857142857142857142857"
+    )
+    assert guest.energy_by_source[SourceKind.GENERATION] == Decimal(
+        "0.2142857142857142857142857143"
+    )
+
+
+def test_a_devices_source_energies_sum_to_its_energy_exactly() -> None:
+    # Given — a three-source bucket whose proportions do not divide cleanly
+    result = STRATEGY.allocate(
+        bucket(
+            {
+                SourceKind.IMPORT: "0.4",
+                SourceKind.GENERATION: "0.3",
+                SourceKind.BATTERY: "0.3",
+            },
+            {"guest_bedroom_aircon": "0.5", "tumble_dryer": "0.2"},
+        ),
+        prices({SourceKind.BATTERY: OVERNIGHT}),
+    )
+
+    # Then — every label's source energies sum back to its energy at full Decimal
+    # precision, so a self-sufficiency share always totals 100 % (the rounding
+    # residue is folded into the largest source, as the cost split does)
+    for allocation in (*result.devices.values(), result.untracked):
+        assert (
+            sum(allocation.energy_by_source.values(), start=Decimal(0))
+            == allocation.energy_kwh
+        )
+
+
+def test_a_bucket_with_no_served_energy_attributes_no_source() -> None:
+    # Given — a device drew while no house-level source reported anything, so the
+    # engine genuinely does not know what served it
+    result = STRATEGY.allocate(
+        bucket({}, {"guest_bedroom_aircon": "0.5"}),
+        prices(),
+    )
+
+    # Then — the energy is still counted, but no source is asserted. Booking it to
+    # grid would label unknown energy as grid-supplied; the shortfall is visible
+    guest = result.devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("0.5")
+    assert guest.energy_by_source == {}
+
+
+def test_overdrawn_bucket_keeps_each_device_summing_to_its_own_energy() -> None:
+    # Given — tracked draw exceeding the energy the house-level meters accounted
+    # for, which clamps the Untracked remainder to zero
+    result = STRATEGY.allocate(
+        bucket(
+            {SourceKind.IMPORT: "0.4", SourceKind.GENERATION: "0.3"},
+            {"guest_bedroom_aircon": "0.8", "tumble_dryer": "0.4"},
+        ),
+        prices(),
+    )
+
+    # Then — each device's split still sums to its own energy: the per-device
+    # invariant is the one a self-sufficiency figure depends on, so it holds even
+    # though the devices between them then exceed the metered source totals
+    assert result.untracked.energy_kwh == Decimal(0)
+    for name in ("guest_bedroom_aircon", "tumble_dryer"):
+        allocation = result.devices[name]
+        assert (
+            sum(allocation.energy_by_source.values(), start=Decimal(0))
+            == allocation.energy_kwh
+        )

@@ -39,12 +39,19 @@ _UNTRACKED = "\x00untracked"
 
 @dataclass(frozen=True)
 class DeviceAllocation:
-    """One device's share of a bucket: the four figures the sensors publish."""
+    """One device's share of a bucket: the four figures the sensors publish.
+
+    ``energy_by_source`` splits ``energy_kwh`` across the sources that served the
+    bucket, for the self-sufficiency figures (HEA-51). It carries only the kinds
+    the bucket was actually served by, so a bucket with no house-level readings
+    leaves it empty rather than asserting a source nobody measured.
+    """
 
     energy_kwh: Decimal
     actual_cost: Decimal
     naive_cost: Decimal
     cost_savings: Decimal
+    energy_by_source: Mapping[SourceKind, Decimal]
 
 
 @dataclass(frozen=True)
@@ -95,11 +102,46 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
                 actual_cost=actuals[label],
                 naive_cost=energy * import_price,
                 cost_savings=energy * import_price - actuals[label],
+                energy_by_source=split_by_source(energy, bucket.sources, consumption),
             )
             for label, energy in energies.items()
         }
         untracked = allocations.pop(_UNTRACKED)
         return BucketAllocation(devices=allocations, untracked=untracked)
+
+
+def split_by_source(
+    energy: Decimal, sources: Mapping[SourceKind, Decimal], consumption: Decimal
+) -> dict[SourceKind, Decimal]:
+    """Splits one label's energy across the sources, in the bucket's own mix.
+
+    The counterpart of the blended price: every label consumes the same mixture of
+    grid, solar and battery that served the bucket, just as every label pays the
+    same blended rate for it. Shares are taken at full Decimal precision with the
+    residue folded into the largest source, so they sum back to ``energy`` exactly
+    — the invariant a self-sufficiency percentage depends on.
+
+    That per-label exactness is deliberately the invariant that holds. When
+    tracked draw exceeds the metered consumption the labels between them then
+    account for more of a source than the meters recorded, exactly as their
+    energies already exceed consumption; the alternative would leave a device's
+    own sources summing to less than its energy, which no share can be read from.
+
+    A bucket with no served energy yields an empty mapping: the honest answer is
+    that nothing is known about what supplied it (HEA-51).
+    """
+    if consumption <= 0:
+        return {}
+    shares = {
+        kind: energy * kwh / consumption for kind, kwh in sources.items() if kwh > 0
+    }
+    if not shares:
+        return {}
+    residue = energy - _sum(shares.values())
+    if residue != 0:
+        largest = max(shares, key=lambda kind: shares[kind])
+        shares[largest] += residue
+    return shares
 
 
 def _energies(bucket: IntervalBucket, consumption: Decimal) -> dict[str, Decimal]:
