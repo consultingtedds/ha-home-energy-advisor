@@ -880,3 +880,161 @@ def test_reset_totals_rebases_the_by_source_totals_too() -> None:
         result.whole_home,
     ):
         assert _by_source_sum(totals) == Decimal(0)
+
+
+def _metered_home() -> Accountant:
+    """A home with a house-consumption meter — the residual decomposition."""
+    return Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={"utility_plug": "sensor.utility_plug_total"},
+    )
+
+
+def _run_buckets(
+    acc: Accountant, *, buckets: int, house_step: str, device_step: str, first: int = 5
+) -> None:
+    """Climb both counters once per 5-minute bucket, finalising as we go."""
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.house_load", at(0), Decimal(0))
+    acc.observe("sensor.utility_plug_total", at(0), Decimal(0))
+    house = Decimal(0)
+    device = Decimal(0)
+    for index in range(buckets):
+        minute = first + index * 5
+        house += Decimal(house_step)
+        device += Decimal(device_step)
+        acc.observe("sensor.grid_import", at(minute), house)
+        acc.observe("sensor.house_load", at(minute), house)
+        acc.observe("sensor.utility_plug_total", at(minute), device)
+        acc.finalize(at(minute + 25))
+
+
+def test_a_device_claiming_more_energy_than_the_whole_house_is_not_booked() -> None:
+    # Given — a home using 0.15 kWh per 5-minute bucket, and a device whose
+    # counter claims 1.5 kWh in each of them. That is the utility plug's real failure
+    # mode: a source that lies is indistinguishable from a huge load, except that
+    # no single device can use more than the house (HEA-60)
+    acc = _metered_home()
+
+    # When — a full hour of that runs through the ledger
+    _run_buckets(acc, buckets=14, house_step="0.15", device_step="1.5")
+
+    # Then — the device is judged implausible and its energy stops being booked,
+    # so the lie stops corrupting the ledger
+    assert "utility_plug" in acc.implausible_devices()
+    pump = acc.totals().devices["utility_plug"]
+    assert pump.energy_kwh < Decimal(14) * Decimal("1.5")
+
+    # And — the rejection is explained rather than silent, on the source's own log
+    decisions = acc.source_diagnostics()["sensor.utility_plug_total"].recent_decisions
+    assert any(d.reason is DecisionReason.IMPLAUSIBLE for d in decisions)
+
+
+def test_a_coarse_device_overdrawing_one_bucket_is_still_booked() -> None:
+    # Given — the founding case the guard must not break: a WF-RAC aircon reporting
+    # a 0.25 kWh step that lands in a single bucket the house only consumed 0.15 in.
+    # Over one bucket it "exceeds the house"; over the hour it plainly does not
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.house_load", at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+
+    # When — the house ticks along and the aircon steps once, coarsely
+    house = Decimal(0)
+    for index in range(14):
+        minute = 5 + index * 5
+        house += Decimal("0.15")
+        acc.observe("sensor.grid_import", at(minute), house)
+        acc.observe("sensor.house_load", at(minute), house)
+        if index == 3:
+            acc.observe("sensor.guest_energy", at(minute), Decimal("0.25"))
+        acc.finalize(at(minute + 25))
+
+    # Then — nothing is flagged and the step is booked in full. Judging a single
+    # bucket would have rejected it; the window is what tells timing from lying
+    assert acc.implausible_devices() == frozenset()
+    assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal("0.25")
+
+
+def test_the_guard_stays_quiet_when_the_house_reports_nothing() -> None:
+    # Given — a household whose house-level meter is dead flat while a device draws
+    # normally. Every device then "exceeds" a house total of zero
+    acc = _metered_home()
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.house_load", at(0), Decimal(0))
+    acc.observe("sensor.utility_plug_total", at(0), Decimal(0))
+
+    # When — a full window passes with house consumption never moving
+    device = Decimal(0)
+    for index in range(14):
+        minute = 5 + index * 5
+        device += Decimal("0.05")
+        acc.observe("sensor.utility_plug_total", at(minute), device)
+        acc.finalize(at(minute + 25))
+
+    # Then — no device is condemned on the strength of a missing input. A silent
+    # house meter is its own fault, surfaced elsewhere; it is not evidence that a
+    # device is lying
+    assert acc.implausible_devices() == frozenset()
+    assert acc.totals().devices["utility_plug"].energy_kwh > 0
+
+
+def test_a_flagged_device_recovers_once_its_source_reads_sanely_again() -> None:
+    # Given — a device already judged implausible after an hour of lying
+    acc = _metered_home()
+    _run_buckets(acc, buckets=14, house_step="0.15", device_step="1.5")
+    assert "utility_plug" in acc.implausible_devices()
+    banked = acc.totals().devices["utility_plug"].energy_kwh
+
+    # When — the source is repointed and starts reporting honestly, for long
+    # enough to refill the window
+    device = Decimal(14) * Decimal("1.5")
+    house = Decimal(14) * Decimal("0.15")
+    for index in range(14):
+        minute = 75 + index * 5
+        house += Decimal("0.15")
+        device += Decimal("0.01")
+        acc.observe("sensor.grid_import", at(minute), house)
+        acc.observe("sensor.house_load", at(minute), house)
+        acc.observe("sensor.utility_plug_total", at(minute), device)
+        acc.finalize(at(minute + 25))
+
+    # Then — the guard lets go and accounting resumes. A device is never condemned
+    # permanently on past behaviour
+    assert acc.implausible_devices() == frozenset()
+    assert acc.totals().devices["utility_plug"].energy_kwh > banked
+
+
+def test_implausible_energy_is_refused_on_the_late_correction_path_too() -> None:
+    # Given — a device already judged implausible. This is the path that matters
+    # most for the real failure: the utility plug was cloud-polled every ~30 minutes,
+    # so most of each delta landed past the finalisation watermark and reached the
+    # retained ring, never the in-flight buckets (ADR-0006)
+    acc = _metered_home()
+    _run_buckets(acc, buckets=14, house_step="0.15", device_step="1.5")
+    assert "utility_plug" in acc.implausible_devices()
+    banked = acc.totals().devices["utility_plug"].energy_kwh
+    untracked = acc.totals().untracked.energy_kwh
+
+    # When — another inflated reading arrives spanning a bucket already finalised
+    acc.observe("sensor.utility_plug_total", at(75), Decimal(14) * Decimal("1.5") + 8)
+    acc.finalize(at(100))
+
+    # Then — the correction is refused, so no value is moved out of the Untracked
+    # remainder into a device whose source cannot be telling the truth
+    assert acc.totals().devices["utility_plug"].energy_kwh == banked
+    assert acc.totals().untracked.energy_kwh == untracked
+    decisions = acc.source_diagnostics()["sensor.utility_plug_total"].recent_decisions
+    assert any(d.reason is DecisionReason.IMPLAUSIBLE for d in decisions)

@@ -134,6 +134,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._unhealthy_since: dict[str, datetime] = {}
         self._input_issues: dict[str, str] = {}
         self._negative_remainder_raised = False
+        self._implausible_sources: set[str] = set()
         self._accountant = Accountant(
             house_sources=house_sources,
             device_energy_entities=devices,
@@ -215,7 +216,31 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._accountant.finalize(now)
         self._check_input_health(now)
         self._check_remainder_health()
+        self._check_source_plausibility()
         self.async_set_updated_data(self._accountant.totals())
+
+    def _check_source_plausibility(self) -> None:
+        """Name, in Repairs, any device whose source is claiming the impossible.
+
+        The engine has already stopped booking that energy (HEA-60); this is the
+        half that tells the user, because a device silently frozen at a stale
+        figure is exactly the kind of quiet wrongness the product exists to avoid.
+        Raised per device so the message can name the one to go and look at.
+        """
+        implausible = {
+            self._device_name(device)
+            for device in self._accountant.implausible_devices()
+        }
+        for name in implausible - self._implausible_sources:
+            issues.async_raise(
+                self.hass,
+                issues.implausible_source_issue_id(name),
+                issues.ISSUE_IMPLAUSIBLE_SOURCE,
+                {"name": name},
+            )
+        for name in self._implausible_sources - implausible:
+            issues.async_clear(self.hass, issues.implausible_source_issue_id(name))
+        self._implausible_sources = implausible
 
     def _check_input_health(self, now: datetime) -> None:
         """Raise or clear the source/price Repairs from each input's health."""

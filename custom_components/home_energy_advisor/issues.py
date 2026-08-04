@@ -26,6 +26,7 @@ ISSUE_PRICE_UNAVAILABLE = "price_unavailable"
 ISSUE_HELPER_RECREATED = "helper_recreated"
 ISSUE_CYCLE_HELPER_RECREATED = "cycle_helper_recreated"
 ISSUE_NEGATIVE_REMAINDER = "negative_remainder"
+ISSUE_IMPLAUSIBLE_SOURCE = "implausible_source"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -41,6 +42,11 @@ def source_unavailable_issue_id(entity_id: str) -> str:
 def helper_recreated_issue_id(subentry_id: str) -> str:
     """Stable issue id for a device whose deleted Integral helper was re-created."""
     return f"{ISSUE_HELPER_RECREATED}_{subentry_id}"
+
+
+def implausible_source_issue_id(name: str) -> str:
+    """Stable issue id for a device whose source claims more than the house."""
+    return f"{ISSUE_IMPLAUSIBLE_SOURCE}_{name}"
 
 
 def async_raise(
