@@ -418,4 +418,7 @@ def _totals_to_dict(totals: DeviceTotals) -> dict[str, str]:
         "actual_cost": str(totals.actual_cost),
         "naive_cost": str(totals.naive_cost),
         "cost_savings": str(totals.cost_savings),
+        "energy_from_grid": str(totals.energy_from_grid),
+        "energy_from_generation": str(totals.energy_from_generation),
+        "energy_from_battery": str(totals.energy_from_battery),
     }

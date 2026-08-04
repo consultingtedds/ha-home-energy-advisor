@@ -140,6 +140,9 @@
       "actual_cost": { "name": "Coste real" },
       "cost_at_grid_price": { "name": "Coste a precio de red" },
       "cost_savings": { "name": "Ahorro de coste" },
+      "energy_from_grid": { "name": "Energía de la red" },
+      "energy_from_generation": { "name": "Energía de generación" },
+      "energy_from_battery": { "name": "Energía de la batería" },
       "devices": { "name": "Dispositivos" }
     }
   },

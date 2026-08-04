@@ -28,9 +28,11 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
+    CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
+    CONF_SOLAR_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
@@ -594,3 +596,115 @@ async def test_a_restart_does_not_drift_the_running_total(
     state = hass.states.get(entity_id)
     assert state is not None
     assert Decimal(state.state) == Decimal("0.714286")
+
+
+_BY_SOURCE = ("energy_from_grid", "energy_from_generation", "energy_from_battery")
+
+
+def _solar_entry() -> MockConfigEntry:
+    """A home with solar and export meters, so a bucket is served by a real mix."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_SOLAR_ENTITY: "sensor.solar",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title="Coarse Step Aircon",
+                data={
+                    CONF_NAME: "Coarse Step Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                },
+                unique_id=None,
+            )
+        ],
+    )
+
+
+async def _run_a_solar_interval(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Serve 0.7 kWh from 0.4 grid + 0.3 self-consumed solar; the device draws 0.5."""
+    for entity in ("sensor.grid_import", "sensor.solar", "sensor.grid_export"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.price", "0.30")
+    await hass.async_block_till_done()
+
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "0.4", _ENERGY)
+    hass.states.async_set("sensor.solar", "0.5", _ENERGY)
+    hass.states.async_set("sensor.grid_export", "0.2", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "0.5", _ENERGY)
+    await hass.async_block_till_done()
+
+    freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+
+async def test_each_device_gets_energy_by_source_sensors(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a solar home with one tracked device
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    entry = _solar_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — an interval served by a grid/solar mix is accounted
+    await _run_a_solar_interval(hass, freezer)
+
+    # Then — the device's energy is published split by the source that served it,
+    # so energy self-sufficiency can be charted per device (HEA-51)
+    def energy(entity_id: str) -> Decimal:
+        state = hass.states.get(entity_id)
+        assert state is not None, f"no {entity_id}"
+        assert state.attributes["device_class"] == "energy"
+        assert state.attributes["unit_of_measurement"] == "kWh"
+        return Decimal(state.state)
+
+    assert energy("sensor.coarse_step_aircon_energy_from_grid") == Decimal("0.285714")
+    assert energy("sensor.coarse_step_aircon_energy_from_generation") == Decimal(
+        "0.214286"
+    )
+    assert energy("sensor.coarse_step_aircon_energy_from_battery") == Decimal(0)
+
+    # And — the three sum to the device's energy, which is what makes a
+    # self-sufficiency percentage total 100 %
+    total = sum(
+        energy(f"sensor.coarse_step_aircon_{concept}") for concept in _BY_SOURCE
+    )
+    assert total == energy("sensor.coarse_step_aircon_energy_used")
+
+
+async def test_untracked_by_source_is_total_because_late_energy_pulls_it_down(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a solar home that has accounted an interval
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    entry = _solar_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_a_solar_interval(hass, freezer)
+
+    # Then — Untracked's by-source figures are `total`, not `total_increasing`: they
+    # are derived, so a late correction legitimately pulls them down, which
+    # statistics would otherwise misread as a meter reset (ADR-0006)
+    for concept in _BY_SOURCE:
+        state = hass.states.get(f"sensor.untracked_energy_devices_{concept}")
+        assert state is not None, f"no untracked {concept}"
+        assert state.attributes["state_class"] == "total"
+
+    # And — a tracked device's stay `total_increasing`: they only ever rise
+    for concept in _BY_SOURCE:
+        state = hass.states.get(f"sensor.coarse_step_aircon_{concept}")
+        assert state is not None
+        assert state.attributes["state_class"] == "total_increasing"

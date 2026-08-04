@@ -70,7 +70,14 @@ _WHOLE_HOME_KEY = WHOLE_HOME_KEY
 # would misread as a meter reset under `total_increasing`, so Untracked's is
 # `total` (HEA-48 / ADR-0006). The monetary costs are `total` for every device
 # already (ADR-0007), so they need no per-key remap.
-_UNTRACKED_TOTAL_CONCEPTS = frozenset({"energy_used"})
+_UNTRACKED_TOTAL_CONCEPTS = frozenset(
+    {
+        "energy_used",
+        "energy_from_grid",
+        "energy_from_generation",
+        "energy_from_battery",
+    }
+)
 
 # Precision at which a figure becomes a Home Assistant state (HEA-59). Publishing
 # the accumulator's full Decimal wrote 28-significant-digit strings to the recorder
@@ -144,6 +151,43 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         suggested_display_precision=2,
         publish_precision=_MONEY_PRECISION,
         value_fn=lambda totals: totals.cost_savings,
+    ),
+    # Energy Used split across the sources that served it, for energy
+    # self-sufficiency — "how much of this device ran on the sun" (HEA-51). The
+    # engine already computes the split per 5-minute bucket to price the energy;
+    # publishing it is the only way to reach it, because unlike a period total
+    # (derivable from statistics `change`) or the whole-home aggregate (derivable
+    # as Σ siblings) it cannot be recovered retroactively from anything else.
+    # Never cycle-metered — see ADR-0008 §3 and `cycle_meter._METERED_CONCEPTS`.
+    HeaSensorDescription(
+        key="energy_from_grid",
+        translation_key="energy_from_grid",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=3,
+        publish_precision=_ENERGY_PRECISION,
+        value_fn=lambda totals: totals.energy_from_grid,
+    ),
+    HeaSensorDescription(
+        key="energy_from_generation",
+        translation_key="energy_from_generation",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=3,
+        publish_precision=_ENERGY_PRECISION,
+        value_fn=lambda totals: totals.energy_from_generation,
+    ),
+    HeaSensorDescription(
+        key="energy_from_battery",
+        translation_key="energy_from_battery",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=3,
+        publish_precision=_ENERGY_PRECISION,
+        value_fn=lambda totals: totals.energy_from_battery,
     ),
 )
 
