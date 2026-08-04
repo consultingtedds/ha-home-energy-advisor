@@ -53,6 +53,7 @@ custom integration.
 | Auto-onboarding devices that merely match `device_class` | Explicit user selection (false friends: cycling FTP watts, phone battery power) |
 | Entities without `unique_id` or `translation_key` | Both, always |
 | Hardcoded user-facing strings (flow text, entity names, Repairs) | `strings.json` + `translations/en.json`, `es.json` |
+| `suggested_area` on `DeviceInfo`, or assigning an area to HEA's own devices | Nothing — read the *source* device's area and expose it as data (ADR-0009 / HEA-58). `suggested_area` is removed in HA **2026.9**, and an area changes entity ids |
 
 ### Money and accounting
 
@@ -73,6 +74,23 @@ custom integration.
 | Naked float equality | `Decimal` comparisons or `pytest.approx` with explicit tolerance |
 | Invoking `pytest` from Windows-side automation (git hooks, pre-commit, scripts) | Route it through a Unix shell (WSL). HA imports `fcntl`, so pytest dies at *collection* on native Windows — even for tests with no HA imports |
 
+### Privacy — this is a public repo
+
+Everything here is MIT-licensed and world-readable, including git history. Assume
+anything committed is permanent and indexed.
+
+Never reference a real home. Development and dogfooding run against a lived-in
+instance, so any capture, table or example taken from it is real data until it is
+deliberately made otherwise — treat it that way by default.
+
+| Never | Use instead |
+| --- | --- |
+| Committing real captured instance data | Keep the capture local and `.gitignore` it; make the test `skipif` the fixture is absent. Anything CI must prove needs a **synthetic** fixture |
+| Whole-house consumption at sub-hourly resolution, anywhere | Nothing — it is an occupancy trace (when the house is empty, when people wake). This is the single most sensitive artefact the project touches |
+| Household members' names, room-by-room inventories, appliance lists that narrow the property type | Generic labels, or omit entirely. "Living Room Aircon" is fine; a garden appliance implies a private water supply |
+| Hostnames, IPs, timezones, lifetime counter readings | "the reference instance". A live hostname is an address for someone's home |
+| Assuming a rename is enough | **Minimise first, anonymise second.** Ask what the project actually needs. A 9-row table relabelled still discloses that the house has 9 rooms |
+
 ### Process
 
 | Never | Use instead |
@@ -80,6 +98,7 @@ custom integration.
 | Code without a Linear ticket | Create/pick the HEA-nn ticket first |
 | Secrets in code or git | Environment variables; nothing secret belongs in this repo at all |
 | Writing multiple files in one operation | One file at a time — each change must trigger the IDE diff window |
+| Authoring project files through shell heredocs (`cat >> file`) | The editor, always. A shell write opens no diff, so the maintainer cannot see or challenge it as it happens. Bash is for *running* things, never for authoring |
 
 ---
 
@@ -109,6 +128,12 @@ custom integration.
 
 ### i18n
 - All user-facing strings in `strings.json` + `translations/` (en, es) from day one
+
+### Privacy
+- Before committing any example, table or fixture, ask: *does this describe a real
+  home, and does the project actually need it?* Omit before renaming
+- Real captures live only in `.gitignore`d fixture directories; their tests skip
+  when absent, and a synthetic equivalent covers whatever CI must prove
 
 ---
 
@@ -145,7 +170,9 @@ commit** that delivers the user-visible capability. Work directly on `main`.
 | Delivery plan, decisions, epic map | `docs/PLAN.md` |
 | Accounting model rationale | `docs/adr/0002-*.md`; late-arrival correction policy in `docs/adr/0006-*.md` |
 | Device/sensor behaviour patterns on the reference instance | `docs/notes/DEVICE_SENSOR_SURVEY.md` |
-| Original validation data + published tables | `docs/notes/AIRCON_COST_EXPLORATION.md`, `tests/fixtures/exploration_2026_07/` |
+| Original validation data + published tables | `docs/notes/AIRCON_COST_EXPLORATION.md`, `tests/fixtures/exploration_2026_07/` (local-only capture — see `.gitignore`) |
+| Entity naming, and why it is effectively permanent | `docs/adr/0003-*.md`, superseded on one name by `docs/adr/0009-*.md` |
+| Why period figures come from statistics, not helpers | `docs/adr/0008-*.md` |
 | Test patterns | `docs/TESTING_STANDARDS.md` |
 | Docstring/ADR/README/diagram rules | `docs/DOCUMENTATION_STANDARDS.md` |
 | Product intent | `docs/VISION.md`, `docs/PRODUCT_CHARTER.md`, `docs/PRD.md`, `docs/adr/0000-*.md` |
