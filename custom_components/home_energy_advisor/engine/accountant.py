@@ -30,13 +30,13 @@ subtracts. A monotonic whole-home total falls out for free.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from .allocation import ProportionalAllocationStrategy
+from .allocation import ProportionalAllocationStrategy, split_by_source
 from .battery_ledger import BatteryLedger
 from .energy_source import CumulativeEnergySource, EnergyUnit, Reading
 from .interval_ledger import BUCKET, IntervalBucket, SourceKind, spread_energy
@@ -69,12 +69,23 @@ class SourceRole(Enum):
 
 @dataclass(frozen=True)
 class DeviceTotals:
-    """Running since-startup figures for one device or the Untracked remainder."""
+    """Running since-startup figures for one device or the Untracked remainder.
+
+    The three ``energy_from_*`` figures split ``energy_kwh`` across the sources
+    that served it, for energy self-sufficiency (HEA-51). They sum to
+    ``energy_kwh`` for every bucket the house-level meters accounted for; a bucket
+    with draw but no readings at all contributes to the energy and to no source,
+    so over such an interval the split falls short rather than claiming a supply
+    nobody measured.
+    """
 
     energy_kwh: Decimal
     actual_cost: Decimal
     naive_cost: Decimal
     cost_savings: Decimal
+    energy_from_grid: Decimal
+    energy_from_generation: Decimal
+    energy_from_battery: Decimal
 
 
 @dataclass(frozen=True)
@@ -94,17 +105,20 @@ class Totals:
 class _RetainedBucket:
     """A finalised bucket's context, kept so late device energy can correct it.
 
-    Only the scalars a correction needs: the fixed consumption and blended unit
-    price the bucket settled at, the import price its naive cost uses, and the
-    running total device draw (which late arrivals grow). The whole-home and real
-    cost are fixed once finalised, so a correction only moves value from the
-    Untracked remainder to the late device — never between devices.
+    Only what a correction needs: the fixed consumption and blended unit price the
+    bucket settled at, the import price its naive cost uses, the running total
+    device draw (which late arrivals grow), and the source mix that served it, so
+    reclaimed energy is attributed to the sources of *its own* interval rather
+    than whichever ones happen to be running when it finally arrives. The
+    whole-home and real cost are fixed once finalised, so a correction only moves
+    value from the Untracked remainder to the late device — never between devices.
     """
 
     consumption: Decimal
     blended: Decimal
     import_price: Decimal
     draw: Decimal
+    sources: Mapping[SourceKind, Decimal]
 
 
 @dataclass(frozen=True)
@@ -124,12 +138,18 @@ class _Running:
     actual_cost: Decimal = Decimal(0)
     naive_cost: Decimal = Decimal(0)
     cost_savings: Decimal = Decimal(0)
+    by_source: dict[SourceKind, Decimal] = field(default_factory=dict)
 
     def add(self, allocation: DeviceAllocation) -> None:
         self.energy_kwh += allocation.energy_kwh
         self.actual_cost += allocation.actual_cost
         self.naive_cost += allocation.naive_cost
         self.cost_savings += allocation.cost_savings
+        self.add_by_source(allocation.energy_by_source)
+
+    def add_by_source(self, shares: Mapping[SourceKind, Decimal]) -> None:
+        for kind, kwh in shares.items():
+            self.by_source[kind] = self.by_source.get(kind, Decimal(0)) + kwh
 
     def snapshot(self) -> DeviceTotals:
         return DeviceTotals(
@@ -137,6 +157,11 @@ class _Running:
             actual_cost=self.actual_cost,
             naive_cost=self.naive_cost,
             cost_savings=self.cost_savings,
+            energy_from_grid=self.by_source.get(SourceKind.IMPORT, Decimal(0)),
+            energy_from_generation=self.by_source.get(
+                SourceKind.GENERATION, Decimal(0)
+            ),
+            energy_from_battery=self.by_source.get(SourceKind.BATTERY, Decimal(0)),
         )
 
 
@@ -260,11 +285,17 @@ class Accountant:
         actual = _sum(d.actual_cost for d in tracked)
         naive = _sum(d.naive_cost for d in tracked)
         savings = _sum(d.cost_savings for d in tracked)
+        grid = _sum(d.energy_from_grid for d in tracked)
+        solar = _sum(d.energy_from_generation for d in tracked)
+        battery = _sum(d.energy_from_battery for d in tracked)
         return DeviceTotals(
             energy_kwh=whole_home.energy_kwh - energy,
             actual_cost=whole_home.actual_cost - actual,
             naive_cost=whole_home.naive_cost - naive,
             cost_savings=whole_home.cost_savings - savings,
+            energy_from_grid=whole_home.energy_from_grid - grid,
+            energy_from_generation=whole_home.energy_from_generation - solar,
+            energy_from_battery=whole_home.energy_from_battery - battery,
         )
 
     def consecutive_overdrawn_buckets(self) -> int:
@@ -324,6 +355,7 @@ class Accountant:
         run.naive_cost += kwh * retained.import_price
         run.actual_cost += priced * retained.blended
         run.cost_savings += kwh * retained.import_price - priced * retained.blended
+        run.add_by_source(split_by_source(kwh, retained.sources, retained.consumption))
 
         grew = max(retained.consumption, retained.draw + kwh) - max(
             retained.consumption, retained.draw
@@ -331,6 +363,9 @@ class Accountant:
         self._house.energy_kwh += grew
         self._house.naive_cost += grew * retained.import_price
         self._house.cost_savings += grew * retained.import_price
+        self._house.add_by_source(
+            split_by_source(grew, retained.sources, retained.consumption)
+        )
         retained.draw += kwh
 
     def _finalize_bucket(self, start: datetime) -> None:
@@ -364,6 +399,7 @@ class Accountant:
             blended=total_cost / consumption if consumption > 0 else Decimal(0),
             import_price=prices[SourceKind.IMPORT],
             draw=_sum(draws.values()),
+            sources=dict(sources),
         )
 
     def _evict_stale(self) -> None:

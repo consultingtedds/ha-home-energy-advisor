@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -441,3 +442,28 @@ async def test_reset_leaves_an_adopted_cycle_meter_alone(
     state = hass.states.get(output)
     assert state is not None
     assert Decimal(state.state) == Decimal("0.36")
+
+
+async def test_energy_by_source_sensors_are_never_cycle_metered(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration with one device, so the three metered concepts
+    # produce 12 meters (device + Untracked, 3 concepts x 2 cycles)
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device()
+    await _set_up(hass, entry)
+
+    # Then — the by-source energy sensors exist but carry no cycle meter. Metering
+    # them would add ~90 helpers on a 14-device home for a per-period figure that
+    # long-term statistics already answer; ADR-0008 §3 is firm on this
+    meters = hass.config_entries.async_entries("utility_meter")
+    assert len(meters) == 12
+    metered_sources = {meter.options["source"] for meter in meters}
+    registry = er.async_get(hass)
+    by_source = [
+        entity.entity_id
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
+        if (entity.translation_key or "").startswith("energy_from_")
+    ]
+    assert by_source, "the by-source sensors should exist to be excluded at all"
+    assert metered_sources.isdisjoint(by_source)

@@ -29,6 +29,20 @@ def _total_actual(result: Totals) -> Decimal:
     )
 
 
+# Every figure a device carries, at zero — what a fresh or freshly-rebased
+# accountant must publish. Spelled out rather than defaulted so that adding a
+# concept to DeviceTotals fails here until it is deliberately accounted for.
+ZERO_TOTALS = DeviceTotals(
+    energy_kwh=Decimal(0),
+    actual_cost=Decimal(0),
+    naive_cost=Decimal(0),
+    cost_savings=Decimal(0),
+    energy_from_grid=Decimal(0),
+    energy_from_generation=Decimal(0),
+    energy_from_battery=Decimal(0),
+)
+
+
 def test_source_diagnostics_snapshots_every_observed_meter() -> None:
     # Given — a home with a grid meter and one tracked device, each seen twice
     acc = Accountant(
@@ -464,12 +478,7 @@ def test_totals_start_empty() -> None:
 
     # Then — every figure is zero, including the Untracked remainder
     result = acc.totals()
-    assert result.devices["guest_bedroom_aircon"] == DeviceTotals(
-        energy_kwh=Decimal(0),
-        actual_cost=Decimal(0),
-        naive_cost=Decimal(0),
-        cost_savings=Decimal(0),
-    )
+    assert result.devices["guest_bedroom_aircon"] == ZERO_TOTALS
     assert result.untracked.energy_kwh == Decimal(0)
 
 
@@ -630,16 +639,10 @@ def test_reset_totals_rebases_every_running_total_to_zero() -> None:
 
     # Then — every published figure starts from zero: the tracked device, the
     # derived Untracked remainder, and the whole-home aggregate alike
-    zero = DeviceTotals(
-        energy_kwh=Decimal(0),
-        actual_cost=Decimal(0),
-        naive_cost=Decimal(0),
-        cost_savings=Decimal(0),
-    )
     result = acc.totals()
-    assert result.devices["guest_bedroom_aircon"] == zero
-    assert result.untracked == zero
-    assert result.whole_home == zero
+    assert result.devices["guest_bedroom_aircon"] == ZERO_TOTALS
+    assert result.untracked == ZERO_TOTALS
+    assert result.whole_home == ZERO_TOTALS
 
 
 def test_reset_totals_keeps_meter_tracking_so_the_next_delta_is_not_a_phantom() -> None:
@@ -745,3 +748,135 @@ def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
     assert guest.energy_kwh == Decimal("2.0")
     assert guest.actual_cost == Decimal("0.20")
     assert guest.naive_cost == Decimal("0.60")
+
+
+def _solar_home() -> Accountant:
+    """A home with grid, solar and export meters — the full-balance decomposition."""
+    return Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.GENERATION: "sensor.solar",
+            SourceRole.GRID_EXPORT: "sensor.grid_export",
+        },
+        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+    )
+
+
+def _seed_solar_home(acc: Accountant) -> None:
+    acc.record_price(at(0), PEAK)
+    for entity in ("sensor.grid_import", "sensor.solar", "sensor.grid_export"):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+
+
+def _by_source_sum(totals: DeviceTotals) -> Decimal:
+    return (
+        totals.energy_from_grid
+        + totals.energy_from_generation
+        + totals.energy_from_battery
+    )
+
+
+def test_running_totals_carry_each_devices_energy_by_source() -> None:
+    # Given — a solar home where 0.4 kWh was imported and 0.3 kWh of generation was
+    # self-consumed (0.5 generated, 0.2 exported), so the house was served 0.7 kWh
+    acc = _solar_home()
+    _seed_solar_home(acc)
+
+    # When — the device draws 0.5 kWh of that interval and it is finalised
+    acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
+    acc.observe("sensor.solar", at(5), Decimal("0.5"))
+    acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.finalize(at(30))
+
+    # Then — the device's energy is split in the mix that served the bucket, so a
+    # self-sufficiency share can be read straight off the totals (HEA-51)
+    guest = acc.totals().devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("0.5")
+    assert guest.energy_from_grid == Decimal("0.2857142857142857142857142857")
+    assert guest.energy_from_generation == Decimal("0.2142857142857142857142857143")
+    assert guest.energy_from_battery == Decimal(0)
+    assert _by_source_sum(guest) == guest.energy_kwh
+
+
+def test_untracked_by_source_derives_so_the_split_reconciles() -> None:
+    # Given — the same solar interval, part of it drawn by the tracked device
+    acc = _solar_home()
+    _seed_solar_home(acc)
+    acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
+    acc.observe("sensor.solar", at(5), Decimal("0.5"))
+    acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+
+    # When — the interval is finalised
+    acc.finalize(at(30))
+
+    # Then — device plus Untracked equal the whole home for every source, just as
+    # they do for energy and cost: Untracked is derived, never accumulated
+    result = acc.totals()
+    guest = result.devices["guest_bedroom_aircon"]
+    assert guest.energy_from_grid + result.untracked.energy_from_grid == (
+        result.whole_home.energy_from_grid
+    )
+    assert guest.energy_from_generation + result.untracked.energy_from_generation == (
+        result.whole_home.energy_from_generation
+    )
+    # And the home's own split still sums to its energy, and to what was served
+    assert _by_source_sum(result.whole_home) == result.whole_home.energy_kwh
+    assert result.whole_home.energy_from_grid == Decimal("0.4")
+    assert result.whole_home.energy_from_generation == Decimal("0.3")
+
+
+def test_a_late_correction_carries_the_retained_buckets_source_mix() -> None:
+    # Given — a solar bucket finalised while the coarse device stayed silent, its
+    # context still held in the retention ring (ADR-0006)
+    acc = _solar_home()
+    _seed_solar_home(acc)
+    acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
+    acc.observe("sensor.solar", at(5), Decimal("0.5"))
+    acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
+    acc.finalize(at(30))  # bucket at(0) finalised; watermark = at(0)
+
+    # When — the device reports late into that finalised, still-retained bucket
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.finalize(at(40))
+
+    # Then — the reclaimed energy is attributed in that bucket's own source mix,
+    # not the current one, and still sums to the device's energy
+    result = acc.totals()
+    guest = result.devices["guest_bedroom_aircon"]
+    assert guest.energy_kwh == Decimal("0.5")
+    assert guest.energy_from_grid == Decimal("0.2857142857142857142857142857")
+    assert guest.energy_from_generation == Decimal("0.2142857142857142857142857143")
+    assert _by_source_sum(guest) == guest.energy_kwh
+    # And Untracked gives back exactly what the device gained, per source
+    assert result.untracked.energy_from_grid == Decimal("0.4") - (
+        guest.energy_from_grid
+    )
+
+
+def test_reset_totals_rebases_the_by_source_totals_too() -> None:
+    # Given — a solar home with accumulated by-source energy
+    acc = _solar_home()
+    _seed_solar_home(acc)
+    acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
+    acc.observe("sensor.solar", at(5), Decimal("0.5"))
+    acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
+    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.finalize(at(30))
+    assert _by_source_sum(acc.totals().devices["guest_bedroom_aircon"]) > 0
+
+    # When — the household's totals are rebased (HEA-57)
+    acc.reset_totals()
+
+    # Then — the by-source figures start from zero alongside every other total;
+    # they are new accumulators that cannot be back-seeded, which is why they must
+    # be installed before the reset rather than after it (HEA-51)
+    result = acc.totals()
+    for totals in (
+        result.devices["guest_bedroom_aircon"],
+        result.untracked,
+        result.whole_home,
+    ):
+        assert _by_source_sum(totals) == Decimal(0)

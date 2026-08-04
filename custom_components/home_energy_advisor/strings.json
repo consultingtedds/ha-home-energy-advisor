@@ -140,6 +140,9 @@
       "actual_cost": { "name": "Actual Cost" },
       "cost_at_grid_price": { "name": "Cost at Grid Price" },
       "cost_savings": { "name": "Cost Savings" },
+      "energy_from_grid": { "name": "Energy From Grid" },
+      "energy_from_generation": { "name": "Energy From Generation" },
+      "energy_from_battery": { "name": "Energy From Battery" },
       "devices": { "name": "Devices" }
     }
   },
