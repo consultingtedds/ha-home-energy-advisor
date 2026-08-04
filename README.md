@@ -35,6 +35,10 @@ pip install -r requirements_test.txt
 pytest
 ```
 
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+commit conventions, why some tests skip, and what the `HEA-nn` references in the
+history mean (short version: a private tracker you do not need access to).
+
 ## Licence
 
 [MIT](LICENSE)

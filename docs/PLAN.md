@@ -2,8 +2,9 @@
 
 > Agreed 2026-07-11, revised 2026-07-11 after critical review (see Revision
 > note below). This is the working plan for the MVP defined in `PRD.md`.
-> Tracked in Linear: team **HEA**, project
-> [MVP — Device Cost Accounting](https://linear.app/tedds-consulting/project/mvp-device-cost-accounting-91efc52dfd67).
+> Tracked in the maintainer's private issue tracker as project *MVP — Device Cost
+> Accounting*; the `HEA-nn` references throughout these docs are its issue ids.
+> They are provenance markers, not required reading — see `CONTRIBUTING.md`.
 > Decisions recorded here are candidates for ADRs (see Epic 2); once an ADR is
 > accepted it supersedes the corresponding summary below.
 
