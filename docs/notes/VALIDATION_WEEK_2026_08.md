@@ -6,9 +6,9 @@
 > — instance, window, build — is filled in under "Run record" once the deploy and
 > reset land.
 >
-> Instance: `homeassistant.example.net` (HA 2026.7.4, Europe/Madrid) — the maintainer's real
-> home, not a test box. Huawei Solar inverter with a battery scheduled by
-> **Predbat**, 14 tracked devices plus the Untracked remainder.
+> Instance: the reference instance (HA 2026.7.4) — a real, lived-in home, not a
+> test box. Solar inverter with a scheduled battery, 14 tracked devices plus the
+> Untracked remainder.
 
 ## What this validates
 
@@ -28,9 +28,9 @@ defect would otherwise contaminate the run.
 | Precondition | Why |
 |---|---|
 | The build carrying HEA-57/59/51/61 is installed | The reset action does not exist on the old build |
-| `reset_totals` has been run **once**, after install | Clears the well-pump phantom energy (HEA-60) and the new-accumulator baseline skew in one pass |
+| `reset_totals` has been run **once**, after install | Clears the phantom energy from the bad source (HEA-60) and the new-accumulator baseline skew in one pass |
 | Every HEA total reads zero immediately after the reset | Proves the rebase actually took, rather than leaving a restored baseline underneath |
-| The utility plug's source is `sensor.utility_plug_switch_with_metering_consumption` | Its `total_energy` sibling is bugged upstream — `total += consumption` — and inflated the pump 49× |
+| The cloud-polled plug is pointed at its honest `consumption` counter | Its `total_energy` sibling is bugged upstream — `total += consumption` on every poll — and inflated that device ~97× |
 | No change to the cycle-meter set during the week | ADR-0008 froze this; changing it mid-run invalidates the period figures |
 
 Because the reset zeroes everything, this run can reconcile on **absolute**

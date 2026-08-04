@@ -135,7 +135,7 @@ read its decreases as cycle resets, booking phantom energy. HEA-54 closes that:
 - **Manual add/reconfigure is lenient on an absent `state_class`.** A
   present-but-wrong class is rejected with a translated error, but a sensor that
   sets no `state_class` at all is allowed — an explicit manual pick of an
-  unlabelled counter is the user's call (a custom template sensor, say). the maintainer's
+  unlabelled counter is the user's call (a custom template sensor, say). The maintainer's
   call; the strict-discovery / lenient-add split is deliberate.
 
 `state_class` is read from the live state, falling back to the entity registry's

@@ -64,7 +64,7 @@ code when a test reveals a genuine design flaw.
 | Engine unit | `engine/` — pure Python, no HA | pytest | milliseconds; the default suite |
 | Golden master | Engine against captured real-world fixtures | pytest + `tests/fixtures/` | fast |
 | Integration-layer | Config flow, entity lifecycle, listeners, helper auto-creation | pytest + `pytest-homeassistant-custom-component` | slower; still no real HA instance |
-| Dogfood | Real instance (homeassistant.example.net) | Epic 6 protocol | manual, per release |
+| Dogfood | Real instance (the maintainer's, not in CI) | Epic 6 protocol | manual, per release |
 
 No Docker, no Testcontainers — `pytest-homeassistant-custom-component`
 provides a full in-process `hass` fixture.
