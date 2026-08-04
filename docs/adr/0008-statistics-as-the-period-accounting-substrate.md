@@ -18,7 +18,7 @@ and what did that save. The delivery plan met that with auto-created
 `utility_meter` cycle helpers — daily and monthly by default, longer cycles
 opt-in — and HEA-40 was raised to revisit the resulting entity multiplication.
 
-Measured on the reference instance (`homeassistant.example.net`, 2026-07-28,
+Measured on the reference instance (2026-07-28,
 14 tracked devices):
 
 - **120 `utility_meter` config entries**, every one created by HEA
