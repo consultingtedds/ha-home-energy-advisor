@@ -2,7 +2,7 @@
 
 Home Assistant's Energy Dashboard explains energy flows; this integration
 explains money: what each tracked device actually cost to run, what it would
-have cost without local generation, and what solar saved.
+have cost at grid prices, and what the difference saved.
 
 This package is the thin Home Assistant adapter layer. The accounting engine
 lives in ``engine/`` and imports nothing from ``homeassistant``, so the

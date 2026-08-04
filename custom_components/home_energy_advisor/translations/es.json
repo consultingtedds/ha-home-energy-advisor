@@ -3,13 +3,13 @@
     "step": {
       "user": {
         "title": "Home Energy Advisor",
-        "description": "Elige las entradas de energía del hogar. La solar y la batería son opcionales; sin ellas, el coste se calcula solo a partir de la importación de red.",
+        "description": "Elige las entradas de energía del hogar. La generación local y la batería son opcionales; sin ellas, el coste se calcula solo a partir de la importación de red.",
         "data": {
           "price_entity": "Precio de importación",
           "currency": "Moneda",
           "grid_import_entity": "Energía importada de la red",
           "grid_export_entity": "Energía exportada a la red",
-          "solar_entity": "Energía de generación solar",
+          "solar_entity": "Energía de generación local",
           "battery_charge_entity": "Energía de carga de la batería",
           "battery_discharge_entity": "Energía de descarga de la batería",
           "house_consumption_entity": "Energía de consumo del hogar"
@@ -18,8 +18,8 @@
           "price_entity": "El sensor que indica el precio de importación actual por kWh.",
           "currency": "Moneda para los sensores de coste, p. ej. EUR.",
           "grid_import_entity": "Energía acumulada importada de la red.",
-          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular el autoconsumo solar.",
-          "solar_entity": "Generación solar acumulada. Déjalo vacío si no tienes solar.",
+          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
+          "solar_entity": "Generación local acumulada — solar, eólica, hidráulica. Déjalo vacío si no generas nada.",
           "battery_charge_entity": "Energía acumulada cargada en la batería.",
           "battery_discharge_entity": "Energía acumulada descargada de la batería.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente."
@@ -27,13 +27,13 @@
       },
       "reconfigure": {
         "title": "Editar Home Energy Advisor",
-        "description": "Actualiza las entradas de energía del hogar. La solar y la batería siguen siendo opcionales.",
+        "description": "Actualiza las entradas de energía del hogar. La generación local y la batería siguen siendo opcionales.",
         "data": {
           "price_entity": "Precio de importación",
           "currency": "Moneda",
           "grid_import_entity": "Energía importada de la red",
           "grid_export_entity": "Energía exportada a la red",
-          "solar_entity": "Energía de generación solar",
+          "solar_entity": "Energía de generación local",
           "battery_charge_entity": "Energía de carga de la batería",
           "battery_discharge_entity": "Energía de descarga de la batería",
           "house_consumption_entity": "Energía de consumo del hogar"
@@ -42,8 +42,8 @@
           "price_entity": "El sensor que indica el precio de importación actual por kWh.",
           "currency": "Moneda para los sensores de coste, p. ej. EUR.",
           "grid_import_entity": "Energía acumulada importada de la red.",
-          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular el autoconsumo solar.",
-          "solar_entity": "Generación solar acumulada. Déjalo vacío si no tienes solar.",
+          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
+          "solar_entity": "Generación local acumulada — solar, eólica, hidráulica. Déjalo vacío si no generas nada.",
           "battery_charge_entity": "Energía acumulada cargada en la batería.",
           "battery_discharge_entity": "Energía acumulada descargada de la batería.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente."
@@ -138,7 +138,7 @@
     "sensor": {
       "energy_used": { "name": "Energía usada" },
       "actual_cost": { "name": "Coste real" },
-      "cost_without_solar": { "name": "Coste sin solar" },
+      "cost_at_grid_price": { "name": "Coste a precio de red" },
       "cost_savings": { "name": "Ahorro de coste" },
       "devices": { "name": "Dispositivos" }
     }

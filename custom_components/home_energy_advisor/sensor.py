@@ -1,7 +1,7 @@
 """Per-device cost sensors — the four figures ADR-0003 fixes.
 
 For every tracked device and the Untracked remainder this platform publishes
-Energy Used, Actual Cost, Cost Without Solar and Cost Savings, grouped one Home
+Energy Used, Actual Cost, Cost at Grid Price and Cost Savings, grouped one Home
 Assistant device per tracked device. The identities here (``unique_id``,
 ``device_class``, ``state_class``, ``translation_key``, unit) are effectively
 permanent — changing them after release orphans long-term statistics — so they
@@ -128,8 +128,8 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         value_fn=lambda totals: totals.actual_cost,
     ),
     HeaSensorDescription(
-        key="cost_without_solar",
-        translation_key="cost_without_solar",
+        key="cost_at_grid_price",
+        translation_key="cost_at_grid_price",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         suggested_display_precision=2,

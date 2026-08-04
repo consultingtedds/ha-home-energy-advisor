@@ -198,7 +198,7 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     entities (the hub's devices-registry sensor) are excluded: only the primary
     cost/energy figures — which carry no ``entity_category`` — get cycle totals.
     Cost Savings is excluded: it is derived per period by subtracting the Actual
-    Cost cycle from the Cost Without Solar cycle, so metering it would add helpers
+    Cost cycle from the Cost at Grid Price cycle, so metering it would add helpers
     for a figure computable from the others, and utility_meter assumes a monotonic
     source it is not (ADR-0007). The whole-home aggregate is excluded too: its
     period totals are the sum of the device and Untracked cycle meters and

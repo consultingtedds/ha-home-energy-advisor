@@ -36,12 +36,17 @@ _MICROSECOND = timedelta(microseconds=1)
 class SourceKind(Enum):
     """A house-level energy source that serves consumption within a bucket.
 
-    Solar and battery are optional per household; a balance built from imports
-    alone simply never carries their kinds.
+    ``GENERATION`` is any supply that did not come off the metered import —
+    solar, wind, micro-hydro, a generator. It is priced at zero at the margin, so
+    what matters to the model is only that it was not bought from the grid, never
+    which technology produced it (HEA-61).
+
+    Generation and battery are optional per household; a balance built from
+    imports alone simply never carries their kinds.
     """
 
     IMPORT = "import"
-    SOLAR = "solar"
+    GENERATION = "generation"
     BATTERY = "battery"
 
 

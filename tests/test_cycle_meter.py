@@ -1,6 +1,6 @@
 """Behaviour + wiring tests for auto-created utility_meter cycle totals (HEA-23).
 
-Each per-device sensor (Energy Used, Actual Cost, Cost Without Solar, Cost
+Each per-device sensor (Energy Used, Actual Cost, Cost at Grid Price, Cost
 Savings) and the Untracked remainder get native `utility_meter` helpers for the
 enabled cycles (daily + monthly always; weekly/quarterly/yearly opt-in), so users
 see "this month so far" figures without any reset logic reimplemented here. The

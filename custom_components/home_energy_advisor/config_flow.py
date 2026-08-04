@@ -1,7 +1,7 @@
 """Config flow for Home Energy Advisor — the global house-level setup.
 
 Collects the house-level energy inputs (ADR-0002): the import price and currency,
-grid import, and the optional solar and battery sources. Source entities are
+grid import, and the optional local generation and battery sources. Source entities are
 pre-filled from the Energy Dashboard configuration where the household has set it
 up, on a best-effort basis — prefill never blocks the flow. Per-device tracking
 is added afterwards as config subentries, not here.
