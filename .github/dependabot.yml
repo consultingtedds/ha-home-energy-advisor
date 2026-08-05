@@ -1,0 +1,66 @@
+# Dependency automation — HEA-71.
+#
+# Two deliberate omissions, both of which look like oversights:
+#
+# 1. `pytest-homeassistant-custom-component` is ignored below. It pins the Home
+#    Assistant version the suite tests against, so bumping it is a supported-
+#    floor decision rather than a chore, and it is recorded a second time in the
+#    ci.yml test matrix — which the test job installs *over* the requirements
+#    file. A bot bump of one copy alone would be silently undone and still
+#    report success. Change both by hand, together.
+#
+# 2. There is no `pre-commit` ecosystem entry, even though ruff is pinned in
+#    .pre-commit-config.yaml as well as requirements_test.txt. Groups do not
+#    span ecosystems, so it would produce two PRs for one ruff bump, and
+#    merging either first leaves `main` red. Instead pip bumps ruff alone and
+#    the PR arrives red until its pre-commit rev is updated on the same branch.
+#
+# Both pairings are enforced by tests/test_dependency_pins.py, so neither
+# depends on anyone remembering this comment.
+
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    # Covers requirements_test.txt and requirements_dev.txt, which includes it.
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      python-tooling:
+        patterns: ["*"]
+    ignore:
+      # See note 1 above.
+      - dependency-name: pytest-homeassistant-custom-component
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      # hassfest and the HACS action track `master`/`main` by design and are
+      # invisible to Dependabot; this covers the pinned ones.
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    # Local commit tooling only (husky, commitlint, the Sonar scanner). CI never
+    # installs it, so monthly is frequent enough.
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      commit-tooling:
+        patterns: ["*"]

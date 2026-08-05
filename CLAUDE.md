@@ -39,6 +39,10 @@ helpers** (utility_meter, Integral), never reimplemented maths.
 - Confirm with the maintainer before writing files unless an approved plan covers them.
 - Commits: Conventional Commits `type(HEA-nn): description`, direct to `main`,
   no feature branches. `feat` only on the final commit of a capability.
+- Dependabot PRs are the one accepted exception to that: a bot cannot push to
+  `main`, and dependency automation is worth the branch. They carry no HEA
+  number. A ruff bump arrives red until its `.pre-commit-config.yaml` rev is
+  updated on the same branch — see `.github/dependabot.yml` (HEA-71).
 
 ## Development environment
 
