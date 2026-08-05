@@ -376,7 +376,10 @@ def _discovery_schema(candidates: list[DeviceCandidate]) -> vol.Schema:
                 selector.SelectSelectorConfig(
                     options=options,
                     multiple=True,
-                    mode=selector.SelectSelectorMode.LIST,
+                    # Searchable, not a flat checkbox list: even after every
+                    # exclusion the list runs to about a hundred rows on a real
+                    # instance, which no one can read by scrolling (HEA-70).
+                    mode=selector.SelectSelectorMode.DROPDOWN,
                 )
             )
         }

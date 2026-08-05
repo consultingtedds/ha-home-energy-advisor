@@ -17,6 +17,11 @@ a candidate means and whether it works (ADR-0010): it walks each candidate's
 derivation chain and refuses anything that resolves to an input the integration
 already consumes, refuses the other outputs of the generation and storage
 hardware, and prefers a source that is actually reporting.
+
+What survives is *ranked* rather than trimmed further. Belonging to an HA device
+is the strongest evidence a sensor is an appliance, so device-less sensors — the
+template outputs and helper results a household accumulates — sort below the rest
+instead of being hidden, and the user still sees everything (HEA-70).
 """
 
 from __future__ import annotations
@@ -129,6 +134,7 @@ class DeviceCandidate:
     name: str
     source_key: str  # CONF_ENERGY_ENTITY or CONF_POWER_ENTITY
     likely_false_friend: bool
+    belongs_to_a_device: bool
 
 
 @dataclass(frozen=True)
@@ -165,7 +171,27 @@ def async_discover_candidates(
         and not _is_provably_not_a_device(hass, registry, entity.entity_id, exclusions)
     ]
     kept = _prefer_working_energy(hass, paired, exclusions.tracked_energy_devices)
-    return sorted(kept, key=lambda c: (c.likely_false_friend, c.name))
+    return sorted(kept, key=_rank)
+
+
+def _rank(candidate: DeviceCandidate) -> tuple[bool, bool, str]:
+    """Sort key: most plausible devices first, never hiding the rest (HEA-70).
+
+    Belonging to an HA device leads, because it is the strongest evidence
+    available and it is structural rather than linguistic — on the reference
+    instance all 14 trackable appliances have a device, while the house inputs,
+    every period helper and most of the inverter's outputs have none. It costs
+    nothing to maintain and works the same in any language, which a substring
+    list of English words does not.
+
+    A flagged false friend still outranks a device-less sensor: it is one row the
+    user skips, whereas the device-less tail is where the hundreds live.
+    """
+    return (
+        not candidate.belongs_to_a_device,
+        candidate.likely_false_friend,
+        candidate.name,
+    )
 
 
 def _is_provably_not_a_device(
@@ -234,6 +260,7 @@ def _candidate(
         name=_suggested_name(devices, entity),
         source_key=source_key,
         likely_false_friend=_looks_like_a_false_friend(entity),
+        belongs_to_a_device=entity.device_id is not None,
     )
 
 
