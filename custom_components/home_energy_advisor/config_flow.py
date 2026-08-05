@@ -24,7 +24,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
-from homeassistant.helpers import selector
+from homeassistant.helpers import selector, translation
 
 from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
@@ -337,8 +337,10 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
             return self.async_create_entry(data=dict(self.config_entry.options))
         if not candidates:
             return self.async_abort(reason="no_candidates")
+        labels = await _candidate_label_templates(self.hass)
         return self.async_show_form(
-            step_id="discover_devices", data_schema=_discovery_schema(candidates)
+            step_id="discover_devices",
+            data_schema=_discovery_schema(candidates, labels),
         )
 
     def _add_devices(
@@ -363,10 +365,12 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
             )
 
 
-def _discovery_schema(candidates: list[DeviceCandidate]) -> vol.Schema:
+def _discovery_schema(
+    candidates: list[DeviceCandidate], labels: dict[str, str]
+) -> vol.Schema:
     options = [
         selector.SelectOptionDict(
-            value=candidate.entity_id, label=_candidate_label(candidate)
+            value=candidate.entity_id, label=_candidate_label(candidate, labels)
         )
         for candidate in candidates
     ]
@@ -376,16 +380,42 @@ def _discovery_schema(candidates: list[DeviceCandidate]) -> vol.Schema:
                 selector.SelectSelectorConfig(
                     options=options,
                     multiple=True,
-                    # Searchable, not a flat checkbox list: even after every
-                    # exclusion the list runs to about a hundred rows on a real
-                    # instance, which no one can read by scrolling (HEA-70).
-                    mode=selector.SelectSelectorMode.DROPDOWN,
+                    # A checkbox list, deliberately: this step is for *browsing*
+                    # what a household has, and a dropdown shows nothing until
+                    # the user types a name they do not yet know. The ordering
+                    # does the work of making a long list usable (HEA-70).
+                    mode=selector.SelectSelectorMode.LIST,
                 )
             )
         }
     )
 
 
-def _candidate_label(candidate: DeviceCandidate) -> str:
-    label = f"{candidate.name} ({candidate.entity_id})"
-    return f"{label} — may not be a device" if candidate.likely_false_friend else label
+async def _candidate_label_templates(hass: HomeAssistant) -> dict[str, str]:
+    """The translated row templates, keyed by their ``common`` string name.
+
+    A candidate row is built per entity, so its wording cannot live in the step's
+    own strings. It is looked up from ``common`` instead, which keeps the phrase
+    in `strings.json` where every user-facing string belongs — the Spanish step
+    description already promises this marker, and hardcoding it in English meant
+    a Spanish user was told to look for something they could never see.
+    """
+    strings = await translation.async_get_translations(
+        hass, hass.config.language, "common", {DOMAIN}
+    )
+    prefix = f"component.{DOMAIN}.common."
+    return {
+        key.removeprefix(prefix): value
+        for key, value in strings.items()
+        if key.startswith(prefix)
+    }
+
+
+def _candidate_label(candidate: DeviceCandidate, labels: dict[str, str]) -> str:
+    key = (
+        "candidate_label_false_friend"
+        if candidate.likely_false_friend
+        else "candidate_label"
+    )
+    template = labels.get(key, "{name} ({entity_id})")
+    return template.format(name=candidate.name, entity_id=candidate.entity_id)

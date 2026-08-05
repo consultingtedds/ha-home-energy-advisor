@@ -200,5 +200,9 @@
     "reset_entry_not_loaded": {
       "message": "Esa configuración de Home Energy Advisor no está cargada, así que no se pueden reiniciar sus totales. Inténtalo de nuevo cuando haya arrancado."
     }
+  },
+  "common": {
+    "candidate_label": "{name} ({entity_id})",
+    "candidate_label_false_friend": "{name} ({entity_id}) — puede que no sea un dispositivo"
   }
 }

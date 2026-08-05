@@ -200,5 +200,9 @@
     "reset_entry_not_loaded": {
       "message": "That Home Energy Advisor configuration is not loaded, so its totals cannot be reset. Try again once it has started."
     }
+  },
+  "common": {
+    "candidate_label": "{name} ({entity_id})",
+    "candidate_label_false_friend": "{name} ({entity_id}) — may not be a device"
   }
 }
