@@ -145,12 +145,14 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     assert hass.states.get("sensor.hallway_lights_actual_cost") is not None
 
 
-async def test_discovery_step_offers_a_searchable_list(
+async def test_discovery_step_offers_a_browsable_checkbox_list(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a household with a candidate to offer
+    # Given — a household with a genuine candidate and an obvious false friend
     dryer = _register(hass, "tumble_dryer_energy", "energy", "Tumble Dryer Energy")
+    phone = _register(hass, "phone_battery_power", "power", "Phone Battery Power")
     hass.states.async_set(dryer, "0", _ENERGY)
+    hass.states.async_set(phone, "3", _POWER)
     entry = _entry(hass)
 
     # When — the user opens discovery
@@ -159,14 +161,23 @@ async def test_discovery_step_offers_a_searchable_list(
         menu["flow_id"], {"next_step_id": "discover_devices"}
     )
 
-    # Then — the multi-select is a searchable dropdown, not a flat checkbox list.
-    # Even after every exclusion the list runs to about a hundred rows on a real
-    # instance, and a flat list of that length cannot be read (HEA-70)
+    # Then — the multi-select stays a checkbox list. The step is for *browsing*
+    # what a household has; a dropdown shows nothing until the user types a name
+    # they do not yet know, so ordering carries a long list, not search (HEA-70)
     schema = form["data_schema"]
     assert schema is not None
     field = next(iter(schema.schema.values()))
-    assert field.config["mode"] == selector.SelectSelectorMode.DROPDOWN
+    assert field.config["mode"] == selector.SelectSelectorMode.LIST
     assert field.config["multiple"] is True
+
+    # ...and each row's wording comes from strings.json, not the code, so the
+    # marker the step description promises actually appears in the user's own
+    # language rather than only in English
+    by_value = {option["value"]: option["label"] for option in field.config["options"]}
+    assert by_value[dryer] == "Tumble Dryer (sensor.tumble_dryer_energy)"
+    assert by_value[phone] == (
+        "Phone Battery (sensor.phone_battery_power) — may not be a device"
+    )
 
 
 async def test_discovery_step_aborts_when_nothing_to_add(
