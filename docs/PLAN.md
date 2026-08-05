@@ -140,6 +140,33 @@ Presentation
     named Repair, after a bugged upstream counter inflated one device ~97× and
     silently under-reported every other one for days)
 10. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
+12. Delivered 2026-08-05 — ADR-0010 applied to the paths that *suggest* and
+    *ingest* sources, after four defects in four weeks all turned out to be
+    well-formed sensors that were nonetheless the wrong answer:
+    **provenance at suggestion time** (HEA-66 — each candidate's derivation chain
+    is walked through the source every helper records on its own config entry, so
+    a period aggregate over the household's own house-level meters is refused
+    rather than offered as a device; ~90 of 216 candidates on the reference
+    instance. A Riemann integral the user built over a plug is still offered —
+    what matters is where the chain terminates, not that derivation exists);
+    **liveness at suggestion time** (HEA-64 — a device whose energy counter has
+    never produced a value is offered by the power sensor beside it instead, but
+    only when that sensor *is* reporting, so a device merely switched off out of
+    season is untouched);
+    **ranking rather than hiding** (HEA-70 — belonging to an HA device orders the
+    list, after the device-based infrastructure filter proved *inert* on an
+    instance whose six house-level inputs are all device-less template sensors.
+    A structural signal was preferred to extending the English substring list,
+    which cannot work in a bilingual integration);
+    **liveness at ingest time** (HEA-69 — a configured device source with no
+    reading and no recorder history is named in a Repair, while one that has ever
+    reported is left alone however long it stays silent);
+    and **house-input fitness** (HEA-67 — house inputs validated against the
+    branch that actually reads them, ADR-0005's branch following what is
+    *readable* rather than what is configured, and the plausibility guard
+    suspended while a house input is silent, since a condemned device has its
+    energy refused outright and a meter failure would otherwise move real
+    consumption into Untracked)
 
 ### Epic 5 — Presentation & documentation
 1. **HEA-shipped Lovelace card (HEA-50) — the flagship.** Date-range picker ×
