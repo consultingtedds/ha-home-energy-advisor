@@ -32,6 +32,13 @@ defect would otherwise contaminate the run.
 | Every HEA total reads zero immediately after the reset | Proves the rebase actually took, rather than leaving a restored baseline underneath |
 | The cloud-polled plug is pointed at its honest `consumption` counter | Its `total_energy` sibling is bugged upstream — `total += consumption` on every poll — and inflated that device ~97× |
 | No change to the cycle-meter set during the week | ADR-0008 froze this; changing it mid-run invalidates the period figures |
+| **The build also carries HEA-67** | Added 2026-08-05. It is the last change that alters accounting behaviour: until it is installed, a house-meter outage collapses consumption to grid + battery *and* lets the plausibility guard condemn healthy devices, whose energy is then refused outright. Either would corrupt exactly what this run measures |
+
+Development continues during the week. Changes are safe to land mid-run only if
+they touch neither `engine/` nor the sensor set: renaming a sensor or adding a
+metered concept breaks the statistics series the comparison is drawn from, and
+an accounting change makes the week's data two datasets rather than one. On the
+day the run started, nothing remaining in the backlog required either.
 
 Because the reset zeroes everything, this run can reconcile on **absolute**
 values, not just window deltas — which is what makes a one-week comparison
@@ -125,9 +132,26 @@ required follow-up before that claim is made (`PLAN.md` → Risks, Epic 6.3).
 
 ## Run record
 
-_To be completed when the week starts._
+- **Reset run at:** 2026-08-04, on the build carrying HEA-57/59/51/61/58.
+- **Baseline held across a restart.** Verified 2026-08-05 11:05 UTC, after the
+  discovery deploy: whole home 32.910440 kWh, Untracked 17.408882 kWh, tracked
+  devices 15.50 kWh. Σ devices + Untracked ≡ whole home, so the ledger survived
+  the reload and dates from the reset rather than from the deploy.
+- **Build / commit:** `57fd40b` — the last accounting-affecting change (HEA-67).
+  The run does not start until this is installed; the preconditions table says
+  why.
+- **Window:** whole days only, starting the first midnight after that install.
+  The manual side is recomputed retrospectively from recorder history, so the
+  window is cut at analysis time — but a part-day at either end makes the first
+  and last device-day comparisons meaningless, so both are excluded.
+- **Result:** _to be completed._
 
-- Build / commit:
-- Reset run at:
-- Window:
-- Result:
+### What this run cannot tell us
+
+Recorded at the start, so it is not discovered as a convenient caveat afterwards.
+Live figures on the day showed `energy_from_grid: 0` with essentially all energy
+from generation. August exercises the solar-surplus regime almost exclusively, so
+a pass here validates proportional allocation and the generation path and says
+nothing about the stored-cost ledger under winter force-charging. See "Known
+limitation" above — the post-winter review is a condition of the accuracy claim,
+not an optional follow-up.
