@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
@@ -142,6 +143,30 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     # ...and the reload created each device's sensors (add → reload → sensors)
     assert hass.states.get("sensor.tumble_dryer_actual_cost") is not None
     assert hass.states.get("sensor.hallway_lights_actual_cost") is not None
+
+
+async def test_discovery_step_offers_a_searchable_list(
+    hass: HomeAssistant,
+) -> None:
+    # Given — a household with a candidate to offer
+    dryer = _register(hass, "tumble_dryer_energy", "energy", "Tumble Dryer Energy")
+    hass.states.async_set(dryer, "0", _ENERGY)
+    entry = _entry(hass)
+
+    # When — the user opens discovery
+    menu = await hass.config_entries.options.async_init(entry.entry_id)
+    form = await hass.config_entries.options.async_configure(
+        menu["flow_id"], {"next_step_id": "discover_devices"}
+    )
+
+    # Then — the multi-select is a searchable dropdown, not a flat checkbox list.
+    # Even after every exclusion the list runs to about a hundred rows on a real
+    # instance, and a flat list of that length cannot be read (HEA-70)
+    schema = form["data_schema"]
+    assert schema is not None
+    field = next(iter(schema.schema.values()))
+    assert field.config["mode"] == selector.SelectSelectorMode.DROPDOWN
+    assert field.config["multiple"] is True
 
 
 async def test_discovery_step_aborts_when_nothing_to_add(
