@@ -225,6 +225,9 @@ class Accountant:
         self._entity_of = dict(device_energy_entities)
         self._window: deque[_WindowBucket] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._implausible: frozenset[str] = frozenset()
+        # House inputs that are currently silent. Distinct from configured-but-
+        # still: a meter that reports an unchanged reading is healthy (HEA-67).
+        self._unhealthy_roles: set[SourceRole] = set()
 
     def record_price(self, at: datetime, price: Decimal) -> None:
         """Records the import price active from ``at``."""
@@ -239,12 +242,33 @@ class Accountant:
             )
             self._sources[entity_id] = source
         delta = source.observe(Reading(at=at, value=value))
+        role = self._role_of.get(entity_id)
+        if role is not None:
+            self._note_role_health(role, reporting=value is not None)
         if delta is None:
             return
-        if (role := self._role_of.get(entity_id)) is not None:
+        if role is not None:
             self._spread_source(role, delta)
         elif (device := self._device_of.get(entity_id)) is not None:
             self._spread_device(device, delta, source)
+
+    def _note_role_health(self, role: SourceRole, *, reporting: bool) -> None:
+        """Track which house-level inputs are currently readable at all.
+
+        ``value is None`` is the integration layer's signal that the state is
+        ``unavailable`` or ``unknown`` — a genuinely silent meter. A meter that
+        reports an unchanged reading is healthy and has simply not moved, and the
+        two must never be conflated: on a coarse counter a quiet house yields
+        unchanged readings for many buckets, so treating that as a failure would
+        swap the decomposition model back and forth during normal running.
+
+        This is why the bucket's contents cannot be the signal — a no-movement
+        reading produces no delta, so it leaves no trace there either (HEA-67).
+        """
+        if reporting:
+            self._unhealthy_roles.discard(role)
+        else:
+            self._unhealthy_roles.add(role)
 
     def finalize(self, now: datetime) -> None:
         """Finalises every interval that ended before the lateness margin."""
@@ -458,7 +482,21 @@ class Accountant:
     def _weigh_plausibility(
         self, served: _Served, claimed: Mapping[str, Decimal]
     ) -> None:
-        """Record this interval's evidence and re-judge every device against it."""
+        """Record this interval's evidence and re-judge every device against it.
+
+        While any house-level input is silent the house total is not evidence of
+        anything: an unavailable meter reads as a zero, shrinking consumption
+        until honest devices appear to exceed the house they sit in. Nothing is
+        recorded and nothing is condemned — the fault is the meter's, and it is
+        reported as such elsewhere.
+
+        This protects the figures, not just the message. A condemned device has
+        its energy refused by ``_believable``, so blaming devices for a house
+        failure would quietly move real consumption into Untracked (HEA-67).
+        """
+        if self._unhealthy_roles:
+            self._implausible = frozenset()
+            return
         consumption = served.grid + served.generation + served.battery
         self._window.append(
             _WindowBucket(consumption=consumption, claimed=dict(claimed))
@@ -567,6 +605,13 @@ class Accountant:
         else:
             self._overdrawn_run = 0
 
+    def _is_readable(self, *roles: SourceRole) -> bool:
+        """Whether every named house input is both configured and reporting."""
+        return all(
+            role in self._configured and role not in self._unhealthy_roles
+            for role in roles
+        )
+
     def _decompose(self, raw: Mapping[SourceRole, Decimal]) -> _Served:
         imp = raw.get(SourceRole.GRID_IMPORT, Decimal(0))
         exp = raw.get(SourceRole.GRID_EXPORT, Decimal(0))
@@ -578,10 +623,14 @@ class Accountant:
         generation_charge = charge - grid_charge
         grid = imp - grid_charge
 
-        if SourceRole.HOUSE_CONSUMPTION in self._configured:
+        # The branch follows what is *readable*, not merely what is configured.
+        # A failed house meter otherwise reads as a zero, collapsing consumption
+        # to grid + battery and discarding generation entirely — while the
+        # household may well have the meters for the full-balance model (HEA-67).
+        if self._is_readable(SourceRole.HOUSE_CONSUMPTION):
             house = raw.get(SourceRole.HOUSE_CONSUMPTION, Decimal(0))
             generation = max(Decimal(0), house - grid - discharge)
-        elif {SourceRole.GENERATION, SourceRole.GRID_EXPORT} <= self._configured:
+        elif self._is_readable(SourceRole.GENERATION, SourceRole.GRID_EXPORT):
             generation = max(Decimal(0), gen - generation_charge - exp)
         else:
             generation = Decimal(0)

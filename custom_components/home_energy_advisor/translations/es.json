@@ -52,6 +52,9 @@
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor ya está configurado; solo se necesita una instancia."
+    },
+    "error": {
+      "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, una sola entrada de la casa incorrecta hace que la cifra de todos los dispositivos sea incorrecta."
     }
   },
   "options": {
