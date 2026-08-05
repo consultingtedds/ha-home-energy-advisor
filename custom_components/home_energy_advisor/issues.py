@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 # Translation keys — each has a matching block under ``issues`` in strings.json.
 ISSUE_SOURCE_REMOVED = "source_removed"
 ISSUE_SOURCE_UNAVAILABLE = "source_unavailable"
+ISSUE_SOURCE_NEVER_REPORTED = "source_never_reported"
 ISSUE_PRICE_UNAVAILABLE = "price_unavailable"
 ISSUE_HELPER_RECREATED = "helper_recreated"
 ISSUE_CYCLE_HELPER_RECREATED = "cycle_helper_recreated"
@@ -37,6 +38,11 @@ def source_removed_issue_id(entity_id: str) -> str:
 def source_unavailable_issue_id(entity_id: str) -> str:
     """Stable issue id for a critical input unavailable past the grace period."""
     return f"{ISSUE_SOURCE_UNAVAILABLE}_{entity_id}"
+
+
+def source_never_reported_issue_id(entity_id: str) -> str:
+    """Stable issue id for a device source that has never produced a reading."""
+    return f"{ISSUE_SOURCE_NEVER_REPORTED}_{entity_id}"
 
 
 def helper_recreated_issue_id(subentry_id: str) -> str:

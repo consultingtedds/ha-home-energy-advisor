@@ -49,6 +49,7 @@ from .const import (
 )
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.energy_source import EnergyUnit
+from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -133,6 +134,14 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         )
         self._unhealthy_since: dict[str, datetime] = {}
         self._input_issues: dict[str, str] = {}
+        # HEA-69. Device sources are watched for one thing device unavailability
+        # deliberately does not cover: never having reported at all. Helper
+        # outputs are included — a power-only device whose power sensor is dead
+        # yields a helper that never reports, and the user's loss is identical.
+        self._device_sources = set(self._device_of_entity)
+        self._reporting_seen: set[str] = set()
+        self._silent_since: dict[str, datetime] = {}
+        self._history_probed: set[str] = set()
         self._negative_remainder_raised = False
         self._implausible_sources: set[str] = set()
         self._accountant = Accountant(
@@ -215,9 +224,85 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _handle_tick(self, now: datetime) -> None:
         self._accountant.finalize(now)
         self._check_input_health(now)
+        self._check_sources_ever_reported(now)
         self._check_remainder_health()
         self._check_source_plausibility()
         self.async_set_updated_data(self._accountant.totals())
+
+    def _check_sources_ever_reported(self, now: datetime) -> None:
+        """Name, in Repairs, a device source that has never produced a reading.
+
+        A device configured against a source that never reports accumulates
+        nothing and shows zero indefinitely, which reads as a quiet appliance
+        rather than a misconfiguration (HEA-69).
+
+        Silence alone is not evidence: a seasonal device is legitimately off for
+        months, and HEA-24 settled that device unavailability must never raise a
+        Repair. Only a source that has *never* reported qualifies, and for one
+        already configured before this run began, the recorder settles it.
+        """
+        for entity in self._device_sources:
+            if self._is_reporting(entity):
+                self._mark_source_reporting(entity)
+            elif self._is_silent_past_grace(entity, now):
+                self._probe_source_history(entity)
+
+    def _is_reporting(self, entity: str) -> bool:
+        return (state := self.hass.states.get(entity)) is not None and (
+            state.state not in _UNAVAILABLE
+        )
+
+    def _mark_source_reporting(self, entity: str) -> None:
+        """Record the first reading seen this run, and retract any accusation.
+
+        Clearing runs on that first reading rather than only when this run raised
+        the issue, so a Repair left standing by a previous run is retracted too.
+        """
+        if entity in self._reporting_seen:
+            return
+        self._reporting_seen.add(entity)
+        self._silent_since.pop(entity, None)
+        issues.async_clear(self.hass, issues.source_never_reported_issue_id(entity))
+
+    def _is_silent_past_grace(self, entity: str, now: datetime) -> bool:
+        """Whether a never-yet-seen source has been silent long enough to ask."""
+        if entity in self._reporting_seen:
+            return False
+        # Timed from the first tick of this run, not from the state's own
+        # timestamps: a source that has never reported has nothing to measure
+        # from, and restarting the clock each run only ever delays the question.
+        since = self._silent_since.setdefault(entity, now)
+        return now - since >= _UNAVAILABLE_GRACE
+
+    def _probe_source_history(self, entity: str) -> None:
+        """Ask the recorder, once per source, whether it ever worked."""
+        if entity in self._history_probed:
+            return
+        self._history_probed.add(entity)
+        self._entry.async_create_background_task(
+            self.hass,
+            self._async_judge_silent_source(entity),
+            f"{DOMAIN}_history_{entity}",
+        )
+
+    async def _async_judge_silent_source(self, entity: str) -> None:
+        """Raise the Repair only for a source with no history to speak for it.
+
+        An unanswerable question — no recorder — is not evidence, so it is
+        treated the same as history found: say nothing. Wrongly accusing a
+        working sensor costs more than staying quiet about a broken one.
+        """
+        if await async_has_ever_reported(self.hass, entity) is not False:
+            return
+        issues.async_raise(
+            self.hass,
+            issues.source_never_reported_issue_id(entity),
+            issues.ISSUE_SOURCE_NEVER_REPORTED,
+            {
+                "entity_id": entity,
+                "name": self._device_name(self._device_of_entity[entity]),
+            },
+        )
 
     def _check_source_plausibility(self) -> None:
         """Name, in Repairs, any device whose source is claiming the impossible.
