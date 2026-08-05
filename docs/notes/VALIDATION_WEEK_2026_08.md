@@ -108,6 +108,10 @@ also their first real exercise.
 
 ## Method
 
+0. Confirm the preconditions above, including that every source is reporting —
+   a source that has never reported since the restart is the one thing that will
+   quietly produce a zero device-day (HEA-69 raises a Repair for it, but only
+   once its silence outlasts the grace period).
 1. Record the starting instant and confirm every HEA total is zero.
 2. Let it run seven full days. Do not reload, reconfigure, or add devices —
    a reload seals in-flight buckets (ADR-0006) and a device change reshapes the
@@ -133,18 +137,25 @@ required follow-up before that claim is made (`PLAN.md` → Risks, Epic 6.3).
 ## Run record
 
 - **Reset run at:** 2026-08-04, on the build carrying HEA-57/59/51/61/58.
-- **Baseline held across a restart.** Verified 2026-08-05 11:05 UTC, after the
-  discovery deploy: whole home 32.910440 kWh, Untracked 17.408882 kWh, tracked
-  devices 15.50 kWh. Σ devices + Untracked ≡ whole home, so the ledger survived
-  the reload and dates from the reset rather than from the deploy.
-- **Build / commit:** `57fd40b` — the last accounting-affecting change (HEA-67).
-  The run does not start until this is installed; the preconditions table says
-  why.
-- **Window:** whole days only, starting the first midnight after that install.
-  The manual side is recomputed retrospectively from recorder history, so the
-  window is cut at analysis time — but a part-day at either end makes the first
-  and last device-day comparisons meaningless, so both are excluded.
+- **Build / commit:** `57fd40b`, installed 2026-08-05. This is the last change
+  that alters accounting behaviour (HEA-67); the preconditions table says why the
+  run waited for it.
+- **Ledger continuity across two restarts confirmed.** The reset totals survived
+  both the discovery deploy and the HEA-67 deploy: accumulation continued
+  smoothly across each restart rather than restarting from zero, so the figures
+  date from the 2026-08-04 reset and no second reset was needed. Checked at each
+  restart, and again at the start of the window, that
+  **Σ devices + Untracked ≡ whole home** exactly — residual `0.000000`.
+- **Window:** the seven whole local days beginning at the first midnight after
+  the 2026-08-05 install. The manual side is recomputed retrospectively from
+  recorder history, so the window is cut at analysis time; a part-day at either
+  end makes those device-day comparisons meaningless, so both are excluded.
 - **Result:** _to be completed._
+
+Figures are recorded here as reconciliations and percentages, never as absolute
+meter readings — a counter total is one of the things the repo's privacy rules
+keep out of a public repository, and the invariant is what this run is actually
+testing.
 
 ### What this run cannot tell us
 
