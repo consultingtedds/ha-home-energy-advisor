@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_NAME
@@ -25,6 +26,7 @@ from custom_components.home_energy_advisor.const import (
 from custom_components.home_energy_advisor.issues import (
     ISSUE_NEGATIVE_REMAINDER,
     ISSUE_PRICE_UNAVAILABLE,
+    source_never_reported_issue_id,
     source_removed_issue_id,
     source_unavailable_issue_id,
 )
@@ -35,6 +37,9 @@ if TYPE_CHECKING:
 
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 _POWER = {"unit_of_measurement": "W", "device_class": "power"}
+# The recorder probe is the coordinator's one boundary to the history database;
+# the decision built on its answer is what these tests exercise.
+_HISTORY = "custom_components.home_energy_advisor.coordinator.async_has_ever_reported"
 
 
 def _entry() -> MockConfigEntry:
@@ -349,6 +354,114 @@ async def test_a_device_sensor_going_unavailable_never_raises_a_repair(
     # Then — no Repair: a device unplugged out of season is expected, not a fault
     assert not _has_issue(hass, source_unavailable_issue_id("sensor.guest_energy"))
     assert not _has_issue(hass, source_removed_issue_id("sensor.guest_energy"))
+    # ...and it is not mistaken for a source that never worked either: this one
+    # reported at setup, which settles the question permanently (HEA-69)
+    assert not _has_issue(hass, source_never_reported_issue_id("sensor.guest_energy"))
+
+
+async def _setup_home_with_a_silent_device(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> MockConfigEntry:
+    """A home whose tracked device's energy sensor only ever yields ``unknown``."""
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.guest_energy", "unknown", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    # A source that has never reported has no timestamp of its own, so the grace
+    # period runs from the first tick that sees it silent. In production the
+    # timer fires every minute; fire one here so these tests measure the grace
+    # from the same instant the integration does, rather than from setup.
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    return entry
+
+
+async def test_a_device_source_that_never_reports_raises_a_repair(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a device added with an energy sensor that only ever yields
+    # `unknown`. It is well formed and structurally valid, and it can never
+    # accumulate anything: left alone the device sits at zero indefinitely,
+    # reading as a quiet appliance rather than a misconfiguration (HEA-69)
+    await _setup_home_with_a_silent_device(hass, freezer)
+    issue_id = source_never_reported_issue_id("sensor.guest_energy")
+
+    with patch(_HISTORY, AsyncMock(return_value=False)):
+        # When — half an hour passes: still inside the grace period
+        await _tick(hass, freezer, datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
+
+        # Then — nothing yet; a slow-polling integration must not be accused
+        assert not _has_issue(hass, issue_id)
+
+        # When — the silence outlasts the grace, and the recorder confirms there
+        # is no reading anywhere in its history either
+        await _tick(hass, freezer, datetime(2026, 7, 8, 23, 15, tzinfo=UTC))
+
+    # Then — a Repair is raised for the source that has never worked
+    assert _has_issue(hass, issue_id)
+
+
+async def test_a_device_source_with_recorded_history_is_off_not_dead(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — the same silence, but the recorder holds readings from before the
+    # integration started watching: a device switched off for the season, not a
+    # dead sensor. HEA-24's rule is absolute — seasonal silence must never nag
+    await _setup_home_with_a_silent_device(hass, freezer)
+    issue_id = source_never_reported_issue_id("sensor.guest_energy")
+
+    # When — a full day of unbroken silence passes
+    probe = AsyncMock(return_value=True)
+    with patch(_HISTORY, probe):
+        await _tick(hass, freezer, datetime(2026, 7, 9, 22, 5, tzinfo=UTC))
+
+    # Then — nothing is raised, however long the silence lasts...
+    assert not _has_issue(hass, issue_id)
+    # ...and the recorder really was consulted, so the silence is a decision
+    # taken on its answer rather than a question never asked
+    assert probe.await_count == 1
+
+
+async def test_nothing_is_raised_while_the_recorder_cannot_answer(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — the same silence on an instance with no recorder, so "has this ever
+    # reported" has no answer at all
+    await _setup_home_with_a_silent_device(hass, freezer)
+    issue_id = source_never_reported_issue_id("sensor.guest_energy")
+
+    # When — a full day of silence passes
+    probe = AsyncMock(return_value=None)
+    with patch(_HISTORY, probe):
+        await _tick(hass, freezer, datetime(2026, 7, 9, 22, 5, tzinfo=UTC))
+
+    # Then — silence rather than a guess: an unanswerable question is not
+    # evidence a sensor is dead, and a wrong accusation costs the user trust
+    assert not _has_issue(hass, issue_id)
+    assert probe.await_count == 1
+
+
+async def test_the_never_reported_repair_clears_once_the_source_reports(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a device whose dead source has already been reported
+    await _setup_home_with_a_silent_device(hass, freezer)
+    issue_id = source_never_reported_issue_id("sensor.guest_energy")
+    with patch(_HISTORY, AsyncMock(return_value=False)):
+        await _tick(hass, freezer, datetime(2026, 7, 8, 23, 15, tzinfo=UTC))
+    assert _has_issue(hass, issue_id)
+
+    # When — the user repoints it, or the sensor finally produces a reading
+    freezer.move_to(datetime(2026, 7, 8, 23, 10, tzinfo=UTC))
+    hass.states.async_set("sensor.guest_energy", "12.5", _ENERGY)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 23, 11, tzinfo=UTC))
+
+    # Then — the Repair clears itself; one reading settles the question for good
+    assert not _has_issue(hass, issue_id)
 
 
 async def test_a_configured_entity_removed_from_hass_raises_a_removed_repair(
