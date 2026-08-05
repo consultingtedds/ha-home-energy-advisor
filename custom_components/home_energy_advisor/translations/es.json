@@ -164,6 +164,10 @@
       "title": "El precio de importación lleva más de una hora sin estar disponible",
       "description": "El sensor de precio `{entity_id}` lleva más de una hora sin estar disponible. Home Energy Advisor sigue valorando la energía al último precio conocido, por lo que los costes de este periodo pueden ser inexactos. Revisa la integración de tarifa que proporciona el precio."
     },
+    "source_never_reported": {
+      "title": "«{name}» se sigue con un sensor que nunca ha dado una lectura",
+      "description": "`{entity_id}` no ha dado ni una sola lectura desde que Home Energy Advisor empezó a vigilarlo, y tampoco hay ninguna en el historial registrado. No se trata de un dispositivo simplemente apagado: ese seguiría mostrando su última lectura. Hasta que se corrija, la energía y el coste de «{name}» se quedan a cero y su parte de la factura se cuenta como No rastreado. Elige otro sensor para «{name}» o revisa la integración que proporciona `{entity_id}`."
+    },
     "helper_recreated": {
       "title": "Se volvió a crear un ayudante necesario",
       "description": "Home Energy Advisor volvió a crear un ayudante que necesita para medir la energía de «{name}». Este ayudante se crea automáticamente y «{name}» no se puede costear sin él, así que si lo eliminaste a propósito, quita el dispositivo de Home Energy Advisor en su lugar."

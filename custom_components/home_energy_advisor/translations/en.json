@@ -164,6 +164,10 @@
       "title": "The import price has been unavailable for over an hour",
       "description": "The price sensor `{entity_id}` has been unavailable for more than an hour. Home Energy Advisor keeps pricing energy at the last price it saw, so costs during this period may be inaccurate. Check the tariff integration that provides the price."
     },
+    "source_never_reported": {
+      "title": "{name} is tracked by a sensor that has never reported",
+      "description": "`{entity_id}` has not produced a single reading since Home Energy Advisor started watching it, and there is none in the recorded history either. This is not a device that is simply switched off — that would still show its last reading. Until it is fixed, {name}'s energy and cost stay at zero and its share of the bill is counted under Untracked instead. Choose a different sensor for {name}, or check the integration that provides `{entity_id}`."
+    },
     "helper_recreated": {
       "title": "A required helper was re-created",
       "description": "Home Energy Advisor re-created a helper it needs to measure the energy of “{name}”. This helper is created automatically and “{name}” cannot be costed without it, so if you deleted it on purpose, remove the device from Home Energy Advisor instead."
