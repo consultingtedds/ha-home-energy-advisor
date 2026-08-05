@@ -246,6 +246,63 @@ async def test_discovery_sorts_likely_false_friends_last(
     assert candidates[-1].likely_false_friend is True
 
 
+async def test_discovery_sorts_sensors_without_an_ha_device_last(
+    hass: HomeAssistant,
+) -> None:
+    # Given — an appliance sensor belonging to an HA device, alongside two
+    # device-less sensors that would otherwise sort ahead of it by name. On a
+    # real instance the device-less sensors are overwhelmingly template outputs
+    # and helper results — house infrastructure rather than appliances — while
+    # every genuinely trackable device has a device behind it, so the link is the
+    # best evidence discovery holds (HEA-70). It only ranks; nothing is hidden
+    entry = _entry(hass)
+    plug = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("demo", "washing_machine")},
+        name="Washing Machine",
+    )
+    appliance = _register(hass, "washing_machine_energy", "energy", device_id=plug.id)
+    inverter = _register(
+        hass, "inverter_string_1_energy", "energy", name="Inverter String 1"
+    )
+    load = _register(hass, "grid_load_total_power", "power", name="Grid Load Total")
+
+    # When — candidates are discovered
+    candidates = async_discover_candidates(hass, entry)
+
+    # Then — the appliance leads, despite sorting last of the three by name
+    assert [c.entity_id for c in candidates] == [appliance, load, inverter]
+
+
+async def test_discovery_ranks_the_device_link_above_the_false_friend_hint(
+    hass: HomeAssistant,
+) -> None:
+    # Given — a phone battery power sensor, which the name hints flag, but which
+    # belongs to a real HA device; and a device-less sensor with an innocent
+    # name. Belonging to a device is the stronger signal: a flagged false friend
+    # is one row the user skips, whereas the device-less tail is where the
+    # hundreds of helper and infrastructure sensors sit
+    entry = _entry(hass)
+    phone = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={("demo", "phone")}, name="Phone"
+    )
+    flagged = _register(
+        hass,
+        "phone_battery_power",
+        "power",
+        name="Phone Battery Power",
+        device_id=phone.id,
+    )
+    device_less = _register(hass, "house_load_power", "power", name="House Load Power")
+
+    # When — candidates are discovered
+    candidates = async_discover_candidates(hass, entry)
+
+    # Then — the flagged sensor still ranks above the device-less one
+    assert [c.entity_id for c in candidates] == [flagged, device_less]
+    assert candidates[0].likely_false_friend is True
+
+
 async def test_discovery_excludes_sensors_with_an_ineligible_state_class(
     hass: HomeAssistant,
 ) -> None:
