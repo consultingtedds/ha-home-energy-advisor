@@ -17,6 +17,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_CYCLE_METERS,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PRICE_ENTITY,
     CONF_SOLAR_ENTITY,
     DOMAIN,
@@ -48,6 +49,7 @@ def _register_source_sensors(hass: HomeAssistant) -> None:
         "sensor.solar",
         "sensor.battery_charge",
         "sensor.battery_discharge",
+        "sensor.house_consumption",
     ):
         hass.states.async_set(
             entity_id,
@@ -66,6 +68,108 @@ def _suggested_values(schema: vol.Schema) -> dict[str, Any]:
         for marker in schema.schema
         if isinstance(marker, vol.Marker) and marker.description
     }
+
+
+def _set_state_class(hass: HomeAssistant, entity_id: str, state_class: str) -> None:
+    """Re-publish a house meter with a different state_class."""
+    hass.states.async_set(
+        entity_id,
+        "100",
+        {
+            "device_class": "energy",
+            "state_class": state_class,
+            "unit_of_measurement": "kWh",
+        },
+    )
+
+
+async def test_a_net_counter_is_rejected_for_an_input_the_model_reads(
+    hass: HomeAssistant,
+) -> None:
+    # Given — a household with no house-consumption meter, so ADR-0005's
+    # full-balance branch runs and generation is load-bearing; its generation
+    # sensor is a `total` net counter, which that branch would mis-account into
+    # silently wrong whole-home figures (HEA-67)
+    _register_source_sensors(hass)
+    _set_state_class(hass, "sensor.solar", "total")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When — it is submitted
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_SOLAR_ENTITY: "sensor.solar",
+        },
+    )
+
+    # Then — the form comes back with the error against that field. A bad house
+    # input corrupts the whole ledger, not one device's share
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_SOLAR_ENTITY: "house_not_total_increasing"}
+
+
+async def test_a_net_counter_is_accepted_for_an_input_the_model_ignores(
+    hass: HomeAssistant,
+) -> None:
+    # Given — the same `total` generation sensor, but a household that *does*
+    # have a house-consumption meter. The residual branch never reads generation,
+    # so the counter's class cannot affect a single figure — and rejecting it
+    # would block a configuration that is correct in practice (the reference
+    # instance's own setup)
+    _register_source_sensors(hass)
+    _set_state_class(hass, "sensor.solar", "total")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When — it is submitted alongside a house-consumption meter
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_SOLAR_ENTITY: "sensor.solar",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+        },
+    )
+
+    # Then — accepted; validation follows what the model actually consumes
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SOLAR_ENTITY] == "sensor.solar"
+
+
+async def test_a_net_grid_import_counter_is_always_rejected(
+    hass: HomeAssistant,
+) -> None:
+    # Given — grid import as a `total` net counter. Every branch reads it, so
+    # there is no configuration in which this one is harmless
+    _register_source_sensors(hass)
+    _set_state_class(hass, "sensor.grid_import", "total")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When — it is submitted with a house-consumption meter present
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+        },
+    )
+
+    # Then — rejected
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_GRID_IMPORT_ENTITY: "house_not_total_increasing"}
 
 
 async def test_user_flow_shows_the_configuration_form(hass: HomeAssistant) -> None:

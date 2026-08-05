@@ -91,7 +91,16 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
         if user_input is not None:
-            return self.async_create_entry(title=_TITLE, data=user_input)
+            errors = _validate_house_sources(self.hass, user_input)
+            if not errors:
+                return self.async_create_entry(title=_TITLE, data=user_input)
+            return self.async_show_form(
+                step_id="user",
+                data_schema=self.add_suggested_values_to_schema(
+                    _build_schema({}), user_input
+                ),
+                errors=errors,
+            )
 
         defaults = await _energy_prefs_defaults(self.hass)
         return self.async_show_form(step_id="user", data_schema=_build_schema(defaults))
@@ -101,18 +110,22 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Edit the house-level configuration in place, without reinstalling."""
         entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
         if user_input is not None:
-            # Merge, don't replace: entry.data also holds the auto-created-helper
-            # bookkeeping (CONF_INTEGRAL_HELPERS / CONF_CYCLE_METERS), which a
-            # wholesale ``data=user_input`` would wipe (HEA-52).
-            return self.async_update_reload_and_abort(
-                entry, data={**entry.data, **user_input}
-            )
+            errors = _validate_house_sources(self.hass, user_input)
+            if not errors:
+                # Merge, don't replace: entry.data also holds the auto-created-
+                # helper bookkeeping (CONF_INTEGRAL_HELPERS / CONF_CYCLE_METERS),
+                # which a wholesale ``data=user_input`` would wipe (HEA-52).
+                return self.async_update_reload_and_abort(
+                    entry, data={**entry.data, **user_input}
+                )
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=self.add_suggested_values_to_schema(
-                _build_schema({}), entry.data
+                _build_schema({}), user_input or entry.data
             ),
+            errors=errors,
         )
 
     @classmethod
@@ -237,6 +250,52 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
             ),
             errors=errors,
         )
+
+
+# House inputs every decomposition branch reads, whatever else is configured.
+_ALWAYS_READ = (
+    CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
+)
+# Read only by ADR-0005's full-balance branch, which runs when no house-load
+# meter is configured. With one, the residual branch derives generation from the
+# house total and never looks at these.
+_FULL_BALANCE_ONLY = (CONF_SOLAR_ENTITY, CONF_GRID_EXPORT_ENTITY)
+
+
+def _validate_house_sources(
+    hass: HomeAssistant, user_input: dict[str, Any]
+) -> dict[str, str]:
+    """Reject a house input the chosen accounting model would mis-read.
+
+    A bad *device* source corrupts one device's share; a bad *house* source
+    corrupts every figure in the ledger, because allocation is proportional. So
+    these deserve at least the same scrutiny (HEA-67).
+
+    Validation follows what the model actually consumes, not the whole form. With
+    a house-load meter, ADR-0005 takes the residual branch and never reads
+    generation or export, so a net counter there is genuinely harmless — and
+    rejecting it would block a configuration that works. Without one, the
+    full-balance branch does read them, and a net counter there is booked as
+    generation with no warning at all.
+
+    An absent state_class is allowed, as on any explicit manual pick; only a
+    present-but-wrong one is refused (ADR-0010 §2).
+    """
+    checked = [*_ALWAYS_READ]
+    if not user_input.get(CONF_HOUSE_CONSUMPTION_ENTITY):
+        checked += _FULL_BALANCE_ONLY
+    return {
+        key: _HOUSE_STATE_CLASS_ERROR
+        for key in checked
+        if (entity_id := user_input.get(key))
+        and _wrong_state_class_error(hass, entity_id, CONF_ENERGY_ENTITY)
+    }
+
+
+_HOUSE_STATE_CLASS_ERROR = "house_not_total_increasing"
 
 
 def _validate_device_sources(

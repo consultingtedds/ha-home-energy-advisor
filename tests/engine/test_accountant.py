@@ -1038,3 +1038,98 @@ def test_implausible_energy_is_refused_on_the_late_correction_path_too() -> None
     assert acc.totals().untracked.energy_kwh == untracked
     decisions = acc.source_diagnostics()["sensor.utility_plug_total"].recent_decisions
     assert any(d.reason is DecisionReason.IMPLAUSIBLE for d in decisions)
+
+
+def _fully_metered_home() -> Accountant:
+    """A home with a house meter *and* the generation and export meters.
+
+    The combination that matters for HEA-67: when the house meter fails there is
+    a complete second model available to fall back to.
+    """
+    return Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.GRID_EXPORT: "sensor.grid_export",
+            SourceRole.GENERATION: "sensor.generation",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={},
+    )
+
+
+def _baseline(acc: Accountant) -> None:
+    """Establish a zero baseline on every house meter, and a price."""
+    acc.record_price(at(0), PEAK)
+    for entity in (
+        "sensor.grid_import",
+        "sensor.grid_export",
+        "sensor.generation",
+        "sensor.house_load",
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+
+
+def test_a_failed_house_meter_falls_back_to_the_full_balance_model() -> None:
+    # Given — a fully metered home
+    acc = _fully_metered_home()
+    _baseline(acc)
+
+    # When — over one bucket the house meter is unavailable, while generation,
+    # export and import all report normally
+    acc.observe("sensor.house_load", at(5), None)
+    acc.observe("sensor.grid_import", at(5), Decimal("0.2"))
+    acc.observe("sensor.generation", at(5), Decimal("1.0"))
+    acc.observe("sensor.grid_export", at(5), Decimal("0.3"))
+    acc.finalize(at(30))
+
+    # Then — consumption is grid + (generation less export) = 0.2 + 0.7. Reading the
+    # dead meter as a zero would have collapsed it to 0.2, silently losing the
+    # whole generation component (HEA-67)
+    assert acc.totals().untracked.energy_kwh == Decimal("0.9")
+
+
+def test_a_house_meter_that_does_not_move_keeps_the_residual_model() -> None:
+    # Given — the same fully metered home
+    acc = _fully_metered_home()
+    _baseline(acc)
+
+    # When — the house meter reports but is unchanged, which is what a quiet house
+    # on a coarse counter looks like, while generation and export both move
+    acc.observe("sensor.house_load", at(5), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal(0))
+    acc.observe("sensor.generation", at(5), Decimal("1.0"))
+    acc.observe("sensor.grid_export", at(5), Decimal("0.3"))
+    acc.finalize(at(30))
+
+    # Then — the house consumed nothing and the residual model says so. This is
+    # the case that makes "no reading in the bucket" the wrong signal to fall back
+    # on: full-balance would book 0.7 kWh of generation that in fact went to
+    # export, every quiet bucket, on a perfectly healthy meter
+    assert acc.totals().untracked.energy_kwh == Decimal(0)
+
+
+def test_the_plausibility_guard_is_suspended_while_a_house_source_is_down() -> None:
+    # Given — a device drawing honestly, with a full window of evidence behind it
+    acc = _metered_home()
+    _run_buckets(acc, buckets=12, house_step="1.0", device_step="0.5")
+    assert acc.implausible_devices() == frozenset()
+    banked = acc.totals().devices["utility_plug"].energy_kwh
+
+    # When — the house meter fails while the grid meter keeps reporting, so the
+    # house total collapses to a trickle and the device now "exceeds" it
+    grid = Decimal(12)
+    device = Decimal(6)
+    for index in range(12):
+        minute = 65 + index * 5
+        grid += Decimal("0.1")
+        device += Decimal("0.5")
+        acc.observe("sensor.house_load", at(minute), None)
+        acc.observe("sensor.grid_import", at(minute), grid)
+        acc.observe("sensor.utility_plug_total", at(minute), device)
+        acc.finalize(at(minute + 25))
+
+    # Then — no device is condemned on the strength of a *house* input failure,
+    # and its energy is still booked. Blaming the device would name the wrong
+    # fault to the user and, worse, quietly move real consumption into Untracked
+    assert acc.implausible_devices() == frozenset()
+    assert acc.totals().devices["utility_plug"].energy_kwh > banked

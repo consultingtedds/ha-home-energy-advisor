@@ -50,6 +50,9 @@
         }
       }
     },
+    "error": {
+      "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong house-level input makes every device's figure wrong."
+    },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
     }
