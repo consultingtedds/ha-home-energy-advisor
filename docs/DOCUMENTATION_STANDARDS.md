@@ -50,6 +50,7 @@ Every significant technical decision gets an ADR in `docs/adr/`.
 def allocate(bucket: SourceBucket, draws: Mapping[DeviceId, Decimal]) -> Allocation:
     """Allocates the bucket across draws."""
 
+
 # GOOD — documents the invariant and the edge behaviour
 def allocate(bucket: SourceBucket, draws: Mapping[DeviceId, Decimal]) -> Allocation:
     """Splits one source bucket across devices in proportion to their draw.
