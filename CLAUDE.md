@@ -1,7 +1,7 @@
 # Home Energy Advisor — Session Entry Point
 
 A Home Assistant custom integration providing per-device financial accounting:
-Energy Used, Actual Cost, Cost Without Solar, Solar Saving.
+Energy Used, Actual Cost, Cost at Grid Price, Cost Savings.
 
 ## Read before any work
 
