@@ -2,7 +2,7 @@
 
 A Home Assistant custom integration that explains the **financial impact** of
 your energy usage, per device: what it actually cost to run, what it would
-have cost without solar, and how much your solar saved.
+have cost at grid prices, and how much you saved.
 
 > **Status: pre-alpha — the full integration is installable and produces live
 > per-device cost figures.** Complete and tested: the foundation (skeleton, CI,
@@ -10,7 +10,7 @@ have cost without solar, and how much your solar saved.
 > ledger, battery stored-cost ledger, proportional allocation); the configuration
 > flow (house-level setup + per-device subentries) and options flow; the runtime
 > wiring; the per-device and "Untracked" sensors (Energy Used, Actual Cost, Cost
-> Without Solar, Cost Savings, continuous across restarts); automatic cycle totals
+> at Grid Price, Cost Savings, continuous across restarts); automatic cycle totals
 > (daily/monthly, with weekly/quarterly/yearly opt-in) via native `utility_meter`
 > helpers; energy derivation for power-only devices via native Integral helpers; a
 > redacted diagnostics download and Repairs for degraded inputs; guided device
