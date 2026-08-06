@@ -8,6 +8,18 @@ line-length = 88
 src = ["custom_components", "tests"]
 
 [tool.ruff.lint]
+# `ALL` opts in to every stable rule ruff ships — and to every rule it will
+# ship. That is deliberate: it buys a strict floor for free, alongside
+# `mypy --strict` and a Sonar gate held at zero. The price is that an upgrade
+# can enrol rules nobody chose. 0.16.1 brought two (CPY001, and formatting
+# Python inside markdown fences), so a Dependabot ruff PR arriving red is
+# routine rather than alarming.
+#
+# Triage when one does: does the rule express something this project actually
+# believes? If so, fix the code. If not, add it to `ignore` with the reason
+# inline — every entry below carries one, and an unexplained ignore is the
+# thing to avoid. Never narrow `select` to silence a single rule: that also
+# drops every future rule in the same linter, silently. Decided in HEA-72.
 select = ["ALL"]
 ignore = [
   # Conflicts with the formatter.

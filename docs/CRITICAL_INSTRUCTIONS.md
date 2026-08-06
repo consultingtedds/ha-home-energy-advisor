@@ -175,4 +175,6 @@ commit** that delivers the user-visible capability. Work directly on `main`.
 | Why period figures come from statistics, not helpers | `docs/adr/0008-*.md` |
 | Test patterns | `docs/TESTING_STANDARDS.md` |
 | Docstring/ADR/README/diagram rules | `docs/DOCUMENTATION_STANDARDS.md` |
+| A ruff upgrade failing on rules nobody chose | `pyproject.toml`, the comment above `select = ["ALL"]` |
+| Why two files pin the same version, and what breaks if they drift | `tests/test_dependency_pins.py` |
 | Product intent | `docs/VISION.md`, `docs/PRODUCT_CHARTER.md`, `docs/PRD.md`, `docs/adr/0000-*.md` |
