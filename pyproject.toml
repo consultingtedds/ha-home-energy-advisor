@@ -19,6 +19,11 @@ ignore = [
   # The class docstring documents construction. A separate __init__ docstring
   # would restate the signature, which DOCUMENTATION_STANDARDS calls out as noise.
   "D107",
+  # Would put a copyright header on all 41 files. The MIT grant is stated once,
+  # in LICENSE, and Home Assistant custom integrations carry no per-file
+  # notices. Enrolled by itself in ruff 0.16.1: `select = ["ALL"]` opts this
+  # repo into every rule a release adds (HEA-71).
+  "CPY001",
 ]
 
 [tool.ruff.lint.per-file-ignores]
