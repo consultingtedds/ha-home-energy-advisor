@@ -157,6 +157,66 @@ meter readings — a counter total is one of the things the repo's privacy rules
 keep out of a public repository, and the invariant is what this run is actually
 testing.
 
+### Mid-run checkpoint — 2026-08-07 (day 2 of 7)
+
+**A third restart, and one rule bent.** The HEA-68 build was deployed mid-run. It
+is the first change to land inside the window that touches `engine/`, which the
+rule above says should not happen — recorded here rather than waved through. The
+engine change is a local-variable rename in `_derive_untracked` with no
+behavioural effect, and the config-entry migration that ships with it (ADR-0011)
+moves a storage key without changing which entity any role reads. Neither alters
+a figure. No sensor was renamed and no metered concept added, so the statistics
+series the comparison draws from is intact.
+
+**Continuity confirmed, as at the two earlier restarts.** Accumulation continued
+across the restart rather than restarting from zero, and no source was
+unavailable or unknown.
+
+| Σ devices + Untracked − whole home | Residual |
+|---|---|
+| Energy Used | `0.000000` |
+| Actual Cost | `−0.0003` |
+| Cost at Grid Price | `−0.0004` |
+| Cost Savings | `0.0000` |
+
+**The money residuals are presentation rounding, not a ledger break.** The
+earlier "residual `0.000000`" entries in this record were energy, which is the
+only one that can be exactly zero at published precision. HEA-59 rounds money to
+4 dp, so across 16 sensors the accumulated rounding is bounded by ±0.0008 and the
+observed figures sit inside it. The engine itself is exact: at full precision the
+runtime device totals summed to the whole-home figure to 28 significant digits,
+residual zero.
+
+**Correction to a claim made in Preconditions.** That section says the reset lets
+this run reconcile on *absolute* values rather than window deltas. That holds for
+energy and cost. It does **not** hold for the by-source split (HEA-51).
+
+One coarse-counter device carries a permanent by-source skew of `0.0553 kWh`,
+which propagates one-for-one into the whole-home by-source figures. Per-day
+`change` from long-term statistics locates all of it on a single day:
+
+| Day | `energy_used` − (grid + generation + battery) |
+|---|---|
+| 3 Aug | `−0.055256` |
+| 4 Aug | `−0.000002` |
+| 5 Aug | `+0.000001` |
+| 6 Aug | `−0.000001` |
+
+3 August is the first day either sensor holds data: the by-source sensors ship in
+the HEA-51 deploy and restore a zero baseline while `energy_used` already carries
+history — the new-accumulator baseline skew. The 4 August reset cleared it, and
+every day from the reset onward reconciles to within 2×10⁻⁶, which is
+floating-point noise on the statistics rows. Live runtime accounting agrees: the
+device's `energy_kwh` and its by-source total are identical to 28 significant
+digits, so the discrepancy exists only in the restored baseline.
+
+**A consequence for the analysis, not a defect.** The skew predates the window by
+three days, so it cannot affect a device-day inside it — but it never washes out
+of the cumulative sensors. **Step 3 of Method must therefore run the by-source
+check on window deltas, not absolute values.** Run on absolutes it fails by
+exactly `0.0553 kWh` in perpetuity, on a device that is accounting correctly. No
+child issue raised.
+
 ### What this run cannot tell us
 
 Recorded at the start, so it is not discovered as a convenient caveat afterwards.
