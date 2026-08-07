@@ -24,6 +24,7 @@ from .const import (
     CONF_CYCLE_METERS,
     CONF_GENERATION_ENTITY,
     CONF_INTEGRAL_HELPERS,
+    DOMAIN,
 )
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
@@ -32,6 +33,7 @@ from .integral_helper import async_sync_power_device_helpers
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.device_registry import DeviceEntry
 
     from .coordinator import HeaConfigEntry
 
@@ -117,6 +119,44 @@ async def async_remove_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None
         helper_id = helper_entry_id(record)
         if hass.config_entries.async_get_entry(helper_id) is not None:
             await hass.config_entries.async_remove(helper_id)
+
+
+def _tracked_subentry_id(entry: HeaConfigEntry, device: DeviceEntry) -> str | None:
+    """The subentry a HEA device page belongs to, or None if it is an aggregate.
+
+    Membership of ``entry.subentries`` is the whole test. The hub carries the
+    bare entry id and the Untracked and whole-home devices carry suffixes that
+    are not subentry ids, so all three fall out without a list of exclusions to
+    keep in step with the sensor platform.
+    """
+    prefix = f"{entry.entry_id}_"
+    for domain, identifier in device.identifiers:
+        if domain == DOMAIN and (sub := identifier.removeprefix(prefix)) in (
+            entry.subentries
+        ):
+            return sub
+    return None
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant, entry: HeaConfigEntry, device: DeviceEntry
+) -> bool:
+    """Let a tracked device be deleted from its own device page (HEA-56).
+
+    Removing the device alone would not stick: the subentry is authoritative, so
+    the sensor platform would rebuild the device on the next reload. Removing the
+    subentry is what makes the deletion real — and Home Assistant's own
+    ``async_remove_subentry`` clears the device registry for it, while the update
+    listener below reloads the entry and reconciles the auto-created Integral and
+    cycle-meter helpers away (HEA-34, HEA-23).
+
+    The aggregates are refused: Untracked and whole home are derived figures and
+    the hub is the integration itself, so none of them is a user's to delete.
+    """
+    if (subentry_id := _tracked_subentry_id(entry, device)) is None:
+        return False
+    hass.config_entries.async_remove_subentry(entry, subentry_id)
+    return True
 
 
 async def _async_reload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None:
