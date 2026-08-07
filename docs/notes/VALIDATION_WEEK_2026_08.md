@@ -217,6 +217,18 @@ check on window deltas, not absolute values.** Run on absolutes it fails by
 exactly `0.0553 kWh` in perpetuity, on a device that is accounting correctly. No
 child issue raised.
 
+**The rule held for the next one.** HEA-47 would have added a `warming_up`
+attribute — a change touching `engine/` *and* the sensor set, so squarely what
+this section forbids. It is parked until the window closes rather than taken as a
+second exception: the argument for allowing it (a read-only property and an
+attribute move no figure) is the same argument made for HEA-68 above, and a rule
+that accepts it twice is not a rule. It is Low priority and waits.
+
+**`main` has since run ahead of the build under test.** HEA-56 (device deletion)
+is committed but *not deployed*, so the running build is unchanged and the window
+is unaffected. Any further deploy inside the window is a decision, not a routine,
+and belongs in this record with a fresh continuity check.
+
 ### What this run cannot tell us
 
 Recorded at the start, so it is not discovered as a convenient caveat afterwards.
