@@ -30,11 +30,11 @@ from pytest_homeassistant_custom_component.common import (
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
@@ -605,15 +605,15 @@ async def test_a_restart_does_not_drift_the_running_total(
 _BY_SOURCE = ("energy_from_grid", "energy_from_generation", "energy_from_battery")
 
 
-def _solar_entry() -> MockConfigEntry:
-    """A home with solar and export meters, so a bucket is served by a real mix."""
+def _generation_entry() -> MockConfigEntry:
+    """A home with generation and export meters, so a bucket is served by a real mix."""
     return MockConfigEntry(
         domain=DOMAIN,
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
-            CONF_SOLAR_ENTITY: "sensor.solar",
+            CONF_GENERATION_ENTITY: "sensor.generation",
             CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
         },
         subentries_data=[
@@ -630,11 +630,11 @@ def _solar_entry() -> MockConfigEntry:
     )
 
 
-async def _run_a_solar_interval(
+async def _run_a_generation_interval(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Serve 0.7 kWh from 0.4 grid + 0.3 self-consumed solar; the device draws 0.5."""
-    for entity in ("sensor.grid_import", "sensor.solar", "sensor.grid_export"):
+    """Serve 0.7 kWh from 0.4 grid + 0.3 self-consumed generation; device draws 0.5."""
+    for entity in ("sensor.grid_import", "sensor.generation", "sensor.grid_export"):
         hass.states.async_set(entity, "0", _ENERGY)
     hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
     hass.states.async_set("sensor.price", "0.30")
@@ -642,7 +642,7 @@ async def _run_a_solar_interval(
 
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "0.4", _ENERGY)
-    hass.states.async_set("sensor.solar", "0.5", _ENERGY)
+    hass.states.async_set("sensor.generation", "0.5", _ENERGY)
     hass.states.async_set("sensor.grid_export", "0.2", _ENERGY)
     hass.states.async_set("sensor.guest_energy", "0.5", _ENERGY)
     await hass.async_block_till_done()
@@ -655,15 +655,15 @@ async def _run_a_solar_interval(
 async def test_each_device_gets_energy_by_source_sensors(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a solar home with one tracked device
+    # Given — a generating home with one tracked device
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    entry = _solar_entry()
+    entry = _generation_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — an interval served by a grid/solar mix is accounted
-    await _run_a_solar_interval(hass, freezer)
+    # When — an interval served by a grid/generation mix is accounted
+    await _run_a_generation_interval(hass, freezer)
 
     # Then — the device's energy is published split by the source that served it,
     # so energy self-sufficiency can be charted per device (HEA-51)
@@ -691,13 +691,13 @@ async def test_each_device_gets_energy_by_source_sensors(
 async def test_untracked_by_source_is_total_because_late_energy_pulls_it_down(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a solar home that has accounted an interval
+    # Given — a generating home that has accounted an interval
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    entry = _solar_entry()
+    entry = _generation_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    await _run_a_solar_interval(hass, freezer)
+    await _run_a_generation_interval(hass, freezer)
 
     # Then — Untracked's by-source figures are `total`, not `total_increasing`: they
     # are derived, so a late correction legitimately pulls them down, which

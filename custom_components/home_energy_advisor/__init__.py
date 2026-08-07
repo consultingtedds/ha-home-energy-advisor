@@ -20,7 +20,11 @@ from typing import TYPE_CHECKING
 from homeassistant.const import Platform
 
 from . import reset
-from .const import CONF_CYCLE_METERS, CONF_INTEGRAL_HELPERS
+from .const import (
+    CONF_CYCLE_METERS,
+    CONF_GENERATION_ENTITY,
+    CONF_INTEGRAL_HELPERS,
+)
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
 from .helper_ownership import helper_entry_id, helper_was_created
@@ -32,6 +36,10 @@ if TYPE_CHECKING:
     from .coordinator import HeaConfigEntry
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+# The pre-ADR-0011 key for the local-generation input, as it still sits in an
+# installed household's .storage. Only the migration below knows this name.
+_LEGACY_GENERATION_KEY = "solar_entity"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
@@ -53,6 +61,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # effect live — and so a removed device's auto-created helpers (Integral and
     # cycle meters) are reconciled away on the next setup (HEA-34, HEA-23).
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
+    """Bring an older config entry up to the current schema (ADR-0011).
+
+    Version 1 stored the local-generation input under ``solar_entity``. ADR-0009
+    renamed the concept but kept the key; ADR-0011 revises that, so the key moves
+    to ``generation_entity``. Nothing else about the entry changes.
+
+    This exists for installations that predate the rename. It can go once none
+    remain — pre-release, that is a single household.
+    """
+    if entry.version == 1:
+        data = {**entry.data}
+        if (generation := data.pop(_LEGACY_GENERATION_KEY, None)) is not None:
+            data[CONF_GENERATION_ENTITY] = generation
+        hass.config_entries.async_update_entry(entry, data=data, version=2)
     return True
 
 
