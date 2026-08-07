@@ -34,12 +34,12 @@ from .const import (
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
     CONF_ENERGY_ENTITY,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
@@ -82,7 +82,7 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -161,7 +161,7 @@ def _build_schema(defaults: dict[str, str]) -> vol.Schema:
             ): selector.TextSelector(),
             source(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
             source(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
-            source(CONF_SOLAR_ENTITY, required=False): _ENERGY_SELECTOR,
+            source(CONF_GENERATION_ENTITY, required=False): _ENERGY_SELECTOR,
             source(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             source(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             source(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
@@ -194,7 +194,7 @@ def _collect_prefs_source(
         if exports := source.get("flow_to"):
             defaults[CONF_GRID_EXPORT_ENTITY] = exports[0]["stat_energy_to"]
     elif kind == "solar" and (stat := source.get("stat_energy_from")):
-        defaults[CONF_SOLAR_ENTITY] = stat
+        defaults[CONF_GENERATION_ENTITY] = stat
     elif kind == "battery":
         if charge := source.get("stat_energy_to"):
             defaults[CONF_BATTERY_CHARGE_ENTITY] = charge
@@ -262,7 +262,7 @@ _ALWAYS_READ = (
 # Read only by ADR-0005's full-balance branch, which runs when no house-load
 # meter is configured. With one, the residual branch derives generation from the
 # house total and never looks at these.
-_FULL_BALANCE_ONLY = (CONF_SOLAR_ENTITY, CONF_GRID_EXPORT_ENTITY)
+_FULL_BALANCE_ONLY = (CONF_GENERATION_ENTITY, CONF_GRID_EXPORT_ENTITY)
 
 
 def _validate_house_sources(

@@ -337,7 +337,7 @@ class Accountant:
         naive = _sum(d.naive_cost for d in tracked)
         savings = _sum(d.cost_savings for d in tracked)
         grid = _sum(d.energy_from_grid for d in tracked)
-        solar = _sum(d.energy_from_generation for d in tracked)
+        generation = _sum(d.energy_from_generation for d in tracked)
         battery = _sum(d.energy_from_battery for d in tracked)
         return DeviceTotals(
             energy_kwh=whole_home.energy_kwh - energy,
@@ -345,7 +345,7 @@ class Accountant:
             naive_cost=whole_home.naive_cost - naive,
             cost_savings=whole_home.cost_savings - savings,
             energy_from_grid=whole_home.energy_from_grid - grid,
-            energy_from_generation=whole_home.energy_from_generation - solar,
+            energy_from_generation=whole_home.energy_from_generation - generation,
             energy_from_battery=whole_home.energy_from_battery - battery,
         )
 

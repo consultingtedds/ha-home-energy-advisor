@@ -3,23 +3,23 @@
     "step": {
       "user": {
         "title": "Home Energy Advisor",
-        "description": "Choose the household energy inputs. Local generation and battery are optional — without them, cost is calculated from grid import alone.",
+        "description": "An import price and a grid import meter are all you need. Every other input is optional — add only the ones your home has, and the accounting adapts.",
         "data": {
           "price_entity": "Import price",
           "currency": "Currency",
           "grid_import_entity": "Grid import energy",
-          "grid_export_entity": "Grid export energy",
-          "solar_entity": "Local generation energy",
-          "battery_charge_entity": "Battery charge energy",
-          "battery_discharge_entity": "Battery discharge energy",
-          "house_consumption_entity": "House consumption energy"
+          "grid_export_entity": "Grid export energy (optional)",
+          "generation_entity": "Local generation energy (optional)",
+          "battery_charge_entity": "Battery charge energy (optional)",
+          "battery_discharge_entity": "Battery discharge energy (optional)",
+          "house_consumption_entity": "House consumption energy (optional)"
         },
         "data_description": {
           "price_entity": "The sensor giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
-          "solar_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none.",
+          "generation_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."
@@ -27,23 +27,23 @@
       },
       "reconfigure": {
         "title": "Edit Home Energy Advisor",
-        "description": "Update the household energy inputs. Local generation and battery remain optional.",
+        "description": "Update the household energy inputs. Only the import price and the grid import meter are required; every other input is optional.",
         "data": {
           "price_entity": "Import price",
           "currency": "Currency",
           "grid_import_entity": "Grid import energy",
-          "grid_export_entity": "Grid export energy",
-          "solar_entity": "Local generation energy",
-          "battery_charge_entity": "Battery charge energy",
-          "battery_discharge_entity": "Battery discharge energy",
-          "house_consumption_entity": "House consumption energy"
+          "grid_export_entity": "Grid export energy (optional)",
+          "generation_entity": "Local generation energy (optional)",
+          "battery_charge_entity": "Battery charge energy (optional)",
+          "battery_discharge_entity": "Battery discharge energy (optional)",
+          "house_consumption_entity": "House consumption energy (optional)"
         },
         "data_description": {
           "price_entity": "The sensor giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
-          "solar_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none.",
+          "generation_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."

@@ -37,10 +37,10 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
@@ -445,7 +445,7 @@ async def test_discovery_excludes_the_other_outputs_of_the_supply_hardware(
     entry = _entry(
         hass,
         **{
-            CONF_SOLAR_ENTITY: "sensor.inverter_generation",
+            CONF_GENERATION_ENTITY: "sensor.inverter_generation",
             CONF_BATTERY_DISCHARGE_ENTITY: "sensor.inverter_battery_discharge",
         },
     )
