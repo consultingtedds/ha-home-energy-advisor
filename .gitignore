@@ -8,6 +8,7 @@ venv/
 .pytest_cache/
 .coverage
 coverage.xml
+coverage-frontend/
 htmlcov/
 dist/
 build/
