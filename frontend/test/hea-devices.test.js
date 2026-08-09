@@ -1,0 +1,142 @@
+/**
+ * Nothing in the dashboard may name a device (HEA-50): every card enumerates
+ * the HEA-55 sensor, so adding a device makes every view pick it up. These
+ * tests pin the sensor's published shape — the rows as they appear on a real
+ * instance — because a card that mis-reads them silently shows an empty house.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import { DEVICES_SENSOR, readDevices } from "../hea-devices.js";
+
+/** A row as the HEA-55 sensor publishes it, in its own snake_case. */
+const aRow = (key, name, overrides = {}) => ({
+  key,
+  name,
+  device_id: `device-${key}`,
+  untracked: false,
+  area_id: null,
+  area_name: null,
+  floor_id: null,
+  floor_name: null,
+  ...overrides,
+});
+
+const aHass = (attributes) => ({
+  states: { [DEVICES_SENSOR]: { state: "1", attributes } },
+});
+
+describe("readDevices", () => {
+  it("reads the devices the sensor publishes, with their place in the house", () => {
+    // Given — a tracked device sitting in an area on a floor
+    const hass = aHass({
+      devices: [
+        aRow("tumble_dryer_switch", "Tumble Dryer Switch", {
+          area_id: "utility_room",
+          area_name: "Utility Room",
+          floor_id: "ground_floor",
+          floor_name: "Ground Floor",
+        }),
+      ],
+    });
+
+    // When
+    const devices = readDevices(hass);
+
+    // Then — the slug is what statistic ids are built from, so it matters most
+    expect(devices).toEqual([
+      {
+        key: "tumble_dryer_switch",
+        name: "Tumble Dryer Switch",
+        deviceId: "device-tumble_dryer_switch",
+        untracked: false,
+        areaId: "utility_room",
+        areaName: "Utility Room",
+        floorId: "ground_floor",
+        floorName: "Ground Floor",
+      },
+    ]);
+  });
+
+  it("keeps the Untracked remainder, flagged", () => {
+    // Given — the remainder is real money, not a placeholder to filter out
+    const hass = aHass({
+      devices: [
+        aRow("untracked_energy_devices", "Untracked Energy Devices", {
+          untracked: true,
+        }),
+      ],
+    });
+
+    // When / Then — a card decides how to present it; the data layer keeps it
+    expect(readDevices(hass)).toEqual([
+      expect.objectContaining({
+        key: "untracked_energy_devices",
+        untracked: true,
+      }),
+    ]);
+  });
+
+  it("preserves the order the sensor published", () => {
+    // Given — the sensor sorts by slug; re-sorting here would fight it
+    const hass = aHass({
+      devices: [aRow("a_device", "A"), aRow("b_device", "B")],
+    });
+
+    // When / Then
+    expect(readDevices(hass).map((device) => device.key)).toEqual([
+      "a_device",
+      "b_device",
+    ]);
+  });
+
+  it("falls back to the slug when a row carries no name", () => {
+    // Given — a device whose name has not resolved from the registry yet
+    const hass = aHass({ devices: [aRow("tumble_dryer_switch", null)] });
+
+    // When / Then — a card must have something to label the row with
+    expect(readDevices(hass)[0].name).toBe("tumble_dryer_switch");
+  });
+
+  it("skips a row with no slug, since no statistic id can be built from it", () => {
+    // Given — a malformed row alongside a good one
+    const hass = aHass({
+      devices: [{ name: "No key at all" }, aRow("tumble_dryer_switch", "Dryer")],
+    });
+
+    // When / Then — one bad row must not cost the dashboard the other devices
+    expect(readDevices(hass).map((device) => device.key)).toEqual([
+      "tumble_dryer_switch",
+    ]);
+  });
+
+  it("is empty when the integration is not loaded", () => {
+    // Given / When / Then — a card can be placed before HEA is set up, and is
+    // constructed before its first hass update
+    expect(readDevices(undefined)).toEqual([]);
+    expect(readDevices({})).toEqual([]);
+    expect(readDevices({ states: {} })).toEqual([]);
+  });
+
+  it("is empty when the sensor is unavailable and carries no device list", () => {
+    // Given — an unavailable entity keeps its state but loses its attributes
+    // When / Then
+    expect(readDevices(aHass({}))).toEqual([]);
+    expect(readDevices(aHass({ devices: "not a list" }))).toEqual([]);
+  });
+
+  it("reads a sensor that a user renamed", () => {
+    // Given — entity ids are the user's to change
+    const hass = {
+      states: {
+        "sensor.hea_devices": {
+          state: "1",
+          attributes: { devices: [aRow("tumble_dryer_switch", "Dryer")] },
+        },
+      },
+    };
+
+    // When / Then
+    expect(readDevices(hass, "sensor.hea_devices")).toHaveLength(1);
+  });
+});
