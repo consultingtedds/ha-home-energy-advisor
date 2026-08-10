@@ -238,3 +238,34 @@ a pass here validates proportional allocation and the generation path and says
 nothing about the stored-cost ledger under winter force-charging. See "Known
 limitation" above — the post-winter review is a condition of the accuracy claim,
 not an optional follow-up.
+
+### Defect found mid-run — 2026-08-10 (day 5 of 7)
+
+**The run is contaminated for tracked devices.** HEA-74: overnight, when the
+source split records every kWh as grid and the household confirms the battery
+emptied around 21:00 local, tracked devices are priced at a quarter to a sixth of
+the import tariff. Untracked, derived by subtraction, comes out at exactly the
+off-peak tariff and is correct; the counterfactual is correct throughout. It is
+Actual Cost on tracked devices that is too low, and the whole-home saving is
+non-zero overnight only because that error leaks upward.
+
+**This is not a reconciliation failure — all three checks still pass.** Σ devices
++ Untracked still reconciles to the whole home, because the error is in how a
+device's energy is *priced*, not in how much of it is allocated. A run that only
+reconciles totals cannot see this, which belongs here as a limit of the method
+rather than as a surprise.
+
+**Consequence for the acceptance threshold.** The per-device comparison against
+the manual method is the substance of this run, and it is exactly what the defect
+distorts. Per-device figures for the aircons cannot be accepted from this window.
+Whether the week is re-run after the fix or salvaged for the Untracked and
+whole-home paths alone is a decision for when HEA-74's cause is known: the size of
+the error depends on how much of each device's energy arrived late, and that is
+not yet measured.
+
+**How it was found, since the method did not find it.** By eye, on an hourly chart
+of cost against counterfactual (HEA-50), the day it first rendered. The sensors
+had been recording it for weeks and every daily and weekly total hid it — averaged
+over a day, a few cheap night hours inside a mostly-correct day look like nothing.
+The reconciliation checks were never going to catch it, and neither was a daily
+comparison. A per-hour view was, and did so within a minute of existing.
