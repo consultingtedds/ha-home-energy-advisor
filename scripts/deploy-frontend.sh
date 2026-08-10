@@ -16,6 +16,13 @@
 #
 #   ./scripts/deploy-frontend.sh /path/to/config/www
 #
+# Home Assistant's `www` is often a network share rather than a local path.
+# Windows-style arguments are accepted and converted, so a drive mapped in
+# Windows can be given as `Z:\www`, `Z:/www` or `/z/www`, and a UNC share as
+# `\\homeassistant\config\www` — run it from Git Bash, where the mapping
+# exists. WSL cannot see a Windows-mapped drive unless it is mounted there
+# too, so prefer the Windows shell for this one.
+#
 # Prints the resource url to set on the dashboard. Old folders are left in
 # place — they cost a few KB and let a bad release be rolled back by pointing
 # the resource at the previous stamp.
@@ -27,11 +34,26 @@ die() {
   exit 1
 }
 
+# `Z:\www` -> `/z/www`, `\\host\share` -> `//host/share`; anything already
+# usable is returned untouched.
+to_shell_path() {
+  local path="${1//\\//}"
+  [ -d "$path" ] && { printf '%s' "$path"; return; }
+  if [[ "$path" =~ ^([A-Za-z]):/(.*)$ ]]; then
+    local drive="${BASH_REMATCH[1]}"
+    local rest="${BASH_REMATCH[2]}"
+    printf '/%s/%s' "$(printf '%s' "$drive" | tr '[:upper:]' '[:lower:]')" "$rest"
+    return
+  fi
+  printf '%s' "$path"
+}
+
 [ -f frontend/hea-cards.js ] || die "run this from the repository root"
 
-www="${1:-}"
-[ -n "$www" ] || die "usage: $0 <path-to-config/www> [stamp]"
-[ -d "$www" ] || die "no such directory: $www"
+[ -n "${1:-}" ] || die "usage: $0 <path-to-config/www> [stamp]"
+www="$(to_shell_path "$1")"
+[ -d "$www" ] || die "no such directory: $www (from '$1')
+  a Windows-mapped drive is only visible from Git Bash, not from WSL"
 
 stamp="${2:-$(date +%Y%m%d-%H%M%S)}"
 target="$www/home-energy-advisor/$stamp"
