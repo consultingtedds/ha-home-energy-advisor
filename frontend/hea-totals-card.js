@@ -7,9 +7,11 @@
  */
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
+import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { formatMoney } from "./hea-format.js";
 
 export const TAG = "hea-totals-card";
+const EDITOR_TAG = `${TAG}-editor`;
 
 /**
  * The three figures, in the order they answer the question: what it cost, what
@@ -40,6 +42,11 @@ class HeaTotalsCard extends HeaCard {
     }
   `;
 
+  /** Everything this card offers is the shared configuration (HEA-73). */
+  static getConfigElement() {
+    return document.createElement(EDITOR_TAG);
+  }
+
   /** Masonry needs a height estimate; three figures and a caption is about 3. */
   getCardSize() {
     return 3;
@@ -62,11 +69,16 @@ class HeaTotalsCard extends HeaCard {
   }
 }
 
-export const register = () =>
+/** Nothing beyond the shared fields, but it needs a tag of its own. */
+class HeaTotalsCardEditor extends HeaCardEditor {}
+
+export const register = () => {
+  registerEditor(EDITOR_TAG, HeaTotalsCardEditor);
   registerCard(TAG, HeaTotalsCard, {
     name: "Home Energy Advisor: Totals",
     description:
       "What the selected period cost, what it would have cost at grid price, and the difference.",
   });
+};
 
 register();
