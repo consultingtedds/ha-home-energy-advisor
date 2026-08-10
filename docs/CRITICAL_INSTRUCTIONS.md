@@ -87,7 +87,7 @@ deliberately made otherwise — treat it that way by default.
 | --- | --- |
 | Committing real captured instance data | Keep the capture local and `.gitignore` it; make the test `skipif` the fixture is absent. Anything CI must prove needs a **synthetic** fixture |
 | Whole-house consumption at sub-hourly resolution, anywhere | Nothing — it is an occupancy trace (when the house is empty, when people wake). This is the single most sensitive artefact the project touches |
-| Household members' names, room-by-room inventories, appliance lists that narrow the property type | Generic labels, or omit entirely. "Living Room Aircon" is fine; a garden appliance implies a private water supply |
+| Household members' names, room-by-room inventories, appliance lists that narrow the property type | Generic labels, or omit entirely. "Living Room Aircon" is fine; an appliance implying a private water supply, a swimming dryer or a second reception room is not |
 | Hostnames, IPs, timezones, lifetime counter readings | "the reference instance". A live hostname is an address for someone's home |
 | Assuming a rename is enough | **Minimise first, anonymise second.** Ask what the project actually needs. A 9-row table relabelled still discloses that the house has 9 rooms |
 

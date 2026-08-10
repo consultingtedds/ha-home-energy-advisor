@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
-# WiZ lights and the Rointe panel heater report instantaneous watts (ADR-0004,
+# WiZ lights and some panel heaters report instantaneous watts (ADR-0004,
 # DEVICE_SENSOR_SURVEY): power-only, `measurement`, and `unavailable` when off.
 _POWER = {"unit_of_measurement": "W", "device_class": "power"}
 
