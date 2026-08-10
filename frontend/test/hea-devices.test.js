@@ -31,7 +31,7 @@ describe("readDevices", () => {
     // Given — a tracked device sitting in an area on a floor
     const hass = aHass({
       devices: [
-        aRow("tumble_dryer_switch", "Tumble Dryer Switch", {
+        aRow("living_room_aircon", "Living Room Aircon", {
           area_id: "utility_room",
           area_name: "Utility Room",
           floor_id: "ground_floor",
@@ -46,9 +46,9 @@ describe("readDevices", () => {
     // Then — the slug is what statistic ids are built from, so it matters most
     expect(devices).toEqual([
       {
-        key: "tumble_dryer_switch",
-        name: "Tumble Dryer Switch",
-        deviceId: "device-tumble_dryer_switch",
+        key: "living_room_aircon",
+        name: "Living Room Aircon",
+        deviceId: "device-living_room_aircon",
         untracked: false,
         areaId: "utility_room",
         areaName: "Utility Room",
@@ -92,21 +92,21 @@ describe("readDevices", () => {
 
   it("falls back to the slug when a row carries no name", () => {
     // Given — a device whose name has not resolved from the registry yet
-    const hass = aHass({ devices: [aRow("tumble_dryer_switch", null)] });
+    const hass = aHass({ devices: [aRow("living_room_aircon", null)] });
 
     // When / Then — a card must have something to label the row with
-    expect(readDevices(hass)[0].name).toBe("tumble_dryer_switch");
+    expect(readDevices(hass)[0].name).toBe("living_room_aircon");
   });
 
   it("skips a row with no slug, since no statistic id can be built from it", () => {
     // Given — a malformed row alongside a good one
     const hass = aHass({
-      devices: [{ name: "No key at all" }, aRow("tumble_dryer_switch", "Dryer")],
+      devices: [{ name: "No key at all" }, aRow("living_room_aircon", "Aircon")],
     });
 
     // When / Then — one bad row must not cost the dashboard the other devices
     expect(readDevices(hass).map((device) => device.key)).toEqual([
-      "tumble_dryer_switch",
+      "living_room_aircon",
     ]);
   });
 
@@ -131,7 +131,7 @@ describe("readDevices", () => {
       states: {
         "sensor.hea_devices": {
           state: "1",
-          attributes: { devices: [aRow("tumble_dryer_switch", "Dryer")] },
+          attributes: { devices: [aRow("living_room_aircon", "Aircon")] },
         },
       },
     };

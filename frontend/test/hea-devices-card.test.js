@@ -23,14 +23,14 @@ import {
 
 /** Three devices whose costs deliberately do not share an order with savings. */
 const THREE_DEVICES = [
-  aDeviceRow("tumble_dryer_switch", "Tumble Dryer Switch"),
+  aDeviceRow("living_room_aircon", "Living Room Aircon"),
   aDeviceRow("kitchen_aircon", "Kitchen Aircon"),
   aDeviceRow("untracked_energy_devices", "Untracked Energy Devices", true),
 ];
 
 const THREE_RESPONSE = {
   // energy, actual, at grid price → saved is the difference
-  ...bucketsFor("tumble_dryer_switch", 38.6, 0.11, 5.78), // saved 5.67
+  ...bucketsFor("living_room_aircon", 38.6, 0.11, 5.78), // saved 5.67
   ...bucketsFor("kitchen_aircon", 12.0, 3.0, 4.0), // saved 1.00
   ...bucketsFor("untracked_energy_devices", 100, 1.5, 9.5), // saved 8.00
 };
@@ -75,7 +75,7 @@ describe("the table", () => {
 
     // Then — the counterfactual and the saving beside what was actually paid
     expect(rows(card)).toContainEqual([
-      "Tumble Dryer Switch",
+      "Living Room Aircon",
       "38.6 kWh",
       expect.stringMatching(/0[.,]11/),
       expect.stringMatching(/5[.,]78/),
@@ -95,7 +95,7 @@ describe("the table", () => {
     expect(deviceOrder(card)).toEqual([
       "Kitchen Aircon",
       "Untracked Energy Devices",
-      "Tumble Dryer Switch",
+      "Living Room Aircon",
     ]);
   });
 
@@ -110,7 +110,7 @@ describe("the table", () => {
     // Then — 8.00, 5.67, 1.00
     expect(deviceOrder(card)).toEqual([
       "Untracked Energy Devices",
-      "Tumble Dryer Switch",
+      "Living Room Aircon",
       "Kitchen Aircon",
     ]);
   });
@@ -145,8 +145,8 @@ describe("the table", () => {
   it("marks a device whose saving is really a loss", async () => {
     // Given — battery arbitrage cost more than the grid would have (HEA-39)
     const hass = aHass({
-      devices: [aDeviceRow("tumble_dryer_switch", "Tumble Dryer Switch")],
-      response: bucketsFor("tumble_dryer_switch", 10, 5, 3),
+      devices: [aDeviceRow("living_room_aircon", "Living Room Aircon")],
+      response: bucketsFor("living_room_aircon", 10, 5, 3),
     });
 
     // When
@@ -161,8 +161,8 @@ describe("the table", () => {
   it("escapes a device name, which is the household's own text", async () => {
     // Given — a device a user named awkwardly
     const hass = aHass({
-      devices: [aDeviceRow("tumble_dryer_switch", "<img src=x onerror=alert(1)>")],
-      response: bucketsFor("tumble_dryer_switch", 1, 1, 1),
+      devices: [aDeviceRow("living_room_aircon", "<img src=x onerror=alert(1)>")],
+      response: bucketsFor("living_room_aircon", 1, 1, 1),
     });
 
     // When

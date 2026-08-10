@@ -25,7 +25,7 @@ const aDevice = (key, name, overrides = {}) => ({
   ...overrides,
 });
 
-const TUMBLE_DRYER = aDevice("tumble_dryer_switch", "Tumble Dryer Switch");
+const AIRCON = aDevice("living_room_aircon", "Living Room Aircon");
 
 /** A day of buckets, as the recorder returns them: epoch ms and a delta. */
 const aBucket = (start, change) => ({
@@ -47,25 +47,25 @@ describe("statisticIdsFor", () => {
   it("builds the three statistic ids a device is accounted by", () => {
     // Given / When / Then — `sensor.<slug>_<concept>`, the slug the HEA-55
     // sensor resolved out of the entity registry rather than one guessed here
-    expect(statisticIdsFor([TUMBLE_DRYER])).toEqual([
-      "sensor.tumble_dryer_switch_energy_used",
-      "sensor.tumble_dryer_switch_actual_cost",
-      "sensor.tumble_dryer_switch_cost_at_grid_price",
+    expect(statisticIdsFor([AIRCON])).toEqual([
+      "sensor.living_room_aircon_energy_used",
+      "sensor.living_room_aircon_actual_cost",
+      "sensor.living_room_aircon_cost_at_grid_price",
     ]);
   });
 
   it("does not ask for Cost Savings, which is a subtraction", () => {
     // Given / When
-    const ids = statisticIdsFor([TUMBLE_DRYER]);
+    const ids = statisticIdsFor([AIRCON]);
 
     // Then — deriving it is what guarantees the stacked bar's segments sum to
     // the whole (ADR-0012), rather than three numbers that nearly agree
-    expect(ids).not.toContain("sensor.tumble_dryer_switch_cost_savings");
+    expect(ids).not.toContain("sensor.living_room_aircon_cost_savings");
   });
 
   it("covers every device, including the Untracked remainder", () => {
     // Given
-    const devices = [TUMBLE_DRYER, aDevice("untracked_energy_devices", "Untracked", { untracked: true })];
+    const devices = [AIRCON, aDevice("untracked_energy_devices", "Untracked", { untracked: true })];
 
     // When / Then
     expect(statisticIdsFor(devices)).toHaveLength(6);
@@ -123,16 +123,16 @@ describe("fetchDeviceStatistics", () => {
   const DAY_ONE = new Date("2026-08-04T00:00:00Z");
   const DAY_TWO = new Date("2026-08-05T00:00:00Z");
 
-  const tumbleDryerResponse = {
-    "sensor.tumble_dryer_switch_energy_used": [
+  const airconResponse = {
+    "sensor.living_room_aircon_energy_used": [
       aBucket(DAY_ONE, 6.2),
       aBucket(DAY_TWO, 8.0),
     ],
-    "sensor.tumble_dryer_switch_actual_cost": [
+    "sensor.living_room_aircon_actual_cost": [
       aBucket(DAY_ONE, 0.1),
       aBucket(DAY_TWO, 0.2),
     ],
-    "sensor.tumble_dryer_switch_cost_at_grid_price": [
+    "sensor.living_room_aircon_cost_at_grid_price": [
       aBucket(DAY_ONE, 1.1),
       aBucket(DAY_TWO, 1.4),
     ],
@@ -140,10 +140,10 @@ describe("fetchDeviceStatistics", () => {
 
   it("asks the recorder for the change over the picked period", async () => {
     // Given
-    const hass = aHass(tumbleDryerResponse);
+    const hass = aHass(airconResponse);
 
     // When
-    await fetchDeviceStatistics(hass, [TUMBLE_DRYER], threeDays);
+    await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
     // Then — `change` is the per-bucket delta of a cumulative meter; asking for
     // `sum` instead would hand back the meter reading, not the period's cost
@@ -151,7 +151,7 @@ describe("fetchDeviceStatistics", () => {
       type: "recorder/statistics_during_period",
       start_time: threeDays.start.toISOString(),
       end_time: threeDays.end.toISOString(),
-      statistic_ids: statisticIdsFor([TUMBLE_DRYER]),
+      statistic_ids: statisticIdsFor([AIRCON]),
       period: "day",
       types: ["change"],
     });
@@ -159,17 +159,17 @@ describe("fetchDeviceStatistics", () => {
 
   it("totals each device over the period, and derives what was saved", async () => {
     // Given
-    const hass = aHass(tumbleDryerResponse);
+    const hass = aHass(airconResponse);
 
     // When
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
     // Then — saved is Cost at Grid Price less Actual Cost, so the three
     // reconcile by construction
     expect(result.devices).toEqual([
       expect.objectContaining({
-        key: "tumble_dryer_switch",
-        name: "Tumble Dryer Switch",
+        key: "living_room_aircon",
+        name: "Living Room Aircon",
         energyUsed: 14.2,
         actualCost: expect.closeTo(0.3, 10),
         costAtGridPrice: expect.closeTo(2.5, 10),
@@ -185,14 +185,14 @@ describe("fetchDeviceStatistics", () => {
       untracked: true,
     });
     const hass = aHass({
-      ...tumbleDryerResponse,
+      ...airconResponse,
       "sensor.untracked_energy_devices_energy_used": [aBucket(DAY_ONE, 30)],
       "sensor.untracked_energy_devices_actual_cost": [aBucket(DAY_ONE, 4)],
       "sensor.untracked_energy_devices_cost_at_grid_price": [aBucket(DAY_ONE, 5)],
     });
 
     // When
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER, untracked], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON, untracked], threeDays);
 
     // Then
     expect(result.totals).toEqual({
@@ -208,7 +208,7 @@ describe("fetchDeviceStatistics", () => {
     const fallback = { ...threeDays, fallback: true };
 
     // When
-    const result = await fetchDeviceStatistics(aHass(tumbleDryerResponse), [TUMBLE_DRYER], fallback);
+    const result = await fetchDeviceStatistics(aHass(airconResponse), [AIRCON], fallback);
 
     // Then
     expect(result.period).toEqual(fallback);
@@ -219,8 +219,8 @@ describe("fetchDeviceStatistics", () => {
     // request ending at midnight comes back with the whole of the next day
     // attached; counting it would bill the user for time they did not ask about
     const hass = aHass({
-      ...tumbleDryerResponse,
-      "sensor.tumble_dryer_switch_energy_used": [
+      ...airconResponse,
+      "sensor.living_room_aircon_energy_used": [
         aBucket(DAY_ONE, 6.2),
         aBucket(DAY_TWO, 8.0),
         aBucket(threeDays.end, 999),
@@ -228,7 +228,7 @@ describe("fetchDeviceStatistics", () => {
     });
 
     // When
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
     // Then
     expect(result.devices[0].energyUsed).toBe(14.2);
@@ -237,8 +237,8 @@ describe("fetchDeviceStatistics", () => {
   it("ignores a bucket that starts before the period", async () => {
     // Given
     const hass = aHass({
-      ...tumbleDryerResponse,
-      "sensor.tumble_dryer_switch_energy_used": [
+      ...airconResponse,
+      "sensor.living_room_aircon_energy_used": [
         aBucket(new Date("2026-08-03T00:00:00Z"), 999),
         aBucket(DAY_ONE, 6.2),
         aBucket(DAY_TWO, 8.0),
@@ -246,7 +246,7 @@ describe("fetchDeviceStatistics", () => {
     });
 
     // When
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
     // Then
     expect(result.devices[0].energyUsed).toBe(14.2);
@@ -256,13 +256,13 @@ describe("fetchDeviceStatistics", () => {
     // Given — the recorder moved from ISO strings to epoch milliseconds; a
     // household on an older Home Assistant should still see its costs
     const hass = aHass({
-      "sensor.tumble_dryer_switch_actual_cost": [
+      "sensor.living_room_aircon_actual_cost": [
         { start: DAY_ONE.toISOString(), end: DAY_TWO.toISOString(), change: 0.1 },
       ],
     });
 
     // When
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
     // Then
     expect(result.devices[0].actualCost).toBe(0.1);
@@ -271,10 +271,10 @@ describe("fetchDeviceStatistics", () => {
   it("reports zero for a device the recorder knows nothing about", async () => {
     // Given — a device added today, over a range that predates it
     const newDevice = aDevice("new_heater", "New Heater");
-    const hass = aHass(tumbleDryerResponse);
+    const hass = aHass(airconResponse);
 
     // When
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER, newDevice], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON, newDevice], threeDays);
 
     // Then — zero, and the devices around it are unaffected
     expect(result.devices[1]).toEqual(
@@ -292,14 +292,14 @@ describe("fetchDeviceStatistics", () => {
   it("skips a bucket carrying no change rather than counting it as zero-cost", async () => {
     // Given — a gap in the statistics, which the recorder reports as null
     const hass = aHass({
-      "sensor.tumble_dryer_switch_actual_cost": [
+      "sensor.living_room_aircon_actual_cost": [
         aBucket(DAY_ONE, 0.1),
         { ...aBucket(DAY_TWO, null), change: null },
       ],
     });
 
     // When / Then
-    const result = await fetchDeviceStatistics(hass, [TUMBLE_DRYER], threeDays);
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
     expect(result.devices[0].actualCost).toBe(0.1);
   });
 
@@ -320,13 +320,13 @@ describe("fetchDeviceStatistics", () => {
 
   it("keeps each device's place in the house, for the views that group by it", async () => {
     // Given — the distribution view groups device → room → floor (HEA-58)
-    const located = aDevice("tumble_dryer_switch", "Tumble Dryer Switch", {
+    const located = aDevice("living_room_aircon", "Living Room Aircon", {
       areaName: "Utility Room",
       floorName: "Ground Floor",
     });
 
     // When
-    const result = await fetchDeviceStatistics(aHass(tumbleDryerResponse), [located], threeDays);
+    const result = await fetchDeviceStatistics(aHass(airconResponse), [located], threeDays);
 
     // Then
     expect(result.devices[0]).toEqual(
