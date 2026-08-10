@@ -17,10 +17,14 @@
  */
 
 /**
- * Energy collections are cached as `_energy_<collection_key>`, or `_energy`
- * when the picker declares no key.
+ * A collection is cached on the connection as `_` + its collection key, and
+ * Home Assistant requires every collection key to start with `energy_` — so
+ * every cached key begins `_energy`.
  */
 const ENERGY_PREFIX = "_energy";
+
+/** The prefix Home Assistant demands of a collection key. */
+const KEY_PREFIX = "energy_";
 
 /** What a card shows on a dashboard that has no picker at all. */
 const FALLBACK_DAYS = 30;
@@ -28,11 +32,25 @@ const FALLBACK_DAYS = 30;
 /**
  * The connection key for a collection key, mirroring how the picker caches it.
  *
+ * Home Assistant caches at `_` + the collection key, and rejects a key that
+ * does not start with `energy_`. It also derives a key from the dashboard's own
+ * url when a card declares none, so every dashboard gets its own collection
+ * rather than sharing one.
+ *
+ * A key written without the `energy_` prefix is accepted and prefixed here: no
+ * collection can exist under it — the picker would have refused it — so the
+ * user meant the prefixed one, and matching what they meant beats showing an
+ * empty card.
+ *
  * @param {string} [collectionKey] as configured on the `energy-date-selection`
- *   card; absent or empty means the picker declared none.
+ *   card; absent or empty means the card declared none.
+ * @param {string} [panelUrl] the dashboard's url path, `hass.panelUrl`.
  */
-export const connectionKeyFor = (collectionKey) =>
-  collectionKey ? `${ENERGY_PREFIX}_${collectionKey}` : ENERGY_PREFIX;
+export const connectionKeyFor = (collectionKey, panelUrl) => {
+  const key = collectionKey || (panelUrl ? `${KEY_PREFIX}${panelUrl}` : "");
+  if (!key) return ENERGY_PREFIX;
+  return key.startsWith(KEY_PREFIX) ? `_${key}` : `_${KEY_PREFIX}${key}`;
+};
 
 /**
  * True for an energy collection, false for Home Assistant's other collections.
@@ -90,7 +108,7 @@ export const findEnergyCollections = (hass) => {
  */
 export const resolveCollection = (hass, collectionKey) => {
   const collections = findEnergyCollections(hass);
-  const wanted = connectionKeyFor(collectionKey);
+  const wanted = connectionKeyFor(collectionKey, hass?.panelUrl);
   if (collections[wanted]) return collections[wanted];
   const [first] = Object.values(collections);
   return first ?? null;
