@@ -155,6 +155,16 @@ export class HeaCard extends HTMLElement {
     // cannot break out of the markup.
     const title = this._config?.title;
     if (title) this.shadowRoot.querySelector("ha-card").setAttribute("header", title);
+    this._afterRender();
+  }
+
+  /**
+   * A hook for cards whose markup needs properties set rather than attributes —
+   * `ha-chart-base` takes its data and options as properties (ADR-0013), and
+   * markup alone cannot express an object.
+   */
+  _afterRender() {
+    // Deliberately empty: most cards are fully described by their markup.
   }
 
   _content(locale) {
