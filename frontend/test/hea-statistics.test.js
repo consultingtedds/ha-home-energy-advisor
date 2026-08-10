@@ -338,6 +338,74 @@ describe("fetchDeviceStatistics", () => {
     );
   });
 
+  it("returns the period bucket by bucket, for the charts to draw", async () => {
+    // Given — the same fetch has to feed a total and a shape over time, or
+    // every chart card costs a second round trip for data already in hand
+    const hass = aHass(airconResponse);
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
+
+    // Then — one row per bucket, oldest first
+    expect(result.series).toEqual([
+      expect.objectContaining({ start: DAY_ONE, energyUsed: 6.2 }),
+      expect.objectContaining({ start: DAY_TWO, energyUsed: 8.0 }),
+    ]);
+  });
+
+  it("adds the devices together within each bucket", async () => {
+    // Given — the chart is of the house, or of whatever the filter selected
+    const other = aDevice("fine_meter_aircon", "Fine Meter Aircon");
+    const hass = aHass({
+      ...airconResponse,
+      "sensor.fine_meter_aircon_energy_used": [aBucket(DAY_ONE, 1)],
+      "sensor.fine_meter_aircon_actual_cost": [aBucket(DAY_ONE, 0.5)],
+      "sensor.fine_meter_aircon_cost_at_grid_price": [aBucket(DAY_ONE, 2.5)],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON, other], threeDays);
+
+    // Then — day one carries both devices, day two only the one that ran
+    expect(result.series[0].actualCost).toBeCloseTo(0.6, 10);
+    expect(result.series[0].costAtGridPrice).toBeCloseTo(3.6, 10);
+    expect(result.series[1].actualCost).toBeCloseTo(0.2, 10);
+  });
+
+  it("derives each bucket's saving the same way as the totals", async () => {
+    // Given / When
+    const result = await fetchDeviceStatistics(aHass(airconResponse), [AIRCON], threeDays);
+
+    // Then — so a stacked bar's segments sum to the bar (ADR-0012)
+    expect(result.series[0].costSavings).toBeCloseTo(1.0, 10);
+    expect(result.series[1].costSavings).toBeCloseTo(1.2, 10);
+  });
+
+  it("leaves a bucket outside the period out of the series too", async () => {
+    // Given
+    const hass = aHass({
+      ...airconResponse,
+      "sensor.slow_poll_aircon_actual_cost": [
+        aBucket(DAY_ONE, 0.1),
+        aBucket(threeDays.end, 999),
+      ],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
+
+    // Then
+    expect(result.series.map((row) => row.start)).toEqual([DAY_ONE, DAY_TWO]);
+  });
+
+  it("has no series when there are no devices to ask about", async () => {
+    // Given / When
+    const result = await fetchDeviceStatistics(aHass(), [], threeDays);
+
+    // Then
+    expect(result.series).toEqual([]);
+  });
+
   it("uses the concepts the sensors are actually named for", () => {
     // Given / When / Then — pinned because a typo here shows an empty house
     // rather than an error (ADR-0009 settled the grid-price name)

@@ -6,5 +6,6 @@
  * resource list. Each card registers itself on import.
  */
 
+import "./hea-cost-over-time-card.js";
 import "./hea-devices-card.js";
 import "./hea-totals-card.js";
