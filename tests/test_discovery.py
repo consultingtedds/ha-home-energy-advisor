@@ -312,7 +312,9 @@ async def test_discovery_excludes_sensors_with_an_ineligible_state_class(
     # name, a wrong state_class is not a user judgement call — it is provably
     # mis-accounted — so discovery never suggests it (HEA-54).
     entry = _entry(hass)
-    good_energy = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
+    good_energy = _register(
+        hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy"
+    )
     good_power = _register(hass, "fridge_power", "power", name="Fridge Power")
     _register(hass, "solar_net_energy", "energy", state_class="total")
     _register(hass, "solar_forecast_energy", "energy", state_class=None)

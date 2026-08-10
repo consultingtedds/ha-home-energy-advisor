@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
-# a cloud lamp lights and the a cloud heating integration panel heater report instantaneous watts (ADR-0004,
+# a cloud lamp lights and some panel heaters report instantaneous watts (ADR-0004,
 # DEVICE_SENSOR_SURVEY): power-only, `measurement`, and `unavailable` when off.
 _POWER = {"unit_of_measurement": "W", "device_class": "power"}
 
