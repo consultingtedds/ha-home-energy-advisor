@@ -8,9 +8,11 @@
  */
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
+import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { escapeText, formatEnergy, formatMoney } from "./hea-format.js";
 
 export const TAG = "hea-devices-card";
+const EDITOR_TAG = `${TAG}-editor`;
 
 /** The columns, and the row field each reads. */
 const COLUMNS = [
@@ -21,12 +23,12 @@ const COLUMNS = [
   { field: "costSavings", label: "Saved", format: formatMoney },
 ];
 
-/** What `sort_by` may name, in the sensor's own vocabulary. */
+/** What `sort_by` may name, in the sensor's own vocabulary, and how it reads. */
 const SORTS = {
-  actual_cost: "actualCost",
-  cost_at_grid_price: "costAtGridPrice",
-  cost_savings: "costSavings",
-  energy_used: "energyUsed",
+  actual_cost: { field: "actualCost", label: "Actual cost" },
+  cost_at_grid_price: { field: "costAtGridPrice", label: "Cost at grid price" },
+  cost_savings: { field: "costSavings", label: "Saved" },
+  energy_used: { field: "energyUsed", label: "Energy used" },
 };
 
 const DEFAULT_SORT = "actual_cost";
@@ -60,6 +62,10 @@ class HeaDevicesCard extends HeaCard {
     super.setConfig(config);
   }
 
+  static getConfigElement() {
+    return document.createElement(EDITOR_TAG);
+  }
+
   /** A table of n devices is nothing like the height of a one-device one. */
   getCardSize() {
     return 3 + Math.ceil((this._result?.devices.length ?? 3) / 2);
@@ -79,7 +85,7 @@ class HeaDevicesCard extends HeaCard {
 
   /** Dearest first, and by name where two devices cost the same. */
   _ranked() {
-    const field = SORTS[this._config?.sort_by ?? DEFAULT_SORT];
+    const { field } = SORTS[this._config?.sort_by ?? DEFAULT_SORT];
     return [...(this._result?.devices ?? [])].sort(
       (left, right) =>
         right[field] - left[field] || left.name.localeCompare(right.name),
@@ -128,11 +134,36 @@ class HeaDevicesCard extends HeaCard {
   }
 }
 
-export const register = () =>
+/**
+ * The shared fields plus the ordering — built from the same table the card
+ * validates against, so the editor cannot produce a config the card rejects.
+ */
+class HeaDevicesCardEditor extends HeaCardEditor {
+  _extraSchema() {
+    return [
+      {
+        name: "sort_by",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: Object.entries(SORTS).map(([value, { label }]) => ({
+              value,
+              label,
+            })),
+          },
+        },
+      },
+    ];
+  }
+}
+
+export const register = () => {
+  registerEditor(EDITOR_TAG, HeaDevicesCardEditor);
   registerCard(TAG, HeaDevicesCard, {
     name: "Home Energy Advisor: Devices",
     description:
       "Every tracked device over the selected period, ordered by what it cost.",
   });
+};
 
 register();
