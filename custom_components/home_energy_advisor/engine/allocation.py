@@ -79,8 +79,15 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     cost is simply its share of the blended bucket cost. When measured device
     draw exceeds the consumption the sources account for — coarse sensor timing,
     or a source unavailable while a device kept drawing — the remainder clamps to
-    zero rather than going negative; the real cost is still fully split across the
-    devices, and the leftover energy mismatch is what Repairs surfaces.
+    zero rather than going negative, and the excess is priced at the **import**
+    rate: it is energy the house drew that its meters have not yet reported, and
+    the grid is the only place it can have come from.
+
+    Costing that excess is what the shipped model got wrong. Holding the bucket's
+    cost fixed and dividing it across the inflated energy priced *every* label
+    below what any kWh could have been bought for — 3-6x below the tariff on a
+    coarse device, and near zero when generation dominated the blend. The energy
+    mismatch itself is what Repairs surfaces (HEA-74, ADR-0014).
     """
 
     @override
@@ -89,11 +96,13 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     ) -> BucketAllocation:
         import_price = _price(prices, SourceKind.IMPORT)
         consumption = _sum(bucket.sources.values())
-        total_cost = _sum(
+        metered_cost = _sum(
             energy * _price(prices, kind) for kind, energy in bucket.sources.items()
         )
 
         energies = _energies(bucket, consumption)
+        overdraw = _sum(energies.values()) - consumption
+        total_cost = metered_cost + overdraw * import_price
         actuals = _proportional(energies, total_cost)
 
         allocations = {

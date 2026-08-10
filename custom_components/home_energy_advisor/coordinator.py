@@ -389,7 +389,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
 
     def _check_remainder_health(self) -> None:
         """Raise or clear the persistent negative-remainder Repair (HEA-36)."""
-        overdrawn = self._accountant.consecutive_overdrawn_buckets()
+        overdrawn = self._accountant.overdrawn_buckets_in_window()
         if overdrawn >= _OVERDRAWN_BUCKET_LIMIT and not self._negative_remainder_raised:
             issues.async_raise(
                 self.hass,

@@ -111,3 +111,40 @@ interval, the uncorrectable tail of a flushed partial bucket is small; a reload 
 also far rarer than the coarse-step cadence the ring exists for. Net: flushing
 banks far more than the early seal forfeits. Only ever *increases* device energy,
 so `total_increasing` Energy Used stays monotonic across the reload.
+
+## Update — decision 5's trade-off was not tolerable (2026-08-10, HEA-74)
+
+Decision 5 added the `state_reported` subscription so an unchanged re-report
+advances a source's last-seen time, and recorded the consequence as a trade-off:
+
+> with short spans a 0.25 kWh step concentrates into its final bucket rather than
+> spreading over the true accrual window; the retained ring makes this tolerable
+> rather than load-bearing.
+
+Measured against the reference instance, it was not tolerable. Concentrating a
+whole step into one 5-minute bucket meant a single coarse device routinely
+claimed more than the entire house was metered as consuming in that interval —
+overnight, when house demand is lowest, one step was 1.5-3× the whole house.
+Published whole-home energy ran **+44 % above the metered house load across a
+night and +29.5 % across a weekday**, and the resulting mispricing put tracked
+devices at a quarter to a sixth of the import tariff (HEA-74).
+
+The ring did not soften this, because the concentration never reached the ring:
+with sources re-reporting every ~60 s the delta spans a minute and lands far
+inside the watermark, on the live path. The decision-log evidence carries no
+`DROPPED_LATE` entries at all for those devices.
+
+**Amendment.** A delta now spans from the counter's last **movement**, not its
+last reading. Decision 5's subscription stands — it is still what keeps a
+recovering counter from claiming a multi-day span — but it no longer determines
+where the energy is attributed. Only the *quiet* run between movements is capped
+(`MAX_QUIET_SPAN`, 2 h); a genuine reporting gap is never trimmed, so a source
+that fell silent for three days still spreads across those three days.
+
+Decision 2's headroom cap is amended by ADR-0014: a late device now buys, at the
+import rate, whatever the Untracked remainder cannot fund, instead of receiving
+it free.
+
+The cap is an interim bound on the opposite error — a device switched off for
+hours is indistinguishable, from the counter alone, from one trickling along.
+HEA-75 would replace it with the device's own run signal.

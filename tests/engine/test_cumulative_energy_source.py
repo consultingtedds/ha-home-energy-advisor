@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -325,3 +325,105 @@ def test_cumulative_source_snapshot_before_any_reading_has_no_last_value() -> No
     assert snapshot.last_value is None
     assert snapshot.last_at is None
     assert snapshot.recent_decisions == ()
+
+
+def quiet(source: CumulativeEnergySource, value: str, first: str, last: str) -> None:
+    """Re-report an unchanged counter each minute, as a polled source does."""
+    at = datetime.fromisoformat(f"2026-07-11T{first}:00").replace(tzinfo=MADRID)
+    end = datetime.fromisoformat(f"2026-07-11T{last}:00").replace(tzinfo=MADRID)
+    while at <= end:
+        source.observe(Reading(at=at, value=Decimal(value)))
+        at += timedelta(minutes=1)
+
+
+def test_source_step_after_quiet_polling_accrues_from_last_movement() -> None:
+    # Given — the Guest Bedroom Aircon holds 0.75 kWh while its integration
+    # re-reports the unchanged counter every minute for seventy minutes
+    source = CumulativeEnergySource()
+    source.observe(reading(at="00:35", value="0.75"))
+    quiet(source, "0.75", first="00:36", last="01:44")
+
+    # When — the compressor finally crosses the next 0.25 kWh step
+    delta = source.observe(reading(at="01:45", value="1.00"))
+
+    # Then — the energy accrued over the whole quiet run, not over the one minute
+    # since it was last read; booking it to a single bucket is what priced these
+    # devices below the grid rate overnight (HEA-74)
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.25"), start=moment("00:35"), end=moment("01:45")
+    )
+
+
+def test_source_smoothly_moving_counter_keeps_its_reading_span() -> None:
+    # Given — a Zigbee plug's lifetime counter, which moves on every reading
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="3377.000"))
+    source.observe(reading(at="02:19", value="3377.021"))
+
+    # When — it climbs again
+    delta = source.observe(reading(at="02:24", value="3377.044"))
+
+    # Then — the movement anchor is the previous reading, so nothing changes for
+    # sources that were never lumpy
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.023"), start=moment("02:19"), end=moment("02:24")
+    )
+
+
+def test_source_quiet_span_is_capped_so_a_switched_off_device_smears_less() -> None:
+    # Given — the aircon was switched off at 17:33 and its counter sat unchanged
+    # for over four hours while the integration kept polling
+    source = CumulativeEnergySource()
+    source.observe(reading(at="17:33", value="0.00"))
+    quiet(source, "0.00", first="17:34", last="22:06")
+
+    # When — it is switched back on and reaches its first step at 22:07
+    delta = source.observe(reading(at="22:07", value="0.25"))
+
+    # Then — the accrual reaches back only as far as the cap allows, rather than
+    # smearing the energy across hours the device demonstrably was not running
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.25"), start=moment("20:06"), end=moment("22:07")
+    )
+
+
+def test_cumulative_source_reporting_gap_is_never_capped() -> None:
+    # Given — a counter quiet for three hours, whose source then falls silent
+    # entirely for three days
+    source = CumulativeEnergySource()
+    source.observe(reading(at="19:00", value="3377.00", day="2026-07-08"))
+    at = datetime.fromisoformat("2026-07-08T19:01:00").replace(tzinfo=MADRID)
+    end = datetime.fromisoformat("2026-07-08T22:00:00").replace(tzinfo=MADRID)
+    while at <= end:
+        source.observe(Reading(at=at, value=Decimal("3377.00")))
+        at += timedelta(minutes=1)
+
+    # When — it returns three days later having counted throughout
+    delta = source.observe(reading(at="22:00", value="3427.00", day="2026-07-11"))
+
+    # Then — only the quiet-but-reporting run is capped; the silent gap is real
+    # downtime during which the meter genuinely accrued, so it is never trimmed
+    assert delta == EnergyDelta(
+        kwh=Decimal("50.00"),
+        start=moment("20:00", day="2026-07-08"),
+        end=moment("22:00", day="2026-07-11"),
+    )
+
+
+def test_source_reset_anchors_the_next_accrual_at_the_cycle_boundary() -> None:
+    # Given — a counter that ran, then reset to zero at 21:00 as the compressor
+    # cycle ended, then sat unchanged
+    source = CumulativeEnergySource()
+    source.observe(reading(at="20:00", value="1.50"))
+    quiet(source, "1.50", first="20:01", last="20:59")
+    source.observe(reading(at="21:00", value="0.00"))
+    quiet(source, "0.00", first="21:01", last="22:06")
+
+    # When — the next cycle reaches its first step
+    delta = source.observe(reading(at="22:07", value="0.25"))
+
+    # Then — the reset is a movement even though it yielded no energy, so the new
+    # cycle's energy never reaches back across the boundary into the old one
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.25"), start=moment("21:00"), end=moment("22:07")
+    )
