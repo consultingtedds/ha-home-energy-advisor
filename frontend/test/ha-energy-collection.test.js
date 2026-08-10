@@ -55,13 +55,32 @@ const MAY = new Date("2026-05-20T00:00:00Z");
 const JULY = new Date("2026-07-15T23:59:59Z");
 
 describe("connectionKeyFor", () => {
-  it("prefixes the collection key the picker was configured with", () => {
-    // Given / When / Then — the key observed on the live instance
+  it("caches under the collection key itself, as Home Assistant does", () => {
+    // Given / When / Then — verified against the live instance on 2026-08-10:
+    // a picker configured `collection_key: energy_hea-costs` put its collection
+    // at `_energy_hea-costs`, not `_energy_energy_hea-costs`
+    expect(connectionKeyFor("energy_hea-costs")).toBe("_energy_hea-costs");
+  });
+
+  it("accepts a key written without the prefix Home Assistant demands", () => {
+    // Given — a user who wrote the key the way it reads, not the way it
+    // validates. No collection can exist under it, because the picker would
+    // have refused the key outright, so this is what they meant.
+    // When / Then
     expect(connectionKeyFor("hea-costs")).toBe("_energy_hea-costs");
   });
 
-  it("is the bare prefix when the picker declares no key", () => {
-    // Given / When / Then — an energy-date-selection card with no collection_key
+  it("falls back to the key Home Assistant derives from the dashboard", () => {
+    // Given — no collection_key anywhere, on the `hea-costs` dashboard. Home
+    // Assistant gives each dashboard its own collection rather than one shared
+    // across all of them (verified live: panelUrl `hea-costs`).
+    // When / Then
+    expect(connectionKeyFor(undefined, "hea-costs")).toBe("_energy_hea-costs");
+    expect(connectionKeyFor("", "hea-costs")).toBe("_energy_hea-costs");
+  });
+
+  it("is the bare prefix off a dashboard, where there is no url to derive from", () => {
+    // Given / When / Then
     expect(connectionKeyFor(undefined)).toBe("_energy");
     expect(connectionKeyFor("")).toBe("_energy");
   });
@@ -176,6 +195,35 @@ describe("resolveCollection", () => {
 
     // When / Then
     expect(resolveCollection(hass, "hea-costs")).toBe(mine);
+  });
+
+  it("picks the right one of two pickers, given the key as HA validates it", () => {
+    // Given — two pickers on one dashboard, and a card configured the way Home
+    // Assistant requires the key to be written. Getting this wrong misses the
+    // lookup and silently falls through to whichever picker was found first.
+    const mine = anEnergyCollection(MAY, JULY);
+    const theirs = anEnergyCollection(MAY, JULY);
+    const hass = aHass({
+      "_energy_other": theirs,
+      "_energy_hea-costs": mine,
+    });
+
+    // When / Then
+    expect(resolveCollection(hass, "energy_hea-costs")).toBe(mine);
+  });
+
+  it("uses the dashboard's own collection when the card names no key", () => {
+    // Given — two dashboards' collections on one connection, and a card on the
+    // `hea-costs` dashboard that declares nothing
+    const mine = anEnergyCollection(MAY, JULY);
+    const theirs = anEnergyCollection(MAY, JULY);
+    const hass = {
+      ...aHass({ "_energy_other": theirs, "_energy_hea-costs": mine }),
+      panelUrl: "hea-costs",
+    };
+
+    // When / Then
+    expect(resolveCollection(hass, undefined)).toBe(mine);
   });
 
   it("follows the only picker present when the configured key misses", () => {
