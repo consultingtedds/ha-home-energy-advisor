@@ -14,7 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG, register } from "../hea-totals-card.js";
 import {
-  TUMBLE_DRYER_BUCKETS,
+  AIRCON_BUCKETS,
   aDeviceRow,
   aHass,
   anEnergyCollection,
@@ -64,7 +64,7 @@ describe("configuration", () => {
     const card = document.createElement(TAG);
 
     // When / Then — Home Assistant shows the thrown message in the card editor
-    expect(() => card.setConfig({ type: `custom:${TAG}`, devices: "tumble_dryer" })).toThrow(
+    expect(() => card.setConfig({ type: `custom:${TAG}`, devices: "fine_meter_aircon" })).toThrow(
       /devices/,
     );
   });
@@ -114,11 +114,11 @@ describe("the figures", () => {
     // Given — the remainder is part of what the household actually paid
     const hass = aHass({
       devices: [
-        aDeviceRow("tumble_dryer_switch", "Tumble Dryer Switch"),
+        aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
         aDeviceRow("untracked_energy_devices", "Untracked", true),
       ],
       response: {
-        ...TUMBLE_DRYER_BUCKETS,
+        ...AIRCON_BUCKETS,
         ...bucketsFor("untracked_energy_devices", 100, 4, 5),
       },
     });
@@ -135,22 +135,22 @@ describe("the figures", () => {
     // Given — "this device, or these devices, cost x"
     const hass = aHass({
       devices: [
-        aDeviceRow("tumble_dryer_switch", "Tumble Dryer Switch"),
+        aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
         aDeviceRow("fine_meter_aircon", "Fine Meter Aircon"),
       ],
     });
 
     // When
-    const card = mount(hass, { devices: ["tumble_dryer_switch"] });
+    const card = mount(hass, { devices: ["slow_poll_aircon"] });
     await settled(card);
 
     // Then — the other device is never even asked about
     expect(hass.callWS).toHaveBeenCalledWith(
       expect.objectContaining({
         statistic_ids: [
-          "sensor.tumble_dryer_switch_energy_used",
-          "sensor.tumble_dryer_switch_actual_cost",
-          "sensor.tumble_dryer_switch_cost_at_grid_price",
+          "sensor.slow_poll_aircon_energy_used",
+          "sensor.slow_poll_aircon_actual_cost",
+          "sensor.slow_poll_aircon_cost_at_grid_price",
         ],
       }),
     );
@@ -159,7 +159,7 @@ describe("the figures", () => {
   it("marks a saving that is really a loss", async () => {
     // Given — battery arbitrage cost more than the grid would have (HEA-39)
     const hass = aHass({
-      response: bucketsFor("tumble_dryer_switch", 10, 5, 3),
+      response: bucketsFor("slow_poll_aircon", 10, 5, 3),
     });
 
     // When
@@ -317,7 +317,7 @@ describe("lifecycle", () => {
     // When
     collection.announce(new Date(2026, 3, 1), new Date(2026, 7, 9));
     await vi.waitFor(() => expect(callWS).toHaveBeenCalledTimes(2));
-    pending[1].resolve(bucketsFor("tumble_dryer_switch", 1, 2, 3));
+    pending[1].resolve(bucketsFor("slow_poll_aircon", 1, 2, 3));
     await settled(card);
     pending[0].reject(new Error("too late"));
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -342,9 +342,9 @@ describe("lifecycle", () => {
     // and the answers come back out of order
     collection.announce(new Date(2026, 3, 1), new Date(2026, 7, 9));
     await vi.waitFor(() => expect(callWS).toHaveBeenCalledTimes(2));
-    resolvers[1](bucketsFor("tumble_dryer_switch", 1, 2, 3));
+    resolvers[1](bucketsFor("slow_poll_aircon", 1, 2, 3));
     await settled(card);
-    resolvers[0](bucketsFor("tumble_dryer_switch", 9, 9, 9));
+    resolvers[0](bucketsFor("slow_poll_aircon", 9, 9, 9));
 
     // Then — the newer figures stand
     await vi.waitFor(() => expect(figure(card, "actualCost").textContent).toMatch(/2[.,]00/));

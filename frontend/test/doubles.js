@@ -58,7 +58,7 @@ export const bucketsFor = (
   ],
 });
 
-export const TUMBLE_DRYER_BUCKETS = bucketsFor("tumble_dryer_switch", 38.6, 0.11, 5.78);
+export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
 
 /**
  * The `hass` object a card is handed. The collection is cached at `_` + the
@@ -66,8 +66,8 @@ export const TUMBLE_DRYER_BUCKETS = bucketsFor("tumble_dryer_switch", 38.6, 0.11
  */
 export const aHass = ({
   collection = anEnergyCollection(),
-  devices = [aDeviceRow("tumble_dryer_switch", "Tumble Dryer Switch")],
-  response = TUMBLE_DRYER_BUCKETS,
+  devices = [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")],
+  response = AIRCON_BUCKETS,
   callWS,
 } = {}) => ({
   connection: collection ? { "_energy_hea-costs": collection } : {},
