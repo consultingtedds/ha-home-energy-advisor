@@ -39,7 +39,12 @@ from typing import TYPE_CHECKING
 
 from .allocation import ProportionalAllocationStrategy, split_by_source
 from .battery_ledger import BatteryLedger
-from .energy_source import CumulativeEnergySource, EnergyUnit, Reading
+from .energy_source import (
+    MAX_QUIET_SPAN,
+    CumulativeEnergySource,
+    EnergyUnit,
+    Reading,
+)
 from .interval_ledger import BUCKET, IntervalBucket, SourceKind, spread_energy
 
 if TYPE_CHECKING:
@@ -64,6 +69,23 @@ _DEFAULT_RETENTION = timedelta(hours=24)
 # that is lying does not. The window must be *full* before anything is judged,
 # so a fresh start never condemns a device on one interval's evidence.
 _PLAUSIBILITY_WINDOW = 12
+
+
+@dataclass(frozen=True)
+class AccountingWindows:
+    """How long the accountant waits, remembers, and reaches back.
+
+    Three spans that all answer "how far from now does this reading belong",
+    grouped so they can be tuned together and so the constructor keeps one
+    parameter for timing policy rather than three.
+    """
+
+    # How long an interval stays open for late readings before it is finalised.
+    lateness: timedelta = _DEFAULT_LATENESS
+    # How long a finalised bucket's context survives so late energy can correct it.
+    retention: timedelta = _DEFAULT_RETENTION
+    # How far back into a quiet run a coarse counter's step may be spread.
+    max_quiet_span: timedelta = MAX_QUIET_SPAN
 
 
 class SourceRole(Enum):
@@ -198,12 +220,13 @@ class Accountant:
         house_sources: Mapping[SourceRole, str],
         device_energy_entities: Mapping[str, str],
         units: Mapping[str, EnergyUnit] | None = None,
-        lateness: timedelta = _DEFAULT_LATENESS,
-        retention: timedelta = _DEFAULT_RETENTION,
+        windows: AccountingWindows | None = None,
     ) -> None:
         self._units = dict(units or {})
-        self._lateness = lateness
-        self._retention = retention
+        self._windows = windows or AccountingWindows()
+        self._lateness = self._windows.lateness
+        self._retention = self._windows.retention
+        self._max_quiet_span = self._windows.max_quiet_span
         self._role_of = {entity: role for role, entity in house_sources.items()}
         self._device_of = {
             entity: device for device, entity in device_energy_entities.items()
@@ -221,7 +244,7 @@ class Accountant:
         self._house = _Running()
         self._retained: dict[datetime, _RetainedBucket] = {}
         self._watermark: datetime | None = None
-        self._overdrawn_run = 0
+        self._overdraw_window: deque[bool] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._entity_of = dict(device_energy_entities)
         self._window: deque[_WindowBucket] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._implausible: frozenset[str] = frozenset()
@@ -238,7 +261,8 @@ class Accountant:
         source = self._sources.get(entity_id)
         if source is None:
             source = CumulativeEnergySource(
-                unit=self._units.get(entity_id, EnergyUnit.KWH)
+                unit=self._units.get(entity_id, EnergyUnit.KWH),
+                max_quiet_span=self._max_quiet_span,
             )
             self._sources[entity_id] = source
         delta = source.observe(Reading(at=at, value=value))
@@ -349,15 +373,21 @@ class Accountant:
             energy_from_battery=whole_home.energy_from_battery - battery,
         )
 
-    def consecutive_overdrawn_buckets(self) -> int:
-        """Consecutive finalised buckets whose device draw exceeded consumption.
+    def overdrawn_buckets_in_window(self) -> int:
+        """Finalised buckets in the recent window whose draw exceeded consumption.
 
         A device drawing more than the house was served means the Untracked
         remainder would be negative — the engine clamps it to zero (ADR-0002),
-        but a *persistent* run signals double-counting or bad inputs, which the
-        coordinator surfaces as a Repair (HEA-24 / HEA-36).
+        but a persistent mismatch signals double-counting or bad inputs, which
+        the coordinator surfaces as a Repair (HEA-24 / HEA-36).
+
+        Counted across a window rather than as a *consecutive* run, because the
+        run form could not see the shape this actually takes: a coarse counter
+        overdraws one bucket, the next is clean, and the tally resets. On the
+        reference instance that kept the Repair silent for weeks while roughly a
+        third of every overnight hour was overdrawn (HEA-74).
         """
-        return self._overdrawn_run
+        return sum(self._overdraw_window)
 
     def source_diagnostics(self) -> dict[str, SourceSnapshot]:
         """Per-source accumulator state and decision log, keyed by entity id.
@@ -395,11 +425,14 @@ class Accountant:
     ) -> None:
         """Reattribute late device energy within a finalised, still-retained bucket.
 
-        The bucket's real cost and consumption are fixed, so the device is credited
-        its full energy at the blended price, capped at the headroom the Untracked
-        remainder still holds; the whole-home total absorbs any overdraw. Untracked
-        is derived, so it gives back exactly what the device gains — no other device
-        moves (ADR-0006, HEA-48).
+        The bucket's metered consumption is fixed, so the device takes what the
+        Untracked remainder can still fund at the bucket's blended price, and
+        *buys* the rest at the import price — energy the house drew that its
+        meters had not yet reported can only have come off the grid. Leaving that
+        excess free, as this path first did, published device costs far below the
+        tariff whenever a coarse counter overshot a bucket (HEA-74, ADR-0014).
+        Untracked is derived, so it gives back exactly what the device gains from
+        the funded part — no other device moves (ADR-0006, HEA-48).
 
         This is also the path a lying cloud-polled counter mostly arrives by — the
         utility plug reported every ~30 minutes, so most of each delta fell past the
@@ -412,20 +445,22 @@ class Accountant:
             return
 
         headroom = max(Decimal(0), retained.consumption - retained.draw)
-        priced = min(kwh, headroom)
+        funded = min(kwh, headroom)
+        bought = kwh - funded
+        cost = funded * retained.blended + bought * retained.import_price
         run = self._running.setdefault(device, _Running())
         run.energy_kwh += kwh
         run.naive_cost += kwh * retained.import_price
-        run.actual_cost += priced * retained.blended
-        run.cost_savings += kwh * retained.import_price - priced * retained.blended
+        run.actual_cost += cost
+        run.cost_savings += kwh * retained.import_price - cost
         run.add_by_source(split_by_source(kwh, retained.sources, retained.consumption))
 
         grew = max(retained.consumption, retained.draw + kwh) - max(
             retained.consumption, retained.draw
         )
         self._house.energy_kwh += grew
+        self._house.actual_cost += grew * retained.import_price
         self._house.naive_cost += grew * retained.import_price
-        self._house.cost_savings += grew * retained.import_price
         self._house.add_by_source(
             split_by_source(grew, retained.sources, retained.consumption)
         )
@@ -600,10 +635,7 @@ class Accountant:
     def _track_overdraw(self, served: _Served, draws: Mapping[str, Decimal]) -> None:
         consumption = served.grid + served.generation + served.battery
         total_draw = sum(draws.values(), Decimal(0))
-        if total_draw > consumption:
-            self._overdrawn_run += 1
-        else:
-            self._overdrawn_run = 0
+        self._overdraw_window.append(total_draw > consumption)
 
     def _is_readable(self, *roles: SourceRole) -> bool:
         """Whether every named house input is both configured and reporting."""

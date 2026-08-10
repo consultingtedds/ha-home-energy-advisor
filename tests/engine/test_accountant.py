@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from custom_components.home_energy_advisor.engine.accountant import (
     Accountant,
+    AccountingWindows,
     DeviceTotals,
     SourceRole,
     Totals,
@@ -66,7 +67,7 @@ def test_source_diagnostics_snapshots_every_observed_meter() -> None:
     assert guest.recent_decisions[-1].reason is DecisionReason.COUNTED
 
 
-def test_consecutive_overdrawn_buckets_are_counted_for_the_remainder_repair() -> None:
+def test_overdrawn_buckets_are_counted_for_the_remainder_repair() -> None:
     # Given — a home whose tracked device is (implausibly) drawing more than the
     # house imports, bucket after bucket: the double-counting the remainder clamp
     # hides and the Repair must surface (HEA-24 / HEA-36)
@@ -87,29 +88,61 @@ def test_consecutive_overdrawn_buckets_are_counted_for_the_remainder_repair() ->
     acc.finalize(at(60))
 
     # Then — every over-drawn bucket is counted, so the coordinator can raise the
-    # persistent-negative-remainder Repair once the run is long enough
-    assert acc.consecutive_overdrawn_buckets() == 3
+    # persistent-negative-remainder Repair once enough of them accumulate
+    assert acc.overdrawn_buckets_in_window() == 3
 
 
-def test_overdrawn_run_resets_when_consumption_catches_up() -> None:
-    # Given — a device that over-draws for a bucket, then behaves
+def test_intermittent_overdraw_stays_visible_across_healthy_buckets() -> None:
+    # Given — a device that over-draws every other bucket, which is what a coarse
+    # counter reporting in lumps actually looks like
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_energy"},
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_energy", at(0), Decimal(0))
 
-    # When — one over-drawn bucket is followed by a healthy one (import ≥ draw)
-    acc.observe("sensor.grid_import", at(5), Decimal("0.1"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
-    acc.observe("sensor.grid_import", at(10), Decimal("1.1"))
-    acc.observe("sensor.guest_energy", at(10), Decimal("0.6"))
+    # When — over-drawn and healthy buckets alternate
+    readings = ((5, "0.1", "0.5"), (10, "1.1", "0.6"), (15, "1.2", "1.1"))
+    for minute, grid, device in readings:
+        acc.observe("sensor.grid_import", at(minute), Decimal(grid))
+        acc.observe("sensor.coarse_energy", at(minute), Decimal(device))
     acc.finalize(at(60))
 
-    # Then — the run resets to zero; the mismatch was transient, not persistent
-    assert acc.consecutive_overdrawn_buckets() == 0
+    # Then — both over-drawn buckets are still counted. Counting only *consecutive*
+    # runs meant an intermittent lump reset the tally every time, so the Repair
+    # stayed silent for weeks while the mismatch was continuous (HEA-74)
+    assert acc.overdrawn_buckets_in_window() == 2
+
+
+def test_overdraw_ages_out_of_the_window_once_the_house_recovers() -> None:
+    # Given — a single over-drawn bucket followed by a full window of healthy ones
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_energy"},
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.coarse_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("0.1"))
+    acc.observe("sensor.coarse_energy", at(5), Decimal("0.5"))
+
+    # When — twelve clean buckets follow, the house importing well above the draw
+    grid = Decimal("0.1")
+    device = Decimal("0.5")
+    for minute in range(10, 70, 5):
+        grid += Decimal("2.0")
+        device += Decimal("0.1")
+        acc.observe("sensor.grid_import", at(minute), grid)
+        acc.observe("sensor.coarse_energy", at(minute), device)
+    acc.finalize(at(120))
+
+    # Then — the window has moved past it; a transient mismatch does not keep a
+    # Repair standing once the evidence for it has aged out
+    assert acc.overdrawn_buckets_in_window() == 0
 
 
 def test_import_only_prices_a_device_at_the_import_rate() -> None:
@@ -186,6 +219,11 @@ def test_battery_discharge_is_priced_at_its_stored_cost() -> None:
             SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
         },
         device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+        # Isolate the battery ledger from quiet-run spreading (HEA-74): these
+        # meters sit unchanged and then jump by design here, which the spreading
+        # rule would legitimately smear back across earlier intervals. That rule
+        # has its own tests; this one is about what a stored kWh costs.
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
     )
     acc.record_price(at(0), Decimal("0.10"))
     for entity in (
@@ -384,7 +422,9 @@ def test_a_late_correction_moves_value_only_from_untracked_to_that_device() -> N
     assert _total_actual(result) == Decimal("0.30")
 
 
-def test_an_overdrawing_late_device_is_capped_at_the_untracked_headroom() -> None:
+def test_an_overdrawing_late_device_pays_import_for_what_untracked_cannot_fund() -> (
+    None
+):
     # Given — bucket at(0) finalised with device A taking almost all the house
     # consumption, leaving only 0.1 kWh of Untracked headroom
     acc = Accountant(
@@ -407,17 +447,61 @@ def test_an_overdrawing_late_device_is_capped_at_the_untracked_headroom() -> Non
     acc.observe("sensor.b_energy", at(5), Decimal("0.4"))
     acc.finalize(at(40))
 
-    # Then — B keeps all its real energy, but its cost gain is capped at the €0.03
-    # of headroom Untracked held; A is untouched; the real bill is still fully split
+    # Then — B keeps all its real energy. It takes the €0.03 of headroom Untracked
+    # held at the bucket's blended rate, and buys the remaining 0.3 kWh at the
+    # import rate: leaving that excess free, as the shipped engine did, is what
+    # let a device's published cost fall far below the tariff. A is untouched.
     result = acc.totals()
     b = result.devices["device_b"]
     assert result.devices["device_a"] == before_a
     assert b.energy_kwh == Decimal("0.4")
-    assert b.actual_cost == Decimal("0.03")
+    assert b.actual_cost == Decimal("0.12")
     assert result.untracked.actual_cost == Decimal(0)
     assert result.untracked.energy_kwh == Decimal(0)
-    assert result.whole_home.actual_cost == Decimal("0.30")
-    assert _total_actual(result) == Decimal("0.30")
+    assert result.whole_home.actual_cost == Decimal("0.39")
+    assert _total_actual(result) == Decimal("0.39")
+
+
+def test_a_late_correction_buys_its_excess_at_import_not_at_a_free_blend() -> None:
+    # Given — a finalised bucket served half by grid and half by generation, so its
+    # blended rate is half the import rate, with the tracked device already taking
+    # all of the consumption
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.GENERATION: "sensor.solar",
+            SourceRole.GRID_EXPORT: "sensor.grid_export",
+        },
+        device_energy_entities={
+            "steady_load": "sensor.steady_energy",
+            "cloud_polled_pump": "sensor.cloud_polled_energy",
+        },
+    )
+    acc.record_price(at(0), PEAK)
+    for entity in (
+        "sensor.grid_import",
+        "sensor.solar",
+        "sensor.grid_export",
+        "sensor.steady_energy",
+        "sensor.cloud_polled_energy",
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.solar", at(5), Decimal("1.0"))
+    acc.observe("sensor.steady_energy", at(5), Decimal("2.0"))
+    acc.finalize(at(30))
+
+    # When — the coarse counter reports 1 kWh late into that same bucket, with no
+    # Untracked headroom left to fund it
+    acc.observe("sensor.cloud_polled_energy", at(5), Decimal("1.0"))
+    acc.finalize(at(40))
+
+    # Then — the late kWh costs the full import rate, not the €0.15 blended rate
+    # the bucket happened to settle at: generation that was already consumed
+    # cannot supply it a second time
+    pump = acc.totals().devices["cloud_polled_pump"]
+    assert pump.energy_kwh == Decimal("1.0")
+    assert pump.actual_cost == PEAK
 
 
 def test_a_delta_older_than_the_retention_ring_is_dropped_and_logged() -> None:
@@ -426,7 +510,7 @@ def test_a_delta_older_than_the_retention_ring_is_dropped_and_logged() -> None:
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
         device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
-        retention=timedelta(minutes=30),
+        windows=AccountingWindows(retention=timedelta(minutes=30)),
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
@@ -708,6 +792,9 @@ def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
             SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
         },
         device_energy_entities={"coarse_step_aircon": "sensor.guest_energy"},
+        # As above: this test is about the ledger surviving a rebase, not about
+        # how a quiet counter's energy is spread (HEA-74).
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
     )
     acc.record_price(at(0), Decimal("0.10"))
     for entity in (

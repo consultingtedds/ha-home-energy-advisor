@@ -504,12 +504,19 @@ async def test_persistently_negative_remainder_raises_a_repair(
     assert _has_issue(hass, ISSUE_NEGATIVE_REMAINDER)
     assert entry.state is ConfigEntryState.LOADED
 
-    # When — the inputs recover: the grid now imports far more than the device draws
-    freezer.move_to(start + timedelta(minutes=105))
-    hass.states.async_set("sensor.grid_import", "10.000", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "7.600", _ENERGY)
-    await hass.async_block_till_done()
-    await _tick(hass, freezer, start + timedelta(minutes=140))
+    # When — the inputs recover: the grid now imports far more than the device
+    # draws, and stays that way for a full window of buckets. One healthy interval
+    # is deliberately not enough — the tally spans a window rather than counting a
+    # consecutive run, so that an intermittent lump can no longer clear it (HEA-74)
+    grid, device = 10.0, 7.6
+    for minute in range(105, 175, 5):
+        freezer.move_to(start + timedelta(minutes=minute))
+        grid += 2.0
+        device += 0.1
+        hass.states.async_set("sensor.grid_import", f"{grid:.3f}", _ENERGY)
+        hass.states.async_set("sensor.guest_energy", f"{device:.3f}", _ENERGY)
+        await hass.async_block_till_done()
+    await _tick(hass, freezer, start + timedelta(minutes=210))
 
     # Then — the Repair clears itself; the over-draw was not permanent
     assert not _has_issue(hass, ISSUE_NEGATIVE_REMAINDER)

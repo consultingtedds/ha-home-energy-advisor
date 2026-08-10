@@ -269,3 +269,43 @@ had been recording it for weeks and every daily and weekly total hid it — aver
 over a day, a few cheap night hours inside a mostly-correct day look like nothing.
 The reconciliation checks were never going to catch it, and neither was a daily
 comparison. A per-hour view was, and did so within a minute of existing.
+
+### Correction to the entry above, and the run abandoned — 2026-08-10 (same day)
+
+**The defect is not confined to tracked devices.** The section above says
+Untracked and the whole home are clean and only tracked devices are mispriced.
+That was inferred from implied per-kWh rates, and it is wrong. Comparing HEA's
+published `whole_home_energy_used` against the metered house-load counter over
+the same hours:
+
+| Window | Metered | Published | Inflation |
+|---|---|---|---|
+| One night, 8 h | 9.63 kWh | 13.93 kWh | **+44 %** |
+| One weekday, 24 h | 49.11 kWh | 63.61 kWh | **+29.5 %** |
+
+Whole-home energy, and the counterfactual computed from it, are inflated by the
+same margin. Untracked's implied rate looked exactly right because in an
+overdrawn bucket it receives zero energy and zero cost, so what remains is only
+the buckets that behaved — survivorship, not immunity. The claimed saving for
+the measured weekday was €9.31 against a true €6.94: **overstated by 34 %**.
+
+**Cause, confirmed.** Not the late-arrival path the ticket suspected. Sources
+re-report every ~60 s, so a delta spanned a minute and never crossed the
+watermark; there are no `DROPPED_LATE` entries for these devices at all. A coarse
+counter's whole step was booked into the single 5-minute bucket where the counter
+moved, and overnight one step exceeds everything the house consumes in five
+minutes. See HEA-74 and ADR-0006's 2026-08-10 amendment.
+
+**The run is abandoned rather than salvaged.** With the whole-home and
+counterfactual paths inflated too, there is no subset of this window worth
+reconciling: every figure the method compares is drawn from the same contaminated
+series. Recorded as a decision, not a lapse — the alternative was to publish a
+partial pass whose caveats would outweigh it.
+
+**What the method should carry next time.** Reconciliation check 1 compares
+*cost* against the real bill, and cost was within ~4 % throughout — it would have
+passed. An **energy** counterpart (Σ published energy ≡ metered consumption)
+would have failed on day one, by 29-44 %. Add it before the re-run. The
+negative-remainder Repair should have been the other line of defence and was not:
+it counted *consecutive* overdrawn buckets, and an intermittent coarse step reset
+the tally every time, so it stayed silent for weeks (fixed under HEA-74).

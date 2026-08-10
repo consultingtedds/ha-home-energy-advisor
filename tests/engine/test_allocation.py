@@ -159,7 +159,7 @@ def test_naive_cost_sums_to_consumption_at_the_import_rate() -> None:
     assert naive_total == Decimal("3.0") * PEAK
 
 
-def test_over_draw_clamps_the_remainder_and_keeps_the_cost_invariant() -> None:
+def test_over_draw_clamps_the_remainder_and_prices_the_excess_at_import() -> None:
     # Given — a device that measured more draw than the house consumed (coarse
     # sensor timing / a source unavailable while the device kept drawing)
     result = STRATEGY.allocate(
@@ -167,11 +167,46 @@ def test_over_draw_clamps_the_remainder_and_keeps_the_cost_invariant() -> None:
         prices(),
     )
 
-    # Then — the remainder never goes negative, and the real cost is still fully
-    # allocated across the devices
+    # Then — the remainder never goes negative, and the half kWh the meters had
+    # not caught up with is charged at the marginal import rate rather than
+    # diluting a fixed cost across inflated energy, which would price every kWh
+    # in the bucket below what any of it could have been bought for (HEA-74)
     assert result.untracked.energy_kwh == Decimal(0)
     assert result.untracked.actual_cost == Decimal(0)
+    assert total_actual(result) == Decimal("0.351")
+    guest = result.devices["coarse_step_aircon"]
+    assert guest.actual_cost / guest.energy_kwh == PEAK
+
+
+def test_over_draw_against_free_generation_still_costs_the_excess() -> None:
+    # Given — a bucket served entirely by generation, so its metered cost is zero,
+    # with a coarse device claiming half a kWh more than the house was served
+    result = STRATEGY.allocate(
+        bucket({SourceKind.GENERATION: "1.0"}, {"coarse_step_aircon": "1.5"}),
+        prices(),
+    )
+
+    # Then — the excess is bought energy, not free: diluting zero across 1.5 kWh
+    # is what let a device drawing hard at peak be costed at nothing at all
+    guest = result.devices["coarse_step_aircon"]
+    assert guest.actual_cost == Decimal("0.117")
+    assert total_actual(result) == Decimal("0.117")
+
+
+def test_draw_within_consumption_is_unaffected_by_the_overdraw_rule() -> None:
+    # Given — devices drawing less than the house consumed, the ordinary case
+    result = STRATEGY.allocate(
+        bucket(
+            {SourceKind.IMPORT: "1.0", SourceKind.GENERATION: "1.0"},
+            {"coarse_step_aircon": "0.5", "cloud_polled_pump": "0.25"},
+        ),
+        prices(),
+    )
+
+    # Then — the bucket's real cost is split across the labels and nothing is
+    # added: the marginal rule only ever engages when the meters disagree
     assert total_actual(result) == Decimal("0.234")
+    assert result.untracked.energy_kwh == Decimal("1.25")
 
 
 def test_zero_consumption_bucket_allocates_nothing() -> None:

@@ -1,22 +1,32 @@
 """Turns a device's cumulative energy counter into discrete, time-spanned deltas.
 
 Home Assistant's ``total_increasing`` counters come in two flavours on real
-hardware: lifetime counters that climb for years (Zigbee plugs) and counters
-that reset constantly (the a cycle-resetting counter aircons restart every compressor cycle, Tuya's
-daily counters roll over at midnight). Both are handled by one rule, validated
-against real instance data in ``docs/notes/AIRCON_COST_EXPLORATION.md``.
+hardware: lifetime counters that climb for years, and counters that reset
+constantly — per-cycle counters that restart whenever the appliance's cycle
+ends, device-side daily counters that roll over at midnight. Both are handled by
+one rule, validated against real instance data in
+``docs/notes/AIRCON_COST_EXPLORATION.md``.
 
 Deltas carry the span they accumulated over, not just a magnitude. A sensor that
 was unavailable for three days reports one large jump on recovery; attributing
 that energy to the instant it was reported would price it all at whatever tariff
 happened to be active then. The interval ledger spreads it across the span
 instead.
+
+That span runs from the counter's last **movement**, not its last reading. Coarse
+counters are re-reported unchanged every poll and then jump a whole step; the
+step accrued across the quiet run between movements, so anchoring it to the
+previous reading concentrates an hour of energy into one 5-minute bucket. There
+it can exceed everything the house was metered as consuming, which is what
+priced tracked devices far below the grid rate (HEA-74). Only the quiet run is
+capped, at ``MAX_QUIET_SPAN``; a genuine reporting gap is never trimmed.
 """
 
 from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
@@ -25,6 +35,25 @@ if TYPE_CHECKING:
     from datetime import datetime
 
 _WH_PER_KWH = Decimal(1000)
+
+# How far back into a *quiet* run — one where the source kept reporting an
+# unchanged counter — a delta may reach for the energy it finally reveals.
+#
+# Coarse counters hold still for 30-90 minutes and then jump a whole step. That
+# step accrued across the quiet run, so anchoring it to the previous *reading*
+# books an hour of energy into one 5-minute bucket, where it can exceed
+# everything the house was served and collapse the price the allocation model
+# pays for it (HEA-74).
+#
+# The cap exists only to bound the opposite error: a device switched off for
+# hours reports the same unchanged counter as one trickling along, and the
+# counter alone cannot tell them apart. Measured on the reference instance,
+# legitimate accrual runs cluster at or below ~125 minutes while genuine
+# silences jump straight to several hours, so two hours separates them without
+# trimming honest energy. It is deliberately not load-bearing: across a real
+# weekday, whole-home cost moves under 1 % between a 90-minute cap and no cap at
+# all. A per-device run signal would remove the guess entirely (HEA-75).
+MAX_QUIET_SPAN = timedelta(hours=2)
 
 # How many recent gating decisions each source retains for the diagnostics
 # download (HEA-24). Bounded so a long-running source never grows without limit;
@@ -128,9 +157,16 @@ class CumulativeEnergySource:
     is reported spanning the gap rather than discarded.
     """
 
-    def __init__(self, unit: EnergyUnit = EnergyUnit.KWH) -> None:
+    def __init__(
+        self,
+        unit: EnergyUnit = EnergyUnit.KWH,
+        *,
+        max_quiet_span: timedelta = MAX_QUIET_SPAN,
+    ) -> None:
         self._unit = unit
         self._last: _Observation | None = None
+        self._moved_at: datetime | None = None
+        self._max_quiet_span = max_quiet_span
         self._decisions: deque[Decision] = deque(maxlen=_DECISION_LOG_SIZE)
 
     def observe(self, reading: Reading) -> EnergyDelta | None:
@@ -154,6 +190,7 @@ class CumulativeEnergySource:
         previous = self._last
         if previous is None:
             self._last = current
+            self._moved_at = current.at
             self._log(current.at, DecisionReason.FIRST_READING, None)
             return None
         if current.at <= previous.at:
@@ -163,12 +200,31 @@ class CumulativeEnergySource:
         self._last = current
         is_reset = current.value < previous.value
         kwh = self._to_kwh(self._counted(previous, current))
+        accrued_from = self._accrual_start(previous)
+        if current.value != previous.value:
+            self._moved_at = current.at
         if kwh == 0:
             self._log(current.at, DecisionReason.NO_MOVEMENT, None)
             return None
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
         self._log(current.at, reason, kwh)
-        return EnergyDelta(kwh=kwh, start=previous.at, end=current.at)
+        return EnergyDelta(kwh=kwh, start=accrued_from, end=current.at)
+
+    def _accrual_start(self, previous: _Observation) -> datetime:
+        """When the energy a stepping counter reveals began accumulating.
+
+        A counter that moves on every reading accrues between readings, so the
+        answer is simply the previous one. A counter that held still while its
+        source kept reporting accrued across that whole quiet run, and anchoring
+        it to the last reading crushes it into a single bucket (HEA-74).
+
+        Only the quiet run is capped. The span from the last *reading* to now is
+        never trimmed: a source that fell silent for three days really did meter
+        those three days, and that energy has to be spread over them.
+        """
+        if self._moved_at is None:
+            return previous.at
+        return max(self._moved_at, previous.at - self._max_quiet_span)
 
     def note_dropped_late(self, at: datetime, kwh: Decimal) -> None:
         """Record that a portion of energy fell past the accountant's ring (HEA-48).
