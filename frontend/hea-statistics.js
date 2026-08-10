@@ -86,7 +86,43 @@ export const fetchDeviceStatistics = async (hass, devices, period) => {
     : {};
 
   const rows = devices.map((device) => totalsFor(device, buckets, period));
-  return { period, devices: rows, totals: sumRows(rows) };
+  return {
+    period,
+    devices: rows,
+    totals: sumRows(rows),
+    series: seriesFrom(devices, buckets, period),
+  };
+};
+
+/**
+ * The period bucket by bucket, added up across the devices asked for.
+ *
+ * The same fetch has to answer both "what did this cost" and "what did it look
+ * like over time", or every chart card costs a second round trip for data
+ * already in hand. Rows are oldest first, and a bucket is present if any device
+ * recorded one — devices need not share bucket boundaries.
+ */
+const seriesFrom = (devices, buckets, period) => {
+  const byStart = new Map();
+  for (const device of devices) {
+    for (const [field, concept] of Object.entries(CONCEPTS)) {
+      const statistic = buckets?.[statisticIdFor(device.key, concept)];
+      for (const bucket of bucketsWithin(statistic, period)) {
+        const row =
+          byStart.get(bucket.start) ??
+          { energyUsed: 0, actualCost: 0, costAtGridPrice: 0 };
+        row[field] += bucket.change;
+        byStart.set(bucket.start, row);
+      }
+    }
+  }
+  return [...byStart.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([start, row]) => ({
+      ...row,
+      start: new Date(start),
+      costSavings: row.costAtGridPrice - row.actualCost,
+    }));
 };
 
 const totalsFor = (device, buckets, period) => {
@@ -104,7 +140,7 @@ const totalsFor = (device, buckets, period) => {
 };
 
 /**
- * The change a statistic recorded inside the period.
+ * The buckets a statistic recorded inside the period, as `{start, change}`.
  *
  * The recorder returns every bucket *overlapping* the window, so a request
  * ending at midnight comes back with the following day attached; counting it
@@ -112,18 +148,29 @@ const totalsFor = (device, buckets, period) => {
  * epoch milliseconds on current Home Assistant and ISO strings on older ones —
  * both are accepted, since a household on an older release should still see
  * its costs.
+ *
+ * A gap is reported as a null change; it is unknown rather than zero, so it is
+ * dropped here and never reaches a total or a chart.
  */
-const changeWithin = (statistic, { start, end }) => {
-  if (!Array.isArray(statistic)) return 0;
-  let total = 0;
+const bucketsWithin = (statistic, { start, end }) => {
+  if (!Array.isArray(statistic)) return [];
+  const within = [];
   for (const bucket of statistic) {
     const bucketStart = new Date(bucket.start).getTime();
     if (bucketStart < start.getTime() || bucketStart >= end.getTime()) continue;
-    // A gap in the statistics is reported as null; it is unknown, not zero.
-    if (typeof bucket.change === "number") total += bucket.change;
+    if (typeof bucket.change === "number") {
+      within.push({ start: bucketStart, change: bucket.change });
+    }
   }
-  return total;
+  return within;
 };
+
+/** The total change a statistic recorded inside the period. */
+const changeWithin = (statistic, period) =>
+  bucketsWithin(statistic, period).reduce(
+    (total, bucket) => total + bucket.change,
+    0,
+  );
 
 /**
  * The whole house, the Untracked remainder included — that remainder is part of
