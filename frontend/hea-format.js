@@ -34,6 +34,31 @@ export const formatMoney = (value, { language, currency }) => {
   return new Intl.NumberFormat(language, options).format(value);
 };
 
+/** An amount of energy, in the unit the sensors record it in. */
+export const formatEnergy = (value, { language }) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
+  const number = new Intl.NumberFormat(language, {
+    maximumFractionDigits: 1,
+  }).format(value);
+  return `${number} kWh`;
+};
+
+/**
+ * Text safe to interpolate into markup.
+ *
+ * A device name is whatever the household typed into their own registry, and a
+ * card builds its rows as a string, so it is escaped rather than trusted. An
+ * apostrophe alone is reason enough.
+ */
+export const escapeText = (value) =>
+  String(value)
+    // The ampersand first, or the escapes below would be escaped in turn.
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
 /**
  * The picked range, as one label — "20 May – 15 Jul 2026".
  *

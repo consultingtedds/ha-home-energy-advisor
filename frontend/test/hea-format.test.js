@@ -8,7 +8,13 @@
 
 import { describe, expect, it } from "vitest";
 
-import { formatMoney, formatPeriod, localeFrom } from "../hea-format.js";
+import {
+  escapeText,
+  formatEnergy,
+  formatMoney,
+  formatPeriod,
+  localeFrom,
+} from "../hea-format.js";
 
 const EURO = { language: "en-GB", currency: "EUR" };
 
@@ -65,6 +71,34 @@ describe("formatMoney", () => {
     // Given / When / Then — the first render happens before any fetch resolves
     expect(formatMoney(undefined, EURO)).toBe("—");
     expect(formatMoney(Number.NaN, EURO)).toBe("—");
+  });
+});
+
+describe("formatEnergy", () => {
+  it("shows kilowatt-hours, rounded to something readable", () => {
+    // Given / When / Then — the sensors record six decimal places; a table of
+    // them would be unreadable and none of it is meaningful
+    expect(formatEnergy(38.650095, EURO)).toBe("38.7 kWh");
+  });
+
+  it("shows a dash rather than NaN when there is no figure yet", () => {
+    // Given / When / Then
+    expect(formatEnergy(undefined, EURO)).toBe("—");
+  });
+});
+
+describe("escapeText", () => {
+  it("leaves an ordinary device name alone to the eye", () => {
+    // Given / When / Then — an apostrophe is escaped but still reads correctly
+    // once the browser parses it back
+    expect(escapeText("Tumble Dryer Switch")).toBe("Tumble Dryer Switch");
+  });
+
+  it("defuses markup in a name a user chose", () => {
+    // Given — device names come from the household's own registry, and cards
+    // build their rows as strings
+    // When / Then
+    expect(escapeText("<img src=x onerror=alert(1)>")).not.toContain("<");
   });
 });
 

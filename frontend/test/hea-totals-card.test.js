@@ -12,82 +12,26 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEVICES_SENSOR } from "../hea-devices.js";
 import { TAG, register } from "../hea-totals-card.js";
+import {
+  TUMBLE_DRYER_BUCKETS,
+  aDeviceRow,
+  aHass,
+  anEnergyCollection,
+  bucketsFor,
+  mountCard,
+  settled as settledOn,
+  stateOf,
+  text,
+} from "./doubles.js";
 
-const MAY = new Date(2026, 4, 20);
-const JULY = new Date(2026, 6, 15);
-
-/** A stand-in for Home Assistant's energy collection, as the picker creates it. */
-const anEnergyCollection = (start = MAY, end = JULY) => {
-  const listeners = new Set();
-  return {
-    start,
-    end,
-    subscribe(callback) {
-      listeners.add(callback);
-      return () => listeners.delete(callback);
-    },
-    announce(newStart, newEnd) {
-      this.start = newStart;
-      this.end = newEnd;
-      for (const callback of listeners) callback();
-    },
-    get listenerCount() {
-      return listeners.size;
-    },
-  };
-};
-
-const aDeviceRow = (key, name, untracked = false) => ({
-  key,
-  name,
-  device_id: `device-${key}`,
-  untracked,
-});
-
-/** One day's worth of buckets for a device, dated inside the picked period. */
-const bucketsFor = (key, energyUsed, actualCost, costAtGridPrice, at = MAY) => ({
-  [`sensor.${key}_energy_used`]: [{ start: at.getTime(), change: energyUsed }],
-  [`sensor.${key}_actual_cost`]: [{ start: at.getTime(), change: actualCost }],
-  [`sensor.${key}_cost_at_grid_price`]: [
-    { start: at.getTime(), change: costAtGridPrice },
-  ],
-});
-
-const TUMBLE_DRYER_BUCKETS = bucketsFor("tumble_dryer_switch", 38.6, 0.11, 5.78);
-
-const aHass = ({
-  collection = anEnergyCollection(),
-  devices = [aDeviceRow("tumble_dryer_switch", "Tumble Dryer Switch")],
-  response = TUMBLE_DRYER_BUCKETS,
-  callWS,
-} = {}) => ({
-  connection: collection ? { "_energy_hea-costs": collection } : {},
-  states: devices
-    ? { [DEVICES_SENSOR]: { state: String(devices.length), attributes: { devices } } }
-    : {},
-  config: { currency: "EUR" },
-  locale: { language: "en-GB" },
-  callWS: callWS ?? vi.fn().mockResolvedValue(response),
-});
-
-const text = (card) => card.shadowRoot.textContent;
-const stateOf = (card) => card.shadowRoot.querySelector("[data-state]").dataset.state;
 const figure = (card, name) =>
   card.shadowRoot.querySelector(`[data-figure="${name}"]`);
 
-const mount = (hass, config = {}) => {
-  const card = document.createElement(TAG);
-  card.setConfig({ type: `custom:${TAG}`, collection_key: "hea-costs", ...config });
-  document.body.append(card);
-  card.hass = hass;
-  return card;
-};
+const mount = (hass, config = {}) => mountCard(TAG, hass, config);
 
 /** Wait for the card to settle on something other than its first paint. */
-const settled = async (card, state = "ready") =>
-  vi.waitFor(() => expect(stateOf(card)).toBe(state));
+const settled = (card, state = "ready") => settledOn(expect, card, state);
 
 beforeEach(() => {
   document.body.replaceChildren();
@@ -108,7 +52,7 @@ describe("registration", () => {
 
   it("offers itself in the card picker", () => {
     // Given / When / Then
-    expect(window.customCards).toEqual(
+    expect(globalThis.customCards).toEqual(
       expect.arrayContaining([expect.objectContaining({ type: TAG })]),
     );
   });
