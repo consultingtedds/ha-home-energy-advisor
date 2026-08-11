@@ -102,6 +102,8 @@ Presentation
 10. ADR-0010: A sensor's shape does not establish its fitness — `device_class`/`state_class` gate whether a reading *can* be interpreted; whether it is true, arriving, or already counted is asked separately at suggestion time (discovery semantics), add time (lenient, the user is explicit) and ingest time (continuous plausibility). Names the pattern behind four defects — HEA-54, HEA-60, HEA-64, HEA-66 — each a well-formed sensor that was nonetheless the wrong answer
 11. ADR-0011: Migrate the generation storage key — `solar_entity` becomes `generation_entity`, superseding ADR-0009's decision 3. That decision weighed a migration against a benefit it judged zero; the key is in fact read across the coordinator, discovery and the config flow, so leaving it applied the renaming principle only to the surface. Done now because the cost is at its floor (no tags, one installation) and a migration mechanism has to be proven at some point. The migration is deliberately untested and deliberately throwaway (HEA-68)
 12. ADR-0012: Reuse Home Assistant's energy period selection, don't rebuild it — `energy-date-selection` is a core card usable on any dashboard, and energy cards coordinate through a shared collection, so HEA's cards subscribe to Home Assistant's own picker rather than owning a date range. Removes the largest piece of HEA-50's scope, keeps both dashboards behaving identically, and settles HEA-39: negative Cost Savings renders below the axis, the convention the Energy Dashboard already uses for export and battery charge. The frontend-internals dependency is isolated to one adapter module (HEA-50)
+13. ADR-0013: Reuse Home Assistant's chart component, don't draw our own — refines ADR-0012 decision 4 (which excludes HA's energy *cards*) by deciding what HEA's own cards draw *with*, and corrects a misreading of ADR-0008 along the way (HEA-50)
+14. ADR-0014: Price overdrawn energy at the marginal import rate — when tracked device draw exceeds the consumption the house meters accounted for, the excess is charged at the import rate in both the live and late-arrival paths, rather than diluting a fixed cost across inflated energy (which priced devices 3-6× under the tariff) or booking it free (which the late path did). Amends ADR-0002's clamp and ADR-0006 decision 2. Makes Cost Savings exactly invariant to the residual overdraw, where dilution would have manufactured a saving from it (HEA-74, HEA-77)
 
 ### Epic 3 — Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -186,8 +188,8 @@ Presentation
 
 ### Epic 6 — Dogfood on production instance
 1. Install and configure a device set on the reference instance covering every behaviour pattern in `notes/DEVICE_SENSOR_SURVEY.md`: cycle-resetting energy counters, lifetime counters over Zigbee2MQTT, a cloud-polled counter, and a power-only device
-2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; battery ledger vs Predbat's own accounting
-3. Fixes arising; note: July dogfooding cannot exercise the winter battery regime — revisit accuracy after the first winter month (tracked as follow-up)
+2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; **Σ published energy vs the house meter**; battery ledger vs Predbat's own accounting. The energy check was added after the first attempt (`notes/VALIDATION_WEEK_2026_08.md`) — the cost check stayed within ~4 % throughout HEA-74 and would have passed, while the energy check would have failed on day one by 29-44 %
+3. Fixes arising; note: summer dogfooding cannot exercise the winter battery regime — revisit accuracy after the first winter month (tracked as follow-up). Partially anticipated under HEA-75 by replaying a captured week against January's solar profile; that answered the *spreading* question but not the stored-cost ledger under force-charging, which still needs real winter data
 
 ### Epic 7 — Historical backfill (deferred 2026-07-23 — not deleted)
 1. ~~Backfill via `recorder.import_statistics` on device setup~~
@@ -238,6 +240,18 @@ dependencies and can start as soon as Epic 1 lands.
   retained-context reallocation (ADR-0006): late portions correct their finalised
   bucket for 24 h, and only energy older than that is dropped — then logged.
   Per-bucket *cost* allocation remains the approximation; energy is now conserved.
+  **Reopened and closed properly (2026-08-10/11, HEA-74/77).** "Energy is now
+  conserved" was still too confident. HEA-48's fix let a coarse step be booked
+  into the *single* bucket where the counter moved, and overnight one step can
+  exceed everything the house consumes in five minutes — published whole-home
+  energy ran 29-44 % above the metered house load, and tracked devices were
+  priced at a quarter to a sixth of the tariff. Deltas now accrue from the
+  counter's last *movement* rather than its last reading. What remains is a
+  measured ~1 % inflation (HEA-77): the true accrual profile inside a quiet run
+  is unknowable, so an even estimate can exceed one five-minute slice while
+  reconciling across the span. Cost Savings is exactly invariant to it by
+  ADR-0014. Weighting by a device's own run signal was measured and rejected
+  (HEA-75, cancelled): it recovers only 0.96 % → 0.70 %.
   Reconciliation validation is HEA-28.
 - **Finalisation lag (first-run UX).** The engine waits a ~20-minute margin
   (15-min lateness + 5-min bucket) before finalising an interval, so costs lag
