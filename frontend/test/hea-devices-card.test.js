@@ -94,7 +94,7 @@ describe("the table", () => {
       expect.stringMatching(/0[.,]11/),
       expect.stringMatching(/5[.,]78/),
       expect.stringMatching(/5[.,]67/),
-      expect.stringMatching(/0[.,]003/),
+      "0.28",
     ]);
   });
 
@@ -157,6 +157,38 @@ describe("the table", () => {
     expect(total[4]).toMatch(/14[.,]67/);
   });
 
+  it("names the rate's unit in the header, not on every row", async () => {
+    // Given
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — the unit is stated once. Repeated on eleven rows it made this the
+    // widest column in the table and said nothing new after the first row.
+    const headers = [...card.shadowRoot.querySelectorAll("thead th")].map(
+      (cell) => cell.textContent.trim(),
+    );
+    expect(headers.at(-1)).toMatch(/c\/kWh/);
+    expect(rows(card)[0][5]).not.toMatch(/kWh|€/);
+  });
+
+  it("keeps the unit out of the header's uppercasing", async () => {
+    // Given — the header row is uppercased in CSS, which would turn c/kWh into
+    // C/KWH and make a unit symbol wrong rather than merely shouty
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — the unit is carried in its own element the stylesheet exempts
+    const unit = card.shadowRoot.querySelector("thead .unit");
+    expect(unit.textContent).toBe("c/kWh");
+    expect(card.constructor.cardStyle).toMatch(/\.unit[^}]*text-transform:\s*none/);
+  });
+
   it("shows what each device actually paid per kWh", async () => {
     // Given — three devices whose unit prices differ by two orders of magnitude
     const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
@@ -171,9 +203,9 @@ describe("the table", () => {
     const rates = Object.fromEntries(
       rows(card).map((row) => [row[0], row[5]]),
     );
-    expect(rates["Fine Meter Aircon"]).toMatch(/0[.,]250/); // 3.00 / 12.0
-    expect(rates["Slow Poll Aircon"]).toMatch(/0[.,]003/); // 0.11 / 38.6
-    expect(rates["Untracked Energy Devices"]).toMatch(/0[.,]015/); // 1.50 / 100
+    expect(rates["Fine Meter Aircon"]).toBe("25.0"); // 3.00 / 12.0 = 25c
+    expect(rates["Slow Poll Aircon"]).toBe("0.28"); // 0.11 / 38.6 = 0.28c
+    expect(rates["Untracked Energy Devices"]).toBe("1.5"); // 1.50 / 100 = 1.5c
   });
 
   it("totals the rate as the period's blended price, not a sum of rates", async () => {
@@ -184,14 +216,14 @@ describe("the table", () => {
     const card = mount(hass);
     await ready(card);
 
-    // Then — 4.61 over 150.6 kWh is €0.031/kWh. Adding the three rates would
-    // give €0.268, which is not a price anything was bought at: a rate is a
+    // Then — 4.61 over 150.6 kWh is 3.06 c/kWh. Adding the three rates would
+    // give 26.78, which is not a price anything was bought at: a rate is a
     // ratio, and ratios do not sum.
     const total = [
       ...card.shadowRoot.querySelectorAll("tfoot th, tfoot td"),
     ].map((cell) => cell.textContent.trim());
-    expect(total[5]).toMatch(/0[.,]031/);
-    expect(total[5]).not.toMatch(/0[.,]268/);
+    expect(total[5]).toBe("3.06");
+    expect(total[5]).not.toBe("26.78");
   });
 
   it("shows no rate for a device that used no energy", async () => {

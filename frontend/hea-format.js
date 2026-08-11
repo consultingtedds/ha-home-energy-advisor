@@ -44,12 +44,48 @@ export const formatEnergy = (value, { language }) => {
 };
 
 /**
- * A unit price — what a kWh actually cost — or a dash if there is none.
+ * Currencies whose minor unit has a symbol everyone writing a tariff uses.
  *
- * Quoted to three decimals rather than the two money uses, because a tariff is:
- * rounding €0.093 to €0.09 erases the difference between an off-peak rate and a
- * standard one, and a device running on surplus generation costs €0.003, which
- * two decimals would render as free.
+ * The one place in this file that names a symbol, and a deliberate exception:
+ * `Intl` models major units only and has no notion of a subunit, so there is
+ * nothing to ask. A tariff is universally advertised in the minor unit — 9.3
+ * c/kWh, not €0.093/kWh — and a column of the latter reads as leading zeroes.
+ *
+ * Anything absent here keeps its major unit rather than inventing a symbol.
+ */
+const MINOR_UNITS = {
+  EUR: { symbol: "c", per: 100 },
+  USD: { symbol: "¢", per: 100 },
+  GBP: { symbol: "p", per: 100 },
+};
+
+/** The currency's own symbol, as Intl writes it. */
+const currencySymbol = (language, currency) =>
+  new Intl.NumberFormat(language, { style: "currency", currency })
+    .formatToParts(0)
+    .find((part) => part.type === "currency")?.value ?? "";
+
+/**
+ * What one row of the unit-price column is measured in — for the header.
+ *
+ * Carried once at the top rather than on every row: this is the only column
+ * that would otherwise hold both a currency prefix and a unit suffix, which
+ * made it twice the width of every other and repeated six characters down the
+ * table.
+ */
+export const rateUnit = ({ language, currency }) => {
+  if (!currency) return "/kWh";
+  const minor = MINOR_UNITS[currency];
+  return `${minor ? minor.symbol : currencySymbol(language, currency)}/kWh`;
+};
+
+/**
+ * A unit price — what a kWh actually cost — as a bare number, or a dash.
+ *
+ * In minor units where the currency has them, so the figure reads the way a
+ * tariff is quoted. Two decimals at most: a device running on surplus
+ * generation costs a fraction of a cent, and rounding that to zero would say
+ * "free", which is a different claim.
  *
  * This is the figure that made HEA-74 visible — a device priced at a sixth of
  * the tariff on a night when every kWh came off the grid. Cost and energy each
@@ -57,15 +93,11 @@ export const formatEnergy = (value, { language }) => {
  */
 export const formatRate = (value, { language, currency }) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
-  const options = currency
-    ? { style: "currency", currency }
-    : {};
-  const number = new Intl.NumberFormat(language, {
-    ...options,
-    minimumFractionDigits: 3,
-    maximumFractionDigits: 3,
-  }).format(value);
-  return `${number}/kWh`;
+  const minor = currency ? MINOR_UNITS[currency] : undefined;
+  return new Intl.NumberFormat(language, {
+    minimumFractionDigits: minor ? 1 : 0,
+    maximumFractionDigits: minor ? 2 : 3,
+  }).format(minor ? value * minor.per : value);
 };
 
 /**
