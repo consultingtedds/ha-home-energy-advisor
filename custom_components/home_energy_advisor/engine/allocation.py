@@ -88,6 +88,15 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     below what any kWh could have been bought for — 3-6x below the tariff on a
     coarse device, and near zero when generation dominated the blend. The energy
     mismatch itself is what Repairs surfaces (HEA-74, ADR-0014).
+
+    A small overdraw is expected and is not a fault. A coarse counter's step is
+    spread evenly across a span whose true accrual profile cannot be known, and an
+    even estimate can exceed what the house really drew in one five-minute slice
+    while reconciling exactly over the whole span. Measured on the reference
+    instance it inflates published whole-home energy by ~1 %, in ~2 % of buckets.
+    Cost Savings is unaffected: the excess is charged at the import rate and the
+    counterfactual values it at the import rate, so it nets to zero saving
+    (HEA-77, ADR-0014).
     """
 
     @override
