@@ -60,6 +60,17 @@ export const bucketsFor = (
 
 export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
 
+/** The grid / generation / battery split a device's HEA-51 sensors record. */
+export const sourcesFor = (key, grid, generation, battery, at = MAY) => ({
+  [`sensor.${key}_energy_from_grid`]: [{ start: at.getTime(), change: grid }],
+  [`sensor.${key}_energy_from_generation`]: [
+    { start: at.getTime(), change: generation },
+  ],
+  [`sensor.${key}_energy_from_battery`]: [
+    { start: at.getTime(), change: battery },
+  ],
+});
+
 /**
  * The `hass` object a card is handed. The collection is cached at `_` + the
  * collection key, which is how Home Assistant does it (verified live).

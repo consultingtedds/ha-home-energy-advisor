@@ -101,6 +101,21 @@ export const formatRate = (value, { language, currency }) => {
 };
 
 /**
+ * A share, given as a fraction — or a dash where there is no share to give.
+ *
+ * Whole percent: the underlying split is an allocation of a coarse counter's
+ * energy, and a decimal place would claim a precision the estimate does not
+ * have. `Intl` places the sign the locale expects rather than appending "%".
+ */
+export const formatPercent = (value, { language }) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
+  return new Intl.NumberFormat(language, {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+/**
  * Text safe to interpolate into markup.
  *
  * A device name is whatever the household typed into their own registry, and a

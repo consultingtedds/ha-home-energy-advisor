@@ -44,13 +44,16 @@ const aHass = (response = {}) => ({
 });
 
 describe("statisticIdsFor", () => {
-  it("builds the three statistic ids a device is accounted by", () => {
+  it("builds the statistic ids a device is accounted by", () => {
     // Given / When / Then — `sensor.<slug>_<concept>`, the slug the HEA-55
     // sensor resolved out of the entity registry rather than one guessed here
     expect(statisticIdsFor([AIRCON])).toEqual([
       "sensor.slow_poll_aircon_energy_used",
       "sensor.slow_poll_aircon_actual_cost",
       "sensor.slow_poll_aircon_cost_at_grid_price",
+      "sensor.slow_poll_aircon_energy_from_grid",
+      "sensor.slow_poll_aircon_energy_from_generation",
+      "sensor.slow_poll_aircon_energy_from_battery",
     ]);
   });
 
@@ -68,7 +71,7 @@ describe("statisticIdsFor", () => {
     const devices = [AIRCON, aDevice("untracked_energy_devices", "Untracked", { untracked: true })];
 
     // When / Then
-    expect(statisticIdsFor(devices)).toHaveLength(6);
+    expect(statisticIdsFor(devices)).toHaveLength(2 * Object.keys(CONCEPTS).length);
   });
 
   it("asks for nothing when there are no devices", () => {
@@ -200,6 +203,11 @@ describe("fetchDeviceStatistics", () => {
       actualCost: expect.closeTo(4.3, 10),
       costAtGridPrice: expect.closeTo(7.5, 10),
       costSavings: expect.closeTo(3.2, 10),
+      // The by-source split this fixture does not record; a house with no
+      // generation or battery reads exactly this way (HEA-51)
+      energyFromGrid: 0,
+      energyFromGeneration: 0,
+      energyFromBattery: 0,
     });
   });
 
@@ -413,6 +421,9 @@ describe("fetchDeviceStatistics", () => {
       energyUsed: "energy_used",
       actualCost: "actual_cost",
       costAtGridPrice: "cost_at_grid_price",
+      energyFromGrid: "energy_from_grid",
+      energyFromGeneration: "energy_from_generation",
+      energyFromBattery: "energy_from_battery",
     });
   });
 });

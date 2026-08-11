@@ -28,7 +28,14 @@ export const CONCEPTS = Object.freeze({
   energyUsed: "energy_used",
   actualCost: "actual_cost",
   costAtGridPrice: "cost_at_grid_price",
+  energyFromGrid: "energy_from_grid",
+  energyFromGeneration: "energy_from_generation",
+  energyFromBattery: "energy_from_battery",
 });
+
+/** Every concept at zero — the starting point for any accumulation. */
+const zeroed = () =>
+  Object.fromEntries(Object.keys(CONCEPTS).map((field) => [field, 0]));
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -108,9 +115,7 @@ const seriesFrom = (devices, buckets, period) => {
     for (const [field, concept] of Object.entries(CONCEPTS)) {
       const statistic = buckets?.[statisticIdFor(device.key, concept)];
       for (const bucket of bucketsWithin(statistic, period)) {
-        const row =
-          byStart.get(bucket.start) ??
-          { energyUsed: 0, actualCost: 0, costAtGridPrice: 0 };
+        const row = byStart.get(bucket.start) ?? zeroed();
         row[field] += bucket.change;
         byStart.set(bucket.start, row);
       }
@@ -126,16 +131,16 @@ const seriesFrom = (devices, buckets, period) => {
 };
 
 const totalsFor = (device, buckets, period) => {
-  const changeIn = (concept) =>
-    changeWithin(buckets?.[statisticIdFor(device.key, concept)], period);
-  const actualCost = changeIn(CONCEPTS.actualCost);
-  const costAtGridPrice = changeIn(CONCEPTS.costAtGridPrice);
+  const totals = Object.fromEntries(
+    Object.entries(CONCEPTS).map(([field, concept]) => [
+      field,
+      changeWithin(buckets?.[statisticIdFor(device.key, concept)], period),
+    ]),
+  );
   return {
     ...device,
-    energyUsed: changeIn(CONCEPTS.energyUsed),
-    actualCost,
-    costAtGridPrice,
-    costSavings: costAtGridPrice - actualCost,
+    ...totals,
+    costSavings: totals.costAtGridPrice - totals.actualCost,
   };
 };
 
@@ -180,11 +185,9 @@ const changeWithin = (statistic, period) =>
  */
 const sumRows = (rows) =>
   rows.reduce(
-    (totals, row) => ({
-      energyUsed: totals.energyUsed + row.energyUsed,
-      actualCost: totals.actualCost + row.actualCost,
-      costAtGridPrice: totals.costAtGridPrice + row.costAtGridPrice,
-      costSavings: totals.costSavings + row.costSavings,
-    }),
-    { energyUsed: 0, actualCost: 0, costAtGridPrice: 0, costSavings: 0 },
+    (totals, row) => {
+      for (const field of Object.keys(totals)) totals[field] += row[field];
+      return totals;
+    },
+    { ...zeroed(), costSavings: 0 },
   );
