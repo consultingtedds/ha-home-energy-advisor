@@ -53,6 +53,8 @@ const SORTS = {
 const DEFAULT_SORT = "actual_cost";
 
 class HeaDevicesCard extends HeaCard {
+  static defaultTitle = "Cost by device";
+
   static cardStyle = `
     .scroll { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: 0.95em; }

@@ -64,6 +64,19 @@ describe("registration", () => {
   });
 });
 
+describe("the card header", () => {
+  it("names itself when no title is configured", async () => {
+    // Given / When — added from the picker, with nothing filled in
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+    await ready(card);
+
+    // Then — so a table of figures beside other cards says what it ranks
+    expect(card.shadowRoot.querySelector("ha-card").getAttribute("header")).toBe(
+      "Cost by device",
+    );
+  });
+});
+
 describe("the table", () => {
   it("lists every device with its energy, costs and saving", async () => {
     // Given

@@ -14,7 +14,10 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG, register } from "../hea-cost-over-time-card.js";
+import { formatMoney } from "../hea-format.js";
 import { aDeviceRow, aHass, mountCard, settled } from "./doubles.js";
+
+const EURO = { language: "en-GB", currency: "EUR" };
 
 const DAY_ONE = new Date(2026, 4, 20);
 const DAY_TWO = new Date(2026, 4, 21);
@@ -77,6 +80,44 @@ describe("registration", () => {
   it("offers the same editor as the other cards", () => {
     // Given / When / Then — one shared editor (HEA-73)
     expect(customElements.get(TAG).getConfigElement()).toBeInstanceOf(HTMLElement);
+  });
+});
+
+describe("the card header", () => {
+  const headerOf = (card) =>
+    card.shadowRoot.querySelector("ha-card").getAttribute("header");
+
+  it("names itself, so a chart on a dashboard says what it shows", async () => {
+    // Given — a card added with no configuration at all, which is how the
+    // picker adds it
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then — a bare chart of coloured bars says nothing about what is being
+    // measured; the legend names the segments but not the subject
+    expect(headerOf(card)).toBe("Cost over time");
+  });
+
+  it("lets the household title it themselves", async () => {
+    // Given / When
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }), {
+      title: "Aircon spend",
+    });
+    await ready(card);
+
+    // Then
+    expect(headerOf(card)).toBe("Aircon spend");
+  });
+
+  it("takes an empty title as a deliberate request for no header", async () => {
+    // Given — a user stacking several cards under one heading of their own
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }), {
+      title: "",
+    });
+    await ready(card);
+
+    // Then — absent means "use the default"; empty means "show nothing"
+    expect(headerOf(card)).toBe(null);
   });
 });
 
@@ -162,6 +203,30 @@ describe("the options handed to the chart", () => {
     const label = chartOf(card).options.yAxis.axisLabel.formatter(3);
     expect(label).toMatch(/€/);
     expect(label).toMatch(/3[.,]00/);
+  });
+
+  it("formats hovered figures as money, not as raw numbers", async () => {
+    // Given — a bucket whose cost divides into recurring decimals, which is
+    // what an allocated share normally does
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then — the tooltip reads like a price. Unrounded, this shows fourteen
+    // decimal places of a euro, which is unreadable and says nothing true:
+    // money is not accurate to the femto-cent
+    const shown = chartOf(card).options.tooltip.valueFormatter(1.2345678901234);
+    expect(shown).toMatch(/€/);
+    expect(shown).toBe(formatMoney(1.2345678901234, EURO));
+    expect(shown).not.toMatch(/\d[.,]\d{3}/);
+  });
+
+  it("keeps a hovered loss signed, so it is not read as a gain", async () => {
+    // Given / When
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then — the minus survives formatting (HEA-39)
+    expect(chartOf(card).options.tooltip.valueFormatter(-0.5)).toMatch(/-/);
   });
 
   it("is given the hass object, which the chart needs for theming", async () => {
