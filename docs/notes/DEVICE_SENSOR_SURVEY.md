@@ -14,11 +14,11 @@
 
 | Pattern | Seen from | Sensors | Behaviour |
 |---|---|---|---|
-| **Cycle-resetting cumulative** | a local air-conditioning integration (`mitsubishi_wf_rac`) | energy only (kWh, `total_increasing`) | 0.25 kWh steps, resets to 0 each compressor cycle, updates 15 min–hours apart. No power sensor at all. |
+| **Cycle-resetting cumulative** | a local air-conditioning integration (a local integration) | energy only (kWh, `total_increasing`) | 0.25 kWh steps, resets to 0 each compressor cycle, updates 15 min–hours apart. No power sensor at all. |
 | **Lifetime cumulative + live power** | Zigbee plugs over Zigbee2MQTT (`mqtt`) | power (W, `measurement`) + energy (kWh, `total_increasing`) | Monotonic counter climbing for years, resets only on a device reset; power updates near-real-time. |
 | **Cloud-polled cumulative** | a cloud metering plug (`tuya` + `xtend_tuya`) | power + a lifetime `total_energy` + device-side daily/monthly/yearly `consumption` | Lifetime counter plus **period-resetting** counters (daily rolls at midnight). Update cadence is at the mercy of cloud polling — tens of minutes between readings. |
-| **Unreliable energy + synthetic power** | a cloud heating integration (`rointe`) | `energy` (`total_increasing`, often `unknown`) + an `effective_power` derived from duty cycle, plus a static nominal wattage with no `state_class` | The energy sensor frequently does not report; the power figure is *computed*, not measured. |
-| **Power-only** | local smart lighting (`wiz`) | power only (W, `measurement`, `unknown` while off or unreachable) | No energy counter at all — energy must be derived by integrating power over time. |
+| **Unreliable energy + synthetic power** | a cloud heating integration  | `energy` (`total_increasing`, often `unknown`) + an `effective_power` derived from duty cycle, plus a static nominal wattage with no `state_class` | The energy sensor frequently does not report; the power figure is *computed*, not measured. |
+| **Power-only** | local smart lighting | power only (W, `measurement`, `unknown` while off or unreachable) | No energy counter at all — energy must be derived by integrating power over time. |
 
 ## House-level sensors (product inputs, not tracked devices)
 

@@ -25,7 +25,7 @@ Combine `# When / Then` only for a single fluent expression (e.g.
 
 ```python
 def test_cumulative_source_cycle_reset_treats_the_new_value_as_a_fresh_cycle() -> None:
-    # Given — the WF-RAC counter is mid-cycle at 2.75 kWh
+    # Given — the cycle-resetting counter is mid-cycle at 2.75 kWh
     source = CumulativeEnergySource()
     source.observe(reading(at="02:14", value="2.75"))
 

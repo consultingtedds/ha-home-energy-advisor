@@ -55,10 +55,10 @@ def _entry() -> MockConfigEntry:
         subentries_data=[
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_DEVICE,
-                title="Guest Bedroom Aircon",
+                title="Coarse Step Aircon",
                 data={
-                    CONF_NAME: "Guest Bedroom Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                    CONF_NAME: "Coarse Step Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
                 },
                 unique_id=None,
             )
@@ -73,14 +73,14 @@ async def _running_household(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     entry = _entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0.6", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
     await hass.async_block_till_done()
     freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
@@ -99,7 +99,7 @@ async def test_the_action_rebases_the_household_to_zero(
 ) -> None:
     # Given — a household with real accumulated cost across its figures
     entry = await _running_household(hass, freezer)
-    assert _state(hass, "sensor.guest_bedroom_aircon_energy_used") == Decimal("0.6")
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
     assert _state(hass, "sensor.whole_home_actual_cost") > 0
 
     # When — the reset action is called for that config entry
@@ -117,8 +117,8 @@ async def test_the_action_rebases_the_household_to_zero(
 
     # Then — every figure starts again from zero: the tracked device, the
     # Untracked remainder and the whole-home aggregate alike
-    assert _state(hass, "sensor.guest_bedroom_aircon_energy_used") == Decimal(0)
-    assert _state(hass, "sensor.guest_bedroom_aircon_actual_cost") == Decimal(0)
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal(0)
+    assert _state(hass, "sensor.coarse_step_aircon_actual_cost") == Decimal(0)
     assert _state(hass, "sensor.untracked_energy_devices_energy_used") == Decimal(0)
     assert _state(hass, "sensor.whole_home_actual_cost") == Decimal(0)
 
@@ -150,9 +150,9 @@ async def test_the_action_clears_only_heas_own_statistics(
     # rest of the user's home
     recorder.async_clear_statistics.assert_called_once()
     cleared = set(recorder.async_clear_statistics.call_args.args[0])
-    assert "sensor.guest_bedroom_aircon_energy_used" in cleared
+    assert "sensor.coarse_step_aircon_energy_used" in cleared
     assert "sensor.whole_home_actual_cost" in cleared
-    assert "sensor.guest_bedroom_aircon_energy_used_daily" in cleared
+    assert "sensor.coarse_step_aircon_energy_used_daily" in cleared
     assert "sensor.next_door_meter" not in cleared
     assert all(stat.startswith("sensor.") for stat in cleared)
 
@@ -162,7 +162,7 @@ async def test_the_options_flow_offers_a_confirmed_reset(
 ) -> None:
     # Given — a household with accumulated figures, and a user in Configure
     entry = await _running_household(hass, freezer)
-    assert _state(hass, "sensor.guest_bedroom_aircon_energy_used") == Decimal("0.6")
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     assert menu["type"] is FlowResultType.MENU
     assert "reset_totals" in menu["menu_options"]
@@ -182,7 +182,7 @@ async def test_the_options_flow_offers_a_confirmed_reset(
     # Then — the household is rebased, and the flow closes without rewriting the
     # options (which would reload the entry for no reason)
     assert done["type"] is FlowResultType.ABORT
-    assert _state(hass, "sensor.guest_bedroom_aircon_energy_used") == Decimal(0)
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal(0)
 
 
 async def test_the_reset_branch_does_nothing_until_it_is_confirmed(
@@ -200,7 +200,7 @@ async def test_the_reset_branch_does_nothing_until_it_is_confirmed(
 
     # Then — nothing has been destroyed: showing the confirmation is not the
     # confirmation
-    assert _state(hass, "sensor.guest_bedroom_aircon_energy_used") == Decimal("0.6")
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
 
 
 async def test_the_action_rejects_an_unknown_config_entry(

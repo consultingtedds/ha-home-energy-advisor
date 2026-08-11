@@ -142,10 +142,10 @@ def _entry(hass: HomeAssistant, **house_inputs: str) -> MockConfigEntry:
         subentries_data=[
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_DEVICE,
-                title="Guest Bedroom Aircon",
+                title="Coarse Step Aircon",
                 data={
-                    CONF_NAME: "Guest Bedroom Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_aircon_energy",
+                    CONF_NAME: "Coarse Step Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_aircon_energy",
                 },
                 unique_id=None,
             )
@@ -163,7 +163,7 @@ async def test_discovery_offers_untracked_energy_and_power_sensors(
     entry = _entry(hass)
     _register(hass, "grid_import", "energy")  # house input
     _register(hass, "electricity_price", "monetary")  # price (not energy/power)
-    _register(hass, "guest_aircon_energy", "energy")  # already tracked
+    _register(hass, "coarse_step_aircon_energy", "energy")  # already tracked
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
     lights = _register(
         hass, "hallway_lights_power", "power", name="Hallway Lights Power"
@@ -391,13 +391,13 @@ async def test_discovery_excludes_a_helper_over_an_already_tracked_device_source
     # energy counter. Selecting it would book that device's energy twice, and
     # proportional allocation would then under-report every other device
     entry = _entry(hass)
-    _register(hass, "guest_aircon_energy", "energy")
+    _register(hass, "coarse_step_aircon_energy", "energy")
     _helper_output(
         hass,
         UTILITY_METER_DOMAIN,
-        source="sensor.guest_aircon_energy",
-        object_id="daily_guest_bedroom_aircon",
-        name="Daily Guest Bedroom Aircon",
+        source="sensor.coarse_step_aircon_energy",
+        object_id="daily_coarse_step_aircon",
+        name="Daily Coarse Step Aircon",
     )
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
@@ -505,11 +505,11 @@ async def test_discovery_drops_the_power_sibling_of_a_tracked_energy_sensor(
     entry = _entry(hass)
     aircon = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
-        identifiers={("demo", "guest_aircon")},
-        name="Guest Bedroom Aircon",
+        identifiers={("demo", "coarse_step_aircon")},
+        name="Coarse Step Aircon",
     )
-    _register(hass, "guest_aircon_energy", "energy", device_id=aircon.id)
-    _register(hass, "guest_aircon_power", "power", device_id=aircon.id)
+    _register(hass, "coarse_step_aircon_energy", "energy", device_id=aircon.id)
+    _register(hass, "coarse_step_aircon_power", "power", device_id=aircon.id)
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
     # When — candidates are discovered

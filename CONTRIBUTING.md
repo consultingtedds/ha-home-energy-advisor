@@ -116,7 +116,7 @@ Worth knowing before your first PR — the full set is in
   independently testable.
 - **`Decimal` for money and energy**, never binary floats. Round only where a
   value becomes a Home Assistant state.
-- **Realistic test data** — `Guest Bedroom Aircon`, `€0.234/kWh`, `0.25 kWh`
+- **Realistic test data** — `Coarse Step Aircon`, `€0.234/kWh`, `0.25 kWh`
   steps. Not `foo` and `bar`.
 - **Never weaken a test to make it pass.** A red test is information. If it is
   wrong, fix the test deliberately and say why in the commit.

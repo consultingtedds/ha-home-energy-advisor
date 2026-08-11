@@ -70,7 +70,8 @@ custom integration.
 | `try/except` in test bodies | `pytest.raises` |
 | `@pytest.mark.skip` / weakened assertions to silence a failure | Leave it red; fix the underlying issue |
 | Modifying production code to make a test pass | Fixtures, fakes, or a genuine design fix |
-| `foo` / `bar` / `test123` data | Realistic data: Guest Bedroom Aircon, €0.234/kWh, 0.25 kWh steps |
+| `foo` / `bar` / `test123` data | Realistic data: a coarse-step aircon, €0.234/kWh, 0.25 kWh steps |
+| Naming a fixture for a room, an occupant, or a hardware model | Name it for the **metering behaviour** the test exercises: `coarse_step_aircon`, `slow_poll_aircon`, `cloud_polled_pump`, `wall_lights_power`. Anonymous, and it says why the device is in the test |
 | Naked float equality | `Decimal` comparisons or `pytest.approx` with explicit tolerance |
 | Invoking `pytest` from Windows-side automation (git hooks, pre-commit, scripts) | Route it through a Unix shell (WSL). HA imports `fcntl`, so pytest dies at *collection* on native Windows — even for tests with no HA imports |
 
@@ -87,7 +88,8 @@ deliberately made otherwise — treat it that way by default.
 | --- | --- |
 | Committing real captured instance data | Keep the capture local and `.gitignore` it; make the test `skipif` the fixture is absent. Anything CI must prove needs a **synthetic** fixture |
 | Whole-house consumption at sub-hourly resolution, anywhere | Nothing — it is an occupancy trace (when the house is empty, when people wake). This is the single most sensitive artefact the project touches |
-| Household members' names, room-by-room inventories, appliance lists that narrow the property type | Generic labels, or omit entirely. "Living Room Aircon" is fine; an appliance implying a private water supply, a swimming dryer or a second reception room is not |
+| Household members' names, room-by-room inventories, appliance lists that narrow the property type | Generic labels, or omit entirely. A single room name looks harmless; a *set* of them is the floor plan, which is how the fixtures became an inventory (HEA-76) |
+| Vendor or model names for the household's own hardware | Describe what the device *does* — "a counter that resets each cycle", "a cloud-polled plug". Naming the model narrows the property as an appliance list does. Ubiquitous ecosystems (MQTT, Zigbee) identify nothing and are fine |
 | Hostnames, IPs, timezones, lifetime counter readings | "the reference instance". A live hostname is an address for someone's home |
 | Assuming a rename is enough | **Minimise first, anonymise second.** Ask what the project actually needs. A 9-row table relabelled still discloses that the house has 9 rooms |
 
@@ -134,6 +136,11 @@ deliberately made otherwise — treat it that way by default.
   home, and does the project actually need it?* Omit before renaming
 - Real captures live only in `.gitignore`d fixture directories; their tests skip
   when absent, and a synthetic equivalent covers whatever CI must prove
+- **Privacy overrides append-only.** An accepted ADR is normally never edited, but
+  a disclosure left in one stays in the tree, and honouring the process rule there
+  would protect the process rather than the household. Edit it in place and say so
+  in the commit. This is the *only* sanctioned reason to change accepted ADR text
+  (established HEA-76; applied to ADR-0002/0003/0004/0006)
 
 ---
 

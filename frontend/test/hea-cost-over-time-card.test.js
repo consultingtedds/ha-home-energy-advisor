@@ -19,19 +19,19 @@ import { aDeviceRow, aHass, mountCard, settled } from "./doubles.js";
 const DAY_ONE = new Date(2026, 4, 20);
 const DAY_TWO = new Date(2026, 4, 21);
 
-const AIRCON = [aDeviceRow("living_room_aircon", "Living Room Aircon")];
+const AIRCON = [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")];
 
 /** Two days: paid 1 of 3, then paid 2 of 3. */
 const twoDays = {
-  "sensor.living_room_aircon_energy_used": [
+  "sensor.slow_poll_aircon_energy_used": [
     { start: DAY_ONE.getTime(), change: 10 },
     { start: DAY_TWO.getTime(), change: 12 },
   ],
-  "sensor.living_room_aircon_actual_cost": [
+  "sensor.slow_poll_aircon_actual_cost": [
     { start: DAY_ONE.getTime(), change: 1 },
     { start: DAY_TWO.getTime(), change: 2 },
   ],
-  "sensor.living_room_aircon_cost_at_grid_price": [
+  "sensor.slow_poll_aircon_cost_at_grid_price": [
     { start: DAY_ONE.getTime(), change: 3 },
     { start: DAY_TWO.getTime(), change: 3 },
   ],
@@ -39,9 +39,9 @@ const twoDays = {
 
 /** Battery arbitrage costing more than the grid would have (HEA-39). */
 const aLoss = {
-  "sensor.living_room_aircon_energy_used": [{ start: DAY_ONE.getTime(), change: 10 }],
-  "sensor.living_room_aircon_actual_cost": [{ start: DAY_ONE.getTime(), change: 5 }],
-  "sensor.living_room_aircon_cost_at_grid_price": [{ start: DAY_ONE.getTime(), change: 3 }],
+  "sensor.slow_poll_aircon_energy_used": [{ start: DAY_ONE.getTime(), change: 10 }],
+  "sensor.slow_poll_aircon_actual_cost": [{ start: DAY_ONE.getTime(), change: 5 }],
+  "sensor.slow_poll_aircon_cost_at_grid_price": [{ start: DAY_ONE.getTime(), change: 3 }],
 };
 
 const mount = (hass, config) => mountCard(TAG, hass, config);

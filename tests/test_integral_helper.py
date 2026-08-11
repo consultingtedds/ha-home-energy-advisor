@@ -1,15 +1,15 @@
 """Feasibility spike + behaviour tests for the native Integral helper (HEA-34).
 
-Power-only devices (WiZ wall lights, Rointe ``effective_power``) carry no energy
-counter, so ADR-0004 supports them by auto-creating a native ``integration``
-(Riemann-sum) helper on the power sensor; its output energy sensor then feeds the
-same ``CumulativeEnergySource`` pipeline. These tests prove the two risky
-premises of that decision against real Home Assistant:
+Power-only devices (smart wall lights, a cloud heater's ``effective_power``)
+carry no energy counter, so ADR-0004 supports them by auto-creating a native
+``integration`` (Riemann-sum) helper on the power sensor; its output energy
+sensor then feeds the same ``CumulativeEnergySource`` pipeline. These tests
+prove the two risky premises of that decision against real Home Assistant:
 
 1. the helper can be created *programmatically* and produces a working
    power->energy sensor, and
 2. it accrues **no phantom energy** across an ``unavailable`` span — the
-   "Rointe unplugged for six months" case — which is exactly the reset-on-
+   "heater unplugged for six months" case — which is exactly the reset-on-
    unavailable behaviour our NEVER list demands, inherited for free.
 
 If Home Assistant ever regresses either premise, these go red and the recorded
@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
-# WiZ lights and some panel heaters report instantaneous watts (ADR-0004,
+# smart lights and some panel heaters report instantaneous watts (ADR-0004,
 # DEVICE_SENSOR_SURVEY): power-only, `measurement`, and `unavailable` when off.
 _POWER = {"unit_of_measurement": "W", "device_class": "power"}
 
@@ -64,15 +64,15 @@ def _reading(hass: HomeAssistant, entity_id: str) -> Decimal:
 async def test_a_native_integral_helper_integrates_power_to_energy(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a power-only device (living-room wall lights) reporting 100 W
+    # Given — a power-only device (smart wall lights) reporting 100 W
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
 
     # When — we auto-create a native Integral helper on its power sensor
     entry_id = await async_ensure_integral_helper(
         hass,
-        name="Living Room Wall Lights Energy",
-        source_entity="sensor.living_room_wall_lights_power",
+        name="Wall Lights Energy",
+        source_entity="sensor.wall_lights_power",
     )
     await hass.async_block_till_done()
 
@@ -83,7 +83,7 @@ async def test_a_native_integral_helper_integrates_power_to_energy(
     # And — after the light holds 100 W for an hour, the helper reports ~100 Wh
     # (100 W x 1 h), integrated by Home Assistant, not by us
     freezer.move_to(datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
@@ -98,19 +98,19 @@ async def test_ensuring_a_helper_twice_reuses_the_existing_one(
 ) -> None:
     # Given — a power-only device with a native Integral helper already created
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     first = await async_ensure_integral_helper(
         hass,
-        name="Living Room Wall Lights Energy",
-        source_entity="sensor.living_room_wall_lights_power",
+        name="Wall Lights Energy",
+        source_entity="sensor.wall_lights_power",
     )
     await hass.async_block_till_done()
 
     # When — setup runs again for the same source (config entry reload)
     second = await async_ensure_integral_helper(
         hass,
-        name="Living Room Wall Lights Energy",
-        source_entity="sensor.living_room_wall_lights_power",
+        name="Wall Lights Energy",
+        source_entity="sensor.wall_lights_power",
     )
     await hass.async_block_till_done()
 
@@ -131,10 +131,10 @@ def _power_only_entry() -> MockConfigEntry:
         subentries_data=[
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_DEVICE,
-                title="Living Room Wall Lights",
+                title="Wall Lights",
                 data={
-                    CONF_NAME: "Living Room Wall Lights",
-                    CONF_POWER_ENTITY: "sensor.living_room_wall_lights_power",
+                    CONF_NAME: "Wall Lights",
+                    CONF_POWER_ENTITY: "sensor.wall_lights_power",
                 },
                 unique_id=None,
             )
@@ -150,7 +150,7 @@ async def test_removing_a_power_device_removes_its_integral_helper(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     entry = _power_only_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
@@ -174,11 +174,11 @@ async def test_an_adopted_user_helper_survives_device_removal(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     users_helper = await async_ensure_integral_helper(
         hass,
         name="My Own Lights Energy",
-        source_entity="sensor.living_room_wall_lights_power",
+        source_entity="sensor.wall_lights_power",
     )
     await hass.async_block_till_done()
 
@@ -206,11 +206,11 @@ async def test_uninstall_deletes_created_helpers_but_spares_an_adopted_one(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     users_helper = await async_ensure_integral_helper(
         hass,
         name="My Own Lights Energy",
-        source_entity="sensor.living_room_wall_lights_power",
+        source_entity="sensor.wall_lights_power",
     )
     await hass.async_block_till_done()
     entry = _power_only_entry()
@@ -236,7 +236,7 @@ async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     entry = _power_only_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
@@ -268,7 +268,7 @@ async def test_removing_the_integration_cleans_up_all_auto_created_helpers(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
-    hass.states.async_set("sensor.living_room_wall_lights_power", "100", _POWER)
+    hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     entry = _power_only_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)

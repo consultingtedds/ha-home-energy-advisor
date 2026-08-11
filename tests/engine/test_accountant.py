@@ -48,23 +48,23 @@ def test_source_diagnostics_snapshots_every_observed_meter() -> None:
     # Given — a home with a grid meter and one tracked device, each seen twice
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.observe("sensor.grid_import", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
 
     # When — the per-source diagnostics are read
     diagnostics = acc.source_diagnostics()
 
     # Then — every observed meter is keyed by its entity id with its last reading
     # and gating log exposed for the diagnostics download
-    assert set(diagnostics) == {"sensor.grid_import", "sensor.guest_energy"}
-    guest = diagnostics["sensor.guest_energy"]
-    assert guest.last_value == Decimal("0.6")
-    assert guest.last_at == at(5)
-    assert guest.recent_decisions[-1].reason is DecisionReason.COUNTED
+    assert set(diagnostics) == {"sensor.grid_import", "sensor.coarse_step_energy"}
+    aircon = diagnostics["sensor.coarse_step_energy"]
+    assert aircon.last_value == Decimal("0.6")
+    assert aircon.last_at == at(5)
+    assert aircon.recent_decisions[-1].reason is DecisionReason.COUNTED
 
 
 def test_overdrawn_buckets_are_counted_for_the_remainder_repair() -> None:
@@ -73,18 +73,18 @@ def test_overdrawn_buckets_are_counted_for_the_remainder_repair() -> None:
     # hides and the Repair must surface (HEA-24 / HEA-36)
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
     # When — across three intervals the house imports 0.1 kWh each but the device
     # reports drawing 0.5 kWh each
     buckets = ((5, "0.1", "0.5"), (10, "0.2", "1.0"), (15, "0.3", "1.5"))
     for minute, grid, device in buckets:
         acc.observe("sensor.grid_import", at(minute), Decimal(grid))
-        acc.observe("sensor.guest_energy", at(minute), Decimal(device))
+        acc.observe("sensor.coarse_step_energy", at(minute), Decimal(device))
     acc.finalize(at(60))
 
     # Then — every over-drawn bucket is counted, so the coordinator can raise the
@@ -149,25 +149,25 @@ def test_import_only_prices_a_device_at_the_import_rate() -> None:
     # Given — a tariff-only home: one grid meter, one tracked device, one price
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
     # When — over one 5-minute interval the house imports 1 kWh, the device 0.6
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(30))
 
     # Then — the device is priced at the import rate, the rest is Untracked, and
     # the parts sum to the real grid cost
     result = acc.totals()
-    guest = result.devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.6")
-    assert guest.actual_cost == Decimal("0.18")
-    assert guest.naive_cost == Decimal("0.18")
-    assert guest.cost_savings == Decimal(0)
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.6")
+    assert aircon.actual_cost == Decimal("0.18")
+    assert aircon.naive_cost == Decimal("0.18")
+    assert aircon.cost_savings == Decimal(0)
     assert result.untracked.energy_kwh == Decimal("0.4")
     assert _total_actual(result) == Decimal("0.30")
 
@@ -180,14 +180,14 @@ def test_full_balance_solar_makes_a_device_cheaper_than_grid() -> None:
             SourceRole.GRID_EXPORT: "sensor.grid_export",
             SourceRole.GENERATION: "sensor.solar",
         },
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     for entity in (
         "sensor.grid_import",
         "sensor.grid_export",
         "sensor.solar",
-        "sensor.guest_energy",
+        "sensor.coarse_step_energy",
     ):
         acc.observe(entity, at(0), Decimal(0))
 
@@ -196,16 +196,16 @@ def test_full_balance_solar_makes_a_device_cheaper_than_grid() -> None:
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
     acc.observe("sensor.solar", at(5), Decimal("2.0"))
     acc.observe("sensor.grid_export", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("2.0"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("2.0"))
     acc.finalize(at(30))
 
     # Then — the device drew all 2 kWh at the blended €0.15/kWh (€0.30 grid over
     # 2 kWh consumed); naive values it at the €0.30 import rate, so solar saved half
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("2.0")
-    assert guest.actual_cost == Decimal("0.30")
-    assert guest.naive_cost == Decimal("0.60")
-    assert guest.cost_savings == Decimal("0.30")
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("2.0")
+    assert aircon.actual_cost == Decimal("0.30")
+    assert aircon.naive_cost == Decimal("0.60")
+    assert aircon.cost_savings == Decimal("0.30")
 
 
 def test_battery_discharge_is_priced_at_its_stored_cost() -> None:
@@ -218,7 +218,7 @@ def test_battery_discharge_is_priced_at_its_stored_cost() -> None:
             SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
             SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
         },
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
         # Isolate the battery ledger from quiet-run spreading (HEA-74): these
         # meters sit unchanged and then jump by design here, which the spreading
         # rule would legitimately smear back across earlier intervals. That rule
@@ -231,7 +231,7 @@ def test_battery_discharge_is_priced_at_its_stored_cost() -> None:
         "sensor.battery_charge",
         "sensor.battery_discharge",
         "sensor.house_load",
-        "sensor.guest_energy",
+        "sensor.coarse_step_energy",
     ):
         acc.observe(entity, at(0), Decimal(0))
 
@@ -241,22 +241,22 @@ def test_battery_discharge_is_priced_at_its_stored_cost() -> None:
     acc.observe("sensor.battery_charge", at(5), Decimal("2.0"))
     acc.observe("sensor.battery_discharge", at(5), Decimal(0))
     acc.observe("sensor.house_load", at(5), Decimal(0))
-    acc.observe("sensor.guest_energy", at(5), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal(0))
     # interval 2 (price now peak): battery discharges 2 kWh to serve the device
     acc.record_price(at(5), PEAK)
     acc.observe("sensor.grid_import", at(10), Decimal("2.0"))
     acc.observe("sensor.battery_discharge", at(10), Decimal("2.0"))
     acc.observe("sensor.house_load", at(10), Decimal("2.0"))
-    acc.observe("sensor.guest_energy", at(10), Decimal("2.0"))
+    acc.observe("sensor.coarse_step_energy", at(10), Decimal("2.0"))
     acc.finalize(at(40))
 
     # Then — the device's 2 kWh is priced at the €0.10 the battery stored, not the
     # €0.30 peak; naive values it at peak, so the saving is the gap
     result = acc.totals()
-    guest = result.devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("2.0")
-    assert guest.actual_cost == Decimal("0.20")
-    assert guest.naive_cost == Decimal("0.60")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("2.0")
+    assert aircon.actual_cost == Decimal("0.20")
+    assert aircon.naive_cost == Decimal("0.60")
     # And the total allocated equals the real grid bill (2 kWh imported at €0.10
     # to charge) — the battery deferred the cost rather than double-counting it
     assert _total_actual(result) == Decimal("0.20")
@@ -271,7 +271,7 @@ def test_charge_split_attributes_charging_to_grid_up_to_what_was_imported() -> N
             SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
             SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
         },
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), Decimal("0.10"))
     for entity in (
@@ -279,7 +279,7 @@ def test_charge_split_attributes_charging_to_grid_up_to_what_was_imported() -> N
         "sensor.battery_charge",
         "sensor.battery_discharge",
         "sensor.house_load",
-        "sensor.guest_energy",
+        "sensor.coarse_step_energy",
     ):
         acc.observe(entity, at(0), Decimal(0))
 
@@ -289,38 +289,38 @@ def test_charge_split_attributes_charging_to_grid_up_to_what_was_imported() -> N
     acc.observe("sensor.battery_charge", at(5), Decimal("4.0"))
     acc.observe("sensor.battery_discharge", at(5), Decimal(0))
     acc.observe("sensor.house_load", at(5), Decimal(0))
-    acc.observe("sensor.guest_energy", at(5), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal(0))
     # interval 2: discharge all 4 kWh to the device
     acc.record_price(at(5), PEAK)
     acc.observe("sensor.grid_import", at(10), Decimal("1.0"))
     acc.observe("sensor.battery_discharge", at(10), Decimal("4.0"))
     acc.observe("sensor.house_load", at(10), Decimal("4.0"))
-    acc.observe("sensor.guest_energy", at(10), Decimal("4.0"))
+    acc.observe("sensor.coarse_step_energy", at(10), Decimal("4.0"))
     acc.finalize(at(40))
 
     # Then — stored cost is €0.10 over 4 kWh = €0.025/kWh; the device's 4 kWh
     # costs just the €0.10 that charged it from the grid
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.actual_cost == Decimal("0.10")
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.actual_cost == Decimal("0.10")
 
 
 def test_buckets_are_not_finalised_until_past_the_lateness_margin() -> None:
     # Given — an interval's readings are in
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
 
     # When — we finalise only 6 minutes after the interval ended (< 15 min margin)
     acc.finalize(at(11))
 
     # Then — nothing has been allocated yet
-    assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
+    assert acc.totals().devices["coarse_step_aircon"].energy_kwh == Decimal(0)
 
 
 def test_a_late_delta_into_a_retained_bucket_is_reallocated_not_dropped() -> None:
@@ -328,42 +328,43 @@ def test_a_late_delta_into_a_retained_bucket_is_reallocated_not_dropped() -> Non
     # the retention ring still holds that bucket's context (HEA-48)
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
     acc.finalize(at(30))  # bucket at(0) finalised; watermark = at(0)
 
     # When — the coarse device finally reports, its delta spanning the finalised
     # (but still retained) bucket
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(40))
 
     # Then — the energy is reclaimed by re-running that bucket's allocation with its
     # retained prices: the device is credited, and exactly that value moves out of
     # the Untracked remainder rather than being silently lost
     result = acc.totals()
-    guest = result.devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.6")
-    assert guest.actual_cost == Decimal("0.18")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.6")
+    assert aircon.actual_cost == Decimal("0.18")
     assert result.untracked.energy_kwh == Decimal("0.4")
     assert result.whole_home.energy_kwh == Decimal("1.0")
     assert _total_actual(result) == Decimal("0.30")
 
 
 def test_progressive_finalisation_loses_no_coarse_device_energy() -> None:
-    # Given — the founding use case: a WF-RAC aircon reporting 0.25 kWh steps at
-    # the real guest-bedroom cadence (21/22/31/37/44-minute gaps), while the house
+    # Given — the founding use case: a cycle-resetting aircon reporting 0.25 kWh
+    # steps at
+    # the real coarse-step cadence (21/22/31/37/44-minute gaps), while the house
     # imports steadily and the coordinator finalises every minute (HEA-48 §1)
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     steps = {21: "0.25", 43: "0.50", 74: "0.75", 111: "1.00", 155: "1.25"}
 
     # When — readings arrive on that cadence and every minute triggers a finalise,
@@ -372,7 +373,7 @@ def test_progressive_finalisation_loses_no_coarse_device_energy() -> None:
         if minute % 5 == 0:
             acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
         if minute in steps:
-            acc.observe("sensor.guest_energy", at(minute), Decimal(steps[minute]))
+            acc.observe("sensor.coarse_step_energy", at(minute), Decimal(steps[minute]))
         acc.finalize(at(minute))
 
     # Then — every kWh the aircon reported is accounted to it, none reattributed to
@@ -381,9 +382,9 @@ def test_progressive_finalisation_loses_no_coarse_device_energy() -> None:
     # zero at any observable precision — while the aggregate split still reconciles
     # exactly (Untracked is derived from the whole home minus the devices).
     result = acc.totals()
-    guest = result.devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh.quantize(Decimal("0.000000001")) == Decimal("1.250000000")
-    reconciled = guest.energy_kwh + result.untracked.energy_kwh
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh.quantize(Decimal("0.000000001")) == Decimal("1.250000000")
+    reconciled = aircon.energy_kwh + result.untracked.energy_kwh
     assert reconciled == result.whole_home.energy_kwh
 
 
@@ -509,24 +510,24 @@ def test_a_delta_older_than_the_retention_ring_is_dropped_and_logged() -> None:
     # for bucket at(0) to be evicted from the ring
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
         windows=AccountingWindows(retention=timedelta(minutes=30)),
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     for minute in range(5, 135, 5):
         acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
     acc.finalize(at(150))  # watermark ~ at(125); bucket at(0) evicted (< 125-30)
 
     # When — the device finally reports a step spanning the long-evicted bucket
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.25"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.25"))
     acc.finalize(at(160))
 
     # Then — the energy is genuinely dropped (beyond the ring), but never silently:
     # a DROPPED_LATE decision is logged so diagnostics can prove it
-    assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
-    decisions = acc.source_diagnostics()["sensor.guest_energy"].recent_decisions
+    assert acc.totals().devices["coarse_step_aircon"].energy_kwh == Decimal(0)
+    decisions = acc.source_diagnostics()["sensor.coarse_step_energy"].recent_decisions
     dropped = [d for d in decisions if d.reason is DecisionReason.DROPPED_LATE]
     assert len(dropped) == 1
     assert dropped[0].kwh == Decimal("0.25")
@@ -536,33 +537,33 @@ def test_unavailable_reading_produces_no_phantom_delta() -> None:
     # Given — a device that goes unavailable then recovers
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal("2.75"))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal("2.75"))
 
     # When — the device reports unavailable, then recovers unchanged
-    acc.observe("sensor.guest_energy", at(2), None)
+    acc.observe("sensor.coarse_step_energy", at(2), None)
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("2.75"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("2.75"))
     acc.finalize(at(30))
 
     # Then — the recovery is not read as fresh consumption
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal(0)
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal(0)
 
 
 def test_totals_start_empty() -> None:
     # Given / When — a fresh accountant with a tracked device
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
 
     # Then — every figure is zero, including the Untracked remainder
     result = acc.totals()
-    assert result.devices["guest_bedroom_aircon"] == ZERO_TOTALS
+    assert result.devices["coarse_step_aircon"] == ZERO_TOTALS
     assert result.untracked.energy_kwh == Decimal(0)
 
 
@@ -570,27 +571,27 @@ def test_import_without_a_known_price_is_tracked_but_costs_nothing() -> None:
     # Given — grid import and a device, but no price has ever been recorded
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
     # When — an interval passes
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(30))
 
     # Then — energy is still tracked, but with no price it is costed at zero
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.6")
-    assert guest.actual_cost == Decimal(0)
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.6")
+    assert aircon.actual_cost == Decimal(0)
 
 
 def test_readings_from_unconfigured_entities_are_ignored() -> None:
     # Given — an accountant that knows nothing about a stray entity
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
 
@@ -609,27 +610,27 @@ def test_finalising_prunes_superseded_prices_but_keeps_costs_correct() -> None:
     # zero on every finalised bucket (HEA-53)
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), Decimal("0.10"))
     acc.record_price(at(60), Decimal("0.30"))
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
     # When — two hours of readings (house 1 kWh/interval, device 0.5) are finalised
     # well past the second price change
     for minute in range(5, 125, 5):
         acc.observe("sensor.grid_import", at(minute), Decimal(minute) / 5)
-        acc.observe("sensor.guest_energy", at(minute), Decimal(minute) / 10)
+        acc.observe("sensor.coarse_step_energy", at(minute), Decimal(minute) / 10)
     acc.finalize(at(150))
 
     # Then — the superseded first price is pruned (only the price active at the
     # watermark and any later survive), yet the accounting still reflects both
     # tariffs: 12 intervals of 0.5 kWh at 0.10 then 12 more at 0.30
     assert len(acc._prices) == 1  # noqa: SLF001
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("12.0")
-    assert guest.actual_cost == Decimal("2.4")
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("12.0")
+    assert aircon.actual_cost == Decimal("2.4")
 
 
 def test_flush_finalises_in_flight_buckets_so_they_can_be_banked() -> None:
@@ -637,46 +638,46 @@ def test_flush_finalises_in_flight_buckets_so_they_can_be_banked() -> None:
     # so nothing has been finalised (a reload here would drop them)
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(11))  # < margin: still nothing allocated
-    assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
+    assert acc.totals().devices["coarse_step_aircon"].energy_kwh == Decimal(0)
 
     # When — the accountant is flushed, as the coordinator does on unload
     acc.flush(at(11))
 
     # Then — the in-flight interval is sealed and banked, so the sensors' restore
     # baseline captures it instead of losing ~20 min of accounting (HEA-53)
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.6")
-    assert guest.actual_cost == Decimal("0.18")
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.6")
+    assert aircon.actual_cost == Decimal("0.18")
 
 
 def test_a_bucket_finalised_before_any_price_is_logged_as_zero_priced() -> None:
     # Given — grid import and a device, but no price has ever been recorded
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
     # When — an interval is finalised while the price list is still empty
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(30))
 
     # Then — energy is still tracked and costed at zero (unchanged), but the era is
     # now explainable: a ZERO_PRICED decision is logged on the import source so the
     # diagnostics download accounts for the zero-cost early bucket (HEA-53)
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.6")
-    assert guest.actual_cost == Decimal(0)
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.6")
+    assert aircon.actual_cost == Decimal(0)
     decisions = acc.source_diagnostics()["sensor.grid_import"].recent_decisions
     assert [d.reason for d in decisions].count(DecisionReason.ZERO_PRICED) == 1
 
@@ -685,7 +686,7 @@ def test_zero_priced_is_logged_once_then_never_after_a_price_arrives() -> None:
     # Given — a home that finalises several buckets before its first price
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.observe("sensor.grid_import", at(0), Decimal(0))
     for minute in range(5, 30, 5):
@@ -708,13 +709,13 @@ def test_reset_totals_rebases_every_running_total_to_zero() -> None:
     # Given — a home that has accumulated real cost across a finalised interval
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(30))
     assert acc.totals().whole_home.energy_kwh == Decimal("1.0")
 
@@ -724,7 +725,7 @@ def test_reset_totals_rebases_every_running_total_to_zero() -> None:
     # Then — every published figure starts from zero: the tracked device, the
     # derived Untracked remainder, and the whole-home aggregate alike
     result = acc.totals()
-    assert result.devices["guest_bedroom_aircon"] == ZERO_TOTALS
+    assert result.devices["coarse_step_aircon"] == ZERO_TOTALS
     assert result.untracked == ZERO_TOTALS
     assert result.whole_home == ZERO_TOTALS
 
@@ -733,19 +734,19 @@ def test_reset_totals_keeps_meter_tracking_so_the_next_delta_is_not_a_phantom() 
     # Given — a home whose meters have been read up to 1.0 kWh, then rebased
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
     acc.finalize(at(30))
     acc.reset_totals()
 
     # When — the counters climb again after the rebase
     acc.observe("sensor.grid_import", at(35), Decimal("2.0"))
-    acc.observe("sensor.guest_energy", at(35), Decimal("1.0"))
+    acc.observe("sensor.coarse_step_energy", at(35), Decimal("1.0"))
     acc.finalize(at(70))
 
     # Then — only the energy that arrived after the rebase is counted. The reset
@@ -754,7 +755,7 @@ def test_reset_totals_keeps_meter_tracking_so_the_next_delta_is_not_a_phantom() 
     # pre-reset kWh)
     result = acc.totals()
     assert result.whole_home.energy_kwh == Decimal("1.0")
-    assert result.devices["guest_bedroom_aircon"].energy_kwh == Decimal("0.4")
+    assert result.devices["coarse_step_aircon"].energy_kwh == Decimal("0.4")
 
 
 def test_reset_totals_discards_pre_reset_energy_still_in_flight() -> None:
@@ -762,13 +763,13 @@ def test_reset_totals_discards_pre_reset_energy_still_in_flight() -> None:
     # finalised, so its energy is still held in the in-flight buckets
     acc = Accountant(
         house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
 
     # When — the totals are rebased and accounting runs on past the lateness margin
     acc.reset_totals()
@@ -778,7 +779,7 @@ def test_reset_totals_discards_pre_reset_energy_still_in_flight() -> None:
     # rebase is a hard boundary, so nothing earned before it lands after it
     result = acc.totals()
     assert result.whole_home.energy_kwh == Decimal(0)
-    assert result.devices["guest_bedroom_aircon"].energy_kwh == Decimal(0)
+    assert result.devices["coarse_step_aircon"].energy_kwh == Decimal(0)
 
 
 def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
@@ -791,7 +792,7 @@ def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
             SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
             SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
         },
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
         # As above: this test is about the ledger surviving a rebase, not about
         # how a quiet counter's energy is spread (HEA-74).
         windows=AccountingWindows(max_quiet_span=timedelta(0)),
@@ -802,14 +803,14 @@ def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
         "sensor.battery_charge",
         "sensor.battery_discharge",
         "sensor.house_load",
-        "sensor.guest_energy",
+        "sensor.coarse_step_energy",
     ):
         acc.observe(entity, at(0), Decimal(0))
     acc.observe("sensor.grid_import", at(5), Decimal("2.0"))
     acc.observe("sensor.battery_charge", at(5), Decimal("2.0"))
     acc.observe("sensor.battery_discharge", at(5), Decimal(0))
     acc.observe("sensor.house_load", at(5), Decimal(0))
-    acc.observe("sensor.guest_energy", at(5), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal(0))
     acc.finalize(at(40))
     acc.reset_totals()
 
@@ -821,20 +822,20 @@ def test_reset_totals_keeps_the_battery_stored_cost_ledger() -> None:
     acc.observe("sensor.battery_charge", at(40), Decimal("2.0"))
     acc.observe("sensor.battery_discharge", at(40), Decimal(0))
     acc.observe("sensor.house_load", at(40), Decimal(0))
-    acc.observe("sensor.guest_energy", at(40), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(40), Decimal(0))
     acc.observe("sensor.grid_import", at(45), Decimal("2.0"))
     acc.observe("sensor.battery_discharge", at(45), Decimal("2.0"))
     acc.observe("sensor.house_load", at(45), Decimal("2.0"))
-    acc.observe("sensor.guest_energy", at(45), Decimal("2.0"))
+    acc.observe("sensor.coarse_step_energy", at(45), Decimal("2.0"))
     acc.finalize(at(80))
 
     # Then — the discharge is still priced at the €0.10 the battery stored, not
     # given away free: a rebase clears accumulated totals, never the physical state
     # of the battery's stored-cost ledger
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("2.0")
-    assert guest.actual_cost == Decimal("0.20")
-    assert guest.naive_cost == Decimal("0.60")
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("2.0")
+    assert aircon.actual_cost == Decimal("0.20")
+    assert aircon.naive_cost == Decimal("0.60")
 
 
 def _solar_home() -> Accountant:
@@ -845,7 +846,7 @@ def _solar_home() -> Accountant:
             SourceRole.GENERATION: "sensor.solar",
             SourceRole.GRID_EXPORT: "sensor.grid_export",
         },
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
 
 
@@ -853,7 +854,7 @@ def _seed_solar_home(acc: Accountant) -> None:
     acc.record_price(at(0), PEAK)
     for entity in ("sensor.grid_import", "sensor.solar", "sensor.grid_export"):
         acc.observe(entity, at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
 
 def _by_source_sum(totals: DeviceTotals) -> Decimal:
@@ -874,17 +875,17 @@ def test_running_totals_carry_each_devices_energy_by_source() -> None:
     acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
     acc.observe("sensor.solar", at(5), Decimal("0.5"))
     acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.5"))
     acc.finalize(at(30))
 
     # Then — the device's energy is split in the mix that served the bucket, so a
     # self-sufficiency share can be read straight off the totals (HEA-51)
-    guest = acc.totals().devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.5")
-    assert guest.energy_from_grid == Decimal("0.2857142857142857142857142857")
-    assert guest.energy_from_generation == Decimal("0.2142857142857142857142857143")
-    assert guest.energy_from_battery == Decimal(0)
-    assert _by_source_sum(guest) == guest.energy_kwh
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.5")
+    assert aircon.energy_from_grid == Decimal("0.2857142857142857142857142857")
+    assert aircon.energy_from_generation == Decimal("0.2142857142857142857142857143")
+    assert aircon.energy_from_battery == Decimal(0)
+    assert _by_source_sum(aircon) == aircon.energy_kwh
 
 
 def test_untracked_by_source_derives_so_the_split_reconciles() -> None:
@@ -894,7 +895,7 @@ def test_untracked_by_source_derives_so_the_split_reconciles() -> None:
     acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
     acc.observe("sensor.solar", at(5), Decimal("0.5"))
     acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.5"))
 
     # When — the interval is finalised
     acc.finalize(at(30))
@@ -902,11 +903,11 @@ def test_untracked_by_source_derives_so_the_split_reconciles() -> None:
     # Then — device plus Untracked equal the whole home for every source, just as
     # they do for energy and cost: Untracked is derived, never accumulated
     result = acc.totals()
-    guest = result.devices["guest_bedroom_aircon"]
-    assert guest.energy_from_grid + result.untracked.energy_from_grid == (
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_from_grid + result.untracked.energy_from_grid == (
         result.whole_home.energy_from_grid
     )
-    assert guest.energy_from_generation + result.untracked.energy_from_generation == (
+    assert aircon.energy_from_generation + result.untracked.energy_from_generation == (
         result.whole_home.energy_from_generation
     )
     # And the home's own split still sums to its energy, and to what was served
@@ -926,20 +927,20 @@ def test_a_late_correction_carries_the_retained_buckets_source_mix() -> None:
     acc.finalize(at(30))  # bucket at(0) finalised; watermark = at(0)
 
     # When — the device reports late into that finalised, still-retained bucket
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.5"))
     acc.finalize(at(40))
 
     # Then — the reclaimed energy is attributed in that bucket's own source mix,
     # not the current one, and still sums to the device's energy
     result = acc.totals()
-    guest = result.devices["guest_bedroom_aircon"]
-    assert guest.energy_kwh == Decimal("0.5")
-    assert guest.energy_from_grid == Decimal("0.2857142857142857142857142857")
-    assert guest.energy_from_generation == Decimal("0.2142857142857142857142857143")
-    assert _by_source_sum(guest) == guest.energy_kwh
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.5")
+    assert aircon.energy_from_grid == Decimal("0.2857142857142857142857142857")
+    assert aircon.energy_from_generation == Decimal("0.2142857142857142857142857143")
+    assert _by_source_sum(aircon) == aircon.energy_kwh
     # And Untracked gives back exactly what the device gained, per source
     assert result.untracked.energy_from_grid == Decimal("0.4") - (
-        guest.energy_from_grid
+        aircon.energy_from_grid
     )
 
 
@@ -950,9 +951,9 @@ def test_reset_totals_rebases_the_by_source_totals_too() -> None:
     acc.observe("sensor.grid_import", at(5), Decimal("0.4"))
     acc.observe("sensor.solar", at(5), Decimal("0.5"))
     acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
-    acc.observe("sensor.guest_energy", at(5), Decimal("0.5"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.5"))
     acc.finalize(at(30))
-    assert _by_source_sum(acc.totals().devices["guest_bedroom_aircon"]) > 0
+    assert _by_source_sum(acc.totals().devices["coarse_step_aircon"]) > 0
 
     # When — the household's totals are rebased (HEA-57)
     acc.reset_totals()
@@ -962,7 +963,7 @@ def test_reset_totals_rebases_the_by_source_totals_too() -> None:
     # be installed before the reset rather than after it (HEA-51)
     result = acc.totals()
     for totals in (
-        result.devices["guest_bedroom_aircon"],
+        result.devices["coarse_step_aircon"],
         result.untracked,
         result.whole_home,
     ):
@@ -1022,7 +1023,8 @@ def test_a_device_claiming_more_energy_than_the_whole_house_is_not_booked() -> N
 
 
 def test_a_coarse_device_overdrawing_one_bucket_is_still_booked() -> None:
-    # Given — the founding case the guard must not break: a WF-RAC aircon reporting
+    # Given — the founding case the guard must not break: a cycle-resetting
+    # aircon reporting
     # a 0.25 kWh step that lands in a single bucket the house only consumed 0.15 in.
     # Over one bucket it "exceeds the house"; over the hour it plainly does not
     acc = Accountant(
@@ -1030,12 +1032,12 @@ def test_a_coarse_device_overdrawing_one_bucket_is_still_booked() -> None:
             SourceRole.GRID_IMPORT: "sensor.grid_import",
             SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
         },
-        device_energy_entities={"guest_bedroom_aircon": "sensor.guest_energy"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
     )
     acc.record_price(at(0), PEAK)
     acc.observe("sensor.grid_import", at(0), Decimal(0))
     acc.observe("sensor.house_load", at(0), Decimal(0))
-    acc.observe("sensor.guest_energy", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
 
     # When — the house ticks along and the aircon steps once, coarsely
     house = Decimal(0)
@@ -1045,13 +1047,13 @@ def test_a_coarse_device_overdrawing_one_bucket_is_still_booked() -> None:
         acc.observe("sensor.grid_import", at(minute), house)
         acc.observe("sensor.house_load", at(minute), house)
         if index == 3:
-            acc.observe("sensor.guest_energy", at(minute), Decimal("0.25"))
+            acc.observe("sensor.coarse_step_energy", at(minute), Decimal("0.25"))
         acc.finalize(at(minute + 25))
 
     # Then — nothing is flagged and the step is booked in full. Judging a single
     # bucket would have rejected it; the window is what tells timing from lying
     assert acc.implausible_devices() == frozenset()
-    assert acc.totals().devices["guest_bedroom_aircon"].energy_kwh == Decimal("0.25")
+    assert acc.totals().devices["coarse_step_aircon"].energy_kwh == Decimal("0.25")
 
 
 def test_the_guard_stays_quiet_when_the_house_reports_nothing() -> None:

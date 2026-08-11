@@ -91,7 +91,7 @@ describe("escapeText", () => {
   it("leaves an ordinary device name alone to the eye", () => {
     // Given / When / Then — an apostrophe is escaped but still reads correctly
     // once the browser parses it back
-    expect(escapeText("Living Room Aircon")).toBe("Living Room Aircon");
+    expect(escapeText("Slow Poll Aircon")).toBe("Slow Poll Aircon");
   });
 
   it("defuses markup in a name a user chose", () => {

@@ -23,15 +23,15 @@ import {
 
 /** Three devices whose costs deliberately do not share an order with savings. */
 const THREE_DEVICES = [
-  aDeviceRow("living_room_aircon", "Living Room Aircon"),
-  aDeviceRow("kitchen_aircon", "Kitchen Aircon"),
+  aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
+  aDeviceRow("fine_meter_aircon", "Fine Meter Aircon"),
   aDeviceRow("untracked_energy_devices", "Untracked Energy Devices", true),
 ];
 
 const THREE_RESPONSE = {
   // energy, actual, at grid price → saved is the difference
-  ...bucketsFor("living_room_aircon", 38.6, 0.11, 5.78), // saved 5.67
-  ...bucketsFor("kitchen_aircon", 12.0, 3.0, 4.0), // saved 1.00
+  ...bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78), // saved 5.67
+  ...bucketsFor("fine_meter_aircon", 12.0, 3.0, 4.0), // saved 1.00
   ...bucketsFor("untracked_energy_devices", 100, 1.5, 9.5), // saved 8.00
 };
 
@@ -75,7 +75,7 @@ describe("the table", () => {
 
     // Then — the counterfactual and the saving beside what was actually paid
     expect(rows(card)).toContainEqual([
-      "Living Room Aircon",
+      "Slow Poll Aircon",
       "38.6 kWh",
       expect.stringMatching(/0[.,]11/),
       expect.stringMatching(/5[.,]78/),
@@ -93,9 +93,9 @@ describe("the table", () => {
 
     // Then — 3.00, 1.50, 0.11
     expect(deviceOrder(card)).toEqual([
-      "Kitchen Aircon",
+      "Fine Meter Aircon",
       "Untracked Energy Devices",
-      "Living Room Aircon",
+      "Slow Poll Aircon",
     ]);
   });
 
@@ -110,8 +110,8 @@ describe("the table", () => {
     // Then — 8.00, 5.67, 1.00
     expect(deviceOrder(card)).toEqual([
       "Untracked Energy Devices",
-      "Living Room Aircon",
-      "Kitchen Aircon",
+      "Slow Poll Aircon",
+      "Fine Meter Aircon",
     ]);
   });
 
@@ -145,8 +145,8 @@ describe("the table", () => {
   it("marks a device whose saving is really a loss", async () => {
     // Given — battery arbitrage cost more than the grid would have (HEA-39)
     const hass = aHass({
-      devices: [aDeviceRow("living_room_aircon", "Living Room Aircon")],
-      response: bucketsFor("living_room_aircon", 10, 5, 3),
+      devices: [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")],
+      response: bucketsFor("slow_poll_aircon", 10, 5, 3),
     });
 
     // When
@@ -161,8 +161,8 @@ describe("the table", () => {
   it("escapes a device name, which is the household's own text", async () => {
     // Given — a device a user named awkwardly
     const hass = aHass({
-      devices: [aDeviceRow("living_room_aircon", "<img src=x onerror=alert(1)>")],
-      response: bucketsFor("living_room_aircon", 1, 1, 1),
+      devices: [aDeviceRow("slow_poll_aircon", "<img src=x onerror=alert(1)>")],
+      response: bucketsFor("slow_poll_aircon", 1, 1, 1),
     });
 
     // When
@@ -179,11 +179,11 @@ describe("the table", () => {
     const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
 
     // When
-    const card = mount(hass, { devices: ["kitchen_aircon"] });
+    const card = mount(hass, { devices: ["fine_meter_aircon"] });
     await ready(card);
 
     // Then
-    expect(deviceOrder(card)).toEqual(["Kitchen Aircon"]);
+    expect(deviceOrder(card)).toEqual(["Fine Meter Aircon"]);
   });
 
   it("grows its card size with the number of devices it shows", async () => {

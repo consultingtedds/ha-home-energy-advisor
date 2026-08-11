@@ -3,7 +3,7 @@
  *
  * Without one, Home Assistant tells the user the card "cannot be edited from
  * the UI" and hands them raw YAML — in which they are expected to know that a
- * device is called `kitchen_aircon`, a slug that appears nowhere in the
+ * device is called `fine_meter_aircon`, a slug that appears nowhere in the
  * interface. The device list is already published (HEA-55), so the editor shows
  * it: names to choose from, keys written for them.
  *

@@ -17,7 +17,7 @@ a bounded ring (24 h by default). Energy that arrives late for a retained bucket
 re-runs that bucket's allocation with its own retained prices and applies only the
 difference — the late device gains, the Untracked remainder gives back, and no
 already-published device figure is revised. This matters because the founding
-devices (WF-RAC aircons) report in coarse steps every 15-90 min, so most deltas
+devices (cycle-resetting aircons) report in coarse steps every 15-90 min, so most deltas
 span past the watermark; dropping them silently reattributed 30-50 % of their
 energy to Untracked (ADR-0006, HEA-48). Only portions older than the ring are
 dropped, and never silently — a ``DROPPED_LATE`` decision is logged.

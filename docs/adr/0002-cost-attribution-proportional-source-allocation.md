@@ -62,7 +62,7 @@ what the binary gate could not guarantee.
 Allocation needs synchronised cross-device intervals so that, within a bucket, a
 device's draw lines up with the sources serving it. Five minutes balances
 fidelity against sensor noise. Device energy deltas coarser than one interval
-(the WF-RAC aircons report 0.25 kWh steps minutes-to-hours apart) are spread
+(the cycle-resetting aircons report 0.25 kWh steps minutes-to-hours apart) are spread
 uniformly across the intervals they span, in proportion to real elapsed time —
 an acknowledged approximation, since we cannot know the true intra-delta profile.
 

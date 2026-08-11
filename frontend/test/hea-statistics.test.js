@@ -25,7 +25,7 @@ const aDevice = (key, name, overrides = {}) => ({
   ...overrides,
 });
 
-const AIRCON = aDevice("living_room_aircon", "Living Room Aircon");
+const AIRCON = aDevice("slow_poll_aircon", "Slow Poll Aircon");
 
 /** A day of buckets, as the recorder returns them: epoch ms and a delta. */
 const aBucket = (start, change) => ({
@@ -48,9 +48,9 @@ describe("statisticIdsFor", () => {
     // Given / When / Then — `sensor.<slug>_<concept>`, the slug the HEA-55
     // sensor resolved out of the entity registry rather than one guessed here
     expect(statisticIdsFor([AIRCON])).toEqual([
-      "sensor.living_room_aircon_energy_used",
-      "sensor.living_room_aircon_actual_cost",
-      "sensor.living_room_aircon_cost_at_grid_price",
+      "sensor.slow_poll_aircon_energy_used",
+      "sensor.slow_poll_aircon_actual_cost",
+      "sensor.slow_poll_aircon_cost_at_grid_price",
     ]);
   });
 
@@ -60,7 +60,7 @@ describe("statisticIdsFor", () => {
 
     // Then — deriving it is what guarantees the stacked bar's segments sum to
     // the whole (ADR-0012), rather than three numbers that nearly agree
-    expect(ids).not.toContain("sensor.living_room_aircon_cost_savings");
+    expect(ids).not.toContain("sensor.slow_poll_aircon_cost_savings");
   });
 
   it("covers every device, including the Untracked remainder", () => {
@@ -124,15 +124,15 @@ describe("fetchDeviceStatistics", () => {
   const DAY_TWO = new Date("2026-08-05T00:00:00Z");
 
   const airconResponse = {
-    "sensor.living_room_aircon_energy_used": [
+    "sensor.slow_poll_aircon_energy_used": [
       aBucket(DAY_ONE, 6.2),
       aBucket(DAY_TWO, 8.0),
     ],
-    "sensor.living_room_aircon_actual_cost": [
+    "sensor.slow_poll_aircon_actual_cost": [
       aBucket(DAY_ONE, 0.1),
       aBucket(DAY_TWO, 0.2),
     ],
-    "sensor.living_room_aircon_cost_at_grid_price": [
+    "sensor.slow_poll_aircon_cost_at_grid_price": [
       aBucket(DAY_ONE, 1.1),
       aBucket(DAY_TWO, 1.4),
     ],
@@ -168,8 +168,8 @@ describe("fetchDeviceStatistics", () => {
     // reconcile by construction
     expect(result.devices).toEqual([
       expect.objectContaining({
-        key: "living_room_aircon",
-        name: "Living Room Aircon",
+        key: "slow_poll_aircon",
+        name: "Slow Poll Aircon",
         energyUsed: 14.2,
         actualCost: expect.closeTo(0.3, 10),
         costAtGridPrice: expect.closeTo(2.5, 10),
@@ -220,7 +220,7 @@ describe("fetchDeviceStatistics", () => {
     // attached; counting it would bill the user for time they did not ask about
     const hass = aHass({
       ...airconResponse,
-      "sensor.living_room_aircon_energy_used": [
+      "sensor.slow_poll_aircon_energy_used": [
         aBucket(DAY_ONE, 6.2),
         aBucket(DAY_TWO, 8.0),
         aBucket(threeDays.end, 999),
@@ -238,7 +238,7 @@ describe("fetchDeviceStatistics", () => {
     // Given
     const hass = aHass({
       ...airconResponse,
-      "sensor.living_room_aircon_energy_used": [
+      "sensor.slow_poll_aircon_energy_used": [
         aBucket(new Date("2026-08-03T00:00:00Z"), 999),
         aBucket(DAY_ONE, 6.2),
         aBucket(DAY_TWO, 8.0),
@@ -256,7 +256,7 @@ describe("fetchDeviceStatistics", () => {
     // Given — the recorder moved from ISO strings to epoch milliseconds; a
     // household on an older Home Assistant should still see its costs
     const hass = aHass({
-      "sensor.living_room_aircon_actual_cost": [
+      "sensor.slow_poll_aircon_actual_cost": [
         { start: DAY_ONE.toISOString(), end: DAY_TWO.toISOString(), change: 0.1 },
       ],
     });
@@ -292,7 +292,7 @@ describe("fetchDeviceStatistics", () => {
   it("skips a bucket carrying no change rather than counting it as zero-cost", async () => {
     // Given — a gap in the statistics, which the recorder reports as null
     const hass = aHass({
-      "sensor.living_room_aircon_actual_cost": [
+      "sensor.slow_poll_aircon_actual_cost": [
         aBucket(DAY_ONE, 0.1),
         { ...aBucket(DAY_TWO, null), change: null },
       ],
@@ -320,7 +320,7 @@ describe("fetchDeviceStatistics", () => {
 
   it("keeps each device's place in the house, for the views that group by it", async () => {
     // Given — the distribution view groups device → room → floor (HEA-58)
-    const located = aDevice("living_room_aircon", "Living Room Aircon", {
+    const located = aDevice("slow_poll_aircon", "Slow Poll Aircon", {
       areaName: "Utility Room",
       floorName: "Ground Floor",
     });
@@ -355,12 +355,12 @@ describe("fetchDeviceStatistics", () => {
 
   it("adds the devices together within each bucket", async () => {
     // Given — the chart is of the house, or of whatever the filter selected
-    const other = aDevice("kitchen_aircon", "Kitchen Aircon");
+    const other = aDevice("fine_meter_aircon", "Fine Meter Aircon");
     const hass = aHass({
       ...airconResponse,
-      "sensor.kitchen_aircon_energy_used": [aBucket(DAY_ONE, 1)],
-      "sensor.kitchen_aircon_actual_cost": [aBucket(DAY_ONE, 0.5)],
-      "sensor.kitchen_aircon_cost_at_grid_price": [aBucket(DAY_ONE, 2.5)],
+      "sensor.fine_meter_aircon_energy_used": [aBucket(DAY_ONE, 1)],
+      "sensor.fine_meter_aircon_actual_cost": [aBucket(DAY_ONE, 0.5)],
+      "sensor.fine_meter_aircon_cost_at_grid_price": [aBucket(DAY_ONE, 2.5)],
     });
 
     // When
@@ -385,7 +385,7 @@ describe("fetchDeviceStatistics", () => {
     // Given
     const hass = aHass({
       ...airconResponse,
-      "sensor.living_room_aircon_actual_cost": [
+      "sensor.slow_poll_aircon_actual_cost": [
         aBucket(DAY_ONE, 0.1),
         aBucket(threeDays.end, 999),
       ],

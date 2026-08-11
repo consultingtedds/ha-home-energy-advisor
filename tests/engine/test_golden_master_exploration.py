@@ -36,8 +36,20 @@ from custom_components.home_energy_advisor.engine.energy_source import (
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "exploration_2026_07"
 MADRID = ZoneInfo("Europe/Madrid")
 _UNAVAILABLE = {"unavailable", "unknown"}
-_GUEST = "sensor.guest_bedroom_aircon_energy_usage_cycle"
-_LIVING_ROOM = "sensor.living_room_aircon_energy_usage_cycle"
+_ENTITY_MAP = "entities.json"
+
+
+def _entity(role: str) -> str:
+    """The captured entity id for a behaviour role, read from the local fixture.
+
+    The ids are the reference instance's own, so they name real rooms and cannot
+    be committed (HEA-76). They live in the gitignored capture directory
+    alongside the readings they key into; this module refers to devices only by
+    what their counters do.
+    """
+    mapping = json.loads((FIXTURES / _ENTITY_MAP).read_text(encoding="utf-8"))
+    return str(mapping[role])
+
 
 pytestmark = pytest.mark.skipif(
     not FIXTURES.exists(),
@@ -95,9 +107,9 @@ def _within(delta: EnergyDelta, day: int) -> bool:
     return start <= delta.end < end
 
 
-def test_guest_bedroom_energy_reproduces_the_published_complete_days() -> None:
-    # Given — the guest bedroom's raw counter run through the real delta pipeline
-    deltas = _deltas("aircon_raw_batch1.json", _GUEST)
+def test_coarse_step_energy_reproduces_the_published_complete_days() -> None:
+    # Given — the coarse-step counter's raw run through the real delta pipeline
+    deltas = _deltas("aircon_raw_batch1.json", _entity("coarse_step_aircon"))
 
     # When — energy is summed over each fully captured day (Jul 11 is excluded:
     # the published table snapshotted it mid-day, the fixture has the whole day)
@@ -111,9 +123,9 @@ def test_guest_bedroom_energy_reproduces_the_published_complete_days() -> None:
     assert daily == {8: Decimal("3.25"), 9: Decimal("3.25"), 10: Decimal("2.75")}
 
 
-def test_guest_bedroom_naive_cost_reproduces_the_published_complete_days() -> None:
+def test_coarse_step_naive_cost_reproduces_the_published_complete_days() -> None:
     # Given — the same deltas and the exact TOU price step function
-    deltas = _deltas("aircon_raw_batch1.json", _GUEST)
+    deltas = _deltas("aircon_raw_batch1.json", _entity("coarse_step_aircon"))
     points = _price_points()
 
     # When — each delta is priced at the rate active when it landed and summed to
@@ -130,10 +142,10 @@ def test_guest_bedroom_naive_cost_reproduces_the_published_complete_days() -> No
     assert daily == {8: Decimal("0.58"), 9: Decimal("0.52"), 10: Decimal("0.41")}
 
 
-def test_living_room_attributes_the_full_delta_across_an_unavailable_gap() -> None:
-    # Given — the living room counter reads 1.0, drops to unavailable for ~2 hours,
+def test_slow_poll_attributes_the_full_delta_across_an_unavailable_gap() -> None:
+    # Given — the slow-poll counter reads 1.0, drops to unavailable for ~2 hours,
     # then recovers at 2.5 (the documented Jul 9 real-data edge)
-    deltas = _deltas("aircon_raw_batch2.json", _LIVING_ROOM)
+    deltas = _deltas("aircon_raw_batch2.json", _entity("slow_poll_aircon"))
 
     # When — the delta that recovers the gap is located
     recovery = datetime.fromisoformat("2026-07-09T16:51:01.375342+02:00")

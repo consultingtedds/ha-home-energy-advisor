@@ -30,7 +30,7 @@ def moment(at: str, day: str = "2026-07-11") -> datetime:
 def test_cumulative_source_first_reading_establishes_a_baseline_without_energy() -> (
     None
 ):
-    # Given — a fresh source for the Guest Bedroom Aircon
+    # Given — a fresh source for the Coarse Step Aircon
     source = CumulativeEnergySource()
 
     # When — the very first reading arrives mid-cycle
@@ -55,7 +55,7 @@ def test_cumulative_source_rising_counter_yields_the_increment() -> None:
 
 
 def test_cumulative_source_cycle_reset_treats_the_new_value_as_a_fresh_cycle() -> None:
-    # Given — the WF-RAC counter is mid-cycle at 2.75 kWh
+    # Given — the cycle-resetting counter is mid-cycle at 2.75 kWh
     source = CumulativeEnergySource()
     source.observe(reading(at="02:14", value="2.75"))
 
@@ -200,7 +200,7 @@ def test_cumulative_source_negative_counter_value_is_rejected() -> None:
 
 
 def test_cumulative_source_first_reading_is_logged_as_a_baseline_decision() -> None:
-    # Given — a fresh source for the Guest Bedroom Aircon
+    # Given — a fresh source for the Coarse Step Aircon
     source = CumulativeEnergySource()
 
     # When — the very first reading arrives
@@ -227,7 +227,7 @@ def test_cumulative_source_rising_counter_is_logged_as_counted_with_energy() -> 
 
 
 def test_cumulative_source_cycle_reset_is_logged_as_a_reset_with_energy() -> None:
-    # Given — the WF-RAC counter is mid-cycle at 2.75 kWh
+    # Given — the cycle-resetting counter is mid-cycle at 2.75 kWh
     source = CumulativeEnergySource()
     source.observe(reading(at="02:14", value="2.75"))
 
@@ -337,7 +337,7 @@ def quiet(source: CumulativeEnergySource, value: str, first: str, last: str) -> 
 
 
 def test_source_step_after_quiet_polling_accrues_from_last_movement() -> None:
-    # Given — the Guest Bedroom Aircon holds 0.75 kWh while its integration
+    # Given — the Coarse Step Aircon holds 0.75 kWh while its integration
     # re-reports the unchanged counter every minute for seventy minutes
     source = CumulativeEnergySource()
     source.observe(reading(at="00:35", value="0.75"))

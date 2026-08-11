@@ -27,14 +27,14 @@ The same four figures also describe the "Untracked" remainder pseudo-device
 ### Sensor identity (Home Assistant convention)
 
 - Every sensor sets `has_entity_name = True` and a `translation_key`. The friendly
-  name renders as **"{Device} {Concept}"** — e.g. *"Guest Bedroom Aircon Actual
+  name renders as **"{Device} {Concept}"** — e.g. *"Coarse Step Aircon Actual
   Cost"*. All user-facing text lives in `strings.json` + `translations/` (en, es),
   never hardcoded (HEA-37).
 - `unique_id = {config_entry_id}_{device_key}_{concept_key}`, stable for the life
   of the entity. Display names may be re-translated or re-worded freely; the
   `unique_id` never changes, so statistics and dashboard references survive.
 - `entity_id` auto-derives from device + concept, e.g.
-  `sensor.guest_bedroom_aircon_actual_cost`.
+  `sensor.coarse_step_aircon_actual_cost`.
 
 ### The four concepts
 
@@ -75,7 +75,7 @@ yet explained" and doubles as a live reconciliation check (HEA-36).
 
 Period totals are auto-created native `utility_meter` helpers over the lifetime
 sensors (HEA-23; build-on-foundations per ADR-0004), named
-**"{Device} {Concept} ({Cycle})"** — e.g. *"Guest Bedroom Aircon Actual Cost
+**"{Device} {Concept} ({Cycle})"** — e.g. *"Coarse Step Aircon Actual Cost
 (Daily)"*, `translation_key` `{concept}_{cycle}` (e.g. `actual_cost_daily`).
 
 Only the three `total_increasing` figures get cycle helpers. Cost Savings does

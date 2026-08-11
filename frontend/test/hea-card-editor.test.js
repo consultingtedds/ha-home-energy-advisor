@@ -3,7 +3,7 @@
  *
  * The visual editors (HEA-73). Without one, a custom card drops the user into
  * raw YAML and expects them to know that a device is called
- * `kitchen_aircon` — a slug that appears nowhere in the interface.
+ * `fine_meter_aircon` — a slug that appears nowhere in the interface.
  *
  * `ha-form` belongs to Home Assistant and is never defined in these tests, so
  * what is asserted is the contract we hand it: the schema, the data, and the
@@ -17,8 +17,8 @@ import { TAG as TOTALS_TAG } from "../hea-totals-card.js";
 import { aDeviceRow, aHass } from "./doubles.js";
 
 const TWO_DEVICES = [
-  aDeviceRow("kitchen_aircon", "Kitchen Aircon"),
-  aDeviceRow("living_room_aircon", "Living Room Aircon"),
+  aDeviceRow("fine_meter_aircon", "Fine Meter Aircon"),
+  aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
 ];
 
 /** The editor Home Assistant would obtain and set up for a card. */
@@ -101,7 +101,7 @@ describe("a card's editor", () => {
 
 describe("choosing devices", () => {
   it("lists devices by the name the household gave them", () => {
-    // Given — the whole point: `kitchen_aircon` appears nowhere in the
+    // Given — the whole point: `fine_meter_aircon` appears nowhere in the
     // interface, so nobody should have to type it
     const editor = anEditorFor(TOTALS_TAG);
 
@@ -110,8 +110,8 @@ describe("choosing devices", () => {
 
     // Then — the name is shown, the key is what gets written
     expect(options).toEqual([
-      { value: "kitchen_aircon", label: "Kitchen Aircon" },
-      { value: "living_room_aircon", label: "Living Room Aircon" },
+      { value: "fine_meter_aircon", label: "Fine Meter Aircon" },
+      { value: "slow_poll_aircon", label: "Slow Poll Aircon" },
     ]);
   });
 
@@ -174,7 +174,7 @@ describe("reporting a change", () => {
     // When — the user picks two devices
     userEdits(editor, {
       title: "Running costs",
-      devices: ["living_room_aircon", "kitchen_aircon"],
+      devices: ["slow_poll_aircon", "fine_meter_aircon"],
     });
 
     // Then
@@ -182,7 +182,7 @@ describe("reporting a change", () => {
     expect(changed.mock.calls[0][0].detail.config).toEqual({
       type: `custom:${TOTALS_TAG}`,
       title: "Running costs",
-      devices: ["living_room_aircon", "kitchen_aircon"],
+      devices: ["slow_poll_aircon", "fine_meter_aircon"],
     });
   });
 
@@ -216,7 +216,7 @@ describe("reporting a change", () => {
 
   it("treats choosing no devices as the whole house, not as an empty filter", () => {
     // Given — a card filtered to one device
-    const editor = anEditorFor(TOTALS_TAG, { devices: ["living_room_aircon"] });
+    const editor = anEditorFor(TOTALS_TAG, { devices: ["slow_poll_aircon"] });
     const changed = vi.fn();
     editor.addEventListener("config-changed", changed);
 

@@ -155,28 +155,24 @@ def test_ledger_keeps_device_draws_separate_from_each_other() -> None:
     # Given — two tracked devices drawing in the 02:15 bucket
     ledger = IntervalLedger()
     ledger.add_device(
-        "guest_bedroom_aircon", delta(start="02:15", end="02:20", kwh="0.25")
+        "coarse_step_aircon", delta(start="02:15", end="02:20", kwh="0.25")
     )
-    ledger.add_device("kitchen_aircon", delta(start="02:15", end="02:20", kwh="0.15"))
+    ledger.add_device(
+        "fine_meter_aircon", delta(start="02:15", end="02:20", kwh="0.15")
+    )
 
     # When / Then — each device is tallied under its own id
     draws = ledger.buckets()[0].device_draws
-    assert draws["guest_bedroom_aircon"] == Decimal("0.25")
-    assert draws["kitchen_aircon"] == Decimal("0.15")
+    assert draws["coarse_step_aircon"] == Decimal("0.25")
+    assert draws["fine_meter_aircon"] == Decimal("0.15")
 
 
 def test_ledger_returns_buckets_in_chronological_order() -> None:
     # Given — deltas added out of order across three buckets
     ledger = IntervalLedger()
-    ledger.add_device(
-        "guest_bedroom_aircon", delta(start="02:25", end="02:30", kwh="1")
-    )
-    ledger.add_device(
-        "guest_bedroom_aircon", delta(start="02:05", end="02:10", kwh="1")
-    )
-    ledger.add_device(
-        "guest_bedroom_aircon", delta(start="02:15", end="02:20", kwh="1")
-    )
+    ledger.add_device("coarse_step_aircon", delta(start="02:25", end="02:30", kwh="1"))
+    ledger.add_device("coarse_step_aircon", delta(start="02:05", end="02:10", kwh="1"))
+    ledger.add_device("coarse_step_aircon", delta(start="02:15", end="02:20", kwh="1"))
 
     # When — the buckets are read back
     starts = [bucket.start for bucket in ledger.buckets()]
@@ -189,12 +185,12 @@ def test_ledger_spreads_a_device_delta_across_the_buckets_it_spans() -> None:
     # Given — a device delta straddling the 02:15 boundary
     ledger = IntervalLedger()
     ledger.add_device(
-        "guest_bedroom_aircon", delta(start="02:14", end="02:19", kwh="0.25")
+        "coarse_step_aircon", delta(start="02:14", end="02:19", kwh="0.25")
     )
 
     # When — the buckets are read back
     buckets = ledger.buckets()
 
     # Then — the draw is split across both buckets by time overlap
-    assert buckets[0].device_draws["guest_bedroom_aircon"] == Decimal("0.05")
-    assert buckets[1].device_draws["guest_bedroom_aircon"] == Decimal("0.20")
+    assert buckets[0].device_draws["coarse_step_aircon"] == Decimal("0.05")
+    assert buckets[1].device_draws["coarse_step_aircon"] == Decimal("0.20")

@@ -31,12 +31,14 @@ async def test_a_sensor_with_a_recorded_reading_has_reported(
 ) -> None:
     # Given — a counter that produced a reading and then went unavailable, which
     # is what a device switched off for the season looks like
-    hass.states.async_set("sensor.guest_aircon_energy", "412.3", _ENERGY)
-    hass.states.async_set("sensor.guest_aircon_energy", "unavailable")
+    hass.states.async_set("sensor.coarse_step_aircon_energy", "412.3", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_aircon_energy", "unavailable")
     await async_wait_recording_done(hass)
 
     # When / Then — the earlier reading answers the question
-    assert await async_has_ever_reported(hass, "sensor.guest_aircon_energy") is True
+    assert (
+        await async_has_ever_reported(hass, "sensor.coarse_step_aircon_energy") is True
+    )
 
 
 @pytest.mark.usefixtures("recorder_mock")

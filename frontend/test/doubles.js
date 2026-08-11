@@ -58,7 +58,7 @@ export const bucketsFor = (
   ],
 });
 
-export const AIRCON_BUCKETS = bucketsFor("living_room_aircon", 38.6, 0.11, 5.78);
+export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
 
 /**
  * The `hass` object a card is handed. The collection is cached at `_` + the
@@ -66,7 +66,7 @@ export const AIRCON_BUCKETS = bucketsFor("living_room_aircon", 38.6, 0.11, 5.78)
  */
 export const aHass = ({
   collection = anEnergyCollection(),
-  devices = [aDeviceRow("living_room_aircon", "Living Room Aircon")],
+  devices = [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")],
   response = AIRCON_BUCKETS,
   callWS,
 } = {}) => ({

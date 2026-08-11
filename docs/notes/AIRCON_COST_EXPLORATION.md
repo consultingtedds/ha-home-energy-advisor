@@ -8,7 +8,7 @@
 
 ## Why this happened
 
-Started as a simple question — "what does my Guest Bedroom Aircon actually cost to run?" —
+Started as a simple question — "what does my Coarse Step Aircon actually cost to run?" —
 and turned into a hand-computed proof of the exact concepts the PRD defines for the MVP:
 **Energy Used**, **Cost Without Solar** ("naive cost" below), **Actual Cost**, and
 **Solar Saving** (the delta between the two). Doing this manually against live HA history
@@ -22,7 +22,7 @@ integration.
   charge/discharge scheduling AppDaemon-style integration).
 - Existing house convention for "run this on solar surplus": a reusable blueprint
   `codex/solar-powered-device.yaml`, used by automations like
-  `automation.guest_bedroom_hvac_solar`. It already gates on
+  `automation.coarse_step_hvac_solar`. It already gates on
   `sensor.inverter_power_less_consumption` (solar power minus house consumption, in W;
   positive = surplus, negative = deficit) plus battery SoC. This is the established
   "are we running on solar" signal in this house — reused it rather than inventing a new one.
@@ -31,7 +31,7 @@ integration.
 
 | Purpose | Entity | Notes |
 |---|---|---|
-| Per-device energy | `sensor.<room>_aircon_energy_usage_cycle` | Mitsubishi WF-RAC integration. `device_class: energy`, `state_class: total_increasing`. Updates in coarse 0.25 kWh steps, resets to 0 per compressor cycle. No instantaneous power sensor exists on these units. |
+| Per-device energy | `sensor.<room>_aircon_energy_usage_cycle` | The local air-conditioning integration. `device_class: energy`, `state_class: total_increasing`. Updates in coarse 0.25 kWh steps, resets to 0 per compressor cycle. No instantaneous power sensor exists on these units. |
 | Live import price | `sensor.electricity_price_import` | EUR/kWh, already resolves peak/standard/off-peak windows into one current value. Observed pattern: 00:00–08:00 €0.093, 08:00–10:00 & 14:00–18:00 & 22:00–24:00 €0.152, 10:00–14:00 & 18:00–22:00 €0.234 (repeats daily). |
 | Solar vs. consumption gate (chosen) | `sensor.inverter_power_less_consumption` | W. Negative = house consuming more than solar generates → "actual cost" applies. Same sensor the house's existing solar-HVAC automations use. |
 | Alternative gate (not used) | `predbat.grid_power` | True grid import/export (kW), positive = importing. More accurate for "money actually leaving your account" since it accounts for the battery covering a solar shortfall — but doesn't match how the question was framed ("using more than solar generates"), so parked for later. |
@@ -62,11 +62,11 @@ solar/deficit state was constant across the hour, and the underlying energy sens
 only reports in 0.25 kWh jumps every 15 min–few hours, so this is "rough snapshot"
 accuracy, not billing-grade. Good enough for validating the concept; a real
 implementation would ideally have finer-grained power sensors per device, which don't
-currently exist for these Mitsubishi WF-RAC units.
+currently exist for these units.
 
 ## Results
 
-### Guest Bedroom Aircon, day-by-day (Jul 8–11)
+### Coarse Step Aircon, day-by-day (Jul 8–11)
 
 | Day | Energy used | Cost ignoring solar | Actual cost (solar-gated) |
 |---|---|---|---|
@@ -87,13 +87,12 @@ cycling):
 
 Roughly 60% of aircon energy that week fell in solar-deficit hours, so actual cost
 came out at ~40% of the naive figure. The spread between units was wide: the
-lightest-used ran entirely during solar surplus (€0 gated cost), while others —
-the Kitchen and Guest Bedroom among them — skewed the other way and paid close to
-the naive rate.
+lightest-used ran entirely during solar surplus (€0 gated cost), while others
+skewed the other way and paid close to the naive rate.
 
 The per-unit breakdown is deliberately not reproduced here: it is a room-by-room
 map of a private home and nothing in the project depends on it. The two units the
-golden-master tests replay (Guest Bedroom, Living Room) are covered in full above
+golden-master tests replay (Coarse Step, Slow Poll) are covered in full above
 and in the local-only fixture.
 
 ## Backfill capability (confirmed, not yet used)
@@ -103,7 +102,7 @@ and in the local-only fixture.
   backfill on first setup. It doesn't rewrite raw state history, but long-term stats are
   what drive the Energy Dashboard / History graphs / Statistics cards, which is what
   matters for a running-cost total.
-- Confirmed `sensor.guest_bedroom_aircon_energy_usage_cycle` already has long-term `sum`
+- Confirmed `sensor.coarse_step_aircon_energy_usage_cycle` already has long-term `sum`
   statistics going back to at least mid-April 2026 (90+ days), and they correctly handle
   the cycle resets. So a real cost sensor could be backfilled much further than the
   10-day raw-history window used for the tables above — bounded by how far back the
@@ -130,7 +129,7 @@ and in the local-only fixture.
 
 ## Open questions / not decided
 
-- Scope: build this for all 9 aircon units, or prototype on Guest Bedroom only first?
+- Scope: build this for all 9 aircon units, or prototype on Coarse Step only first?
 - Does this become a real HA integration (per `IMPLEMENTATION_IDEAS.md` → "Native Home
   Assistant Integration" preference), or stay as manually-created Template Helpers per
   device for now? The manual approach doesn't scale well to "every measurable device"
@@ -142,5 +141,5 @@ and in the local-only fixture.
   (`predbat.grid_power`) — may want both as configurable strategies eventually (ties into
   the "Cost Allocation" open question in `IMPLEMENTATION_IDEAS.md`).
 - No decision yet on whether/how to handle devices without per-device energy sensors
-  (most of the Mitsubishi WF-RAC units only expose the coarse cycle-energy sensor, no
+  (most of these units only expose the coarse cycle-energy sensor, no
   instantaneous power).
