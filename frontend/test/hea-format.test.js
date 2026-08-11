@@ -15,6 +15,7 @@ import {
   formatPeriod,
   formatRate,
   localeFrom,
+  rateUnit,
 } from "../hea-format.js";
 
 const EURO = { language: "en-GB", currency: "EUR" };
@@ -141,18 +142,27 @@ describe("formatPeriod", () => {
 });
 
 describe("formatRate", () => {
-  it("shows a unit price to the precision a tariff is quoted in", () => {
-    // Given — the off-peak import rate, which is quoted to three decimals
-    // When / Then — two decimals would round €0.093 to €0.09 and lose the
-    // difference between an off-peak rate and a peak one
-    expect(formatRate(0.093, EURO)).toBe("€0.093/kWh");
+  it("quotes a unit price the way a tariff is quoted — in minor units", () => {
+    // Given — the off-peak import rate
+    // When / Then — 9.3, not 0.093. A €/kWh figure is always a small fraction
+    // of a euro, so a column of them reads as leading zeroes; cents is the
+    // unit tariffs are actually advertised in
+    expect(formatRate(0.093, EURO)).toBe("9.3");
   });
 
   it("keeps a rate far below the tariff legible", () => {
     // Given — a device that ran almost entirely on surplus generation
     // When / Then — the point of the column is that this is visibly not a
-    // tariff, so it must not collapse to €0.00
-    expect(formatRate(0.003, EURO)).toBe("€0.003/kWh");
+    // tariff, so it must not collapse to zero
+    expect(formatRate(0.003, EURO)).toBe("0.3");
+    expect(formatRate(0.0004, EURO)).toBe("0.04");
+  });
+
+  it("carries no symbol, because the header carries it once", () => {
+    // Given / When / Then — the cell is a bare number: this column is the only
+    // one that would otherwise hold both a currency prefix and a unit suffix,
+    // which is what made it twice the width of every other column
+    expect(formatRate(0.093, EURO)).not.toMatch(/€|c|kWh/);
   });
 
   it("is a dash when there is no rate to show", () => {
@@ -162,9 +172,35 @@ describe("formatRate", () => {
     expect(formatRate(null, EURO)).toBe("—");
   });
 
-  it("falls back to a bare number when no currency is configured", () => {
-    // Given / When / Then — the same rule formatMoney follows: a bare number
-    // beats the wrong symbol
-    expect(formatRate(0.093, { language: "en-GB" })).toBe("0.093/kWh");
+  it("stays in major units for a currency with no minor unit we know", () => {
+    // Given — a currency whose subunit symbol Intl cannot supply
+    // When / Then — better a correct major-unit figure than an invented symbol
+    expect(formatRate(30, { language: "ja", currency: "JPY" })).toBe("30");
+  });
+});
+
+describe("rateUnit", () => {
+  it("names the minor unit where the currency has a conventional one", () => {
+    // Given / When / Then — the header carries this once, so every cell below
+    // it can be a bare number
+    expect(rateUnit(EURO)).toBe("c/kWh");
+    expect(rateUnit({ language: "en-US", currency: "USD" })).toBe("¢/kWh");
+    expect(rateUnit({ language: "en-GB", currency: "GBP" })).toBe("p/kWh");
+  });
+
+  it("falls back to the currency's own symbol, taken from Intl", () => {
+    // Given — a currency outside the small table of known minor units. Intl
+    // has no notion of a subunit symbol, so inventing one would be guessing;
+    // the major-unit symbol it does know is correct
+    // The Japanese locale writes yen fullwidth (￥, U+FFE5) rather than ¥
+    // (U+00A5) — which is the point of asking Intl instead of guessing
+    expect(rateUnit({ language: "ja", currency: "JPY" })).toMatch(/\/kWh$/);
+    expect(rateUnit({ language: "ja", currency: "JPY" })).toMatch(/[¥￥]/);
+  });
+
+  it("names only the energy unit when no currency is configured", () => {
+    // Given / When / Then — the same rule formatMoney follows: no symbol beats
+    // a wrong one
+    expect(rateUnit({ language: "en-GB" })).toBe("/kWh");
   });
 });

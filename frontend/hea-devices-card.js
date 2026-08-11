@@ -14,6 +14,7 @@ import {
   formatEnergy,
   formatMoney,
   formatRate,
+  rateUnit,
 } from "./hea-format.js";
 
 export const TAG = "hea-devices-card";
@@ -39,7 +40,13 @@ const COLUMNS = [
   { field: "actualCost", label: "Actual Cost", format: formatMoney },
   { field: "costAtGridPrice", label: "At Grid Price", format: formatMoney },
   { field: "costSavings", label: "Saved", format: formatMoney },
-  { derive: effectiveRate, label: "Paid", format: formatRate },
+  {
+    derive: effectiveRate,
+    // The only column whose unit varies with the household's currency, so its
+    // label is built at render time rather than fixed here.
+    label: (locale) => ({ text: "Rate", unit: rateUnit(locale) }),
+    format: formatRate,
+  },
 ];
 
 /** What `sort_by` may name, in the sensor's own vocabulary, and how it reads. */
@@ -68,6 +75,7 @@ class HeaDevicesCard extends HeaCard {
       letter-spacing: 0.04em;
       border-bottom: 1px solid var(--divider-color, #e0e0e0);
     }
+    thead .unit { text-transform: none; letter-spacing: 0; }
     tbody td { border-bottom: 1px solid var(--divider-color, #e0e0e0); }
     tbody tr:last-child td { border-bottom: none; }
     tfoot th, tfoot td {
@@ -97,11 +105,23 @@ class HeaDevicesCard extends HeaCard {
     return `
       <div class="scroll">
         <table>
-          <thead><tr>${COLUMNS.map((column) => `<th>${column.label}</th>`).join("")}</tr></thead>
+          <thead><tr>${COLUMNS.map((column) => this._heading(column, locale)).join("")}</tr></thead>
           <tbody>${devices.map((device) => this._row(device, locale)).join("")}</tbody>
           <tfoot>${this._total(locale)}</tfoot>
         </table>
       </div>`;
+  }
+
+  /**
+   * A column heading, with its unit kept out of the row's uppercasing.
+   *
+   * `text-transform: uppercase` would render c/kWh as C/KWH — which is not
+   * merely shouty, it is the wrong symbol.
+   */
+  _heading({ label }, locale) {
+    if (typeof label !== "function") return `<th>${label}</th>`;
+    const { text, unit } = label(locale);
+    return `<th>${text} <span class="unit">${escapeText(unit)}</span></th>`;
   }
 
   /** Dearest first, and by name where two devices cost the same. */
