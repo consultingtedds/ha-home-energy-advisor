@@ -31,6 +31,8 @@ const SERIES = {
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
 
 class HeaCostOverTimeCard extends HeaCard {
+  static defaultTitle = "Cost over time";
+
   static cardStyle = `
     ha-chart-base { display: block; }
   `;
@@ -130,7 +132,16 @@ class HeaCostOverTimeCard extends HeaCard {
         axisLabel: { formatter: (value) => formatMoney(value, locale) },
       },
       // The three figures belong together on hover: paid, saved, and the bar.
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+      // Formatted as money, because an allocated share is a proportion of a
+      // blended price and divides into a long recurring decimal — a raw hover
+      // reads out fourteen places of a euro, which is unreadable and claims a
+      // precision money does not have. The axis is already in currency; the
+      // tooltip should match it rather than contradict it.
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (value) => formatMoney(value, locale),
+      },
       legend: { show: true },
     };
   }

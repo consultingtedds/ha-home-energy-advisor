@@ -153,7 +153,13 @@ export class HeaCard extends HTMLElement {
     `;
     // Set as a property rather than interpolated, so a title containing a quote
     // cannot break out of the markup.
-    const title = this._config?.title;
+    //
+    // An absent title takes the card's own default: a card added from the
+    // picker should say what it shows, and a chart of coloured bars says
+    // nothing on its own. An *empty* title is a deliberate request for no
+    // header, for a user stacking cards under a heading of their own — so the
+    // two cases are distinguished rather than both treated as "unset".
+    const title = this._config?.title ?? this.constructor.defaultTitle;
     if (title) this.shadowRoot.querySelector("ha-card").setAttribute("header", title);
     this._afterRender();
   }

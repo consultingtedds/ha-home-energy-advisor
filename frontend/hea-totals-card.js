@@ -25,6 +25,8 @@ const FIGURES = [
 ];
 
 class HeaTotalsCard extends HeaCard {
+  static defaultTitle = "Cost summary";
+
   static cardStyle = `
     .figures { display: flex; flex-wrap: wrap; gap: 16px; }
     .figure { flex: 1 1 8em; display: flex; flex-direction: column; gap: 4px; }

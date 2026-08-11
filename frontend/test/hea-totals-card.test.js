@@ -79,6 +79,16 @@ describe("configuration", () => {
     );
   });
 
+  it("names itself when no title is configured", () => {
+    // Given / When — added from the picker, with nothing filled in
+    const card = mount(aHass());
+
+    // Then — three unlabelled money figures do not say what they are
+    expect(card.shadowRoot.querySelector("ha-card").getAttribute("header")).toBe(
+      "Cost summary",
+    );
+  });
+
   it("has a card size, so it lays out in a masonry view", () => {
     // Given / When / Then
     expect(mount(aHass()).getCardSize()).toBe(3);
