@@ -161,6 +161,9 @@ describe("the figures", () => {
           "sensor.slow_poll_aircon_energy_used",
           "sensor.slow_poll_aircon_actual_cost",
           "sensor.slow_poll_aircon_cost_at_grid_price",
+          "sensor.slow_poll_aircon_energy_from_grid",
+          "sensor.slow_poll_aircon_energy_from_generation",
+          "sensor.slow_poll_aircon_energy_from_battery",
         ],
       }),
     );

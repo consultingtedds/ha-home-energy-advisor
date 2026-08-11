@@ -8,4 +8,5 @@
 
 import "./hea-cost-over-time-card.js";
 import "./hea-devices-card.js";
+import "./hea-sources-card.js";
 import "./hea-totals-card.js";
