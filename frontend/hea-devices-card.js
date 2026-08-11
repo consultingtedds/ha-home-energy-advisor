@@ -9,18 +9,37 @@
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { escapeText, formatEnergy, formatMoney } from "./hea-format.js";
+import {
+  escapeText,
+  formatEnergy,
+  formatMoney,
+  formatRate,
+} from "./hea-format.js";
 
 export const TAG = "hea-devices-card";
 const EDITOR_TAG = `${TAG}-editor`;
 
-/** The columns, and the row field each reads. */
+/**
+ * What a kWh cost, for one row or for the whole table.
+ *
+ * Undefined rather than zero when there is no energy: no price can be derived
+ * from nothing, and "free" is a different claim from "we cannot say".
+ */
+const effectiveRate = ({ actualCost, energyUsed }) =>
+  energyUsed > 0 ? actualCost / energyUsed : undefined;
+
+/**
+ * The columns. A column either reads a `field` — which the totals row sums —
+ * or derives its value, which the totals row derives again from the summed
+ * fields. A rate is a ratio, and ratios do not add up.
+ */
 const COLUMNS = [
   { field: "name", label: "Device" },
   { field: "energyUsed", label: "Energy", format: formatEnergy },
   { field: "actualCost", label: "Actual Cost", format: formatMoney },
   { field: "costAtGridPrice", label: "At Grid Price", format: formatMoney },
   { field: "costSavings", label: "Saved", format: formatMoney },
+  { derive: effectiveRate, label: "Paid", format: formatRate },
 ];
 
 /** What `sort_by` may name, in the sensor's own vocabulary, and how it reads. */
@@ -96,22 +115,24 @@ class HeaDevicesCard extends HeaCard {
     return `<tr>${COLUMNS.map((column) => this._cell(column, device, locale)).join("")}</tr>`;
   }
 
-  _cell({ field, format }, device, locale) {
+  _cell({ field, derive, format }, device, locale) {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) return `<th scope="row">${escapeText(device[field])}</th>`;
-    const value = device[field];
+    const value = derive ? derive(device) : device[field];
     const loss = field === "costSavings" && value < 0 ? ` class="loss"` : "";
     return `<td${loss}>${format(value, locale)}</td>`;
   }
 
   _total(locale) {
     const totals = this._sumOfShown();
-    const cells = COLUMNS.map(({ field, format }) =>
-      format
-        ? `<td>${format(totals[field], locale)}</td>`
-        : `<th scope="row">Total</th>`,
-    ).join("");
+    const cells = COLUMNS.map(({ field, derive, format }) => {
+      if (!format) return `<th scope="row">Total</th>`;
+      // Derived from the summed fields, never from the rows' own derived
+      // values: the table's rate is what the period cost per kWh overall.
+      const value = derive ? derive(totals) : totals[field];
+      return `<td>${format(value, locale)}</td>`;
+    }).join("");
     return `<tr>${cells}</tr>`;
   }
 
@@ -124,8 +145,8 @@ class HeaDevicesCard extends HeaCard {
   _sumOfShown() {
     return (this._result?.devices ?? []).reduce(
       (totals, device) => {
-        for (const { field, format } of COLUMNS) {
-          if (format) totals[field] += device[field];
+        for (const { field, derive, format } of COLUMNS) {
+          if (format && !derive) totals[field] += device[field];
         }
         return totals;
       },
