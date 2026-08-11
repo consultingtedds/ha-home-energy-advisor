@@ -73,13 +73,15 @@ describe("the table", () => {
     const card = mount(hass);
     await ready(card);
 
-    // Then — the counterfactual and the saving beside what was actually paid
+    // Then — the counterfactual and the saving beside what was actually paid,
+    // and the unit price that ties the first two together
     expect(rows(card)).toContainEqual([
       "Slow Poll Aircon",
       "38.6 kWh",
       expect.stringMatching(/0[.,]11/),
       expect.stringMatching(/5[.,]78/),
       expect.stringMatching(/5[.,]67/),
+      expect.stringMatching(/0[.,]003/),
     ]);
   });
 
@@ -140,6 +142,59 @@ describe("the table", () => {
     expect(total[2]).toMatch(/4[.,]61/);
     expect(total[3]).toMatch(/19[.,]28/);
     expect(total[4]).toMatch(/14[.,]67/);
+  });
+
+  it("shows what each device actually paid per kWh", async () => {
+    // Given — three devices whose unit prices differ by two orders of magnitude
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — the rate is cost over energy, per device. This is the figure that
+    // exposed HEA-74: a device priced far under the tariff on a night when
+    // every kWh came off the grid is visible here and nowhere else.
+    const rates = Object.fromEntries(
+      rows(card).map((row) => [row[0], row[5]]),
+    );
+    expect(rates["Fine Meter Aircon"]).toMatch(/0[.,]250/); // 3.00 / 12.0
+    expect(rates["Slow Poll Aircon"]).toMatch(/0[.,]003/); // 0.11 / 38.6
+    expect(rates["Untracked Energy Devices"]).toMatch(/0[.,]015/); // 1.50 / 100
+  });
+
+  it("totals the rate as the period's blended price, not a sum of rates", async () => {
+    // Given — the same three devices
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — 4.61 over 150.6 kWh is €0.031/kWh. Adding the three rates would
+    // give €0.268, which is not a price anything was bought at: a rate is a
+    // ratio, and ratios do not sum.
+    const total = [
+      ...card.shadowRoot.querySelectorAll("tfoot th, tfoot td"),
+    ].map((cell) => cell.textContent.trim());
+    expect(total[5]).toMatch(/0[.,]031/);
+    expect(total[5]).not.toMatch(/0[.,]268/);
+  });
+
+  it("shows no rate for a device that used no energy", async () => {
+    // Given — a device that reported nothing over the period
+    const hass = aHass({
+      devices: [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")],
+      response: bucketsFor("slow_poll_aircon", 0, 0, 0),
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — a dash, not a zero. Dividing by no energy yields no price, and
+    // "free" is a different claim from "we cannot say"
+    expect(rows(card)[0][5]).toBe("—");
   });
 
   it("marks a device whose saving is really a loss", async () => {

@@ -44,6 +44,31 @@ export const formatEnergy = (value, { language }) => {
 };
 
 /**
+ * A unit price — what a kWh actually cost — or a dash if there is none.
+ *
+ * Quoted to three decimals rather than the two money uses, because a tariff is:
+ * rounding €0.093 to €0.09 erases the difference between an off-peak rate and a
+ * standard one, and a device running on surplus generation costs €0.003, which
+ * two decimals would render as free.
+ *
+ * This is the figure that made HEA-74 visible — a device priced at a sixth of
+ * the tariff on a night when every kWh came off the grid. Cost and energy each
+ * looked ordinary; only their ratio did not.
+ */
+export const formatRate = (value, { language, currency }) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
+  const options = currency
+    ? { style: "currency", currency }
+    : {};
+  const number = new Intl.NumberFormat(language, {
+    ...options,
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  }).format(value);
+  return `${number}/kWh`;
+};
+
+/**
  * Text safe to interpolate into markup.
  *
  * A device name is whatever the household typed into their own registry, and a

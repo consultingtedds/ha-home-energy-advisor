@@ -13,6 +13,7 @@ import {
   formatEnergy,
   formatMoney,
   formatPeriod,
+  formatRate,
   localeFrom,
 } from "../hea-format.js";
 
@@ -136,5 +137,34 @@ describe("formatPeriod", () => {
   it("is empty when there is no period yet", () => {
     // Given / When / Then
     expect(formatPeriod(undefined, EURO)).toBe("");
+  });
+});
+
+describe("formatRate", () => {
+  it("shows a unit price to the precision a tariff is quoted in", () => {
+    // Given — the off-peak import rate, which is quoted to three decimals
+    // When / Then — two decimals would round €0.093 to €0.09 and lose the
+    // difference between an off-peak rate and a peak one
+    expect(formatRate(0.093, EURO)).toBe("€0.093/kWh");
+  });
+
+  it("keeps a rate far below the tariff legible", () => {
+    // Given — a device that ran almost entirely on surplus generation
+    // When / Then — the point of the column is that this is visibly not a
+    // tariff, so it must not collapse to €0.00
+    expect(formatRate(0.003, EURO)).toBe("€0.003/kWh");
+  });
+
+  it("is a dash when there is no rate to show", () => {
+    // Given — a device that used no energy, so no rate can be derived
+    // When / Then — a dash, never a zero: they mean different things
+    expect(formatRate(undefined, EURO)).toBe("—");
+    expect(formatRate(null, EURO)).toBe("—");
+  });
+
+  it("falls back to a bare number when no currency is configured", () => {
+    // Given / When / Then — the same rule formatMoney follows: a bare number
+    // beats the wrong symbol
+    expect(formatRate(0.093, { language: "en-GB" })).toBe("0.093/kWh");
   });
 });
