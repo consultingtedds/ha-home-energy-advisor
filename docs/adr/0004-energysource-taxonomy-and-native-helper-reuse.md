@@ -29,13 +29,13 @@ reach the accounting engine. The MVP ships two implementations:
 
 1. **`CumulativeEnergySource`** — for `total_increasing` counters, covering both
    the *lifetime* pattern (Zigbee plugs, Tuya totals, an inverter meters; monotonic,
-   rare resets) and the *resetting* pattern (a cycle-resetting counter per-cycle counters, Tuya
+   rare resets) and the *resetting* pattern (per-cycle aircon counters, Tuya
    daily counters; frequent resets). One rule handles both: `delta = new − prev`,
    except a fall (`new < prev`) is a reset whose new value is a fresh cycle's
    energy; `unavailable`/`unknown` are skipped. Implemented and validated in
    HEA-16.
 
-2. **Power-only devices** (a cloud lamp lights, a cloud heating integration effective power) are supported by
+2. **Power-only devices** (smart lights, cloud-heater effective power) are supported by
    **programmatically creating a native Integral (Riemann-sum) helper** on the
    selected power sensor; its output energy sensor then feeds the *same*
    `CumulativeEnergySource` pipeline. No power→energy integration is

@@ -41,7 +41,7 @@ def _entry() -> MockConfigEntry:
                 title="Coarse Step Aircon",
                 data={
                     CONF_NAME: "Coarse Step Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
                 },
                 unique_id=None,
             )
@@ -56,7 +56,7 @@ async def test_diagnostics_redacts_entity_ids_and_device_names(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     entry = _entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)

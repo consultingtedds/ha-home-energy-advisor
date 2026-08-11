@@ -14,7 +14,7 @@ readings can still land before the interval is closed.
 What happened *after* the margin was never decided in an ADR — only asserted in a
 docstring: energy for an already-finalised interval was dropped, "the amounts are
 tiny". That is true for finely-updating meters and **false for exactly the
-devices this product was built around.** The a cycle-resetting counter aircons (the founding use
+devices this product was built around.** The cycle-resetting aircons (the founding use
 case) and cloud-polled Tuya devices report cumulative energy in coarse 0.25 kWh
 steps every 15-90+ minutes. A device's delta therefore spans well past the
 watermark, and every portion older than it was discarded — an estimated **30-50 %

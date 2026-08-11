@@ -31,7 +31,7 @@ integration.
 
 | Purpose | Entity | Notes |
 |---|---|---|
-| Per-device energy | `sensor.<room>_aircon_energy_usage_cycle` | a cloud aircon integration a cycle-resetting counter integration. `device_class: energy`, `state_class: total_increasing`. Updates in coarse 0.25 kWh steps, resets to 0 per compressor cycle. No instantaneous power sensor exists on these units. |
+| Per-device energy | `sensor.<room>_aircon_energy_usage_cycle` | The local air-conditioning integration. `device_class: energy`, `state_class: total_increasing`. Updates in coarse 0.25 kWh steps, resets to 0 per compressor cycle. No instantaneous power sensor exists on these units. |
 | Live import price | `sensor.electricity_price_import` | EUR/kWh, already resolves peak/standard/off-peak windows into one current value. Observed pattern: 00:00–08:00 €0.093, 08:00–10:00 & 14:00–18:00 & 22:00–24:00 €0.152, 10:00–14:00 & 18:00–22:00 €0.234 (repeats daily). |
 | Solar vs. consumption gate (chosen) | `sensor.inverter_power_less_consumption` | W. Negative = house consuming more than solar generates → "actual cost" applies. Same sensor the house's existing solar-HVAC automations use. |
 | Alternative gate (not used) | `predbat.grid_power` | True grid import/export (kW), positive = importing. More accurate for "money actually leaving your account" since it accounts for the battery covering a solar shortfall — but doesn't match how the question was framed ("using more than solar generates"), so parked for later. |
@@ -62,7 +62,7 @@ solar/deficit state was constant across the hour, and the underlying energy sens
 only reports in 0.25 kWh jumps every 15 min–few hours, so this is "rough snapshot"
 accuracy, not billing-grade. Good enough for validating the concept; a real
 implementation would ideally have finer-grained power sensors per device, which don't
-currently exist for these a cloud aircon integration a cycle-resetting counter units.
+currently exist for these units.
 
 ## Results
 
@@ -87,9 +87,8 @@ cycling):
 
 Roughly 60% of aircon energy that week fell in solar-deficit hours, so actual cost
 came out at ~40% of the naive figure. The spread between units was wide: the
-lightest-used ran entirely during solar surplus (€0 gated cost), while others —
-the Kitchen and Coarse Step among them — skewed the other way and paid close to
-the naive rate.
+lightest-used ran entirely during solar surplus (€0 gated cost), while others
+skewed the other way and paid close to the naive rate.
 
 The per-unit breakdown is deliberately not reproduced here: it is a room-by-room
 map of a private home and nothing in the project depends on it. The two units the
@@ -142,5 +141,5 @@ and in the local-only fixture.
   (`predbat.grid_power`) — may want both as configurable strategies eventually (ties into
   the "Cost Allocation" open question in `IMPLEMENTATION_IDEAS.md`).
 - No decision yet on whether/how to handle devices without per-device energy sensors
-  (most of the a cloud aircon integration a cycle-resetting counter units only expose the coarse cycle-energy sensor, no
+  (most of these units only expose the coarse cycle-energy sensor, no
   instantaneous power).

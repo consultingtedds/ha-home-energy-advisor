@@ -74,8 +74,10 @@ _UNAVAILABLE = {"unavailable", "unknown"}
 # this long before a Repair is raised — long enough to ride out restarts and brief
 # outages, short enough to surface a genuinely dead sensor the same day.
 _UNAVAILABLE_GRACE = timedelta(hours=1)
-# Consecutive over-drawn 5-minute buckets (~one hour) before the persistent
-# negative-remainder Repair is raised.
+# Over-drawn 5-minute buckets within the engine's recent window before the
+# persistent negative-remainder Repair is raised. Not a *consecutive* run: a
+# coarse counter overdraws one bucket and not the next, which reset the old run
+# every time and kept this Repair silent for weeks (HEA-74).
 _OVERDRAWN_BUCKET_LIMIT = 12
 
 _ROLE_BY_CONF: dict[str, SourceRole] = {
@@ -163,7 +165,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                 self._handle_state_change,
             )
         )
-        # Polled integrations (a cycle-resetting counter ~1/min, Tuya cloud) re-report an unchanged
+        # Polled integrations (aircon ~1/min, Tuya cloud) re-report an unchanged
         # counter between its rare steps. Tracking those reports advances each
         # source's last-seen time, so when the counter finally moves the delta spans
         # only the poll interval rather than the whole quiet stretch — keeping late

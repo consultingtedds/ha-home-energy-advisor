@@ -107,13 +107,13 @@ async def test_a_utility_meter_accumulates_its_source_within_the_cycle(
 ) -> None:
     # Given — a device's Actual Cost sensor reading zero at the top of the day
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.guest_aircon_actual_cost", "0", _COST)
+    hass.states.async_set("sensor.coarse_step_aircon_actual_cost", "0", _COST)
 
     # When — we auto-create a daily utility_meter over it
     entry_id = await async_ensure_utility_meter(
         hass,
         name="Coarse Step Aircon Actual Cost Daily",
-        source_entity="sensor.guest_aircon_actual_cost",
+        source_entity="sensor.coarse_step_aircon_actual_cost",
         cycle="daily",
         net_consumption=False,
     )
@@ -125,7 +125,7 @@ async def test_a_utility_meter_accumulates_its_source_within_the_cycle(
 
     # And — as the lifetime cost climbs to €1.20 within the day, the daily meter
     # tracks the €1.20 accrued this cycle
-    hass.states.async_set("sensor.guest_aircon_actual_cost", "1.20", _COST)
+    hass.states.async_set("sensor.coarse_step_aircon_actual_cost", "1.20", _COST)
     await hass.async_block_till_done()
     state = hass.states.get(output)
     assert state is not None
@@ -137,11 +137,11 @@ async def test_ensuring_a_meter_is_idempotent_per_source_and_cycle(
 ) -> None:
     # Given — a daily meter over a device's Actual Cost sensor
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.guest_aircon_actual_cost", "0", _COST)
+    hass.states.async_set("sensor.coarse_step_aircon_actual_cost", "0", _COST)
     first = await async_ensure_utility_meter(
         hass,
         name="Coarse Step Aircon Actual Cost Daily",
-        source_entity="sensor.guest_aircon_actual_cost",
+        source_entity="sensor.coarse_step_aircon_actual_cost",
         cycle="daily",
         net_consumption=False,
     )
@@ -151,7 +151,7 @@ async def test_ensuring_a_meter_is_idempotent_per_source_and_cycle(
     second = await async_ensure_utility_meter(
         hass,
         name="Coarse Step Aircon Actual Cost Daily",
-        source_entity="sensor.guest_aircon_actual_cost",
+        source_entity="sensor.coarse_step_aircon_actual_cost",
         cycle="daily",
         net_consumption=False,
     )
@@ -159,7 +159,7 @@ async def test_ensuring_a_meter_is_idempotent_per_source_and_cycle(
     monthly = await async_ensure_utility_meter(
         hass,
         name="Coarse Step Aircon Actual Cost Monthly",
-        source_entity="sensor.guest_aircon_actual_cost",
+        source_entity="sensor.coarse_step_aircon_actual_cost",
         cycle="monthly",
         net_consumption=False,
     )
@@ -176,11 +176,11 @@ async def test_a_net_consumption_meter_follows_a_savings_figure_that_falls(
 ) -> None:
     # Given — a daily meter over a Cost Savings sensor (net consumption)
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.guest_aircon_cost_savings", "0", _SAVINGS)
+    hass.states.async_set("sensor.coarse_step_aircon_cost_savings", "0", _SAVINGS)
     entry_id = await async_ensure_utility_meter(
         hass,
         name="Coarse Step Aircon Cost Savings Daily",
-        source_entity="sensor.guest_aircon_cost_savings",
+        source_entity="sensor.coarse_step_aircon_cost_savings",
         cycle="daily",
         net_consumption=True,
     )
@@ -189,9 +189,9 @@ async def test_a_net_consumption_meter_follows_a_savings_figure_that_falls(
     assert output is not None
 
     # When — savings rise to €2.00, then battery arbitrage pulls the day back to €1.50
-    hass.states.async_set("sensor.guest_aircon_cost_savings", "2.00", _SAVINGS)
+    hass.states.async_set("sensor.coarse_step_aircon_cost_savings", "2.00", _SAVINGS)
     await hass.async_block_till_done()
-    hass.states.async_set("sensor.guest_aircon_cost_savings", "1.50", _SAVINGS)
+    hass.states.async_set("sensor.coarse_step_aircon_cost_savings", "1.50", _SAVINGS)
     await hass.async_block_till_done()
 
     # Then — the meter follows the fall rather than treating it as a reset
@@ -214,7 +214,7 @@ def _entry_with_one_device() -> MockConfigEntry:
                 title="Coarse Step Aircon",
                 data={
                     CONF_NAME: "Coarse Step Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
                 },
                 unique_id=None,
             )
@@ -225,7 +225,7 @@ def _entry_with_one_device() -> MockConfigEntry:
 async def _set_up(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()

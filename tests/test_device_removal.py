@@ -42,7 +42,7 @@ async def _household(hass: HomeAssistant) -> MockConfigEntry:
     """A set-up household tracking one device."""
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -56,7 +56,7 @@ async def _household(hass: HomeAssistant) -> MockConfigEntry:
                 title="Coarse Step Aircon",
                 data={
                     CONF_NAME: "Coarse Step Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
                 },
                 unique_id=None,
             )

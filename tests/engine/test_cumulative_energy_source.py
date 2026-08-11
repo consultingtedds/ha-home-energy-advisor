@@ -55,7 +55,7 @@ def test_cumulative_source_rising_counter_yields_the_increment() -> None:
 
 
 def test_cumulative_source_cycle_reset_treats_the_new_value_as_a_fresh_cycle() -> None:
-    # Given — the a cycle-resetting counter counter is mid-cycle at 2.75 kWh
+    # Given — the cycle-resetting counter is mid-cycle at 2.75 kWh
     source = CumulativeEnergySource()
     source.observe(reading(at="02:14", value="2.75"))
 
@@ -227,7 +227,7 @@ def test_cumulative_source_rising_counter_is_logged_as_counted_with_energy() -> 
 
 
 def test_cumulative_source_cycle_reset_is_logged_as_a_reset_with_energy() -> None:
-    # Given — the a cycle-resetting counter counter is mid-cycle at 2.75 kWh
+    # Given — the cycle-resetting counter is mid-cycle at 2.75 kWh
     source = CumulativeEnergySource()
     source.observe(reading(at="02:14", value="2.75"))
 

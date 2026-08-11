@@ -45,7 +45,7 @@ def _register_device_sensors(hass: HomeAssistant) -> None:
         {"device_class": "energy", "state_class": "total_increasing"},
     )
     hass.states.async_set(
-        "sensor.power_only_lights_power",
+        "sensor.ceiling_lights_power",
         "40",
         {"device_class": "power", "state_class": "measurement"},
     )
@@ -120,15 +120,15 @@ async def test_add_device_subentry_with_a_power_sensor(hass: HomeAssistant) -> N
     result = await hass.config_entries.subentries.async_configure(
         flow_id,
         {
-            CONF_NAME: "Slow Poll Lights",
-            CONF_POWER_ENTITY: "sensor.power_only_lights_power",
+            CONF_NAME: "Ceiling Lights",
+            CONF_POWER_ENTITY: "sensor.ceiling_lights_power",
         },
     )
 
     # Then — the subentry records the power sensor
     assert result["type"] is FlowResultType.CREATE_ENTRY
     subentry = next(iter(entry.subentries.values()))
-    assert subentry.data[CONF_POWER_ENTITY] == "sensor.power_only_lights_power"
+    assert subentry.data[CONF_POWER_ENTITY] == "sensor.ceiling_lights_power"
 
 
 async def test_adding_a_device_with_both_sensors_is_rejected(
@@ -145,7 +145,7 @@ async def test_adding_a_device_with_both_sensors_is_rejected(
         {
             CONF_NAME: "Confused Device",
             CONF_ENERGY_ENTITY: "sensor.coarse_step_aircon_energy",
-            CONF_POWER_ENTITY: "sensor.power_only_lights_power",
+            CONF_POWER_ENTITY: "sensor.ceiling_lights_power",
         },
     )
 
@@ -290,7 +290,7 @@ async def test_reconfigure_device_switches_its_source_sensor(
         result["flow_id"],
         {
             CONF_NAME: "Coarse Step Aircon",
-            CONF_POWER_ENTITY: "sensor.power_only_lights_power",
+            CONF_POWER_ENTITY: "sensor.ceiling_lights_power",
         },
     )
 
@@ -298,7 +298,7 @@ async def test_reconfigure_device_switches_its_source_sensor(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     subentry = entry.subentries[subentry_id]
-    assert subentry.data[CONF_POWER_ENTITY] == "sensor.power_only_lights_power"
+    assert subentry.data[CONF_POWER_ENTITY] == "sensor.ceiling_lights_power"
     assert CONF_ENERGY_ENTITY not in subentry.data
 
 
@@ -319,7 +319,7 @@ async def test_reconfigure_device_still_requires_exactly_one_sensor(
         {
             CONF_NAME: "Coarse Step Aircon",
             CONF_ENERGY_ENTITY: "sensor.coarse_step_aircon_energy",
-            CONF_POWER_ENTITY: "sensor.power_only_lights_power",
+            CONF_POWER_ENTITY: "sensor.ceiling_lights_power",
         },
     )
 

@@ -228,7 +228,7 @@ dependencies and can start as soon as Epic 1 lands.
   proven against real HA (idempotent, and no phantom energy across `unavailable`
   spans). The internal-implementation fallback was not needed. The shared spike
   de-risks the native `utility_meter` path (HEA-23). See ADR-0004 → Update.
-- **Sensor coarseness.** a cycle-resetting counter units report 0.25 kWh steps with no power
+- **Sensor coarseness.** cycle-resetting aircon units report 0.25 kWh steps with no power
   sensor; spreading deltas across 5-min buckets is an approximation.
   **Observed (2026-07-23) and corrected (2026-07-27, HEA-48):** a coarse device's
   deltas span past the ~20-min finalisation watermark, and the engine originally

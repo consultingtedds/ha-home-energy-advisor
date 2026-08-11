@@ -65,11 +65,11 @@ def test_all_import_bucket_prices_a_tracked_device_at_the_import_rate() -> None:
     )
 
     # Then — actual equals naive; with no solar or battery there is no saving
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.energy_kwh == Decimal("1.0")
-    assert guest.actual_cost == Decimal("0.234")
-    assert guest.naive_cost == Decimal("0.234")
-    assert guest.cost_savings == Decimal("0.000")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("1.0")
+    assert aircon.actual_cost == Decimal("0.234")
+    assert aircon.naive_cost == Decimal("0.234")
+    assert aircon.cost_savings == Decimal("0.000")
 
 
 def test_solar_share_makes_actual_cheaper_than_naive() -> None:
@@ -83,10 +83,10 @@ def test_solar_share_makes_actual_cheaper_than_naive() -> None:
     )
 
     # Then — the device is priced at the blended rate and solar is the saving
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.actual_cost == Decimal("0.117")
-    assert guest.naive_cost == Decimal("0.234")
-    assert guest.cost_savings == Decimal("0.117")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.actual_cost == Decimal("0.117")
+    assert aircon.naive_cost == Decimal("0.234")
+    assert aircon.cost_savings == Decimal("0.117")
 
 
 def test_battery_energy_is_priced_at_its_stored_cost_not_the_live_rate() -> None:
@@ -97,10 +97,10 @@ def test_battery_energy_is_priced_at_its_stored_cost_not_the_live_rate() -> None
     )
 
     # Then — it costs the overnight stored rate, and the saving is the gap to peak
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.actual_cost == Decimal("0.093")
-    assert guest.naive_cost == Decimal("0.234")
-    assert guest.cost_savings == Decimal("0.141")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.actual_cost == Decimal("0.093")
+    assert aircon.naive_cost == Decimal("0.234")
+    assert aircon.cost_savings == Decimal("0.141")
 
 
 def test_untracked_remainder_absorbs_consumption_no_device_explains() -> None:
@@ -174,8 +174,8 @@ def test_over_draw_clamps_the_remainder_and_prices_the_excess_at_import() -> Non
     assert result.untracked.energy_kwh == Decimal(0)
     assert result.untracked.actual_cost == Decimal(0)
     assert total_actual(result) == Decimal("0.351")
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.actual_cost / guest.energy_kwh == PEAK
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.actual_cost / aircon.energy_kwh == PEAK
 
 
 def test_over_draw_against_free_generation_still_costs_the_excess() -> None:
@@ -188,8 +188,8 @@ def test_over_draw_against_free_generation_still_costs_the_excess() -> None:
 
     # Then — the excess is bought energy, not free: diluting zero across 1.5 kWh
     # is what let a device drawing hard at peak be costed at nothing at all
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.actual_cost == Decimal("0.117")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.actual_cost == Decimal("0.117")
     assert total_actual(result) == Decimal("0.117")
 
 
@@ -217,9 +217,9 @@ def test_zero_consumption_bucket_allocates_nothing() -> None:
     )
 
     # Then — every figure is zero, with no division by zero
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.energy_kwh == Decimal(0)
-    assert guest.actual_cost == Decimal(0)
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal(0)
+    assert aircon.actual_cost == Decimal(0)
     assert total_actual(result) == Decimal(0)
 
 
@@ -234,9 +234,9 @@ def test_cost_savings_is_negative_when_battery_cost_beats_the_current_rate() -> 
     )
 
     # Then — the saving is negative rather than floored, keeping naive - actual exact
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.actual_cost == Decimal("0.30")
-    assert guest.cost_savings == Decimal("-0.20")
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.actual_cost == Decimal("0.30")
+    assert aircon.cost_savings == Decimal("-0.20")
 
 
 def test_missing_price_for_a_present_source_is_rejected() -> None:
@@ -264,11 +264,11 @@ def test_energy_is_split_across_the_sources_that_served_the_bucket() -> None:
 
     # Then — the device's energy carries the bucket's source mix, exactly as its
     # cost carries the bucket's blended price (HEA-51)
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.energy_by_source[SourceKind.IMPORT] == Decimal(
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_by_source[SourceKind.IMPORT] == Decimal(
         "0.2857142857142857142857142857"
     )
-    assert guest.energy_by_source[SourceKind.GENERATION] == Decimal(
+    assert aircon.energy_by_source[SourceKind.GENERATION] == Decimal(
         "0.2142857142857142857142857143"
     )
 
@@ -307,9 +307,9 @@ def test_a_bucket_with_no_served_energy_attributes_no_source() -> None:
 
     # Then — the energy is still counted, but no source is asserted. Booking it to
     # grid would label unknown energy as grid-supplied; the shortfall is visible
-    guest = result.devices["coarse_step_aircon"]
-    assert guest.energy_kwh == Decimal("0.5")
-    assert guest.energy_by_source == {}
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("0.5")
+    assert aircon.energy_by_source == {}
 
 
 def test_overdrawn_bucket_keeps_each_device_summing_to_its_own_energy() -> None:

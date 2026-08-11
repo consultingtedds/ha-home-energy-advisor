@@ -439,7 +439,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         hierarchy actually lives; HEA's own devices are deliberately left
         unassigned. Assigning them would rewrite every entity id — Home Assistant
         composes an id as ``area + device + entity`` with no de-duplication, so a
-        "Slow Poll Aircon" in the "Slow Poll" would double the room — and
+        device whose name already repeats its area gets that word twice — and
         ``suggested_area``, the only way to set one at creation, is removed in HA
         2026.9. Exposing the hierarchy as data costs no registry writes and no
         renames.

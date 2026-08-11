@@ -64,7 +64,7 @@ def _entry() -> MockConfigEntry:
                 title="Coarse Step Aircon",
                 data={
                     CONF_NAME: "Coarse Step Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
                 },
                 unique_id=None,
             ),
@@ -81,7 +81,7 @@ def _entry() -> MockConfigEntry:
     )
 
 
-def _guest_subentry_id(entry: MockConfigEntry) -> str:
+def _aircon_subentry_id(entry: MockConfigEntry) -> str:
     return str(
         next(
             subentry_id
@@ -94,16 +94,16 @@ def _guest_subentry_id(entry: MockConfigEntry) -> str:
 def _seed_states(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
 
 
 async def _run_one_interval(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """Import 1 kWh over an interval; the guest device draws 0.6 of it."""
+    """Import 1 kWh over an interval; the aircon device draws 0.6 of it."""
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0.6", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
     await hass.async_block_till_done()
     freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
@@ -172,9 +172,9 @@ async def test_each_concept_carries_its_adr_0003_identity(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — each of the guest device's four sensors matches the ADR-0003 table
+    # Then — each of the aircon device's four sensors matches the ADR-0003 table
     registry = er.async_get(hass)
-    subentry_id = _guest_subentry_id(entry)
+    subentry_id = _aircon_subentry_id(entry)
     # Money is `total`, energy is `total_increasing` (ADR-0007): HA rejects
     # monetary + total_increasing, and only Energy Used is a strictly-rising meter.
     expected = {
@@ -285,9 +285,9 @@ async def test_sensors_publish_the_running_totals_over_an_interval(
     # When — one interval is accounted (import 1 kWh, device draws 0.6 @ €0.30)
     await _run_one_interval(hass, freezer)
 
-    # Then — the guest device's energy and actual cost are published...
+    # Then — the aircon device's energy and actual cost are published...
     registry = er.async_get(hass)
-    subentry_id = _guest_subentry_id(entry)
+    subentry_id = _aircon_subentry_id(entry)
 
     def state_of(device_key: str, concept: str) -> Decimal:
         unique_id = f"{entry.entry_id}_{device_key}_{concept}"
@@ -341,7 +341,7 @@ async def test_totals_survive_a_restart_via_restore(
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
     entry = _entry()
-    subentry_id = _guest_subentry_id(entry)
+    subentry_id = _aircon_subentry_id(entry)
     entity_id = "sensor.coarse_step_aircon_actual_cost"
     restored = SensorExtraStoredData(
         native_value=Decimal("0.18"), native_unit_of_measurement="EUR"
@@ -352,7 +352,7 @@ async def test_totals_survive_a_restart_via_restore(
     entry.add_to_hass(hass)
 
     # When — the integration starts back up and accounts a fresh interval that
-    # adds another €0.18 of actual cost to the guest device
+    # adds another €0.18 of actual cost to the aircon device
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     await _run_one_interval(hass, freezer)
@@ -487,7 +487,7 @@ async def test_reset_leaves_the_split_reconciling_as_it_accumulates_again(
     # When — a further interval is accounted after the rebase
     freezer.move_to(datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "2.0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "1.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "1.0", _ENERGY)
     await hass.async_block_till_done()
     freezer.move_to(datetime(2026, 7, 8, 23, 30, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
@@ -500,10 +500,10 @@ async def test_reset_leaves_the_split_reconciling_as_it_accumulates_again(
         assert state is not None
         return Decimal(state.state)
 
-    guest = energy("sensor.coarse_step_aircon_energy_used")
+    aircon = energy("sensor.coarse_step_aircon_energy_used")
     untracked = energy("sensor.untracked_energy_devices_energy_used")
-    assert guest > 0
-    assert guest + untracked == energy("sensor.whole_home_energy_used")
+    assert aircon > 0
+    assert aircon + untracked == energy("sensor.whole_home_energy_used")
 
 
 async def _run_a_repeating_interval(
@@ -518,7 +518,7 @@ async def _run_a_repeating_interval(
     """
     freezer.move_to(datetime(2026, 7, 8, 22, 7, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0.5", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.5", _ENERGY)
     await hass.async_block_till_done()
     freezer.move_to(datetime(2026, 7, 8, 22, 23, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
@@ -563,14 +563,14 @@ async def test_published_values_are_rounded_to_the_publishing_precision(
         published += 1
     assert published == 16
 
-    # And — the rounded figures are the correctly-rounded ones. The guest device
+    # And — the rounded figures are the correctly-rounded ones. The aircon device
     # drew 5/7 of 0.5 kWh, at 5/7 of 1.0 kWh imported at €0.30
-    guest_energy = hass.states.get("sensor.coarse_step_aircon_energy_used")
-    guest_cost = hass.states.get("sensor.coarse_step_aircon_actual_cost")
-    assert guest_energy is not None
-    assert guest_cost is not None
-    assert Decimal(guest_energy.state) == Decimal("0.357143")
-    assert Decimal(guest_cost.state) == Decimal("0.1071")
+    coarse_step_energy = hass.states.get("sensor.coarse_step_aircon_energy_used")
+    aircon_cost = hass.states.get("sensor.coarse_step_aircon_actual_cost")
+    assert coarse_step_energy is not None
+    assert aircon_cost is not None
+    assert Decimal(coarse_step_energy.state) == Decimal("0.357143")
+    assert Decimal(aircon_cost.state) == Decimal("0.1071")
 
 
 async def test_a_restart_does_not_drift_the_running_total(
@@ -622,7 +622,7 @@ def _generation_entry() -> MockConfigEntry:
                 title="Coarse Step Aircon",
                 data={
                     CONF_NAME: "Coarse Step Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.guest_energy",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
                 },
                 unique_id=None,
             )
@@ -636,7 +636,7 @@ async def _run_a_generation_interval(
     """Serve 0.7 kWh from 0.4 grid + 0.3 self-consumed generation; device draws 0.5."""
     for entity in ("sensor.grid_import", "sensor.generation", "sensor.grid_export"):
         hass.states.async_set(entity, "0", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     hass.states.async_set("sensor.price", "0.30")
     await hass.async_block_till_done()
 
@@ -644,7 +644,7 @@ async def _run_a_generation_interval(
     hass.states.async_set("sensor.grid_import", "0.4", _ENERGY)
     hass.states.async_set("sensor.generation", "0.5", _ENERGY)
     hass.states.async_set("sensor.grid_export", "0.2", _ENERGY)
-    hass.states.async_set("sensor.guest_energy", "0.5", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.5", _ENERGY)
     await hass.async_block_till_done()
 
     freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
@@ -724,17 +724,17 @@ def _place_source_in_an_area(
         the_floor = fr.async_get(hass).async_create(floor)
         the_area = areas.async_update(the_area.id, floor_id=the_floor.floor_id)
 
-    source_entry = MockConfigEntry(domain="wf_rac")
+    source_entry = MockConfigEntry(domain="aircon_integration")
     source_entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
         config_entry_id=source_entry.entry_id,
-        identifiers={("wf_rac", entity_id)},
+        identifiers={("aircon_integration", entity_id)},
         name="Coarse Step Aircon",
     )
     dr.async_get(hass).async_update_device(device.id, area_id=the_area.id)
     registered = er.async_get(hass).async_get_or_create(
         "sensor",
-        "wf_rac",
+        "aircon_integration",
         f"unique_{entity_id}",
         suggested_object_id=entity_id.removeprefix("sensor."),
         device_id=device.id,
@@ -767,7 +767,10 @@ async def test_devices_sensor_exposes_the_source_devices_area_and_floor(
     # floor, which is where the building hierarchy actually lives
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _place_source_in_an_area(
-        hass, entity_id="sensor.guest_energy", area="Coarse Step", floor="First Floor"
+        hass,
+        entity_id="sensor.coarse_step_energy",
+        area="Studio",
+        floor="First Floor",
     )
     _seed_states(hass)
     entry = _entry()
@@ -780,11 +783,11 @@ async def test_devices_sensor_exposes_the_source_devices_area_and_floor(
 
     # Then — the tracked device carries the hierarchy of the sensor it measures, so
     # a card can roll cost up by room and floor without HEA touching any registry
-    guest = by_key["coarse_step_aircon"]
-    assert guest["area_name"] == "Coarse Step"
-    assert guest["floor_name"] == "First Floor"
-    assert guest["area_id"]
-    assert guest["floor_id"]
+    aircon = by_key["coarse_step_aircon"]
+    assert aircon["area_name"] == "Studio"
+    assert aircon["floor_name"] == "First Floor"
+    assert aircon["area_id"]
+    assert aircon["floor_id"]
 
 
 async def test_devices_sensor_leaves_the_hierarchy_null_when_there_is_none(
@@ -803,9 +806,9 @@ async def test_devices_sensor_leaves_the_hierarchy_null_when_there_is_none(
     by_key = await _devices_payload(hass, entry, freezer)
 
     # Then — every location field is null, and nothing is raised
-    guest = by_key["coarse_step_aircon"]
+    aircon = by_key["coarse_step_aircon"]
     for field in ("area_id", "area_name", "floor_id", "floor_name"):
-        assert guest[field] is None, f"{field} should be null without a device"
+        assert aircon[field] is None, f"{field} should be null without a device"
 
     # And — the Untracked remainder is never in a room by construction
     untracked = by_key["untracked_energy_devices"]
@@ -820,14 +823,12 @@ async def test_an_area_on_the_source_entity_wins_over_its_devices(
     # deliberately reassigned to another. Home Assistant treats the entity-level
     # area as the override, and so must we
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    _place_source_in_an_area(
-        hass, entity_id="sensor.guest_energy", area="Coarse Step"
-    )
+    _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
     _seed_states(hass)
     landing = ar.async_get(hass).async_get_or_create("Landing")
     registry = er.async_get(hass)
     source = registry.async_get_entity_id(
-        "sensor", "wf_rac", "unique_sensor.guest_energy"
+        "sensor", "aircon_integration", "unique_sensor.coarse_step_energy"
     )
     assert source is not None
     registry.async_update_entity(source, area_id=landing.id)
@@ -847,9 +848,7 @@ async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
 ) -> None:
     # Given — a tracked device whose source sits in a room
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    _place_source_in_an_area(
-        hass, entity_id="sensor.guest_energy", area="Coarse Step"
-    )
+    _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
     _seed_states(hass)
     entry = _entry()
     entry.add_to_hass(hass)
@@ -863,7 +862,7 @@ async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
     # data, never written to the registry
     devices = dr.async_get(hass)
     hea_device = devices.async_get_device(
-        identifiers={(DOMAIN, f"{entry.entry_id}_{_guest_subentry_id(entry)}")}
+        identifiers={(DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}")}
     )
     assert hea_device is not None
     assert hea_device.area_id is None
