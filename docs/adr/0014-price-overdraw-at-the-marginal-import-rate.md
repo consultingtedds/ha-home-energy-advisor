@@ -98,6 +98,43 @@ part of that supply.
   meters routinely lag its devices would be paying an import-rate premium on a
   systematic timing artefact rather than on real grid energy.
 
+## The residual is the floor, and it does not reach Cost Savings (HEA-77)
+
+Traced across five days and all fourteen devices of the reference instance:
+published whole-home energy runs **1.07 %** above the metered house load —
+2.816 kWh of accounted overdraw, 72 % of it arriving through the late-correction
+path and 28 % through live allocation. It occurs in 31 buckets out of 1,498. No
+single device causes it and no house meter reads zero; it is several devices'
+spread estimates landing in the same five minutes.
+
+**This is the approximation error of uniform spreading, not a fault to be fixed.**
+The true accrual profile inside a coarse counter's quiet run is unknowable, so
+the estimate spreads evenly, and an even estimate can exceed what the house
+really drew in any one slice while reconciling exactly across the whole span.
+Weighting by each device's own run signal reduces it only from 0.96 % to 0.70 %
+(HEA-75), which is what establishes that the dominant term is ignorance of
+timing rather than misplacement.
+
+**Cost Savings is exactly invariant to it**, and that is a property of this
+decision rather than a coincidence. The overdrawn energy is charged at the import
+rate, and the counterfactual values the same energy at the import rate, so it
+contributes precisely zero savings:
+
+```
+Σ savings = total_draw × import − (metered_cost + overdraw × import)
+          = consumption × import − metered_cost
+```
+
+— the savings the bucket would have had with no overdraw at all. Measured across
+three spreading strategies, the week's savings figure was identical to four
+decimal places.
+
+So the residual overstates `whole_home_energy_used` and both cost totals by
+about 1 %, in the conservative direction, and leaves the figure the product is
+actually about exact. Had the rejected dilution model been kept, this would not
+hold: dilution leaves the counterfactual untouched while suppressing actual cost,
+so every overdrawn kWh would have manufactured a saving.
+
 Amends ADR-0002 (allocation and the remainder clamp) and ADR-0006 decision 2
 (the late-arrival headroom cap). Relates to HEA-74; HEA-75 would reduce how often
 this rule is reached at all.

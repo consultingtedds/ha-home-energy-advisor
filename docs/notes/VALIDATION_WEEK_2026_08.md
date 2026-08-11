@@ -18,7 +18,8 @@ is the one in `AIRCON_COST_EXPLORATION.md`, which hand-computed the same concept
 from recorder history before any of this was built.
 
 Under the full-allocation model (ADR-0002) the comparison is necessary but not
-sufficient, so three reconciliation checks run alongside it.
+sufficient, so four reconciliation checks run alongside it. The fourth was
+added retrospectively — see its own note for why its absence mattered.
 
 ## Preconditions
 
@@ -78,10 +79,28 @@ checks it survives a week of real data, restarts and late corrections.
 **2. The remainder is never negative.** Untracked energy and cost stay ≥ 0 on
 every day. The engine clamps the remainder at zero rather than letting it go
 negative (ADR-0002), so a *clamped* day is not visible in the figure itself —
-check `consecutive_overdrawn_buckets` and the negative-remainder Repair instead
+check `overdrawn_buckets_in_window` and the negative-remainder Repair instead
 of only the published value.
 
-**3. The battery ledger against Predbat.** Compare HEA's stored-cost ledger with
+**3. Published energy against the meter.** Over the period:
+
+```
+Σ (device Energy Used) + Untracked Energy Used
+  == the house-consumption meter's own change      (within 1.5 %)
+```
+
+Added after the 2026-08-10 run, because its absence is why HEA-74 survived weeks
+of daily totals. Check 1 compares *cost* against the real bill, and cost stayed
+within ~4 % throughout the defect — it would have passed. The energy counterpart
+was out by 29-44 % and would have failed on day one.
+
+The tolerance is not slack, it is a measured floor: spreading a coarse counter's
+step across a span whose accrual profile is unknowable inflates published energy
+by ~1 % (HEA-77, ADR-0014). Anything materially above that is a regression, not
+the floor. **A figure *below* the meter is always a failure** — energy has gone
+missing, which the floor cannot explain.
+
+**4. The battery ledger against Predbat.** Compare HEA's stored-cost ledger with
 Predbat's own cost accounting for the same window. Two documented optimistic
 biases are expected and are *not* failures, but must be quantified rather than
 waved through:
@@ -121,7 +140,7 @@ also their first real exercise.
    question — not from the cycle meters, whose fixed periods cannot be re-cut.
 4. Recompute the same days manually from recorder history per
    `AIRCON_COST_EXPLORATION.md`.
-5. Tabulate device × day, mark each cell against the threshold, and run the three
+5. Tabulate device × day, mark each cell against the threshold, and run the four
    reconciliation checks per day.
 6. Record results below; raise a child issue per failure.
 
@@ -249,7 +268,7 @@ off-peak tariff and is correct; the counterfactual is correct throughout. It is
 Actual Cost on tracked devices that is too low, and the whole-home saving is
 non-zero overnight only because that error leaks upward.
 
-**This is not a reconciliation failure — all three checks still pass.** Σ devices
+**This is not a reconciliation failure — all three checks of the day still pass.** Σ devices
 + Untracked still reconciles to the whole home, because the error is in how a
 device's energy is *priced*, not in how much of it is allocated. A run that only
 reconciles totals cannot see this, which belongs here as a limit of the method
@@ -305,7 +324,7 @@ partial pass whose caveats would outweigh it.
 **What the method should carry next time.** Reconciliation check 1 compares
 *cost* against the real bill, and cost was within ~4 % throughout — it would have
 passed. An **energy** counterpart (Σ published energy ≡ metered consumption)
-would have failed on day one, by 29-44 %. Add it before the re-run. The
+would have failed on day one, by 29-44 %. It is now check 3 above. The
 negative-remainder Repair should have been the other line of defence and was not:
 it counted *consecutive* overdrawn buckets, and an intermittent coarse step reset
 the tally every time, so it stayed silent for weeks (fixed under HEA-74).
