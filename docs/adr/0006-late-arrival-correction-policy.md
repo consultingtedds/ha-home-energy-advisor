@@ -145,6 +145,27 @@ Decision 2's headroom cap is amended by ADR-0014: a late device now buys, at the
 import rate, whatever the Untracked remainder cannot fund, instead of receiving
 it free.
 
-The cap is an interim bound on the opposite error — a device switched off for
-hours is indistinguishable, from the counter alone, from one trickling along.
-HEA-75 would replace it with the device's own run signal.
+The cap is a bound on the opposite error — a device switched off for hours is
+indistinguishable, from the counter alone, from one trickling along.
+
+## Update — the cap is measured, and run-signal weighting is rejected (HEA-75)
+
+The amendment above called two hours interim, and expected a per-device run
+signal to replace it. Both halves have now been tested against the devices' own
+on/off signals, captured over five days for all fourteen devices.
+
+**The cap is right.** Devices were running for 92-98 % of every counter-movement
+gap up to two hours, then 53 %, 29 % and 4 % beyond it — the boundary between
+"working slowly" and "switched off" falls exactly at the chosen value.
+Independently, the energy a capped uniform spread misplaces against a
+run-weighted one is minimised at the same point (6.9 % of fleet energy, against
+10.4 % at one hour and 34 % at thirty minutes).
+
+**Weighting by the run signal is not worth its cost.** It moves whole-home actual
+cost by ~1 % in summer and 0.3 % when the same week is replayed against a January
+solar profile. The large per-device percentages it shifts (up to 47 %) fall
+entirely on devices whose cost is pennies, because a near-zero denominator
+inflates them; in absolute terms the movement is about €0.02/day in either
+season. A 30-90 minute spread is simply short next to a 2-4 hour tariff band, so
+displacement rarely crosses a price boundary at all. HEA-75 is closed on this
+evidence rather than left open as a standing intention.

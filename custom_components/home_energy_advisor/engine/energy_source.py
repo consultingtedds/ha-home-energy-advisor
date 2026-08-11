@@ -47,12 +47,21 @@ _WH_PER_KWH = Decimal(1000)
 #
 # The cap exists only to bound the opposite error: a device switched off for
 # hours reports the same unchanged counter as one trickling along, and the
-# counter alone cannot tell them apart. Measured on the reference instance,
-# legitimate accrual runs cluster at or below ~125 minutes while genuine
-# silences jump straight to several hours, so two hours separates them without
-# trimming honest energy. It is deliberately not load-bearing: across a real
-# weekday, whole-home cost moves under 1 % between a 90-minute cap and no cap at
-# all. A per-device run signal would remove the guess entirely (HEA-75).
+# counter alone cannot tell them apart.
+#
+# Two hours, and measured rather than chosen (HEA-75). Across 684 counter
+# movements from fourteen devices over five days, checked against each device's
+# own on/off signal: devices were running for 92-98 % of every gap up to two
+# hours, and 53 %, then 29 %, then 4 % beyond it. The cliff is the boundary
+# between "working slowly" and "switched off", and it falls exactly here.
+# Independently, the energy a capped spread misplaces against a run-signal
+# weighting is minimised at the same value — 6.9 % of fleet energy, against
+# 10.4 % at one hour and 34 % at thirty minutes.
+#
+# Weighting by the run signal itself was measured and rejected: it moves
+# whole-home cost by ~1 % in summer and 0.3 % under a January solar profile,
+# because a 30-90 minute spread is short next to a 2-4 hour tariff band. The
+# large per-device percentages it shifts are all on devices costing pennies.
 MAX_QUIET_SPAN = timedelta(hours=2)
 
 # How many recent gating decisions each source retains for the diagnostics
