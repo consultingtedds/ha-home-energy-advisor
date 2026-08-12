@@ -208,15 +208,14 @@ async def async_setup_entry(
     # One integration-level "hub" device carries the devices-registry sensor —
     # the authoritative list dashboards read to enumerate tracked devices without
     # hardcoding them (HEA-55); a natural home for future house-level sensors too.
+    hub_info = DeviceInfo(
+        identifiers={(DOMAIN, entry.entry_id)},
+        translation_key="hub",
+    )
     async_add_entities(
         [
-            HeaDevicesSensor(
-                coordinator,
-                device_info=DeviceInfo(
-                    identifiers={(DOMAIN, entry.entry_id)},
-                    translation_key="hub",
-                ),
-            )
+            HeaDevicesSensor(coordinator, device_info=hub_info),
+            HeaUnreconciledSensor(coordinator, device_info=hub_info),
         ]
     )
 
@@ -280,33 +279,50 @@ async def async_setup_entry(
         )
 
 
-class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
-    """One device's running figure: restored baseline plus the live total."""
+class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
+    """A running total that survives a restart by restoring what it last published.
 
-    entity_description: HeaSensorDescription
+    The engine counts from zero every startup, so each figure it offers is a
+    *since-startup* running total. Restoring the last published state as a
+    baseline is what turns that into a lifetime figure, and is why the runtime
+    itself persists nothing.
+    """
+
     _attr_has_entity_name = True
 
     def __init__(
         self,
         coordinator: HeaCoordinator,
-        description: HeaSensorDescription,
         *,
-        device_key: str,
+        unique_suffix: str,
         device_info: DeviceInfo,
-        currency: str,
+        precision: int,
     ) -> None:
         super().__init__(coordinator)
-        self.entity_description = description
-        self._device_key = device_key
         self._attr_device_info = device_info
         # The coordinator always has its config entry (passed to super().__init__).
         entry = cast("HeaConfigEntry", coordinator.config_entry)
         self._entry_id = entry.entry_id
-        self._attr_unique_id = f"{entry.entry_id}_{device_key}_{description.key}"
-        if description.device_class == SensorDeviceClass.MONETARY:
-            self._attr_native_unit_of_measurement = currency
-        self._quantum = Decimal(1).scaleb(-description.publish_precision)
+        self._attr_unique_id = f"{entry.entry_id}_{unique_suffix}"
+        self._quantum = Decimal(1).scaleb(-precision)
         self._baseline = Decimal(0)
+
+    def _published(self, running: Decimal) -> Decimal:
+        """The restored baseline plus the running total, rounded for publication.
+
+        Rounding happens here and only here: an accumulator is kept at full
+        Decimal precision (docs/CRITICAL_INSTRUCTIONS.md) and rounded when it is
+        presented, and handing a value to Home Assistant *is* presentation — the
+        state is recorded, roughly once a minute, for every HEA entity and every
+        cycle meter mirroring one (HEA-59).
+
+        Because this published state is also what a restart restores as the
+        baseline, rounding bounds the error a restart can introduce to half an
+        ulp — not cumulative within a run, and immaterial at 1 mWh. Rounding is
+        half-even, so repeated restarts do not bias the total in either direction,
+        and monotonic, so a `total_increasing` figure can never step backwards.
+        """
+        return (self._baseline + running).quantize(self._quantum)
 
     async def async_added_to_hass(self) -> None:
         """Restore the pre-restart total as the baseline for the running figure."""
@@ -331,25 +347,38 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         """
         self._baseline = Decimal(0)
 
+
+class HeaCostSensor(_HeaRestoringSensor):
+    """One device's running figure: restored baseline plus the live total."""
+
+    entity_description: HeaSensorDescription
+
+    def __init__(
+        self,
+        coordinator: HeaCoordinator,
+        description: HeaSensorDescription,
+        *,
+        device_key: str,
+        device_info: DeviceInfo,
+        currency: str,
+    ) -> None:
+        super().__init__(
+            coordinator,
+            unique_suffix=f"{device_key}_{description.key}",
+            device_info=device_info,
+            precision=description.publish_precision,
+        )
+        self.entity_description = description
+        self._device_key = device_key
+        if description.device_class == SensorDeviceClass.MONETARY:
+            self._attr_native_unit_of_measurement = currency
+
     @property
     def native_value(self) -> Decimal:
-        """The restored baseline plus the running total, rounded for publication.
-
-        Rounding happens here and only here: an accumulator is kept at full
-        Decimal precision (docs/CRITICAL_INSTRUCTIONS.md) and rounded when it is
-        presented, and handing a value to Home Assistant *is* presentation — the
-        state is recorded, roughly once a minute, for every HEA entity and every
-        cycle meter mirroring one (HEA-59).
-
-        Because this published state is also what a restart restores as the
-        baseline, rounding bounds the error a restart can introduce to half an
-        ulp — not cumulative within a run, and immaterial at 1 mWh. Rounding is
-        half-even, so repeated restarts do not bias the total in either direction,
-        and monotonic, so a `total_increasing` figure can never step backwards.
-        """
+        """This device's share, on top of whatever it published before a restart."""
         totals = self._device_totals()
         running = self.entity_description.value_fn(totals) if totals else Decimal(0)
-        return (self._baseline + running).quantize(self._quantum)
+        return self._published(running)
 
     def _device_totals(self) -> DeviceTotals | None:
         data = self.coordinator.data
@@ -358,6 +387,43 @@ class HeaCostSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         if self._device_key == _WHOLE_HOME_KEY:
             return data.whole_home
         return data.devices.get(self._device_key)
+
+
+class HeaUnreconciledSensor(_HeaRestoringSensor):
+    """How far these totals sit above the household's own meter (HEA-82).
+
+    Device counters and a house meter are sampled thousands of times apart, so
+    they disagree within any one 5-minute bucket and agree over a longer span.
+    The engine carries that disagreement and repays it (ADR-0015); what it can
+    never repay — because the meter never went on to account for it — is written
+    off after the quiet span and counted here.
+
+    Diagnostic rather than headline: it is context for the cost figures, and on a
+    household whose meters reconcile it reads zero forever. That is what makes
+    any other reading worth acting on.
+    """
+
+    _attr_translation_key = "unreconciled_energy"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_device_class = SensorDeviceClass.ENERGY
+    # `total`, not `total_increasing`: a rebase sends it back to zero, and a
+    # figure that only ever rises would read as a fault that cannot be fixed.
+    _attr_state_class = SensorStateClass.TOTAL
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 3
+
+    def __init__(self, coordinator: HeaCoordinator, *, device_info: DeviceInfo) -> None:
+        super().__init__(
+            coordinator,
+            unique_suffix="unreconciled_energy",
+            device_info=device_info,
+            precision=_ENERGY_PRECISION,
+        )
+
+    @property
+    def native_value(self) -> Decimal:
+        """Energy published that the house meters never accounted for."""
+        return self._published(self.coordinator.data.unreconciled_kwh)
 
 
 @dataclass(frozen=True)

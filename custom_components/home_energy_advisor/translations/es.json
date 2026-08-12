@@ -146,7 +146,8 @@
       "energy_from_grid": { "name": "Energía de la red" },
       "energy_from_generation": { "name": "Energía de generación" },
       "energy_from_battery": { "name": "Energía de la batería" },
-      "devices": { "name": "Dispositivos" }
+      "devices": { "name": "Dispositivos" },
+      "unreconciled_energy": { "name": "Energía sin conciliar" }
     }
   },
   "device": {
@@ -183,9 +184,9 @@
       "title": "«{name}» declara más energía que toda la casa",
       "description": "Durante más de una hora, el sensor que mide «{name}» ha declarado más energía de la que ha consumido toda tu casa, algo que ningún dispositivo puede hacer. Home Energy Advisor ha dejado de contabilizarlo, para que no distorsione las cifras del resto de dispositivos, y volverá a hacerlo por sí solo cuando las lecturas tengan sentido. Casi siempre es el sensor el que falla, no el aparato: comprueba si el dispositivo ofrece otro sensor de energía y selecciona ese. Las cifras registradas en la hora previa a la detección siguen afectadas; puedes borrarlas con la acción «Reiniciar totales»."
     },
-    "negative_remainder": {
-      "title": "Los dispositivos monitorizados consumen más que la casa",
-      "description": "Durante más de una hora, la energía atribuida a tus dispositivos monitorizados ha superado el total del hogar. Esto suele indicar que un sensor de dispositivo se cuenta dos veces, o que una entrada de nivel de casa es incorrecta. La cifra Sin seguimiento se mantiene en cero para que los costes sigan cuadrando, pero revisa la selección de sensores de dispositivo y de nivel de casa."
+    "unreconciled_energy": {
+      "title": "Estos totales ya no cuadran con tu contador",
+      "description": "Los totales de Home Energy Advisor están alrededor de un {share} por encima de lo que registró el contador de tu casa. Los sensores de tus dispositivos y el contador de la casa siempre difieren momento a momento — se leen a ritmos muy distintos — y eso se concilia de forma automática. Esta diferencia no se está corrigiendo, lo que indica que los sensores de dispositivo informan de forma persistente más energía de la que el contador mide en la casa. La causa habitual es que un sensor de dispositivo ya incluya a otro, contando la misma energía dos veces; una entrada de nivel de casa que mide el circuito equivocado también lo provoca. La cifra Energía sin conciliar, en el dispositivo Home Energy Advisor, muestra cuánta energía supone."
     }
   },
   "services": {

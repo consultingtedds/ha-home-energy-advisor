@@ -130,11 +130,18 @@ class Totals:
 
     ``untracked`` is derived (``whole_home`` minus the tracked devices), so the
     three always reconcile exactly: Σ devices + untracked ≡ whole_home.
+
+    ``unreconciled_kwh`` is the one figure that does *not* reconcile, and says so:
+    debt the house meters never accounted for, forgiven at the expiry. Since the
+    carry landed it is the only thing that can lift ``whole_home`` above metered
+    consumption, so it is exactly the gap a household would find checking these
+    totals against their own meter (ADR-0015, HEA-82).
     """
 
     devices: Mapping[str, DeviceTotals]
     untracked: DeviceTotals
     whole_home: DeviceTotals
+    unreconciled_kwh: Decimal = Decimal(0)
 
 
 @dataclass
@@ -254,7 +261,6 @@ class Accountant:
         self._house = _Running()
         self._retained: dict[datetime, _RetainedBucket] = {}
         self._watermark: datetime | None = None
-        self._overdraw_window: deque[bool] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._entity_of = dict(device_energy_entities)
         self._window: deque[_WindowBucket] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._implausible: frozenset[str] = frozenset()
@@ -363,6 +369,7 @@ class Accountant:
             devices=devices,
             untracked=self._derive_untracked(whole_home, devices.values()),
             whole_home=whole_home,
+            unreconciled_kwh=self.unreconciled_energy(),
         )
 
     @staticmethod
@@ -386,22 +393,6 @@ class Accountant:
             energy_from_generation=whole_home.energy_from_generation - generation,
             energy_from_battery=whole_home.energy_from_battery - battery,
         )
-
-    def overdrawn_buckets_in_window(self) -> int:
-        """Finalised buckets in the recent window whose draw exceeded consumption.
-
-        A device drawing more than the house was served means the Untracked
-        remainder would be negative — the engine clamps it to zero (ADR-0002),
-        but a persistent mismatch signals double-counting or bad inputs, which
-        the coordinator surfaces as a Repair (HEA-24 / HEA-36).
-
-        Counted across a window rather than as a *consecutive* run, because the
-        run form could not see the shape this actually takes: a coarse counter
-        overdraws one bucket, the next is clean, and the tally resets. On the
-        reference instance that kept the Repair silent for weeks while roughly a
-        third of every overnight hour was overdrawn (HEA-74).
-        """
-        return sum(self._overdraw_window)
 
     def source_diagnostics(self) -> dict[str, SourceSnapshot]:
         """Per-source accumulator state and decision log, keyed by entity id.
@@ -503,12 +494,6 @@ class Accountant:
             self._house.add(share)
         self._house.add(remainder)
         self._retain(start, sources, prices, draws)
-        # Overdraw is judged on what the sources *claimed*, not on what survived the
-        # plausibility guard. "Your tracked devices report drawing more than the
-        # house" stays true whether or not the engine refused to book it, and
-        # quarantining a lying device must not silently retire the broader Repair
-        # that first tells a user something is wrong (HEA-36).
-        self._track_overdraw(served, claimed)
 
     def _settle(
         self,
@@ -722,11 +707,6 @@ class Accountant:
         if source is not None:
             source.note_zero_priced(start)
             self._cold_start_logged = True
-
-    def _track_overdraw(self, served: _Served, draws: Mapping[str, Decimal]) -> None:
-        consumption = served.grid + served.generation + served.battery
-        total_draw = sum(draws.values(), Decimal(0))
-        self._overdraw_window.append(total_draw > consumption)
 
     def _is_readable(self, *roles: SourceRole) -> bool:
         """Whether every named house input is both configured and reporting."""

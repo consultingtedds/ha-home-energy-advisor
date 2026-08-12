@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_NAME
@@ -21,11 +21,12 @@ from custom_components.home_energy_advisor.const import (
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
+    SERVICE_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
 )
 from custom_components.home_energy_advisor.issues import (
-    ISSUE_NEGATIVE_REMAINDER,
     ISSUE_PRICE_UNAVAILABLE,
+    ISSUE_UNRECONCILED_ENERGY,
     source_never_reported_issue_id,
     source_removed_issue_id,
     source_unavailable_issue_id,
@@ -489,45 +490,70 @@ async def test_a_configured_entity_removed_from_hass_raises_a_removed_repair(
     assert _has_issue(hass, source_removed_issue_id("sensor.coarse_step_energy"))
 
 
-async def test_persistently_negative_remainder_raises_a_repair(
+async def test_a_house_whose_meters_reconcile_is_never_told_they_do_not(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home where the device implausibly out-draws the house,
-    # bucket after bucket (double-counting / bad inputs)
-    entry = await _setup_running_home(hass, freezer)
+    # Given — a device whose coarse counter regularly out-draws the house within a
+    # bucket, which is ordinary rather than a fault: it reports every half hour
+    # against a meter read every few seconds (ADR-0015)
+    await _setup_running_home(hass, freezer)
 
-    # When — across well over an hour, the grid imports a trickle while the device
-    # reports drawing far more, then the finalisation timer processes every bucket
+    # When — the device steps ahead of the meter, and the meter then catches up
     start = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
     for minute in range(5, 80, 5):
+        freezer.move_to(start + timedelta(minutes=minute))
+        hass.states.async_set("sensor.grid_import", f"{minute * 0.02:.3f}", _ENERGY)
+        hass.states.async_set(
+            "sensor.coarse_step_energy", f"{(minute // 30) * 0.25:.3f}", _ENERGY
+        )
+        await hass.async_block_till_done()
+    await _tick(hass, freezer, start + timedelta(minutes=100))
+
+    # Then — nothing is raised. Every debt was repaid, so there is nothing to
+    # tell the household about (HEA-69: a Repair that fires on normal behaviour
+    # is worse than none).
+    assert not _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
+
+
+async def test_totals_that_never_reconcile_raise_a_repair(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running home whose device sensor reports far more energy than the
+    # house is ever metered as using: a double-counted sensor rather than a
+    # counter reporting late
+    entry = await _setup_running_home(hass, freezer)
+
+    # When — the grid imports a trickle while the device claims a hundred times
+    # more, for long enough that the debt passes the quiet span and is written off
+    start = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
+    for minute in range(5, 200, 5):
         freezer.move_to(start + timedelta(minutes=minute))
         hass.states.async_set("sensor.grid_import", f"{minute * 0.001:.3f}", _ENERGY)
         hass.states.async_set(
             "sensor.coarse_step_energy", f"{minute * 0.1:.3f}", _ENERGY
         )
         await hass.async_block_till_done()
-    await _tick(hass, freezer, start + timedelta(minutes=100))
+    await _tick(hass, freezer, start + timedelta(minutes=220))
 
-    # Then — the persistent negative-remainder Repair is raised
-    assert _has_issue(hass, ISSUE_NEGATIVE_REMAINDER)
+    # Then — the household is told their totals no longer add up to their meter
+    assert _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
     assert entry.state is ConfigEntryState.LOADED
 
-    # When — the inputs recover: the grid now imports far more than the device
-    # draws, and stays that way for a full window of buckets. One healthy interval
-    # is deliberately not enough — the tally spans a window rather than counting a
-    # consecutive run, so that an intermittent lump can no longer clear it (HEA-74)
-    grid, device = 10.0, 7.6
-    for minute in range(105, 175, 5):
-        freezer.move_to(start + timedelta(minutes=minute))
-        grid += 2.0
-        device += 0.1
-        hass.states.async_set("sensor.grid_import", f"{grid:.3f}", _ENERGY)
-        hass.states.async_set("sensor.coarse_step_energy", f"{device:.3f}", _ENERGY)
-        await hass.async_block_till_done()
-    await _tick(hass, freezer, start + timedelta(minutes=210))
+    # When — the sensor selection is fixed and the household rebases their figures
+    with patch(
+        "custom_components.home_energy_advisor.reset.get_instance",
+        return_value=MagicMock(),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESET_TOTALS,
+            {"config_entry_id": entry.entry_id},
+            blocking=True,
+        )
+    await _tick(hass, freezer, start + timedelta(minutes=225))
 
-    # Then — the Repair clears itself; the over-draw was not permanent
-    assert not _has_issue(hass, ISSUE_NEGATIVE_REMAINDER)
+    # Then — the Repair clears with the figures it was raised on
+    assert not _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
 
 
 async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(

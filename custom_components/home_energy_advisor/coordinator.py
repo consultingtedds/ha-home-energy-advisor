@@ -74,11 +74,14 @@ _UNAVAILABLE = {"unavailable", "unknown"}
 # this long before a Repair is raised — long enough to ride out restarts and brief
 # outages, short enough to surface a genuinely dead sensor the same day.
 _UNAVAILABLE_GRACE = timedelta(hours=1)
-# Over-drawn 5-minute buckets within the engine's recent window before the
-# persistent negative-remainder Repair is raised. Not a *consecutive* run: a
-# coarse counter overdraws one bucket and not the next, which reset the old run
-# every time and kept this Repair silent for weeks (HEA-74).
-_OVERDRAWN_BUCKET_LIMIT = 12
+# How far the published totals may sit above the metered house before the
+# household is told. Calibrated rather than chosen: replaying 72 h of real
+# readings forgives nothing at all, and drifting those same readings through a
+# synthetic over-read gives 0.01 % at 1 %, 0.17 % at 10 % and 0.61 % at 25 %. One
+# percent is therefore far outside anything reporting latency produces, and needs
+# roughly a 30-40 % over-read to reach — egregious, which is the bar a Repair
+# nobody can act on has to clear (HEA-69, HEA-82).
+_UNRECONCILED_SHARE_LIMIT = Decimal("0.01")
 
 _ROLE_BY_CONF: dict[str, SourceRole] = {
     CONF_GRID_IMPORT_ENTITY: SourceRole.GRID_IMPORT,
@@ -144,7 +147,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._reporting_seen: set[str] = set()
         self._silent_since: dict[str, datetime] = {}
         self._history_probed: set[str] = set()
-        self._negative_remainder_raised = False
+        self._unreconciled_raised = False
         self._implausible_sources: set[str] = set()
         self._accountant = Accountant(
             house_sources=house_sources,
@@ -390,18 +393,31 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             self._input_issues.pop(entity, None)
 
     def _check_remainder_health(self) -> None:
-        """Raise or clear the persistent negative-remainder Repair (HEA-36)."""
-        overdrawn = self._accountant.overdrawn_buckets_in_window()
-        if overdrawn >= _OVERDRAWN_BUCKET_LIMIT and not self._negative_remainder_raised:
+        """Raise or clear the Repair for totals that never reconcile (HEA-82).
+
+        Judged on energy the house meters never accounted for, not on over-drawn
+        buckets: since the carry landed those are ordinary coarse-counter timing,
+        absorbed and repaid within the quiet span. What survives that is the
+        household's own meters disagreeing, and it is the only thing that can now
+        lift the published total above the meter.
+
+        Both raising and clearing follow the same figure, so a household that
+        fixes a double-counted sensor sees this go away on its own: the forgiven
+        total stops growing while good energy keeps accumulating beneath it.
+        """
+        share = self._accountant.unreconciled_share()
+        egregious = share >= _UNRECONCILED_SHARE_LIMIT
+        if egregious and not self._unreconciled_raised:
             issues.async_raise(
                 self.hass,
-                issues.ISSUE_NEGATIVE_REMAINDER,
-                issues.ISSUE_NEGATIVE_REMAINDER,
+                issues.ISSUE_UNRECONCILED_ENERGY,
+                issues.ISSUE_UNRECONCILED_ENERGY,
+                {"share": f"{share:.1%}"},
             )
-            self._negative_remainder_raised = True
-        elif overdrawn == 0 and self._negative_remainder_raised:
-            issues.async_clear(self.hass, issues.ISSUE_NEGATIVE_REMAINDER)
-            self._negative_remainder_raised = False
+            self._unreconciled_raised = True
+        elif not egregious and self._unreconciled_raised:
+            issues.async_clear(self.hass, issues.ISSUE_UNRECONCILED_ENERGY)
+            self._unreconciled_raised = False
 
     def _feed_energy(self, entity_id: str, state: State | None) -> None:
         if state is None:

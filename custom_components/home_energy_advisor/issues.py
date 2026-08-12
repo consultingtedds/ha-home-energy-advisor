@@ -26,7 +26,11 @@ ISSUE_SOURCE_NEVER_REPORTED = "source_never_reported"
 ISSUE_PRICE_UNAVAILABLE = "price_unavailable"
 ISSUE_HELPER_RECREATED = "helper_recreated"
 ISSUE_CYCLE_HELPER_RECREATED = "cycle_helper_recreated"
-ISSUE_NEGATIVE_REMAINDER = "negative_remainder"
+# Replaces the old negative-remainder issue, which fired on over-drawn buckets.
+# Those are now carried and repaid rather than clamped (ADR-0015), so they are
+# ordinary coarse-counter timing rather than a fault; what is worth telling a
+# household about is a disagreement that never reconciles (HEA-82).
+ISSUE_UNRECONCILED_ENERGY = "unreconciled_energy"
 ISSUE_IMPLAUSIBLE_SOURCE = "implausible_source"
 
 
