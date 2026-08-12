@@ -2,18 +2,26 @@
  * What each device cost over the period, as bars (HEA-50).
  *
  * The over-time chart answers "how did this week go"; this one answers "which
- * of these cost me most", which is the same stacked bar turned on its side —
- * devices along the axis instead of days. Each bar totals Cost at Grid Price:
- * solid below is what was paid, faded above is what was saved.
+ * of these is costing me most", side by side for one period.
  *
- * Colour identifies the device, opacity identifies the segment. Two palettes
- * would fight each other, and a reader can only track one hue per bar.
+ * Each device is one outlined bar. The outline runs to Cost at Grid Price and
+ * the fill stops at what was actually paid, so the empty space between them is
+ * the saving — the same three figures the other cards carry, read off a single
+ * shape.
+ *
+ * Devices are named in the legend rather than along the axis. Fourteen device
+ * names on a category axis overlap into illegibility, and Home Assistant's own
+ * charts solve it the same way: `ha-chart-base` builds its legend from the
+ * series it is given and collapses the overflow behind a "more" chip, so the
+ * axis is left to the period. Each device is drawn as two stacked series, so
+ * `options.legend.data` names the devices explicitly rather than letting the
+ * legend list every segment.
  */
 
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { formatMoney } from "./hea-format.js";
+import { formatMoney, formatPeriod } from "./hea-format.js";
 
 export const TAG = "hea-device-costs-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -42,8 +50,17 @@ const UNTRACKED_COLOUR = { variable: "--secondary-text-color", fallback: "#8a8a8
 /** A loss must not read as a gain, whatever the device's own colour is. */
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
 
-/** How far the saved segment is faded from the device's own hue. */
-const SAVED_OPACITY = 0.45;
+const BORDER_WIDTH = 1.5;
+/** How far the fill is lightened from the outline it sits inside. */
+const FILL_ALPHA = 0.45;
+
+/** `#rrggbb` at the given alpha, so fill and outline read as one colour. */
+const tint = (hex, alpha) => {
+  const [red, green, blue] = [1, 3, 5].map((at) =>
+    Number.parseInt(hex.slice(at, at + 2), 16),
+  );
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
 
 class HeaDeviceCostsCard extends HeaChartCard {
   static defaultTitle = "What each device cost";
@@ -70,7 +87,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
    *
    * Ranked by actual cost rather than by bar height, so it answers the same
    * question the table does and in the same order. Bars therefore need not
-   * descend — a tall bar with a small solid base is a device that ran mostly on
+   * descend — a tall outline on a small fill is a device that ran mostly on
    * generation, which is worth seeing rather than sorting away.
    */
   _ranked() {
@@ -87,43 +104,55 @@ class HeaDeviceCostsCard extends HeaChartCard {
       : PALETTE[index % PALETTE.length];
   }
 
+  /**
+   * Two series per device sharing one stack: the fill, then the empty saving
+   * standing on top of it.
+   *
+   * A device's own stack, never a shared one — stacking every device together
+   * would pile the whole household into a single column.
+   */
   _series() {
-    const devices = this._ranked();
     const loss = this._colour(LOSS);
-    const point = (value, colour) => ({ value, itemStyle: { color: colour } });
-    return [
-      {
-        id: "paid",
-        name: "Paid",
-        type: "bar",
-        stack: "cost",
-        itemStyle: { opacity: 1 },
-        data: devices.map((device, index) =>
-          point(device.actualCost, this._colourFor(device, index)),
-        ),
-      },
-      {
-        id: "saved",
-        name: "Saved",
-        type: "bar",
-        stack: "cost",
-        itemStyle: { opacity: SAVED_OPACITY },
-        data: devices.map((device, index) =>
-          point(
-            device.costSavings,
-            device.costSavings < 0 ? loss : this._colourFor(device, index),
-          ),
-        ),
-      },
-    ];
+    return this._ranked().flatMap((device, index) => {
+      const colour = this._colourFor(device, index);
+      const outline = device.costSavings < 0 ? loss : colour;
+      return [
+        {
+          id: `${device.key}:paid`,
+          name: device.name,
+          type: "bar",
+          stack: device.key,
+          itemStyle: {
+            color: tint(colour, FILL_ALPHA),
+            borderColor: colour,
+            borderWidth: BORDER_WIDTH,
+          },
+          data: [device.actualCost],
+        },
+        {
+          id: `${device.key}:saved`,
+          name: device.name,
+          type: "bar",
+          stack: device.key,
+          // Unfilled, so the outline alone carries what it would have cost.
+          itemStyle: {
+            color: "transparent",
+            borderColor: outline,
+            borderWidth: BORDER_WIDTH,
+          },
+          data: [device.costSavings],
+        },
+      ];
+    });
   }
 
   _options(locale) {
     return {
       xAxis: {
         type: "category",
-        data: this._ranked().map((device) => device.name),
-        axisLabel: { interval: 0, rotate: 30, hideOverlap: true },
+        // One column for the whole period: the comparison is device against
+        // device, not against time.
+        data: [formatPeriod(this._period, locale)],
       },
       yAxis: {
         type: "value",
@@ -134,7 +163,16 @@ class HeaDeviceCostsCard extends HeaChartCard {
         axisPointer: { type: "shadow" },
         valueFormatter: (value) => formatMoney(value, locale),
       },
-      legend: { show: true },
+      // Named explicitly: each device is two series, and the legend should
+      // name the device once rather than list both of its segments.
+      legend: {
+        type: "custom",
+        data: this._ranked().map((device, index) => ({
+          id: device.key,
+          name: device.name,
+          itemStyle: { color: this._colourFor(device, index) },
+        })),
+      },
     };
   }
 }
