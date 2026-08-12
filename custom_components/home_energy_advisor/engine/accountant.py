@@ -31,7 +31,7 @@ subtracts. A monotonic whole-home total falls out for free.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal
 from enum import Enum
@@ -122,6 +122,13 @@ class DeviceTotals:
     energy_from_grid: Decimal
     energy_from_generation: Decimal
     energy_from_battery: Decimal
+    # What ``actual_cost`` would have been had every kWh landed in the cheapest,
+    # then the dearest, 5-minute slice of the span its counter revealed it over.
+    # Outer bounds on the spreading approximation, not a confidence interval, and
+    # on a house with generation they are far apart: a span can hold a slice
+    # served by the sun and one served entirely by the meter (ADR-0016).
+    cost_floor: Decimal
+    cost_ceiling: Decimal
 
 
 @dataclass(frozen=True)
@@ -164,6 +171,20 @@ class _RetainedBucket:
     sources: Mapping[SourceKind, Decimal]
 
 
+@dataclass(frozen=True)
+class _PendingBound:
+    """One delta's energy, waiting for the slices it spans to be priced.
+
+    A delta's bound needs the blended price of every slice it touched, and those
+    are only known as each is finalised. So the bound is held until the last of
+    them closes, then resolved from the retained ring (ADR-0016).
+    """
+
+    device: str
+    kwh: Decimal
+    buckets: tuple[datetime, ...]
+
+
 @dataclass
 class _WindowBucket:
     """One finalised interval's evidence for the plausibility guard (HEA-60).
@@ -195,7 +216,16 @@ class _Running:
     actual_cost: Decimal = Decimal(0)
     naive_cost: Decimal = Decimal(0)
     cost_savings: Decimal = Decimal(0)
+    # Deliberately not touched by ``add``: a bucket's allocation cannot bound a
+    # figure whose uncertainty spans the buckets *around* it. Bounds accrue when
+    # the span of the delta that revealed the energy has finished finalising.
+    cost_floor: Decimal = Decimal(0)
+    cost_ceiling: Decimal = Decimal(0)
     by_source: dict[SourceKind, Decimal] = field(default_factory=dict)
+
+    def bound(self, floor: Decimal, ceiling: Decimal) -> None:
+        self.cost_floor += floor
+        self.cost_ceiling += ceiling
 
     def add(self, allocation: DeviceAllocation) -> None:
         self.energy_kwh += allocation.energy_kwh
@@ -219,6 +249,8 @@ class _Running:
                 SourceKind.GENERATION, Decimal(0)
             ),
             energy_from_battery=self.by_source.get(SourceKind.BATTERY, Decimal(0)),
+            cost_floor=self.cost_floor,
+            cost_ceiling=self.cost_ceiling,
         )
 
 
@@ -256,6 +288,7 @@ class Accountant:
         # clears within it, and one that does not is a meter disagreement rather
         # than late reporting (ADR-0015).
         self._debts = DebtLedger(expiry=self._max_quiet_span)
+        self._pending_bounds: list[_PendingBound] = []
         self._strategy = ProportionalAllocationStrategy()
         self._running = {device: _Running() for device in device_energy_entities}
         self._house = _Running()
@@ -365,10 +398,18 @@ class Accountant:
         """
         devices = {device: run.snapshot() for device, run in self._running.items()}
         whole_home = self._house.snapshot()
+        untracked = self._derive_untracked(whole_home, devices.values())
+        # Bounds are the one figure the household total does not accumulate. The
+        # remainder is priced within its own slice, so it carries no doubt, and a
+        # late correction moves value out of it long after the slice closed —
+        # accumulating a bound alongside would drift from the figure it bounds.
+        # Composing it from the parts keeps it exact however value has moved.
+        bounded = _sum(d.cost_floor for d in devices.values()) + untracked.actual_cost
+        capped = _sum(d.cost_ceiling for d in devices.values()) + untracked.actual_cost
         return Totals(
             devices=devices,
-            untracked=self._derive_untracked(whole_home, devices.values()),
-            whole_home=whole_home,
+            untracked=untracked,
+            whole_home=replace(whole_home, cost_floor=bounded, cost_ceiling=capped),
             unreconciled_kwh=self.unreconciled_energy(),
         )
 
@@ -392,6 +433,11 @@ class Accountant:
             energy_from_grid=whole_home.energy_from_grid - grid,
             energy_from_generation=whole_home.energy_from_generation - generation,
             energy_from_battery=whole_home.energy_from_battery - battery,
+            # The remainder is derived slice by slice from meters that reported
+            # for that slice, so unlike a coarse counter it has no span to be
+            # uncertain about: its cost is its own bound.
+            cost_floor=whole_home.actual_cost - actual,
+            cost_ceiling=whole_home.actual_cost - actual,
         )
 
     def source_diagnostics(self) -> dict[str, SourceSnapshot]:
@@ -413,7 +459,18 @@ class Accountant:
     def _spread_device(
         self, device: str, delta: EnergyDelta, source: CumulativeEnergySource
     ) -> None:
-        for portion in spread_energy(delta):
+        portions = spread_energy(delta)
+        # The whole delta is one question — "where in this span did the energy
+        # happen" — so it is bounded as a whole, over every slice it touched,
+        # rather than portion by portion.
+        self._pending_bounds.append(
+            _PendingBound(
+                device=device,
+                kwh=delta.kwh,
+                buckets=tuple(portion.start for portion in portions),
+            )
+        )
+        for portion in portions:
             if not self._is_finalised(portion.start):
                 bucket = self._draws.setdefault(portion.start, {})
                 bucket[device] = bucket.get(device, Decimal(0)) + portion.kwh
@@ -494,6 +551,33 @@ class Accountant:
             self._house.add(share)
         self._house.add(remainder)
         self._retain(start, sources, prices, draws)
+        self._resolve_bounds(start)
+
+    def _resolve_bounds(self, start: datetime) -> None:
+        """Price every waiting delta whose last slice has now closed.
+
+        Buckets finalise in order, so a delta is resolvable once the newest slice
+        it touched is retained. Both paths arrive here: energy accounted live
+        resolves at its own last slice, and energy arriving late for slices
+        already closed resolves at the next finalisation — which matters, because
+        that is the path most of a coarse counter's energy takes (ADR-0006).
+        """
+        waiting: list[_PendingBound] = []
+        for pending in self._pending_bounds:
+            if pending.buckets[-1] > start:
+                waiting.append(pending)
+                continue
+            blends = [
+                retained.blended
+                for at in pending.buckets
+                if (retained := self._retained.get(at)) is not None
+            ]
+            if not blends:
+                continue
+            floor = pending.kwh * min(blends)
+            ceiling = pending.kwh * max(blends)
+            self._running.setdefault(pending.device, _Running()).bound(floor, ceiling)
+        self._pending_bounds = waiting
 
     def _settle(
         self,
