@@ -201,3 +201,45 @@ def test_a_debt_the_house_never_repays_is_forgiven_not_carried_forever() -> None
     # later bucket's remainder, and the energy it stood for is surfaced
     assert acc.unreconciled_energy() > 0
     assert acc.totals().untracked.energy_kwh > 0
+
+
+def test_unreconciled_energy_is_exactly_the_gap_against_the_meter() -> None:
+    # Given — a counter claiming more than the house ever consumes, so its debt
+    # can never be repaid
+    acc = a_home()
+    acc.observe(GRID, at(0), Decimal(0))
+    acc.observe(COARSE_STEP_AIRCON, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("0.1"))
+    acc.observe(COARSE_STEP_AIRCON, at(5), Decimal("0.4"))
+
+    # When — the house trickles along for four hours, never metering enough to
+    # repay the 0.3 kWh the device claimed beyond it
+    metered = reading = Decimal("0.1")
+    for minute in range(10, 60 * 4, 5):
+        reading += Decimal("0.001")
+        metered += Decimal("0.001")
+        acc.observe(GRID, at(minute), reading)
+    acc.finalize(at(60 * 5))
+
+    # Then — since the carry landed, forgiven debt is the only thing that can
+    # inflate the whole-home figure. So this number is not a diagnostic *about*
+    # the gap against the household's own meter: it is that gap, in kWh.
+    published = acc.totals().whole_home.energy_kwh
+    assert acc.unreconciled_energy() > 0
+    assert published - metered == acc.unreconciled_energy()
+
+
+def test_the_unreconciled_share_is_that_gap_as_a_fraction_of_the_total() -> None:
+    # Given / When — a house whose meters reconcile
+    acc = a_home()
+    overdraw_then_repay(acc)
+
+    # Then — nothing forgiven, so nothing unreconciled. This is what a healthy
+    # install reads, which is what makes any other reading worth acting on.
+    assert acc.unreconciled_energy() == Decimal(0)
+    assert acc.unreconciled_share() == Decimal(0)
+
+
+def test_an_accountant_that_has_published_nothing_reports_no_share() -> None:
+    # Given / When / Then — a share of nothing is not an error to divide by
+    assert a_home().unreconciled_share() == Decimal(0)
