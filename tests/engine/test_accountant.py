@@ -41,6 +41,8 @@ ZERO_TOTALS = DeviceTotals(
     energy_from_grid=Decimal(0),
     energy_from_generation=Decimal(0),
     energy_from_battery=Decimal(0),
+    cost_floor=Decimal(0),
+    cost_ceiling=Decimal(0),
 )
 
 

@@ -17,22 +17,35 @@ HEA-74). This is the best available answer, and it is still an estimate: the
 energy really happened *somewhere* inside the span, and nothing in the data says
 where.
 
-So the cost has a floor and a ceiling. If every kWh landed at the cheapest
-instant in its span, the device cost one figure; at the dearest instant,
-another. Measured over a 72-hour capture from the reference instance, across 433
-deltas:
+So the cost has a floor and a ceiling. If every kWh landed in the cheapest
+5-minute slice of its span, the device cost one figure; in the dearest, another.
+
+**This ADR first quoted the wrong measurement, and the corrected one is much
+wider.** The original bounded each delta by the range of *import prices* over its
+span. That is the uncertainty in **Cost at Grid Price**, which is priced at
+import — a well-behaved ±6.0 % on the reference instance. Actual cost is priced
+at the *blend* of grid, generation and battery serving each bucket, so its span
+may hold a bucket served by the sun and a bucket served entirely by the meter.
+Re-measured against the per-bucket blends the engine actually charges, over the
+same 72-hour capture:
 
 | | |
 |---|---|
 | spread span | median 32 min, 90th pct 81 min, max 135 min |
-| cheapest those spans could have been | €16.16 |
-| **as priced** | **€16.50** |
-| dearest those spans could have been | €17.16 |
-| width of the band | **±6.0 %** of device cost |
+| tracked devices, as charged | €4.0022 |
+| cheapest their spans allow | €3.6090 |
+| dearest their spans allow | €4.7241 |
+| **width of the band** | **+27.9 %** of actual cost |
 
-The width is not a household constant. Per device it ranges from **±2.2 % to
-±14.5 %** — a 6.6× spread — and the largest single consumer in the capture sits
-at ±7.2 %, so the uncertainty is concentrated where the money is.
+The width is not a household constant, and the spread is far larger than the
+import-price figure suggested: **+8.1 % to +1252 %** per device. The extremes are
+not noise. A device that ran only in the middle of the day costs almost nothing
+because it ran on generation, while a two-hour span containing one grid-served
+bucket permits a cost a hundred times higher — and nothing in the data says which
+happened. Even the well-behaved devices sit at 20–33 %, not 6 %.
+
+The honest summary for this house is that per-device actual cost is knowable to
+roughly ±15 %, not ±3 %.
 
 Critically, **it cannot be derived from reporting cadence**. One device with an
 8-minute median span carries a wider band than another with a 29-minute span,
@@ -74,12 +87,25 @@ figure the household is meant to read first.
 
 **4. The band is a bound, and is labelled as one.**
 
-Summing each delta's worst case assumes every device's energy landed at its own
-most expensive instant at once. That is a genuine outer limit, not a confidence
-interval, and it must not be presented as "the error is 6 %". The typical error
-is a fraction of the width and partly cancels across devices.
+Summing each delta's worst case assumes every device's energy landed in its own
+most expensive 5-minute slice at once. That is a genuine outer limit, not a
+confidence interval, and it must not be presented as "the error is 28 %". The
+typical error is a fraction of the width and partly cancels across devices.
 
-**5. Unreconciled energy is published alongside it.**
+**5. It is shown as a range in money, never as a percentage.**
+
+`(ceiling − floor) / actual` explodes as actual approaches zero — the +1252 %
+above is a device that cost less than a cent. That is the same defect that
+sank run-signal weighting in HEA-75: a near-zero denominator turning a small
+absolute uncertainty into a meaningless percentage. Currency has no such
+failure mode, so a device reads `€0.01 (€0.00 – €0.10)`, which says "we cannot
+tell whether this ran on the sun" without arithmetic theatre.
+
+This is also why the bounds are published as costs rather than as a width:
+a range can be rendered directly, and a percentage can still be derived by
+anyone who wants one for a figure large enough to carry it.
+
+**6. Unreconciled energy is published alongside it.**
 
 ADR-0015's expired debt measures how far a household's meters disagree.
 Presented together, the two answer the whole question: how far apart are my
