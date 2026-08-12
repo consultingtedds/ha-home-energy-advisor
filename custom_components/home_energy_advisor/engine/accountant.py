@@ -564,6 +564,23 @@ class Accountant:
         """
         return self._debts.forgiven_kwh()
 
+    def unreconciled_share(self) -> Decimal:
+        """Unreconciled energy as a fraction of everything published.
+
+        The same gap the ``unreconciled_energy`` figure carries, expressed the way
+        a household would check it — "my totals sit this far above my meter". A
+        fraction rather than a quantity because that is what survives comparison
+        between a flat and a farmhouse, and what a threshold can be set on.
+
+        It decays on its own: a fault that is fixed stops adding to the numerator
+        while good energy keeps growing the denominator, so a Repair raised on it
+        clears without anyone resetting anything.
+        """
+        published = self._house.energy_kwh
+        if published <= 0:
+            return Decimal(0)
+        return self._debts.forgiven_kwh() / published
+
     def implausible_devices(self) -> frozenset[str]:
         """Devices whose source is claiming more energy than the whole house.
 
