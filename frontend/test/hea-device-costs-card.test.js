@@ -70,30 +70,75 @@ describe("registration", () => {
 });
 
 describe("the bars", () => {
-  it("plots one bar per device, against the devices themselves", async () => {
-    // Given — the comparison is device against device, so the axis is
-    // categorical rather than the over-time chart's time axis
+  const deviceSeries = (card, key) =>
+    chartOf(card).data.filter((series) => series.id.startsWith(`${key}:`));
+
+  it("puts the devices in the legend, not on the axis", async () => {
+    // Given — fourteen device names along an axis is what made the first
+    // attempt unreadable; Home Assistant's own charts name series in a legend
+    // and leave the axis to the period
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then
+    // Then — one category for the whole period, and the names in the legend
     expect(chartOf(card).options.xAxis.type).toBe("category");
-    expect(chartOf(card).options.xAxis.data).toEqual([
+    expect(chartOf(card).options.xAxis.data).toHaveLength(1);
+    expect(chartOf(card).options.legend.data.map((entry) => entry.name)).toEqual([
       "Cloud Polled Pump",
       "Slow Poll Aircon",
     ]);
   });
 
-  it("stacks what was paid under what was saved", async () => {
+  it("gives every device one legend entry, not one per segment", async () => {
+    // Given — each device is drawn as two stacked series, which would
+    // otherwise put its name in the legend twice
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(chartOf(card).data).toHaveLength(4);
+    expect(chartOf(card).options.legend.data).toHaveLength(2);
+  });
+
+  it("fills to what was paid and outlines to what it would have cost", async () => {
+    // Given — the outline carries the counterfactual and the fill carries the
+    // spend, so the empty space between them is the saving
+    const card = mount(aHass({ devices: [PUMP], response: THREE }));
+    await ready(card);
+
+    // Then — 3.00 paid of 4.00 at grid price, so 1.00 stands empty above it
+    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
+    expect(paid.data[0]).toBe(3.0);
+    expect(saved.data[0]).toBe(1.0);
+    expect(paid.itemStyle.color).not.toBe("transparent");
+    expect(saved.itemStyle.color).toBe("transparent");
+  });
+
+  it("draws both segments with the same outline, in the device's colour", async () => {
     // Given / When
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then — one stack, so each bar totals Cost at Grid Price
-    expect(seriesOf(card, "paid").stack).toBe("cost");
-    expect(seriesOf(card, "saved").stack).toBe("cost");
-    expect(seriesOf(card, "paid").data.map((point) => point.value)).toEqual([3.0, 0.5]);
-    expect(seriesOf(card, "saved").data.map((point) => point.value)).toEqual([1.0, 5.0]);
+    // Then — one hue per device, carried by the border so the bar reads as a
+    // single outlined shape rather than two stacked blocks
+    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
+    expect(paid.itemStyle.borderColor).toBe(saved.itemStyle.borderColor);
+    expect(paid.itemStyle.borderWidth).toBeGreaterThan(0);
+    expect(saved.itemStyle.borderWidth).toBeGreaterThan(0);
+    const [otherPaid] = deviceSeries(card, "slow_poll_aircon");
+    expect(otherPaid.itemStyle.borderColor).not.toBe(paid.itemStyle.borderColor);
+  });
+
+  it("stacks each device on its own, so devices sit side by side", async () => {
+    // Given / When
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then — a shared stack would pile every device into one column
+    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
+    const [otherPaid] = deviceSeries(card, "slow_poll_aircon");
+    expect(paid.stack).toBe(saved.stack);
+    expect(paid.stack).not.toBe(otherPaid.stack);
   });
 
   it("orders the dearest device first", async () => {
@@ -102,31 +147,7 @@ describe("the bars", () => {
     await ready(card);
 
     // Then
-    expect(chartOf(card).options.xAxis.data[0]).toBe("Cloud Polled Pump");
-  });
-
-  it("gives each device its own colour, in both segments", async () => {
-    // Given / When
-    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
-    await ready(card);
-
-    // Then — the hue identifies the device, so paid and saved share it; the
-    // segments are told apart by opacity, not by a second palette
-    const paid = seriesOf(card, "paid").data;
-    const saved = seriesOf(card, "saved").data;
-    expect(paid[0].itemStyle.color).not.toBe(paid[1].itemStyle.color);
-    expect(saved[0].itemStyle.color).toBe(paid[0].itemStyle.color);
-    expect(saved[1].itemStyle.color).toBe(paid[1].itemStyle.color);
-  });
-
-  it("fades the saved segment rather than recolouring it", async () => {
-    // Given / When
-    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
-    await ready(card);
-
-    // Then — solid is what left the household's pocket
-    expect(seriesOf(card, "paid").itemStyle.opacity).toBe(1);
-    expect(seriesOf(card, "saved").itemStyle.opacity).toBeLessThan(1);
+    expect(chartOf(card).options.legend.data[0].name).toBe("Cloud Polled Pump");
   });
 
   it("gives the Untracked remainder a colour of its own", async () => {
@@ -136,13 +157,9 @@ describe("the bars", () => {
     await ready(card);
 
     // Then
-    const byName = Object.fromEntries(
-      chartOf(card).options.xAxis.data.map((name, index) => [
-        name,
-        seriesOf(card, "paid").data[index].itemStyle.color,
-      ]),
-    );
-    expect(byName["Untracked"]).not.toBe(byName["Slow Poll Aircon"]);
+    const [untracked] = deviceSeries(card, "untracked_energy_devices");
+    const [aircon] = deviceSeries(card, "slow_poll_aircon");
+    expect(untracked.itemStyle.borderColor).not.toBe(aircon.itemStyle.borderColor);
   });
 
   it("keeps a loss below the axis and marks it", async () => {
@@ -156,11 +173,10 @@ describe("the bars", () => {
     await ready(card);
 
     // Then — negative is how Home Assistant renders exported energy, and the
-    // loss carries the error colour so it is not read as a gain
-    const [point] = seriesOf(card, "saved").data;
-    const [paid] = seriesOf(card, "paid").data;
-    expect(point.value).toBe(-2);
-    expect(point.itemStyle.color).not.toBe(paid.itemStyle.color);
+    // loss outline is the error colour so it is not read as a gain
+    const [paid, saved] = deviceSeries(card, "slow_poll_aircon");
+    expect(saved.data[0]).toBe(-2);
+    expect(saved.itemStyle.borderColor).not.toBe(paid.itemStyle.borderColor);
   });
 });
 
