@@ -51,7 +51,9 @@ scale of consumption, very different concurrency.
 every late portion:
 
 ```python
-grew = max(retained.consumption, retained.draw + kwh) - max(retained.consumption, retained.draw)
+grew = max(retained.consumption, retained.draw + kwh) - max(
+    retained.consumption, retained.draw
+)
 ```
 
 and that is the *dominant* path — of 113.8 kWh of device energy in the capture,
