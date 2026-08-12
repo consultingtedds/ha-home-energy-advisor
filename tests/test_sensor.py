@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import SensorExtraStoredData
 from homeassistant.config_entries import ConfigSubentryData
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_NAME, EntityCategory
 from homeassistant.core import State
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
@@ -867,3 +867,89 @@ async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
     assert hea_device is not None
     assert hea_device.area_id is None
     assert hass.states.get("sensor.coarse_step_aircon_energy_used") is not None
+
+
+async def test_unreconciled_energy_reads_zero_when_the_meters_agree(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a household whose device counters and house meter reconcile, which
+    # they do even while disagreeing bucket by bucket (HEA-81)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+
+    # Then — zero, which is the reading that makes any other reading worth
+    # acting on. It is diagnostic: context for the totals, not a headline figure.
+    state = hass.states.get("sensor.home_energy_advisor_unreconciled_energy")
+    assert state is not None
+    assert Decimal(state.state) == Decimal(0)
+    assert state.attributes["unit_of_measurement"] == "kWh"
+    registry = er.async_get(hass)
+    resolved = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_unreconciled_energy"
+    )
+    assert resolved is not None
+    registry_entry = registry.async_get(resolved)
+    assert registry_entry is not None
+    assert registry_entry.entity_category is EntityCategory.DIAGNOSTIC
+
+
+async def test_unreconciled_energy_lives_on_the_hub_device(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — it describes the household's metering, not any one appliance
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then
+    hub = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    registry = er.async_get(hass)
+    resolved = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_unreconciled_energy"
+    )
+    assert hub is not None
+    assert resolved is not None
+    registry_entry = registry.async_get(resolved)
+    assert registry_entry is not None
+    assert registry_entry.device_id == hub.id
+
+
+async def test_unreconciled_energy_survives_a_restart_via_restore(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — 0.25 kWh already unreconciled before the restart. The engine counts
+    # from zero again on startup, and a figure whose job is to flag a problem
+    # must not appear to clear itself every time Home Assistant restarts.
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entity_id = "sensor.home_energy_advisor_unreconciled_energy"
+    restored = SensorExtraStoredData(
+        native_value=Decimal("0.25"), native_unit_of_measurement="kWh"
+    )
+    mock_restore_cache_with_extra_data(
+        hass, ((State(entity_id, "0.25"), restored.as_dict()),)
+    )
+    entry.add_to_hass(hass)
+
+    # When — it starts back up and accounts an interval that reconciles cleanly
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+
+    # Then — the restored total stands rather than resetting to zero
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.25")
