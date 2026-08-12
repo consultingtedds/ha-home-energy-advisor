@@ -94,11 +94,30 @@ Live allocation and late correction are the same rectifier applied at two
 moments, so the balance must survive finalisation rather than living inside
 `_energies`.
 
-**5. The balance carries cost as well as energy.**
+**5. The balance carries cost as well as energy, and repayment refunds the
+devices that overdrew.**
 
 A deficit repaid at a later bucket's blended price would break `Σ allocations =
-real costs`. Debt is repaid at the price it was charged at, so the invariant
-holds across the carry.
+real costs`, so the debt remembers what it was charged and gives that back.
+
+*Where* it gives it back is not a detail. An overdrawing device is charged the
+import rate, because energy the meters have not yet reported can only have come
+off the grid (ADR-0014). When the meters catch up they may say otherwise — that
+the energy was partly generated, and free. The device therefore overpaid, and
+the refund is returned to the devices that incurred the debt, in proportion to
+their draw in the bucket that incurred it.
+
+Letting the remainder absorb it instead reconciles the same total and is wrong
+in the way that matters: it leaves the device paying grid price for energy that
+turned out to be solar, and pushes the credit into a remainder that never used
+the sun. Worked through, it also drives the remainder's published cost negative
+(−€0.03 on a bucket pair costing €0.09), breaking decision 2 for a figure that
+means nothing. Correct attribution of generation to the device that consumed it
+is the product's central claim; reconciling the total at its expense would be
+arithmetic honesty covering for attribution dishonesty.
+
+Revising a device's total after the fact is not a new behaviour: `_correct`
+already does it whenever late energy lands in a retained bucket (ADR-0006).
 
 **6. Expired debt is published, not swallowed.**
 
