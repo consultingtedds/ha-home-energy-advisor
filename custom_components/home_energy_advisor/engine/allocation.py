@@ -11,11 +11,17 @@ The contract is a pluggable strategy so the recorded fallbacks — a deficit-cap
 model, an export-aware variant that prices generation at the export rate — can replace
 the MVP proportional split without the sensor layer noticing.
 
-Two invariants hold on every bucket (see docs/CRITICAL_INSTRUCTIONS.md):
+Two invariants hold (see docs/CRITICAL_INSTRUCTIONS.md):
 
-- Σ device + remainder actual costs equal the bucket's real cost, exactly at
-  Decimal precision — the rounding residue is folded into the largest allocation.
-- No allocation is negative.
+- Σ device + remainder actual costs equal the real cost of the metered energy,
+  exactly at Decimal precision — the rounding residue is folded into the largest
+  allocation. This holds over any period spanning the buckets a carried debt
+  touches, not over a bucket taken alone: a bucket that overdraws is charged for
+  energy the house meters have not yet reported, and the bucket that repays the
+  debt returns it at the price it was charged (ADR-0015). Neither balances by
+  itself; the pair nets to the truth.
+- No allocation is negative. Only the carried balance is signed, and it is
+  internal — nothing published ever goes below zero.
 """
 
 from __future__ import annotations
@@ -92,11 +98,18 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     A small overdraw is expected and is not a fault. A coarse counter's step is
     spread evenly across a span whose true accrual profile cannot be known, and an
     even estimate can exceed what the house really drew in one five-minute slice
-    while reconciling exactly over the whole span. Measured on the reference
-    instance it inflates published whole-home energy by ~1 %, in ~2 % of buckets.
-    Cost Savings is unaffected: the excess is charged at the import rate and the
-    counterfactual values it at the import rate, so it nets to zero saving
-    (HEA-77, ADR-0014).
+    while reconciling exactly over the whole span. Cost Savings is unaffected: the
+    excess is charged at the import rate and the counterfactual values it at the
+    import rate, so it nets to zero saving (HEA-77, ADR-0014).
+
+    Clamping here is therefore only half the story, and the accountant supplies
+    the other half. Left to accumulate, the clamp rectifies a zero-mean signal —
+    the house meter and the device counters agree eventually and never within one
+    bucket — into a bias that never cancels: measured at +1.9 % of published
+    energy and +7.8 % of published cost over 72 h on the reference instance. The
+    accountant carries each bucket's excess as debt and repays it out of a later
+    bucket's surplus, so what this strategy withholds here is given back there
+    (ADR-0015).
     """
 
     @override

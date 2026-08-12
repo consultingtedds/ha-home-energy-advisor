@@ -37,8 +37,13 @@ from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from .allocation import ProportionalAllocationStrategy, split_by_source
+from .allocation import (
+    DeviceAllocation,
+    ProportionalAllocationStrategy,
+    split_by_source,
+)
 from .battery_ledger import BatteryLedger
+from .debt_ledger import DebtLedger
 from .energy_source import (
     MAX_QUIET_SPAN,
     CumulativeEnergySource,
@@ -51,7 +56,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
     from datetime import datetime
 
-    from .allocation import DeviceAllocation
     from .energy_source import EnergyDelta, SourceSnapshot
 
 _DEFAULT_LATENESS = 3 * BUCKET
@@ -239,6 +243,12 @@ class Accountant:
         self._draws: dict[datetime, dict[str, Decimal]] = {}
         self._prices: list[tuple[datetime, Decimal]] = []
         self._battery = BatteryLedger()
+        # Energy charged before its meter reading arrived, awaiting the surplus
+        # that repays it. Expiring at the span a coarse step is spread over is a
+        # derivation, not a second knob: a deficit created by that spreading
+        # clears within it, and one that does not is a meter disagreement rather
+        # than late reporting (ADR-0015).
+        self._debts = DebtLedger(expiry=self._max_quiet_span)
         self._strategy = ProportionalAllocationStrategy()
         self._running = {device: _Running() for device in device_energy_entities}
         self._house = _Running()
@@ -336,6 +346,10 @@ class Accountant:
         self._raw.clear()
         self._draws.clear()
         self._retained.clear()
+        # Debt outlives nothing: it is a claim against buckets that no longer
+        # contribute to any total, and repaying it after the rebase would move
+        # value between figures that no longer share a baseline.
+        self._debts = DebtLedger(expiry=self._max_quiet_span)
 
     def totals(self) -> Totals:
         """Returns the since-startup running totals per device, home and Untracked.
@@ -458,6 +472,11 @@ class Accountant:
         grew = max(retained.consumption, retained.draw + kwh) - max(
             retained.consumption, retained.draw
         )
+        # The same overdraw the live path records, arriving later. `bought` above
+        # charged it at the import rate and `grew` is that excess exactly, so it
+        # is owed on the one ledger both paths share — without this, the dominant
+        # path for coarse counters would keep the bias the carry removes.
+        self._debts.owe(start, grew, grew * retained.import_price, {device: kwh})
         self._house.energy_kwh += grew
         self._house.actual_cost += grew * retained.import_price
         self._house.naive_cost += grew * retained.import_price
@@ -477,11 +496,12 @@ class Accountant:
         prices, sources = self._price_sources(served, self._price_at(start))
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
+        remainder = self._settle(start, allocation.untracked, draws, sources, prices)
         for device, share in allocation.devices.items():
             self._running.setdefault(device, _Running()).add(share)
         for share in allocation.devices.values():
             self._house.add(share)
-        self._house.add(allocation.untracked)
+        self._house.add(remainder)
         self._retain(start, sources, prices, draws)
         # Overdraw is judged on what the sources *claimed*, not on what survived the
         # plausibility guard. "Your tracked devices report drawing more than the
@@ -489,6 +509,60 @@ class Accountant:
         # quarantining a lying device must not silently retire the broader Repair
         # that first tells a user something is wrong (HEA-36).
         self._track_overdraw(served, claimed)
+
+    def _settle(
+        self,
+        start: datetime,
+        remainder: DeviceAllocation,
+        draws: Mapping[str, Decimal],
+        sources: Mapping[SourceKind, Decimal],
+        prices: Mapping[SourceKind, Decimal],
+    ) -> DeviceAllocation:
+        """Owes this bucket's overdraw, or spends its surplus repaying an older one.
+
+        A bucket whose tracked draw exceeds metered consumption publishes no
+        remainder and records the excess as debt; one with a surplus offers it to
+        the ledger before publishing what is left. Over the pair the published
+        figures reconcile to the meter, which neither does alone (ADR-0015).
+        """
+        consumption = _sum(sources.values())
+        import_price = prices[SourceKind.IMPORT]
+        self._debts.expire(start)
+        overdraw = _sum(draws.values()) - consumption
+        if overdraw > 0:
+            self._debts.owe(start, overdraw, overdraw * import_price, draws)
+            return remainder
+        if remainder.energy_kwh <= 0:
+            return remainder
+        blended = remainder.actual_cost / remainder.energy_kwh
+        repayment = self._debts.repay(remainder.energy_kwh, blended)
+        self._refund(repayment.refunds)
+        return _withhold(remainder, repayment.kwh, blended, import_price, sources)
+
+    def _refund(self, refunds: Mapping[str, Decimal]) -> None:
+        """Returns what a debt overcharged to the devices that incurred it.
+
+        The debt was charged at the import rate because energy the meters had not
+        reported has nowhere else to have come from. The interval that repaid it
+        may have been served more cheaply, and that difference belongs to the
+        device that drew the energy rather than to the remainder, which never
+        used it (ADR-0015 decision 5).
+        """
+        for device, amount in refunds.items():
+            run = self._running.setdefault(device, _Running())
+            run.actual_cost -= amount
+            run.cost_savings += amount
+            self._house.actual_cost -= amount
+            self._house.cost_savings += amount
+
+    def unreconciled_energy(self) -> Decimal:
+        """Energy charged that the house meters never went on to account for.
+
+        Debt forgiven at the expiry rather than repaid. Reporting latency clears
+        within that window; what survives it is the household's own meters
+        disagreeing, which is surfaced rather than absorbed (HEA-82).
+        """
+        return self._debts.forgiven_kwh()
 
     def implausible_devices(self) -> frozenset[str]:
         """Devices whose source is claiming more energy than the whole house.
@@ -709,6 +783,34 @@ class Accountant:
                 break
             applicable = price
         return applicable
+
+
+def _withhold(
+    remainder: DeviceAllocation,
+    repaid: Decimal,
+    blended: Decimal,
+    import_price: Decimal,
+    sources: Mapping[SourceKind, Decimal],
+) -> DeviceAllocation:
+    """The remainder less the energy that settled a debt, and less its cost.
+
+    Withheld rather than published because the devices were already credited
+    with this energy in the bucket that overdrew; publishing it again is the
+    double-count the carry exists to remove. The sources are re-split over what
+    is kept, so the by-source figures still sum to the energy they explain.
+    """
+    if repaid <= 0:
+        return remainder
+    kept = remainder.energy_kwh - repaid
+    actual = remainder.actual_cost - repaid * blended
+    naive = kept * import_price
+    return DeviceAllocation(
+        energy_kwh=kept,
+        actual_cost=actual,
+        naive_cost=naive,
+        cost_savings=naive - actual,
+        energy_by_source=split_by_source(kept, sources, _sum(sources.values())),
+    )
 
 
 def _sum(values: Iterable[Decimal]) -> Decimal:
