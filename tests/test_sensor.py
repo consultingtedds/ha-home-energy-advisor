@@ -29,6 +29,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
     CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
@@ -49,7 +50,7 @@ _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 _CONCEPTS = ("energy_used", "actual_cost", "cost_at_grid_price", "cost_savings")
 
 
-def _entry() -> MockConfigEntry:
+def _entry(options: dict[str, Any] | None = None) -> MockConfigEntry:
     """A home with one energy-metered device and one power-only device."""
     return MockConfigEntry(
         domain=DOMAIN,
@@ -58,6 +59,7 @@ def _entry() -> MockConfigEntry:
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
         },
+        options=options or {},
         subentries_data=[
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_DEVICE,
@@ -953,3 +955,127 @@ async def test_unreconciled_energy_survives_a_restart_via_restore(
     state = hass.states.get(entity_id)
     assert state is not None
     assert Decimal(state.state) == Decimal("0.25")
+
+
+async def test_the_household_is_told_its_cost_band_without_being_asked(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a coarse counter reveals a step that accrued somewhere inside its
+    # span, so the household's cost is knowable only to a range (ADR-0016)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+
+    # Then — two sensors that make every install honest by default, in money so a
+    # near-zero cost cannot explode into a meaningless percentage (HEA-75)
+    floor = hass.states.get("sensor.whole_home_lowest_possible_cost")
+    actual = hass.states.get("sensor.whole_home_actual_cost")
+    ceiling = hass.states.get("sensor.whole_home_highest_possible_cost")
+    assert floor is not None
+    assert actual is not None
+    assert ceiling is not None
+    assert Decimal(floor.state) <= Decimal(actual.state) <= Decimal(ceiling.state)
+    assert floor.attributes["unit_of_measurement"] == "EUR"
+    assert ceiling.attributes["unit_of_measurement"] == "EUR"
+
+
+async def test_the_cost_band_is_diagnostic_context_not_a_headline_figure(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When — the bound qualifies a figure; it is not one to read first
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — off the headline device page, still recorded and chartable
+    registry = er.async_get(hass)
+    for concept in ("cost_floor", "cost_ceiling"):
+        resolved = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_whole_home_{concept}"
+        )
+        assert resolved is not None
+        registry_entry = registry.async_get(resolved)
+        assert registry_entry is not None
+        assert registry_entry.entity_category is EntityCategory.DIAGNOSTIC
+
+
+async def test_per_device_bands_wait_to_be_asked_for(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — two more sensors per device is a real recorder cost on a home with
+    # many devices, so the household chooses it (ADR-0016, as `opt_in_cycles` does)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    # When — no opt-in
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+
+    # Then — the household band still stands, composed from parts the engine
+    # tracks whether or not it publishes them
+    assert hass.states.get("sensor.coarse_step_aircon_lowest_possible_cost") is None
+    assert hass.states.get("sensor.coarse_step_aircon_highest_possible_cost") is None
+    assert hass.states.get("sensor.whole_home_lowest_possible_cost") is not None
+
+
+async def test_per_device_bands_appear_once_opted_in(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a household that wants to know which of its devices it can price
+    # confidently and which it cannot
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry({CONF_DEVICE_COST_BOUNDS: True})
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+
+    # Then — a band per device, bracketing what that device was charged
+    floor = hass.states.get("sensor.coarse_step_aircon_lowest_possible_cost")
+    actual = hass.states.get("sensor.coarse_step_aircon_actual_cost")
+    ceiling = hass.states.get("sensor.coarse_step_aircon_highest_possible_cost")
+    assert floor is not None
+    assert actual is not None
+    assert ceiling is not None
+    assert Decimal(floor.state) <= Decimal(actual.state) <= Decimal(ceiling.state)
+
+
+async def test_the_remainder_publishes_no_band_of_its_own(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — Untracked is derived per slice from meters that reported for that
+    # slice, so its floor and ceiling are its cost. Two sensors that can only ever
+    # repeat a third are noise, not disclosure.
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry({CONF_DEVICE_COST_BOUNDS: True})
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _run_one_interval(hass, freezer)
+
+    # Then
+    assert hass.states.get("sensor.untracked_energy_devices_actual_cost") is not None
+    assert (
+        hass.states.get("sensor.untracked_energy_devices_lowest_possible_cost") is None
+    )
+    assert (
+        hass.states.get("sensor.untracked_energy_devices_highest_possible_cost") is None
+    )

@@ -44,6 +44,7 @@ from homeassistant.util import slugify
 
 from .const import (
     CONF_CURRENCY,
+    CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
     CONF_POWER_ENTITY,
     DEFAULT_CURRENCY,
@@ -195,6 +196,40 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
     ),
 )
 
+# What Actual Cost is knowable to, given how rarely a device's counter reports
+# (ADR-0016). A coarse counter reveals a step that accrued somewhere inside a
+# 30-90 minute span; priced at the cheapest 5-minute slice of that span it is one
+# figure, at the dearest another. Published as money rather than as a width,
+# because `(ceiling - floor) / actual` explodes as actual approaches zero — the
+# same near-zero denominator that sank run-signal weighting in HEA-75 — and
+# because a range can be rendered directly while a percentage can still be
+# derived from one.
+#
+# `total`, like every other monetary figure (ADR-0007), and diagnostic: a bound
+# is context for a figure, not a figure to read first.
+_BOUND_CONCEPTS: tuple[HeaSensorDescription, ...] = (
+    HeaSensorDescription(
+        key="cost_floor",
+        translation_key="cost_floor",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
+        value_fn=lambda totals: totals.cost_floor,
+    ),
+    HeaSensorDescription(
+        key="cost_ceiling",
+        translation_key="cost_ceiling",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
+        value_fn=lambda totals: totals.cost_ceiling,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 - HA platform signature; state is on the entry
@@ -223,6 +258,11 @@ async def async_setup_entry(
     # the "untracked" translation key. It reads as a genuine entry rather than a
     # placeholder; the name — not a service-device flag — is what keeps it from
     # looking like a setup error (HEA-44).
+    #
+    # Deliberately without a cost band: Untracked is derived per slice from meters
+    # that reported for that slice, so unlike a coarse counter it has no span to be
+    # uncertain about and its bounds are its cost. Two sensors that can only repeat
+    # a third would be noise dressed as disclosure (ADR-0016).
     untracked_info = DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{_UNTRACKED_KEY}")},
         translation_key="untracked",
@@ -246,6 +286,10 @@ async def async_setup_entry(
         identifiers={(DOMAIN, f"{entry.entry_id}_{_WHOLE_HOME_KEY}")},
         translation_key="whole_home",
     )
+    # The whole-home band is always published: what the household's total cost is
+    # knowable to is not an advanced question, and one honest pair of sensors is
+    # cheap. It is composed from the parts whether or not those parts publish
+    # their own bands, so the figure does not depend on the opt-in below.
     async_add_entities(
         HeaCostSensor(
             coordinator,
@@ -254,8 +298,12 @@ async def async_setup_entry(
             device_info=whole_home_info,
             currency=currency,
         )
-        for concept in _concepts_for(_WHOLE_HOME_KEY)
+        for concept in (*_concepts_for(_WHOLE_HOME_KEY), *_BOUND_CONCEPTS)
     )
+
+    device_concepts = _CONCEPTS
+    if entry.options.get(CONF_DEVICE_COST_BOUNDS):
+        device_concepts = (*_CONCEPTS, *_BOUND_CONCEPTS)
 
     for subentry_id, subentry in entry.subentries.items():
         if subentry.subentry_type != SUBENTRY_TYPE_DEVICE:
@@ -273,7 +321,7 @@ async def async_setup_entry(
                     device_info=device_info,
                     currency=currency,
                 )
-                for concept in _CONCEPTS
+                for concept in device_concepts
             ),
             config_subentry_id=subentry_id,
         )

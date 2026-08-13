@@ -15,7 +15,11 @@ have cost at grid prices, and how much you saved.
 > helpers; energy derivation for power-only devices via native Integral helpers; a
 > redacted diagnostics download and Repairs for degraded inputs; guided device
 > discovery (scan for untracked energy/power sensors and choose which to add —
-> manual add via "Add device" remains); and English + Spanish translations. It
+> manual add via "Add device" remains); a disclosure layer that states what the
+> figures cannot know — how far your own meters disagree with each other, and the
+> cost range a device's reporting interval permits, because a counter that reports
+> once an hour used that energy *somewhere* inside the hour and nothing in the data
+> says where; and English + Spanish translations. It
 > now runs live on a real instance. Still to come: the Lovelace dashboards, a full
 > install README, wider dogfooding, and the HACS release (historical backfill is
 > deferred — see [docs/PLAN.md](docs/PLAN.md) → Epic 7). See

@@ -63,8 +63,16 @@
         "title": "Home Energy Advisor",
         "menu_options": {
           "cycles": "Totales por ciclo",
+          "cost_bounds": "Rango de coste por dispositivo",
           "discover_devices": "Descubrir dispositivos para seguir",
           "reset_totals": "Poner todos los totales a cero"
+        }
+      },
+      "cost_bounds": {
+        "title": "Rango de coste por dispositivo",
+        "description": "Un dispositivo que informa de su energía una vez por hora la consumió en algún momento dentro de esa hora, y nada en los datos dice cuándo, así que su coste solo se puede conocer como un rango. El rango de toda la casa siempre se publica. Activa esto para publicarlo también por cada dispositivo seguido, lo que te muestra qué dispositivos puedes valorar con confianza y cuáles necesitan mejor medición. Añade dos sensores registrados por dispositivo.",
+        "data": {
+          "device_cost_bounds": "Publicar un rango de coste por dispositivo"
         }
       },
       "cycles": {
@@ -147,7 +155,9 @@
       "energy_from_generation": { "name": "Energía de generación" },
       "energy_from_battery": { "name": "Energía de la batería" },
       "devices": { "name": "Dispositivos" },
-      "unreconciled_energy": { "name": "Energía sin conciliar" }
+      "unreconciled_energy": { "name": "Energía sin conciliar" },
+      "cost_floor": { "name": "Coste mínimo posible" },
+      "cost_ceiling": { "name": "Coste máximo posible" }
     }
   },
   "device": {

@@ -33,6 +33,7 @@ from .const import (
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
+    CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
     CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
@@ -333,12 +334,14 @@ _STATE_CLASS_ERROR = {
 
 
 class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
-    """Options: the cycle-total opt-ins and the guided device-discovery step.
+    """Options: the opt-in toggles and the guided device-discovery step.
 
     Daily and monthly cycle totals are always created; the longer cycles are
-    opt-in to keep the entity count in check across many devices (ADR-0004).
-    Discovery (HEA-45) offers untracked energy/power sensors to add as devices —
-    it only suggests; the user picks. Both are re-runnable from Configure.
+    opt-in to keep the entity count in check across many devices (ADR-0004). The
+    per-device cost range is opt-in for the same reason (ADR-0016) — the
+    whole-home range is published either way. Discovery (HEA-45) offers untracked
+    energy/power sensors to add as devices — it only suggests; the user picks.
+    All are re-runnable from Configure.
     """
 
     async def async_step_init(
@@ -348,7 +351,31 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
         """Offer the options branches."""
         return self.async_show_menu(
             step_id="init",
-            menu_options=["cycles", "discover_devices", "reset_totals"],
+            menu_options=[
+                "cycles",
+                "cost_bounds",
+                "discover_devices",
+                "reset_totals",
+            ],
+        )
+
+    def _store(self, user_input: dict[str, Any]) -> ConfigFlowResult:
+        """Merge one branch's answers into the options rather than replacing them.
+
+        ``async_create_entry`` writes the options wholesale, so a branch that
+        submits only its own keys would silently clear every other branch's.
+        """
+        return self.async_create_entry(data={**self.config_entry.options, **user_input})
+
+    def _toggles(self, *keys: str) -> vol.Schema:
+        options = self.config_entry.options
+        return vol.Schema(
+            {
+                vol.Required(
+                    key, default=options.get(key, False)
+                ): selector.BooleanSelector()
+                for key in keys
+            }
         )
 
     async def async_step_cycles(
@@ -356,18 +383,24 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Show and store the cycle opt-ins."""
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
-
-        options = self.config_entry.options
-        schema = vol.Schema(
-            {
-                vol.Required(
-                    key, default=options.get(key, False)
-                ): selector.BooleanSelector()
-                for key in (CONF_CYCLE_WEEKLY, CONF_CYCLE_QUARTERLY, CONF_CYCLE_YEARLY)
-            }
+            return self._store(user_input)
+        return self.async_show_form(
+            step_id="cycles",
+            data_schema=self._toggles(
+                CONF_CYCLE_WEEKLY, CONF_CYCLE_QUARTERLY, CONF_CYCLE_YEARLY
+            ),
         )
-        return self.async_show_form(step_id="cycles", data_schema=schema)
+
+    async def async_step_cost_bounds(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show and store the per-device cost-range opt-in (ADR-0016)."""
+        if user_input is not None:
+            return self._store(user_input)
+        return self.async_show_form(
+            step_id="cost_bounds",
+            data_schema=self._toggles(CONF_DEVICE_COST_BOUNDS),
+        )
 
     async def async_step_reset_totals(
         self, user_input: dict[str, Any] | None = None

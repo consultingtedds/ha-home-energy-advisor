@@ -63,8 +63,16 @@
         "title": "Home Energy Advisor",
         "menu_options": {
           "cycles": "Cycle totals",
+          "cost_bounds": "Per-device cost range",
           "discover_devices": "Discover devices to track",
           "reset_totals": "Reset all totals to zero"
+        }
+      },
+      "cost_bounds": {
+        "title": "Per-device cost range",
+        "description": "A device that reports its energy once an hour used that energy somewhere inside the hour, and nothing in the data says where — so its cost is only knowable to a range. Your whole-home range is always published. Turn this on to publish it for each tracked device too, which shows you which devices you can price confidently and which need better metering. It adds two recorded sensors per device.",
+        "data": {
+          "device_cost_bounds": "Publish a cost range for each device"
         }
       },
       "cycles": {
@@ -147,7 +155,9 @@
       "energy_from_generation": { "name": "Energy From Generation" },
       "energy_from_battery": { "name": "Energy From Battery" },
       "devices": { "name": "Devices" },
-      "unreconciled_energy": { "name": "Unreconciled Energy" }
+      "unreconciled_energy": { "name": "Unreconciled Energy" },
+      "cost_floor": { "name": "Lowest Possible Cost" },
+      "cost_ceiling": { "name": "Highest Possible Cost" }
     }
   },
   "device": {
