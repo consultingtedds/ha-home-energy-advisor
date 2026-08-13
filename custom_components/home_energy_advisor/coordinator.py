@@ -36,6 +36,7 @@ from .const import (
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
+    CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
     CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
@@ -477,6 +478,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                     CONF_CYCLE_YEARLY,
                 )
             },
+            "device_cost_bounds": bool(options.get(CONF_DEVICE_COST_BOUNDS)),
             "devices": [
                 {"id": sub_id, "name": self._device_name(sub_id), "entity": entity}
                 for entity, sub_id in self._device_of_entity.items()
@@ -549,4 +551,9 @@ def _totals_to_dict(totals: DeviceTotals) -> dict[str, str]:
         "energy_from_grid": str(totals.energy_from_grid),
         "energy_from_generation": str(totals.energy_from_generation),
         "energy_from_battery": str(totals.energy_from_battery),
+        # Always here, whether or not this household publishes them as sensors:
+        # a figure that fails to sit inside its own bounds is the first thing to
+        # look for when a cost is disputed (ADR-0016).
+        "cost_floor": str(totals.cost_floor),
+        "cost_ceiling": str(totals.cost_ceiling),
     }

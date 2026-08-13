@@ -13,6 +13,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
+    CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
@@ -94,6 +95,60 @@ async def test_options_flow_defaults_the_opt_ins_off(hass: HomeAssistant) -> Non
     assert entry.options[CONF_CYCLE_WEEKLY] is False
     assert entry.options[CONF_CYCLE_QUARTERLY] is False
     assert entry.options[CONF_CYCLE_YEARLY] is False
+
+
+async def test_options_flow_records_the_per_device_cost_range_opt_in(
+    hass: HomeAssistant,
+) -> None:
+    # Given — a household on the cost-range form. The whole-home range is always
+    # published; this asks whether to publish one per device too (ADR-0016).
+    entry = _entry(hass)
+    menu = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        menu["flow_id"], {"next_step_id": "cost_bounds"}
+    )
+    assert result["type"] is FlowResultType.FORM
+
+    # When — accepted unchanged, then turned on
+    unchanged = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert entry.options[CONF_DEVICE_COST_BOUNDS] is False
+    assert unchanged["type"] is FlowResultType.CREATE_ENTRY
+
+    menu = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        menu["flow_id"], {"next_step_id": "cost_bounds"}
+    )
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_DEVICE_COST_BOUNDS: True}
+    )
+
+    # Then — off by default (two more sensors per device is a real recorder cost)
+    # and stored when asked for
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_DEVICE_COST_BOUNDS] is True
+
+
+async def test_one_options_branch_does_not_clear_another(hass: HomeAssistant) -> None:
+    # Given — a household that has opted into yearly cycle totals
+    entry = _entry(hass)
+    result = await _open_cycles(hass, entry)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_CYCLE_YEARLY: True}
+    )
+
+    # When — a different branch is submitted. Options are written wholesale, so a
+    # branch that stores only its own keys would silently drop every other one.
+    menu = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        menu["flow_id"], {"next_step_id": "cost_bounds"}
+    )
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_DEVICE_COST_BOUNDS: True}
+    )
+
+    # Then — both survive
+    assert entry.options[CONF_CYCLE_YEARLY] is True
+    assert entry.options[CONF_DEVICE_COST_BOUNDS] is True
 
 
 def _register(hass: HomeAssistant, object_id: str, device_class: str, name: str) -> str:

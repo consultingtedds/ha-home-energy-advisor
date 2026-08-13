@@ -55,3 +55,9 @@ SIGNAL_RESET_TOTALS: Final = f"{DOMAIN}_reset_totals_{{entry_id}}"
 CONF_CYCLE_WEEKLY: Final = "cycle_weekly"
 CONF_CYCLE_QUARTERLY: Final = "cycle_quarterly"
 CONF_CYCLE_YEARLY: Final = "cycle_yearly"
+
+# Optional per-device cost bounds (options flow). The whole-home band is always
+# published — it is what makes every install honest by default — but two more
+# sensors for every tracked device is a recorder cost a household should choose,
+# so the per-device band follows the same opt-in precedent (ADR-0016).
+CONF_DEVICE_COST_BOUNDS: Final = "device_cost_bounds"
