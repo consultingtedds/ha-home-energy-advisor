@@ -511,7 +511,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     _attr_translation_key = "devices"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     # The list can be long and rarely changes — keep it out of the recorder.
-    _unrecorded_attributes = frozenset({"devices"})
+    _unrecorded_attributes = frozenset({"devices", "whole_home"})
 
     def __init__(self, coordinator: HeaCoordinator, *, device_info: DeviceInfo) -> None:
         super().__init__(coordinator)
@@ -527,8 +527,22 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """The authoritative tracked-device list for dashboards to enumerate."""
-        return {"devices": self._devices()}
+        """The authoritative tracked-device list for dashboards to enumerate.
+
+        ``whole_home`` sits beside that list rather than inside it. Cards sum
+        ``devices`` to get the household total — the allocations are exhaustive
+        (ADR-0002) — so a whole-home row there would double every figure on every
+        card. It is here because some household figures belong to no device: the
+        cost range is published for the whole home whether or not the per-device
+        ranges are (ADR-0016), and a card must resolve its slug rather than guess
+        ``sensor.whole_home_…``, which a rename would break.
+        """
+        return {
+            "devices": self._devices(),
+            "whole_home": self._row(
+                _WHOLE_HOME_KEY, None, source=None, untracked=False
+            ),
+        }
 
     def _devices(self) -> list[dict[str, Any]]:
         entry = cast("HeaConfigEntry", self.coordinator.config_entry)

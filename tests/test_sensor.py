@@ -412,6 +412,37 @@ async def test_devices_registry_sensor_lists_devices_with_slug_name_and_flags(
     assert untracked["name"] == "Untracked Energy Devices"
 
 
+async def test_devices_registry_sensor_locates_the_whole_home_without_listing_it(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a card needs the whole-home entity slug to show a household figure
+    # no device carries: the always-published cost range (ADR-0016)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer)
+
+    entity_id = er.async_get(hass).async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_devices"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+
+    # Then — it is a separate attribute, resolved the same way a device's is. Not
+    # a row in `devices`: every card sums that list, and the whole home is the sum
+    # (Σ devices + Untracked), so a row there would double the household's totals.
+    whole_home = state.attributes["whole_home"]
+    assert whole_home["key"] == "whole_home"
+    assert whole_home["name"] == "Whole Home"
+    assert whole_home["device_id"]
+    assert "whole_home" not in {device["key"] for device in state.attributes["devices"]}
+    assert state.state == "2"
+
+
 async def test_devices_registry_sensor_lives_on_the_hub_device(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
