@@ -99,3 +99,22 @@ draw their shared edge twice, and the usual escape (overlaying two series with
 `barGap: "-100%"`) is unavailable per pair: `barGap` is read once for all bar
 series on a coordinate system, so it would overlap every device at once.
 Bordering one of the two segments is the way out.
+
+## Nothing can be drawn *behind* one bar of a group (2026-08-14)
+
+The same `barGap` limit rules out the obvious way to shade a range behind a
+device's bar, and it is worth writing down because the alternative looks
+available and is not:
+
+- A third series sharing the device's `stack` **stacks on top of** the other
+  two. Stacking is the only relationship series in one stack can have.
+- A third series in its own stack takes **its own slot** in the group, so the
+  band sits beside the bar rather than behind it.
+- `barGap: "-100%"` would overlap them — and every other device's pair at the
+  same time, collapsing the chart.
+
+What remains is a `custom` series positioned with `api.barLayout()`, the
+documented ECharts recipe for error bars over grouped bars. It stays inside the
+component ADR-0013 requires, but it re-derives bar geometry ECharts owns and is
+coupled to the number of bar groups, which changes whenever a device is added
+or removed. HEA-84 measured the trade and put the range in the tooltip instead.
