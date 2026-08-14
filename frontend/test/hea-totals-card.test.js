@@ -154,7 +154,10 @@ describe("the figures", () => {
     const card = mount(hass, { devices: ["slow_poll_aircon"] });
     await settled(card);
 
-    // Then — the other device is never even asked about
+    // Then — the other device is never even asked about, and neither is the
+    // whole home: a card filtered to one device is not bounded by the
+    // household's range, and offering it would invite comparing a subset with
+    // its whole (ADR-0016)
     expect(hass.callWS).toHaveBeenCalledWith(
       expect.objectContaining({
         statistic_ids: [
@@ -164,6 +167,8 @@ describe("the figures", () => {
           "sensor.slow_poll_aircon_energy_from_grid",
           "sensor.slow_poll_aircon_energy_from_generation",
           "sensor.slow_poll_aircon_energy_from_battery",
+          "sensor.slow_poll_aircon_cost_floor",
+          "sensor.slow_poll_aircon_cost_ceiling",
         ],
       }),
     );
