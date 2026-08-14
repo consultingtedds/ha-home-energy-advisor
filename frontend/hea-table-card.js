@@ -9,10 +9,15 @@
  *
  * A column either names a `field`, which the totals row sums, or `derive`s its
  * value, which the totals row derives again from the summed fields. A rate is a
- * ratio, and ratios do not add up.
+ * ratio, and ratios do not add up. A derived column may name the `fields` it is
+ * built from, so the totals row can sum those and derive from the sums — a cost
+ * range is two numbers that each add up, presented as one cell.
  *
  * A column's `label` may be a function of the locale, returning `{text, unit}`,
  * for the one case where the unit depends on the household's currency.
+ *
+ * `columns` is static, but `_columns()` is what renders, so a card can drop a
+ * column the period's data cannot support rather than fill it with dashes.
  */
 
 import { HeaCard } from "./hea-card-base.js";
@@ -64,8 +69,13 @@ export class HeaTableCard extends HeaCard {
     return 3 + Math.ceil((this._result?.devices.length ?? 3) / 2);
   }
 
+  /** The columns to render now — every one, unless a card says otherwise. */
+  _columns() {
+    return this.constructor.columns;
+  }
+
   _body(locale) {
-    const { columns } = this.constructor;
+    const columns = this._columns();
     return `
       <div class="scroll">
         <table>
@@ -103,7 +113,7 @@ export class HeaTableCard extends HeaCard {
   }
 
   _row(device, locale) {
-    return `<tr>${this.constructor.columns
+    return `<tr>${this._columns()
       .map((column) => this._cell(column, device, locale))
       .join("")}</tr>`;
   }
@@ -119,7 +129,7 @@ export class HeaTableCard extends HeaCard {
 
   _total(locale) {
     const totals = this._sumOfShown();
-    const cells = this.constructor.columns
+    const cells = this._columns()
       .map(({ field, derive, format }) => {
         if (!format) return `<th scope="row">Total</th>`;
         // Derived from the summed fields, never from the rows' own derived
@@ -138,15 +148,19 @@ export class HeaTableCard extends HeaCard {
    * cost (ADR-0002) — but a filtered card must add up to what it is showing.
    */
   _sumOfShown() {
-    const summed = this.constructor.columns.filter(
-      ({ field, derive, format }) => format && !derive && field,
-    );
+    const summed = this._columns().flatMap(({ field, fields, derive, format }) => {
+      if (!format) return [];
+      // A derived column sums the fields it names, if it names any; otherwise it
+      // is a ratio and is derived again from the sums.
+      if (derive) return fields ?? [];
+      return field ? [field] : [];
+    });
     return (this._result?.devices ?? []).reduce(
       (totals, device) => {
-        for (const { field } of summed) totals[field] += device[field];
+        for (const field of summed) totals[field] += device[field];
         return totals;
       },
-      Object.fromEntries(summed.map(({ field }) => [field, 0])),
+      Object.fromEntries(summed.map((field) => [field, 0])),
     );
   }
 }

@@ -60,6 +60,16 @@ export const bucketsFor = (
 
 export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
 
+/**
+ * The cost range a key's counter permits (ADR-0016) — absent for a household
+ * that has not opted into per-device ranges, which is the case a card has to
+ * tell apart from a range of zero.
+ */
+export const boundsFor = (key, costFloor, costCeiling, at = MAY) => ({
+  [`sensor.${key}_cost_floor`]: [{ start: at.getTime(), change: costFloor }],
+  [`sensor.${key}_cost_ceiling`]: [{ start: at.getTime(), change: costCeiling }],
+});
+
 /** The grid / generation / battery split a device's HEA-51 sensors record. */
 export const sourcesFor = (key, grid, generation, battery, at = MAY) => ({
   [`sensor.${key}_energy_from_grid`]: [{ start: at.getTime(), change: grid }],
@@ -79,11 +89,20 @@ export const aHass = ({
   collection = anEnergyCollection(),
   devices = [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")],
   response = AIRCON_BUCKETS,
+  // The whole-home aggregate rides the same sensor, beside the device list
+  // rather than in it: cards sum that list, so a row there would double every
+  // figure. Present on any current integration.
+  wholeHome = aDeviceRow("whole_home", "Whole Home"),
   callWS,
 } = {}) => ({
   connection: collection ? { "_energy_hea-costs": collection } : {},
   states: devices
-    ? { [DEVICES_SENSOR]: { state: String(devices.length), attributes: { devices } } }
+    ? {
+        [DEVICES_SENSOR]: {
+          state: String(devices.length),
+          attributes: { devices, whole_home: wholeHome ?? undefined },
+        },
+      }
     : {},
   config: { currency: "EUR" },
   locale: { language: "en-GB" },

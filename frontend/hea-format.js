@@ -34,6 +34,31 @@ export const formatMoney = (value, { language, currency }) => {
   return new Intl.NumberFormat(language, options).format(value);
 };
 
+/**
+ * The range a cost could honestly sit in — "€3.61 – €4.72" (ADR-0016).
+ *
+ * In money, never as a percentage. `(ceiling − floor) / actual` explodes as the
+ * cost approaches zero: a device that cost under a cent reads as ±1252 %, which
+ * says nothing except that division happened. That is the same near-zero
+ * denominator that sank run-signal weighting in HEA-75, and currency has no such
+ * failure mode.
+ *
+ * Composed here rather than by `Intl`'s own `formatRange`, which renders an
+ * equal pair as "~€1.50" — an approximation sign on the one figure that is
+ * exact. A remainder derived per interval has no span to be uncertain about, so
+ * that case is common and reads as its single value.
+ */
+export const formatMoneyRange = (pair, locale) => {
+  if (!Array.isArray(pair)) return NO_FIGURE;
+  const [low, high] = pair;
+  if (![low, high].every((value) => Number.isFinite(value))) return NO_FIGURE;
+  if (low === high) return formatMoney(low, locale);
+  // Ordered here so a floor and ceiling handed over the wrong way round still
+  // reads as a range rather than as a backwards one.
+  const [from, to] = low <= high ? [low, high] : [high, low];
+  return `${formatMoney(from, locale)} – ${formatMoney(to, locale)}`;
+};
+
 /** An amount of energy, in the unit the sensors record it in. */
 export const formatEnergy = (value, { language }) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
