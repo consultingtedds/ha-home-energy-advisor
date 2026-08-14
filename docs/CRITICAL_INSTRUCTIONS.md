@@ -60,7 +60,8 @@ custom integration.
 | Never | Use instead |
 | --- | --- |
 | Binary-float accumulation of money or energy totals | `Decimal` for accumulators; round only at presentation |
-| Costs that break the invariant | Σ device + remainder allocations must equal the real cost of the metered energy, exactly at `Decimal` precision, **over any period spanning the buckets a carried debt touches** — test-enforced. Not per bucket: a bucket that overdraws is charged for energy its meters have not yet reported, and the bucket that repays gives it back at the price it was charged (ADR-0015). The pair nets to the truth; neither balances alone |
+| Costs that break the invariant | Σ device + remainder allocations must equal the real cost of the metered energy, exactly at `Decimal` precision, **over any period spanning the buckets a carried debt touches** — test-enforced. Not per bucket: a bucket that overdraws publishes only what its meters back, and the money for the rest falls due when the debt settles (ADR-0015 §5 as amended by HEA-85). The pair nets to the truth; neither balances alone |
+| Publishing a figure you expect to correct downwards | Hold it. A cost sensor is a cumulative running total and Home Assistant derives each bucket's `change` from its value at the boundaries, so a correction **always lands in the current bucket** — never the one it belongs to. Publish late instead: a household shown an hour that cost less than nothing stops believing the totals, however well they reconcile (HEA-85). Withhold a figure and its counterfactual together, or the artefact just moves onto Cost Savings |
 | Phantom deltas after `unavailable`/`unknown` spans or source-sensor recovery | Treat unavailable spans as no-data; reset-rule per ADR-0004 |
 
 ### Tests
