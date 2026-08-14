@@ -92,6 +92,14 @@ fix, not a hunt through every card.
 - **Depend on a HACS picker** (e.g. `energy-period-selector-plus`). Rejected:
   ADR-0008 requires the flagship view to work without a separate install, and it
   trades one unstable dependency for another that is also unmaintained-by-us.
+
+  > **Reason corrected by ADR-0017**, conclusion unchanged. Citing ADR-0008's
+  > install rule was not a reason — see ADR-0017 decision 3. The real one, found
+  > by re-examining it: a HACS picker **would not remove the coupling at all.**
+  > It is also a picker that creates the same shared energy collection, so a card
+  > must still read that collection off `hass.connection` to follow it. The
+  > dependency on frontend internals comes from decision 1 — sharing a period
+  > with Home Assistant's own energy cards — not from refusing an install.
 - **Wait for a public frontend extension API.** Rejected: none is announced, and
   the feature is the product's central promise. Waiting indefinitely for a
   guarantee is not a plan.

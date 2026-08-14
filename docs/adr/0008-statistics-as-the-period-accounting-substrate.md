@@ -74,6 +74,14 @@ takes a fixed period, `statistics-graph` a fixed window, and the `energy` card i
 hardwired to HA's own energy collections. None accept a user-driven date range
 with a device filter.
 
+> **Amended by ADR-0017.** The conclusion stands — re-examined there, and no
+> community card accepts an arbitrary date range × device filter over our own
+> statistics either. The *reasoning* does not: this decision assessed core cards
+> only, and excluded community ones by a premise it never argued ("must not
+> require a separate install"). ADR-0012 and ADR-0013 then cited that premise as
+> settled law. A separate install is a cost to weigh, not a disqualifier, and
+> rejecting an existing component now needs a reason of its own.
+
 ### Rejected alternatives
 
 - **Reduce the metered concept set** (drop Cost Without Solar cycles): rejected —
