@@ -11,17 +11,21 @@ A later bucket where the meter runs ahead of the devices repays it. Flooring the
 remainder at zero instead discards every such bucket, which rectifies a
 zero-mean signal into a bias that never cancels (ADR-0015).
 
-Repayment is where the money moves. The debt was charged on the assumption its
-energy came off the grid; when the meters catch up they may say the interval was
-served partly by generation, and free. The devices that overdrew are therefore
-refunded the difference, rather than the remainder absorbing it — the sun
-belongs to whoever used it.
+Settlement is where the money moves — and it is the *only* place it moves. The
+overdraw's cost is not published when it happens: the import rate is a guess that
+the next few buckets usually overturn, and a published figure that is later taken
+back shows up as an hour that cost less than nothing (HEA-85). So the charge
+waits here and falls due once, at the price finally learned — the repaying
+interval's own blend, which may be the sun, and the sun belongs to whoever used
+it.
 
 A debt nobody repays is forgiven at ``expiry``. Timing noise clears within the
 span a coarse step is spread over; a counter claiming more than the house ever
 consumed never clears, and absorbing that forever would suppress the remainder
-while hiding the fault. What is forgiven is counted, because it measures how far
-a household's own meters disagree.
+while hiding the fault. The *energy* is written off; the money still falls due,
+at the import rate, because nothing better was ever learned about it. What is
+forgiven is counted, because it measures how far a household's own meters
+disagree.
 """
 
 from __future__ import annotations
@@ -37,17 +41,25 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Repayment:
-    """What a surplus settled: energy withheld, and money owed back per device.
+class Settlement:
+    """A debt coming due: energy withheld, and the money now payable per device.
 
     ``kwh`` is held back from the remainder, which would otherwise publish energy
-    the devices have already been credited with. A refund is negative where the
-    repaying interval cost more than the import rate the debt was charged at,
-    which battery discharge can do (HEA-39).
+    the devices have already been credited with.
+
+    ``actual`` is what the energy really cost, known only now — the repaying
+    interval's own blend, or the import rate if the debt expired without one.
+    ``naive`` is its counterfactual, always the import rate the debt was recorded
+    at, because buying it off the meter is what the household was spared.
+
+    The two are separate rather than one net figure so that Cost Savings moves by
+    exactly their difference: zero on expiry, and the real saving when the sun
+    turned out to have served it.
     """
 
     kwh: Decimal
-    refunds: Mapping[str, Decimal]
+    actual: Mapping[str, Decimal]
+    naive: Mapping[str, Decimal]
 
 
 @dataclass
@@ -87,32 +99,46 @@ class DebtLedger:
             _Tranche(at=at, kwh=kwh, charged=charged, debtors=dict(debtors))
         )
 
-    def repay(self, available_kwh: Decimal, unit_price: Decimal) -> Repayment:
+    def repay(self, available_kwh: Decimal, unit_price: Decimal) -> Settlement:
         """Settles as much debt as ``available_kwh`` of surplus covers.
 
         Oldest first, so a debt cannot be starved into expiring while newer ones
         are settled around it. ``unit_price`` is what the repaying interval's own
-        energy cost per kWh — the truth the debt's import-rate charge is
-        reconciled against.
+        energy cost per kWh — the price the suspended charge was always waiting
+        for.
         """
         remaining = available_kwh
-        refunds: dict[str, Decimal] = {}
+        actual: dict[str, Decimal] = {}
+        naive: dict[str, Decimal] = {}
         while self._tranches and remaining > 0:
             settled = self._settle(self._tranches[0], remaining, unit_price)
-            for device, amount in settled.refunds.items():
-                refunds[device] = refunds.get(device, Decimal(0)) + amount
+            _merge(actual, settled.actual)
+            _merge(naive, settled.naive)
             remaining -= settled.kwh
             if self._tranches[0].kwh == 0:
                 self._tranches.popleft()
-        return Repayment(kwh=available_kwh - remaining, refunds=refunds)
+        return Settlement(kwh=available_kwh - remaining, actual=actual, naive=naive)
 
-    def expire(self, before: datetime) -> Decimal:
-        """Forgives debt older than the expiry, returning the energy written off."""
+    def expire(self, before: datetime) -> Settlement:
+        """Forgives debt older than the expiry, charging it at the import rate.
+
+        The energy is written off — the meters never accounted for it, so it can
+        no longer be reconciled — but the money is not. Nothing better than the
+        import rate was ever learned about it, which is exactly what ADR-0014
+        priced it at, so that is what it finally costs. The counterfactual matches,
+        leaving no saving: the household was spared nothing.
+        """
         forgiven = Decimal(0)
+        actual: dict[str, Decimal] = {}
+        naive: dict[str, Decimal] = {}
         while self._tranches and self._tranches[0].at + self._expiry <= before:
-            forgiven += self._tranches.popleft().kwh
+            tranche = self._tranches.popleft()
+            forgiven += tranche.kwh
+            due = _split(tranche.charged, tranche.debtors)
+            _merge(actual, due)
+            _merge(naive, due)
         self._forgiven += forgiven
-        return forgiven
+        return Settlement(kwh=forgiven, actual=actual, naive=naive)
 
     def outstanding_kwh(self) -> Decimal:
         """Energy charged whose meter reading has still not arrived."""
@@ -124,14 +150,25 @@ class DebtLedger:
 
     def _settle(
         self, tranche: _Tranche, available: Decimal, unit_price: Decimal
-    ) -> Repayment:
-        """Takes what ``available`` covers of one tranche, refunding the difference."""
+    ) -> Settlement:
+        """Takes what ``available`` covers of one tranche, at the price now known."""
         paid = min(available, tranche.kwh)
-        charged = tranche.charged * paid / tranche.kwh
-        owed_back = charged - paid * unit_price
+        # What this portion was recorded as being worth at the import rate: the
+        # counterfactual, and what it will cost if the rest of it ever expires.
+        recorded = tranche.charged * paid / tranche.kwh
         tranche.kwh -= paid
-        tranche.charged -= charged
-        return Repayment(kwh=paid, refunds=_split(owed_back, tranche.debtors))
+        tranche.charged -= recorded
+        return Settlement(
+            kwh=paid,
+            actual=_split(paid * unit_price, tranche.debtors),
+            naive=_split(recorded, tranche.debtors),
+        )
+
+
+def _merge(into: dict[str, Decimal], amounts: Mapping[str, Decimal]) -> None:
+    """Adds one settlement's per-device amounts into a running total."""
+    for device, amount in amounts.items():
+        into[device] = into.get(device, Decimal(0)) + amount
 
 
 def _split(amount: Decimal, debtors: Mapping[str, Decimal]) -> dict[str, Decimal]:

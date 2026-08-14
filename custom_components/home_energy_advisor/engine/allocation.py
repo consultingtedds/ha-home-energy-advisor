@@ -85,9 +85,11 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     cost is simply its share of the blended bucket cost. When measured device
     draw exceeds the consumption the sources account for — coarse sensor timing,
     or a source unavailable while a device kept drawing — the remainder clamps to
-    zero rather than going negative, and the excess is priced at the **import**
-    rate: it is energy the house drew that its meters have not yet reported, and
-    the grid is the only place it can have come from.
+    zero rather than going negative, and the excess is **not priced here at all**.
+    It is energy the house drew that its meters have not yet reported; the grid is
+    the only place it can have come from, but that is a guess the next few buckets
+    usually overturn, so the money waits on the accountant's ledger rather than
+    being published and taken back (HEA-85).
 
     Costing that excess is what the shipped model got wrong. Holding the bucket's
     cost fixed and dividing it across the inflated energy priced *every* label
@@ -98,9 +100,9 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     A small overdraw is expected and is not a fault. A coarse counter's step is
     spread evenly across a span whose true accrual profile cannot be known, and an
     even estimate can exceed what the house really drew in one five-minute slice
-    while reconciling exactly over the whole span. Cost Savings is unaffected: the
-    excess is charged at the import rate and the counterfactual values it at the
-    import rate, so it nets to zero saving (HEA-77, ADR-0014).
+    while reconciling exactly over the whole span. Cost Savings is unaffected:
+    actual cost and its counterfactual withhold the same amount, so the excess
+    nets to zero saving whether it is waiting or settled (HEA-77, ADR-0014).
 
     Clamping here is therefore only half the story, and the accountant supplies
     the other half. Left to accumulate, the clamp rectifies a zero-mean signal —
@@ -123,16 +125,20 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
         )
 
         energies = _energies(bucket, consumption)
-        overdraw = _sum(energies.values()) - consumption
-        total_cost = metered_cost + overdraw * import_price
-        actuals = _proportional(energies, total_cost)
+        # Only the money the meters back is published. The overdraw's energy is
+        # allocated — the accountant needs it to reconcile — but its cost waits on
+        # the ledger until the debt settles and its real price is known (HEA-85).
+        # Both figures are withheld together, which is what leaves Cost Savings
+        # untouched while the charge is outstanding.
+        actuals = _proportional(energies, metered_cost)
+        naives = _proportional(energies, consumption * import_price)
 
         allocations = {
             label: DeviceAllocation(
                 energy_kwh=energy,
                 actual_cost=actuals[label],
-                naive_cost=energy * import_price,
-                cost_savings=energy * import_price - actuals[label],
+                naive_cost=naives[label],
+                cost_savings=naives[label] - actuals[label],
                 energy_by_source=split_by_source(energy, bucket.sources, consumption),
             )
             for label, energy in energies.items()

@@ -96,30 +96,54 @@ Live allocation and late correction are the same rectifier applied at two
 moments, so the balance must survive finalisation rather than living inside
 `_energies`.
 
-**5. The balance carries cost as well as energy, and repayment refunds the
-devices that overdrew.**
+**5. The balance carries cost as well as energy, and the overdraw's charge is
+suspended until it settles.**
+
+*Amended by HEA-85. This decision originally charged the overdraw at the import
+rate immediately and refunded the difference on repayment. The money was right
+and the timing was not — see below.*
 
 A deficit repaid at a later bucket's blended price would break `Σ allocations =
-real costs`, so the debt remembers what it was charged and gives that back.
+real costs`, so the debt remembers what it was recorded at.
 
-*Where* it gives it back is not a detail. An overdrawing device is charged the
+*Where* it lands is not a detail. An overdrawing device would be charged the
 import rate, because energy the meters have not yet reported can only have come
 off the grid (ADR-0014). When the meters catch up they may say otherwise — that
-the energy was partly generated, and free. The device therefore overpaid, and
-the refund is returned to the devices that incurred the debt, in proportion to
-their draw in the bucket that incurred it.
+the energy was partly generated, and free. The correction belongs to the devices
+that incurred the debt, in proportion to their draw in the bucket that incurred
+it, never to the remainder: that would leave a device paying grid price for
+energy that turned out to be solar, push the credit into a remainder that never
+used the sun, and drive the remainder's published cost negative (−€0.03 on a
+bucket pair costing €0.09), breaking decision 2 for a figure that means nothing.
+Correct attribution of generation to the device that consumed it is the
+product's central claim.
 
-Letting the remainder absorb it instead reconciles the same total and is wrong
-in the way that matters: it leaves the device paying grid price for energy that
-turned out to be solar, and pushes the credit into a remainder that never used
-the sun. Worked through, it also drives the remainder's published cost negative
-(−€0.03 on a bucket pair costing €0.09), breaking decision 2 for a figure that
-means nothing. Correct attribution of generation to the device that consumed it
-is the product's central claim; reconciling the total at its expense would be
-arithmetic honesty covering for attribution dishonesty.
+**What HEA-85 changes is when the household is told.** Charging at import and
+refunding later publishes a figure we expect to withdraw, and a withdrawal can
+only land in the bucket that discovered it: the sensors are cumulative running
+totals and Home Assistant derives each bucket's `change` from their value at the
+boundaries. On the reference instance two adjacent hours of near identical draw
+published **+€0.105 and −€0.118** — the household was told they had been *paid*
+to run their appliances. The totals reconciled at every level; nobody would
+believe them.
+
+So the overdraw's energy is published, because the period must reconcile, and
+its money is not. The charge falls due once, when the debt settles: at the
+repaying interval's own blend, or at the import rate if it expires unpaid
+(decision 6), because then nothing better was ever learned. Actual cost and its
+counterfactual are withheld and released together, which leaves Cost Savings
+untouched while a charge waits and preserves ADR-0014's invariance (HEA-77).
+
+Measured over the same 72-hour capture: **3 negative whole-home hours and 10
+negative device-hours become 0**, with the period total unchanged to the cent
+(€6.2741), published energy unchanged (166.609 kWh) and nothing forgiven. The
+cost is that up to **1.47 %** of the running bill is unpublished at any moment,
+median **67 minutes** before it arrives — a figure that converges upward, never
+one that is taken back.
 
 Revising a device's total after the fact is not a new behaviour: `_correct`
-already does it whenever late energy lands in a retained bucket (ADR-0006).
+already does it whenever late energy lands in a retained bucket (ADR-0006). What
+is new is that the revision only ever *adds*.
 
 **6. Expired debt is published, not swallowed.**
 
@@ -128,6 +152,18 @@ meter and the device counters never clears, so whatever survives the expiry *is*
 that mismatch, in kWh. It is surfaced as an unreconciled-energy figure rather
 than absorbed, with a Repair only at an egregious threshold (ADR-0016 covers the
 disclosure).
+
+The *energy* is written off — the meters never accounted for it, so it can never
+be reconciled — but the *money* is not. Under decision 5 as amended it has been
+waiting unpublished, and expiry is the moment nothing better will be learned, so
+it falls due at the import rate ADR-0014 always intended. Its counterfactual
+matches it exactly, so an expired debt contributes no saving: the household was
+spared nothing.
+
+Expiry is therefore driven by time, not by activity. Each closing bucket checks
+it — that keeps the ordering right while buckets are being settled — and
+`finalize` sweeps once more, because a household whose meters have gone quiet
+closes no buckets at all and a suspended charge must still arrive.
 
 ## Rejected alternatives
 

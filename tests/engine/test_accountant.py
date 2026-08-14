@@ -372,19 +372,26 @@ def test_an_overdrawing_late_device_pays_import_for_what_untracked_cannot_fund()
     acc.observe("sensor.b_energy", at(5), Decimal("0.4"))
     acc.finalize(at(40))
 
-    # Then — B keeps all its real energy. It takes the €0.03 of headroom Untracked
-    # held at the bucket's blended rate, and buys the remaining 0.3 kWh at the
-    # import rate: leaving that excess free, as the shipped engine did, is what
-    # let a device's published cost fall far below the tariff. A is untouched.
+    # Then — B keeps all its real energy and takes the €0.03 of headroom Untracked
+    # held, at the bucket's blended rate. The remaining 0.3 kWh has no meter
+    # reading behind it, so its money waits rather than being charged at import
+    # and mostly handed back (HEA-85). A is untouched.
     result = acc.totals()
     b = result.devices["device_b"]
     assert result.devices["device_a"] == before_a
     assert b.energy_kwh == Decimal("0.4")
-    assert b.actual_cost == Decimal("0.12")
+    assert b.actual_cost == Decimal("0.03")
     assert result.untracked.actual_cost == Decimal(0)
     assert result.untracked.energy_kwh == Decimal(0)
-    assert result.whole_home.actual_cost == Decimal("0.39")
-    assert _total_actual(result) == Decimal("0.39")
+    assert result.whole_home.actual_cost == Decimal("0.30")
+    assert _total_actual(result) == Decimal("0.30")
+
+    # And it is deferred, not forgiven: with no surplus ever arriving to price it
+    # more cheaply, the quiet span ends and it costs the import rate after all
+    acc.finalize(at(200))
+    settled = acc.totals()
+    assert settled.devices["device_b"].actual_cost == Decimal("0.12")
+    assert settled.whole_home.actual_cost == Decimal("0.39")
 
 
 def test_a_late_correction_buys_its_excess_at_import_not_at_a_free_blend() -> None:
@@ -421,12 +428,18 @@ def test_a_late_correction_buys_its_excess_at_import_not_at_a_free_blend() -> No
     acc.observe("sensor.cloud_polled_energy", at(5), Decimal("1.0"))
     acc.finalize(at(40))
 
-    # Then — the late kWh costs the full import rate, not the €0.15 blended rate
-    # the bucket happened to settle at: generation that was already consumed
-    # cannot supply it a second time
+    # Then — the late kWh keeps its energy but carries no charge yet: there was no
+    # Untracked headroom to fund any of it, and generation already consumed cannot
+    # supply it a second time, so nothing about its price is known until the debt
+    # settles (HEA-85).
     pump = acc.totals().devices["cloud_polled_pump"]
     assert pump.energy_kwh == Decimal("1.0")
-    assert pump.actual_cost == PEAK
+    assert pump.actual_cost == Decimal(0)
+
+    # And when nothing ever repays it, it costs the full import rate — never the
+    # €0.15 blend the bucket happened to settle at (ADR-0014)
+    acc.finalize(at(200))
+    assert acc.totals().devices["cloud_polled_pump"].actual_cost == PEAK
 
 
 def test_a_delta_older_than_the_retention_ring_is_dropped_and_logged() -> None:

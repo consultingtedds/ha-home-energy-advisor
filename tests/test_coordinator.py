@@ -642,16 +642,32 @@ async def test_a_power_only_device_is_costed_via_an_auto_created_helper(
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — the device is wired through the auto-created Integral helper: it
-    # draws real energy (~0.1 kWh) and is costed against it. (Exact W->kWh accuracy
-    # is the native helper's own concern, proven in test_integral_helper; per-bucket
-    # source allocation is proven in the engine tests. This asserts the seam: a
-    # power-only device is no longer stuck at zero.)
+    # Then — the device is wired through the auto-created Integral helper and
+    # draws real energy (~0.1 kWh). (Exact W->kWh accuracy is the native helper's
+    # own concern, proven in test_integral_helper; per-bucket source allocation is
+    # proven in the engine tests. This asserts the seam: a power-only device is no
+    # longer stuck at zero.)
     coordinator = entry.runtime_data
     subentry_id = next(iter(entry.subentries))
     lights = coordinator.data.devices[subentry_id]
     assert lights.energy_kwh > Decimal(0)
-    assert lights.naive_cost > Decimal(0)
+
+    # Its cost is not published yet, and that is correct: the house meter stops
+    # reporting after 22:05 while the lights keep drawing, so most of this energy
+    # has no meter reading behind it and no known price. Charging it at import and
+    # correcting later is what HEA-85 removed.
+    assert lights.naive_cost == Decimal(0)
+
+    # When — the quiet span passes with the meter still silent
+    freezer.move_to(datetime(2026, 7, 9, 1, 0, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then — the charge falls due at the import rate, through the whole stack.
+    # Deferred, never dropped.
+    settled = coordinator.data.devices[subentry_id]
+    assert settled.naive_cost > Decimal(0)
+    assert settled.actual_cost > Decimal(0)
 
 
 async def test_a_watt_hour_device_is_normalised_to_kwh(
