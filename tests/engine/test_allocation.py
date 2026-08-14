@@ -159,7 +159,7 @@ def test_naive_cost_sums_to_consumption_at_the_import_rate() -> None:
     assert naive_total == Decimal("3.0") * PEAK
 
 
-def test_over_draw_clamps_the_remainder_and_prices_the_excess_at_import() -> None:
+def test_over_draw_clamps_the_remainder_and_suspends_the_excess() -> None:
     # Given — a device that measured more draw than the house consumed (coarse
     # sensor timing / a source unavailable while the device kept drawing)
     result = STRATEGY.allocate(
@@ -167,18 +167,37 @@ def test_over_draw_clamps_the_remainder_and_prices_the_excess_at_import() -> Non
         prices(),
     )
 
-    # Then — the remainder never goes negative, and the half kWh the meters had
-    # not caught up with is charged at the marginal import rate rather than
-    # diluting a fixed cost across inflated energy, which would price every kWh
-    # in the bucket below what any of it could have been bought for (HEA-74)
+    # Then — the remainder never goes negative, and only the 1.0 kWh the meters
+    # actually recorded is priced. The half kWh they have not caught up with is
+    # left for the accountant's ledger: pricing it at import here published a
+    # figure that the repaying bucket then took most of back, which reads as an
+    # hour costing less than nothing (HEA-85).
     assert result.untracked.energy_kwh == Decimal(0)
     assert result.untracked.actual_cost == Decimal(0)
-    assert total_actual(result) == Decimal("0.351")
+    assert total_actual(result) == Decimal("0.234")
+
+
+def test_a_suspended_excess_leaves_the_bucket_reading_cheap_until_it_settles() -> None:
+    # Given — the same overdraw
+    result = STRATEGY.allocate(
+        bucket({SourceKind.IMPORT: "1.0"}, {"coarse_step_aircon": "1.5"}),
+        prices(),
+    )
+
+    # Then — the device is credited 1.5 kWh but charged for 1.0, so its rate here
+    # sits below the tariff. That is the accepted cost of publishing late: the
+    # missing 0.117 arrives when the debt settles, and the rate converges on the
+    # tariff. HEA-74's dilution was the same shape made *permanent* — this one
+    # cannot outlive the quiet span.
     aircon = result.devices["coarse_step_aircon"]
-    assert aircon.actual_cost / aircon.energy_kwh == PEAK
+    assert aircon.energy_kwh == Decimal("1.5")
+    assert aircon.actual_cost / aircon.energy_kwh < PEAK
+    # And Cost Savings is untouched meanwhile, because the counterfactual is
+    # withheld by exactly the same amount (HEA-77).
+    assert aircon.cost_savings == Decimal(0)
 
 
-def test_over_draw_against_free_generation_still_costs_the_excess() -> None:
+def test_over_draw_against_free_generation_suspends_the_whole_charge() -> None:
     # Given — a bucket served entirely by generation, so its metered cost is zero,
     # with a coarse device claiming half a kWh more than the house was served
     result = STRATEGY.allocate(
@@ -186,11 +205,12 @@ def test_over_draw_against_free_generation_still_costs_the_excess() -> None:
         prices(),
     )
 
-    # Then — the excess is bought energy, not free: diluting zero across 1.5 kWh
-    # is what let a device drawing hard at peak be costed at nothing at all
+    # Then — nothing is charged here at all. The excess may well turn out to have
+    # been served by the sun too, and the ledger prices it once it knows; what it
+    # must never do is publish 0.117 now and hand it back later.
     aircon = result.devices["coarse_step_aircon"]
-    assert aircon.actual_cost == Decimal("0.117")
-    assert total_actual(result) == Decimal("0.117")
+    assert aircon.actual_cost == Decimal(0)
+    assert total_actual(result) == Decimal(0)
 
 
 def test_draw_within_consumption_is_unaffected_by_the_overdraw_rule() -> None:

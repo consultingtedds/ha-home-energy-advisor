@@ -43,7 +43,7 @@ from .allocation import (
     split_by_source,
 )
 from .battery_ledger import BatteryLedger
-from .debt_ledger import DebtLedger
+from .debt_ledger import DebtLedger, Settlement
 from .energy_source import (
     MAX_QUIET_SPAN,
     CumulativeEnergySource,
@@ -351,6 +351,11 @@ class Accountant:
                 break
             self._finalize_bucket(start)
             self._watermark = start
+        # Expiry is a function of time, not of activity. Each closing bucket
+        # checks it too — that keeps the ordering right while buckets are being
+        # settled — but a household whose meters have gone quiet closes no
+        # buckets at all, and a suspended charge must still fall due (HEA-85).
+        self._release(self._debts.expire(cutoff))
         self._evict_stale()
         self._prune_prices()
 
@@ -508,26 +513,26 @@ class Accountant:
 
         headroom = max(Decimal(0), retained.consumption - retained.draw)
         funded = min(kwh, headroom)
-        bought = kwh - funded
-        cost = funded * retained.blended + bought * retained.import_price
+        # Only the part the bucket's meters can still fund is priced. The rest is
+        # the same overdraw the live path suspends, arriving later — and this is
+        # the path most of a coarse counter's energy takes, so charging it here
+        # would leave the symptom untouched (HEA-85).
+        cost = funded * retained.blended
         run = self._running.setdefault(device, _Running())
         run.energy_kwh += kwh
-        run.naive_cost += kwh * retained.import_price
+        run.naive_cost += funded * retained.import_price
         run.actual_cost += cost
-        run.cost_savings += kwh * retained.import_price - cost
+        run.cost_savings += funded * retained.import_price - cost
         run.add_by_source(split_by_source(kwh, retained.sources, retained.consumption))
 
         grew = max(retained.consumption, retained.draw + kwh) - max(
             retained.consumption, retained.draw
         )
-        # The same overdraw the live path records, arriving later. `bought` above
-        # charged it at the import rate and `grew` is that excess exactly, so it
-        # is owed on the one ledger both paths share — without this, the dominant
-        # path for coarse counters would keep the bias the carry removes.
+        # `grew` is exactly the unfunded excess (`kwh - funded`), owed on the one
+        # ledger both paths share. Its energy is published so the period still
+        # reconciles; its money waits there until the debt settles.
         self._debts.owe(start, grew, grew * retained.import_price, {device: kwh})
         self._house.energy_kwh += grew
-        self._house.actual_cost += grew * retained.import_price
-        self._house.naive_cost += grew * retained.import_price
         self._house.add_by_source(
             split_by_source(grew, retained.sources, retained.consumption)
         )
@@ -596,7 +601,7 @@ class Accountant:
         """
         consumption = _sum(sources.values())
         import_price = prices[SourceKind.IMPORT]
-        self._debts.expire(start)
+        self._release(self._debts.expire(start))
         overdraw = _sum(draws.values()) - consumption
         if overdraw > 0:
             self._debts.owe(start, overdraw, overdraw * import_price, draws)
@@ -604,25 +609,34 @@ class Accountant:
         if remainder.energy_kwh <= 0:
             return remainder
         blended = remainder.actual_cost / remainder.energy_kwh
-        repayment = self._debts.repay(remainder.energy_kwh, blended)
-        self._refund(repayment.refunds)
-        return _withhold(remainder, repayment.kwh, blended, import_price, sources)
+        settlement = self._debts.repay(remainder.energy_kwh, blended)
+        self._release(settlement)
+        return _withhold(remainder, settlement.kwh, blended, import_price, sources)
 
-    def _refund(self, refunds: Mapping[str, Decimal]) -> None:
-        """Returns what a debt overcharged to the devices that incurred it.
+    def _release(self, settlement: Settlement) -> None:
+        """Publishes a suspended charge, now that its real price is known.
 
-        The debt was charged at the import rate because energy the meters had not
-        reported has nowhere else to have come from. The interval that repaid it
-        may have been served more cheaply, and that difference belongs to the
-        device that drew the energy rather than to the remainder, which never
-        used it (ADR-0015 decision 5).
+        The overdraw was never charged when it happened: pricing it at import was
+        a guess, and publishing a guess means taking it back, which reads as an
+        hour that cost less than nothing (HEA-85, ADR-0015 decision 5). It arrives
+        here instead — at the repaying interval's blend, or at import if the debt
+        expired unpaid.
+
+        Actual and counterfactual move together. On expiry they are equal and the
+        saving is untouched; on repayment their difference is the real saving the
+        household made by having been served more cheaply than the grid.
         """
-        for device, amount in refunds.items():
+        for device, amount in settlement.actual.items():
+            self._running.setdefault(device, _Running()).actual_cost += amount
+            self._house.actual_cost += amount
+        for device, amount in settlement.naive.items():
             run = self._running.setdefault(device, _Running())
-            run.actual_cost -= amount
-            run.cost_savings += amount
-            self._house.actual_cost -= amount
-            self._house.cost_savings += amount
+            run.naive_cost += amount
+            run.cost_savings += amount - settlement.actual.get(device, Decimal(0))
+            self._house.naive_cost += amount
+            self._house.cost_savings += amount - settlement.actual.get(
+                device, Decimal(0)
+            )
 
     def unreconciled_energy(self) -> Decimal:
         """Energy charged that the house meters never went on to account for.
