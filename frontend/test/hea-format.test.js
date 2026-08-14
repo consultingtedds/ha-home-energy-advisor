@@ -12,6 +12,7 @@ import {
   escapeText,
   formatEnergy,
   formatMoney,
+  formatMoneyRange,
   formatPeriod,
   formatRate,
   localeFrom,
@@ -73,6 +74,46 @@ describe("formatMoney", () => {
     // Given / When / Then — the first render happens before any fetch resolves
     expect(formatMoney(undefined, EURO)).toBe("—");
     expect(formatMoney(Number.NaN, EURO)).toBe("—");
+  });
+});
+
+describe("formatMoneyRange", () => {
+  it("shows the range a cost could honestly sit in", () => {
+    // Given / When
+    const formatted = formatMoneyRange([3.609, 4.7241], EURO);
+
+    // Then — in money. The percentage form of this is +31 %, and of a device
+    // that cost under a cent it is +1252 %: a number that says only that
+    // division happened (ADR-0016, HEA-75)
+    expect(formatted).toMatch(/3[.,]61/);
+    expect(formatted).toMatch(/4[.,]72/);
+    expect(formatted).toMatch(/€/);
+  });
+
+  it("shows one figure where the floor and ceiling meet", () => {
+    // Given — the Untracked remainder is derived per interval from meters that
+    // reported for it, so it has no span to be uncertain about. `Intl`'s own
+    // formatRange writes an equal pair as "~€1.50", putting an approximation
+    // sign on the one figure that is exact.
+    // When / Then
+    expect(formatMoneyRange([1.5, 1.5], EURO)).toBe(formatMoney(1.5, EURO));
+  });
+
+  it("reads as a range even if handed its bounds backwards", () => {
+    // Given / When / Then — a caller that swaps them gets a range, not a
+    // backwards one that reads as nonsense
+    expect(formatMoneyRange([4.72, 3.61], EURO)).toBe(
+      formatMoneyRange([3.61, 4.72], EURO),
+    );
+  });
+
+  it("shows a dash where there is no range to show", () => {
+    // Given — per-device ranges are opt-in, so a household may publish none;
+    // that must not render as "€0.00 – €0.00", which claims exactness
+    // When / Then
+    expect(formatMoneyRange(undefined, EURO)).toBe("—");
+    expect(formatMoneyRange([undefined, 4.72], EURO)).toBe("—");
+    expect(formatMoneyRange([Number.NaN, Number.NaN], EURO)).toBe("—");
   });
 });
 

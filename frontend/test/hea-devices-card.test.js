@@ -15,6 +15,7 @@ import { TAG, register } from "../hea-devices-card.js";
 import {
   aDeviceRow,
   aHass,
+  boundsFor,
   bucketsFor,
   mountCard,
   settled,
@@ -284,6 +285,130 @@ describe("the table", () => {
 
     // Then
     expect(deviceOrder(card)).toEqual(["Fine Meter Aircon"]);
+  });
+
+  it("shows what each device's cost could honestly have been", async () => {
+    // Given — a household that opted into per-device ranges. A counter reporting
+    // every 30-90 minutes used that energy somewhere inside the span and nothing
+    // says where, so the cost is knowable only to a range (ADR-0016).
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: {
+        ...THREE_RESPONSE,
+        ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+        ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+        ...boundsFor("untracked_energy_devices", 1.5, 1.5),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — money, never a percentage: 0.02 to 0.40 on a cost of 0.11 is
+    // +345 %, a number that says only that division happened (HEA-75)
+    const ranges = Object.fromEntries(rows(card).map((row) => [row[0], row[3]]));
+    expect(ranges["Slow Poll Aircon"]).toMatch(/0[.,]02.+0[.,]40/);
+    expect(ranges["Fine Meter Aircon"]).toMatch(/2[.,]80.+3[.,]10/);
+  });
+
+  it("shows a single figure where there is no span to be uncertain about", async () => {
+    // Given — the Untracked remainder is derived per interval from meters that
+    // reported for it, so its floor and ceiling are its cost
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: {
+        ...THREE_RESPONSE,
+        ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+        ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+        ...boundsFor("untracked_energy_devices", 1.5, 1.5),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — one amount, not "~€1.50" and not "€1.50 – €1.50"
+    const ranges = Object.fromEntries(rows(card).map((row) => [row[0], row[3]]));
+    expect(ranges["Untracked Energy Devices"]).toMatch(/^\D*1[.,]50$/);
+  });
+
+  it("drops the range column rather than half-filling it", async () => {
+    // Given — one device bounded and two not, which is what a household sees
+    // mid-rollout or with the per-device option off for some period of the range
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: { ...THREE_RESPONSE, ...boundsFor("slow_poll_aircon", 0.02, 0.4) },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — no column of dashes, and no invitation to compare a bounded device
+    // with an unbounded one
+    const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+      cell.textContent.trim(),
+    );
+    expect(headers).not.toContain("Range");
+  });
+
+  it("still states the household's range when no device carries one", async () => {
+    // Given — per-device ranges are opt-in, but the whole-home range never is:
+    // every install is honest by default (ADR-0016)
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: { ...THREE_RESPONSE, ...boundsFor("whole_home", 4.2, 5.9) },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — the disclosure survives the column being dropped, so a household is
+    // never told nothing
+    expect(text(card)).toMatch(/4[.,]20.+5[.,]90/);
+    expect(text(card)).toMatch(/not a typical error/);
+  });
+
+  it("says what the range is, so it is not read as an error bar", async () => {
+    // Given — summing each delta's worst case assumes every device's energy
+    // landed in its own dearest slice at once. That is an outer bound, not a
+    // confidence interval, and must never read as "the error is 28 %"
+    // (ADR-0016 decision 4).
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: {
+        ...THREE_RESPONSE,
+        ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+        ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+        ...boundsFor("untracked_energy_devices", 1.5, 1.5),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then
+    expect(text(card)).toMatch(/widest these readings allow, not a typical error/);
+  });
+
+  it("says nothing about ranges on an integration too old to publish any", async () => {
+    // Given — a dashboard resource can outrun the integration
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: THREE_RESPONSE,
+      wholeHome: null,
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then — silence beats a range of zero, which would claim exactness
+    expect(text(card)).not.toMatch(/typical error/);
   });
 
   it("grows its card size with the number of devices it shows", async () => {

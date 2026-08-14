@@ -9,7 +9,13 @@
 
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { formatEnergy, formatMoney, formatRate, rateUnit } from "./hea-format.js";
+import {
+  formatEnergy,
+  formatMoney,
+  formatMoneyRange,
+  formatRate,
+  rateUnit,
+} from "./hea-format.js";
 import { HeaTableCard, sortSchemaFor } from "./hea-table-card.js";
 
 export const TAG = "hea-devices-card";
@@ -24,10 +30,26 @@ const EDITOR_TAG = `${TAG}-editor`;
 const effectiveRate = ({ actualCost, energyUsed }) =>
   energyUsed > 0 ? actualCost / energyUsed : undefined;
 
+/**
+ * What the figure beside it could honestly have been (ADR-0016).
+ *
+ * A counter reporting every 30–90 minutes used that energy somewhere inside the
+ * span, and nothing in the data says where — so a device's cost is knowable only
+ * to a range. Shown in money: the percentage form explodes on a device that cost
+ * under a cent, which is most of them on any given day.
+ */
+const RANGE = {
+  fields: ["costFloor", "costCeiling"],
+  derive: ({ costFloor, costCeiling }) => [costFloor, costCeiling],
+  label: "Range",
+  format: formatMoneyRange,
+};
+
 const COLUMNS = [
   { field: "name", label: "Device" },
   { field: "energyUsed", label: "Energy", format: formatEnergy },
   { field: "actualCost", label: "Actual Cost", format: formatMoney },
+  RANGE,
   { field: "costAtGridPrice", label: "At Grid Price", format: formatMoney },
   { field: "costSavings", label: "Saved", format: formatMoney },
   {
@@ -38,6 +60,10 @@ const COLUMNS = [
     format: formatRate,
   },
 ];
+
+/** What the range means, wherever one is shown. */
+const RANGE_NOTE =
+  "Range: the widest these readings allow, not a typical error.";
 
 const SORTS = {
   actual_cost: { field: "actualCost", label: "Actual cost" },
@@ -51,9 +77,60 @@ class HeaDevicesCard extends HeaTableCard {
   static columns = COLUMNS;
   static sorts = SORTS;
   static defaultSort = "actual_cost";
+  static cardStyle = `${HeaTableCard.cardStyle}
+    .disclosure {
+      margin-top: 12px;
+      color: var(--secondary-text-color);
+      font-size: 0.8em;
+    }
+  `;
 
   static getConfigElement() {
     return document.createElement(EDITOR_TAG);
+  }
+
+  /**
+   * The Range column only where every row can fill it.
+   *
+   * Per-device ranges are opt-in (ADR-0016), and a device the recorder holds no
+   * bound for cannot be given one. A column of dashes would read as a fault; a
+   * partly-filled one would invite comparing a bounded device with an unbounded
+   * one, which is exactly the misranking the ADR rejects.
+   */
+  _columns() {
+    return this._hasEveryBound() ? COLUMNS : COLUMNS.filter((c) => c !== RANGE);
+  }
+
+  _hasEveryBound() {
+    const rows = this._result?.devices ?? [];
+    return (
+      rows.length > 0 &&
+      rows.every((row) => RANGE.fields.every((f) => Number.isFinite(row[f])))
+    );
+  }
+
+  /**
+   * What the household's figures could honestly have been.
+   *
+   * Shown whichever way the table went. With the column, the totals row already
+   * carries the same range and this is the sentence that says what it means;
+   * without it, this is the whole disclosure — the whole-home range is published
+   * even when the per-device ones are not, so a household is never told nothing.
+   */
+  _body(locale) {
+    return `${super._body(locale)}${this._disclosure(locale)}`;
+  }
+
+  _disclosure(locale) {
+    if (this._hasEveryBound()) {
+      return `<div class="disclosure">${RANGE_NOTE}</div>`;
+    }
+    const band = this._result?.wholeHome;
+    if (!band) return "";
+    const range = formatMoneyRange([band.costFloor, band.costCeiling], locale);
+    return `<div class="disclosure">
+      These figures could honestly sit anywhere in ${range}. ${RANGE_NOTE}
+    </div>`;
   }
 }
 
