@@ -18,7 +18,14 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { TAG, register, tint } from "../hea-device-costs-card.js";
-import { aDeviceRow, aHass, bucketsFor, mountCard, settled } from "./doubles.js";
+import {
+  aDeviceRow,
+  aHass,
+  boundsFor,
+  bucketsFor,
+  mountCard,
+  settled,
+} from "./doubles.js";
 
 const AIRCON = aDeviceRow("slow_poll_aircon", "Slow Poll Aircon");
 const PUMP = aDeviceRow("cloud_polled_pump", "Cloud Polled Pump");
@@ -328,6 +335,37 @@ describe("the tooltip", () => {
     const shown = hover(card, "slow_poll_aircon:saved");
     expect(shown).not.toMatch(/Saved/);
     expect(shown).toMatch(/Lost.*€-?2[.,]00/);
+  });
+
+  it("says what the figure could honestly have been", async () => {
+    // Given — a household that opted into per-device ranges
+    const card = mount(
+      aHass({
+        devices: [AIRCON],
+        response: {
+          ...bucketsFor("slow_poll_aircon", 10, 1.2, 2),
+          ...boundsFor("slow_poll_aircon", 0.4, 2.1),
+        },
+      }),
+    );
+    await ready(card);
+
+    // Then — a sentence, not a fourth figure: it qualifies what was paid rather
+    // than adding to it, and the wording keeps an outer bound from reading as an
+    // error bar (ADR-0016 decision 4)
+    const shown = hover(card, "slow_poll_aircon:paid");
+    expect(shown).toMatch(/Could be anywhere in/);
+    expect(shown).toMatch(/0[.,]40/);
+    expect(shown).toMatch(/2[.,]10/);
+  });
+
+  it("says nothing about a range the household does not publish", async () => {
+    // Given — per-device ranges are opt-in, and the default is off
+    const card = mount(aHass({ devices: [AIRCON], response: THREE }));
+    await ready(card);
+
+    // Then — silence, never "€0.00 – €0.00", which would claim exactness
+    expect(hover(card, "slow_poll_aircon:paid")).not.toMatch(/anywhere in/);
   });
 
   it("says nothing for a series it cannot place", async () => {
