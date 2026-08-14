@@ -41,6 +41,15 @@ claimed daily saving was €9.31 against a true €6.94 — overstated by 34 %.
 
 ## Decision
 
+> **Amended by HEA-85 (see ADR-0015 decision 5).** The *rate* below still stands
+> and is still what an unrepaid overdraw finally costs. What changed is **when**
+> it is charged: the import rate is now applied at settlement rather than at the
+> time, because a charge published immediately is one the repaying bucket usually
+> takes most of back — and a withdrawal can only land in the bucket that
+> discovered it, which published an hour reading −€0.118 on the reference
+> instance. Read "is priced at" below as "will be priced at, once nothing better
+> can be learned". The two paths still agree with each other; both now suspend.
+
 **Energy beyond a bucket's metered consumption is priced at that bucket's import
 rate, and the whole-home cost grows with it.** One rule, applied identically in
 the live allocation and in the late-arrival correction, so the two paths can no
@@ -77,8 +86,13 @@ part of that supply.
 
 ## Consequences
 
-- Σ allocated cost now **exceeds** the metered bill by (overdraw × import price)
-  in any bucket where draw exceeds consumption. This is a deliberate amendment
+- ~~Σ allocated cost now **exceeds** the metered bill by (overdraw × import
+  price) in any bucket where draw exceeds consumption.~~ **Superseded by HEA-85**:
+  an overdrawing bucket now allocates exactly its metered cost, and the excess is
+  carried unpriced on the debt ledger. The consequence below described why
+  exceeding it was acceptable; it is no longer exceeded at all, and the period
+  invariant is unchanged. Read the rest of this bullet as the reasoning that
+  justified the carry, not as current behaviour. This is a deliberate amendment
   to the ADR-0002 clamp: the aggregate invariant holds when the inputs agree, and
   when they disagree the engine errs toward overstating cost rather than
   flattering the user.

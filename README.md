@@ -19,7 +19,9 @@ have cost at grid prices, and how much you saved.
 > figures cannot know — how far your own meters disagree with each other, and the
 > cost range a device's reporting interval permits, because a counter that reports
 > once an hour used that energy *somewhere* inside the hour and nothing in the data
-> says where; and English + Spanish translations. It
+> says where; and English + Spanish translations. Costs are published only once
+> they are known rather than estimated and corrected, so "spent so far today" is a
+> figure that catches up rather than one that goes backwards. It
 > now runs live on a real instance. Still to come: the Lovelace dashboards, a full
 > install README, wider dogfooding, and the HACS release (historical backfill is
 > deferred — see [docs/PLAN.md](docs/PLAN.md) → Epic 7). See
