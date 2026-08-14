@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.components.sensor import SensorExtraStoredData
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME, EntityCategory
@@ -1153,3 +1154,110 @@ async def test_the_remainder_publishes_no_band_of_its_own(
     assert (
         hass.states.get("sensor.untracked_energy_devices_highest_possible_cost") is None
     )
+
+
+async def test_a_first_install_says_it_is_warming_up_rather_than_broken(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a first install, whose figures sit at zero for ~20 minutes while the
+    # lateness margin runs. On the first live install this read as "nothing is
+    # working" when the engine was in fact counting correctly (HEA-47)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+
+    # When — it starts, with no interval closed yet
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — the sensor sitting at zero says why, where the user is already
+    # looking. A Repair was rejected for this: HEA-24 reserves those for degraded
+    # inputs, and spending one on normal startup teaches users to dismiss them
+    state = hass.states.get("sensor.coarse_step_aircon_actual_cost")
+    assert state is not None
+    assert Decimal(state.state) == Decimal(0)
+    assert state.attributes["warming_up"] is True
+
+
+async def test_the_warming_up_signal_goes_away_rather_than_turning_false(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a first install
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the first interval closes and real figures appear
+    await _run_one_interval(hass, freezer)
+
+    # Then — the attribute is absent, not present-and-false. It exists to explain
+    # an anomaly; once there is no anomaly it should cost a household's recorder
+    # and templates nothing at all
+    state = hass.states.get("sensor.coarse_step_aircon_actual_cost")
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.18")
+    assert "warming_up" not in state.attributes
+
+
+async def test_a_restart_with_history_behind_it_is_never_warming_up(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — an established household restarting: the accountant is rebuilt from
+    # nothing every startup, so "no interval has closed" is true here too, and on
+    # its own it would flag months of history as a fresh install (HEA-47)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entity_id = "sensor.coarse_step_aircon_actual_cost"
+    restored = SensorExtraStoredData(
+        native_value=Decimal("0.18"), native_unit_of_measurement="EUR"
+    )
+    mock_restore_cache_with_extra_data(
+        hass, ((State(entity_id, "0.18"), restored.as_dict()),)
+    )
+    entry.add_to_hass(hass)
+
+    # When — it comes back up, before any interval has had time to close
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — no warming-up claim: there is a figure on screen to read, which is
+    # the whole thing the signal is there to excuse the absence of. The second
+    # half of the condition — a restored baseline — is what tells the two apart
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert Decimal(state.state) == Decimal("0.18")
+    assert "warming_up" not in state.attributes
+
+
+async def test_the_warming_up_signal_is_kept_out_of_the_recorder(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a first install, whose cost sensors are carrying the signal
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the set Home Assistant actually excludes from recorded state is read
+    # (the combined set, assembled down the inheritance chain, rather than the
+    # literal declared on any one class — declaring it in the wrong place is the
+    # way this fails, and only the combined set can catch that)
+    component = hass.data["entity_components"][SENSOR_DOMAIN]
+    sensor = next(
+        entity
+        for entity in component.entities
+        if entity.entity_id == "sensor.coarse_step_aircon_actual_cost"
+    )
+    excluded = sensor._Entity__combined_unrecorded_attributes  # noqa: SLF001
+
+    # Then — a flag that is true for the first 20 minutes of a household's life
+    # and never again is noise in the history, recorded once a minute for every
+    # HEA entity and every cycle meter mirroring one (HEA-59)
+    assert "warming_up" in excluded

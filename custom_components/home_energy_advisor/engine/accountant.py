@@ -454,6 +454,23 @@ class Accountant:
         """
         return {entity: source.snapshot() for entity, source in self._sources.items()}
 
+    def has_finalised(self) -> bool:
+        """Whether any interval has closed, and so whether a figure exists at all.
+
+        Costs lag real time by the lateness margin plus the bucket — around twenty
+        minutes — because that margin is what lets a coarse device's delta land
+        before its bucket seals (ADR-0006). It buys correctness, so it is not a
+        knob to turn down; what it costs is a first install that reads as broken
+        while it is in fact counting. This says which of the two is happening
+        (HEA-47).
+
+        A rebase deliberately does not reset it. `reset_totals` zeroes the figures
+        but leaves the watermark, because an engine that has closed an interval
+        has proved it works, and saying otherwise would flag a household that has
+        just reset as one that has just installed.
+        """
+        return self._watermark is not None
+
     def _spread_source(self, role: SourceRole, delta: EnergyDelta) -> None:
         for portion in spread_energy(delta):
             if self._is_finalised(portion.start):

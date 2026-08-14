@@ -1159,3 +1159,85 @@ def test_the_plausibility_guard_is_suspended_while_a_house_source_is_down() -> N
     # fault to the user and, worse, quietly move real consumption into Untracked
     assert acc.implausible_devices() == frozenset()
     assert acc.totals().devices["utility_plug"].energy_kwh > banked
+
+
+def test_a_fresh_accountant_has_finalised_nothing() -> None:
+    # Given — a home configured but not yet observed
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
+    )
+
+    # When / Then — nothing has closed, so there is nothing to publish yet
+    assert acc.has_finalised() is False
+
+
+def test_readings_alone_do_not_close_an_interval() -> None:
+    # Given — a home metering normally from its first minute
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+
+    # When — a tick arrives before the lateness margin has elapsed
+    acc.finalize(at(10))
+
+    # Then — still nothing closed. This is the ~20 minutes a first install spends
+    # reading zero while the engine is in fact counting correctly, and it is the
+    # gap the warming-up signal exists to explain rather than shorten: the margin
+    # is what lets a coarse device's delta land before its bucket seals (HEA-48,
+    # ADR-0006), so it serves correctness and is not a knob to turn down (HEA-47)
+    assert acc.has_finalised() is False
+    assert acc.totals().devices["coarse_step_aircon"].actual_cost == Decimal(0)
+
+
+def test_the_first_closed_interval_ends_the_wait() -> None:
+    # Given — the same home, with an interval's worth of readings behind it
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+
+    # When — a tick arrives past the margin, closing the interval
+    acc.finalize(at(30))
+
+    # Then — the wait is over, and it stays over: the signal tracks whether the
+    # engine has ever produced a figure, not whether the last tick happened to
+    # close one, so a quiet house does not read as a fresh install
+    assert acc.has_finalised() is True
+    acc.finalize(at(35))
+    assert acc.has_finalised() is True
+
+
+def test_a_rebase_does_not_reopen_the_wait() -> None:
+    # Given — an established home that has been publishing figures
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(30))
+
+    # When — the household rebases its totals to zero (HEA-57)
+    acc.reset_totals()
+
+    # Then — the figures are zero but the engine has not forgotten that it works.
+    # A reset drops the sensors' baselines too, so were this to reopen the wait,
+    # both halves of the warming-up condition would be true at once and a working
+    # installation would announce itself as a fresh one
+    assert acc.totals().devices["coarse_step_aircon"] == ZERO_TOTALS
+    assert acc.has_finalised() is True

@@ -696,3 +696,35 @@ async def test_a_watt_hour_device_is_normalised_to_kwh(
     # Then — that is accounted as 0.6 kWh, not 600
     aircon = entry.runtime_data.data.devices[next(iter(entry.subentries))]
     assert aircon.energy_kwh == Decimal("0.6")
+
+
+async def test_the_coordinator_reports_warming_up_until_an_interval_closes(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a freshly configured home, metering from its first minute
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+
+    # When — readings arrive but the lateness margin has not yet elapsed
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
+    await hass.async_block_till_done()
+
+    # Then — the integration is warming up: counting, with nothing to show for it
+    assert coordinator.is_warming_up() is True
+
+    # When — the finalisation timer fires past the margin
+    freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then — it is warming up no longer
+    assert coordinator.is_warming_up() is False

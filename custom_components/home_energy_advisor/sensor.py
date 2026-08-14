@@ -406,6 +406,9 @@ class HeaCostSensor(_HeaRestoringSensor):
     """One device's running figure: restored baseline plus the live total."""
 
     entity_description: HeaSensorDescription
+    # True for a household's first twenty minutes and never again — noise in a
+    # history that records every HEA entity roughly once a minute (HEA-59).
+    _unrecorded_attributes = frozenset({"warming_up"})
 
     def __init__(
         self,
@@ -433,6 +436,32 @@ class HeaCostSensor(_HeaRestoringSensor):
         totals = self._device_totals()
         running = self.entity_description.value_fn(totals) if totals else Decimal(0)
         return self._published(running)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Say the figure is still accruing, rather than let zero speak for itself.
+
+        Costs lag real time by the lateness margin plus the bucket, so a new
+        install reads zero for about twenty minutes while the engine counts
+        correctly behind it — which on the first live install read as "nothing is
+        working" (HEA-47). The signal sits on the sensor because that is where a
+        household is already looking; a Repair was rejected, since HEA-24 reserves
+        those for degraded inputs and spending one on normal startup teaches users
+        to dismiss them.
+
+        Two conditions, not one. Nothing has closed *and* nothing was restored:
+        the accountant is rebuilt from nothing on every restart, so the first
+        alone would announce months of history as a fresh install. A sensor added
+        by a later version restores no baseline either, and reports warming up
+        until its own first interval closes — it has nothing to show yet, so that
+        is the same statement rather than an exception to it.
+
+        Absent rather than ``False`` once accounting flows: it explains an
+        anomaly, and where there is none it should cost nothing to carry.
+        """
+        if not (self.coordinator.is_warming_up() and self._baseline == 0):
+            return None
+        return {"warming_up": True}
 
     def _device_totals(self) -> DeviceTotals | None:
         data = self.coordinator.data

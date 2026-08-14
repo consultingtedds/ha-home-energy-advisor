@@ -445,6 +445,17 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                 units[entity_id] = EnergyUnit.WH
         return units
 
+    def is_warming_up(self) -> bool:
+        """Whether the engine is counting but has not yet closed an interval.
+
+        True for roughly the first twenty minutes of a runtime's life. On its own
+        that is not enough to tell a first install from a routine restart — the
+        accountant is rebuilt from nothing every startup, so a household with
+        months of history passes through this state too. The sensors pair it with
+        their own restored baseline to tell the two apart (HEA-47).
+        """
+        return not self._accountant.has_finalised()
+
     def diagnostics(self) -> dict[str, Any]:
         """Assemble the diagnostics download (HEA-24) as JSON-safe primitives.
 
