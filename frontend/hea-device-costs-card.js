@@ -32,7 +32,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { formatMoney, formatPeriod } from "./hea-format.js";
+import { formatMoney, formatMoneyRange, formatPeriod } from "./hea-format.js";
 
 export const TAG = "hea-device-costs-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -145,7 +145,35 @@ const tooltipFor = (device, locale) => {
     ),
     tooltipRow("At grid price", formatMoney(device.costAtGridPrice, locale)),
   );
+  const range = rangeNote(device, locale);
+  if (range) box.append(range);
   return box;
+};
+
+/**
+ * What this device's figure could honestly have been (ADR-0016).
+ *
+ * A sentence rather than a row, because it qualifies the "Paid" line above it
+ * rather than adding a fourth figure — and because the wording is doing work:
+ * summing each delta's worst case assumes every kWh landed in that device's own
+ * dearest 5-minute slice, which is an outer bound and not an error bar
+ * (ADR-0016 decision 4).
+ *
+ * Absent where the household publishes no per-device range, which is the
+ * default: silence beats a range of zero, which would claim exactness.
+ */
+const rangeNote = ({ costFloor, costCeiling }, locale) => {
+  if (![costFloor, costCeiling].every((value) => Number.isFinite(value))) {
+    return undefined;
+  }
+  const note = document.createElement("div");
+  note.style.marginTop = "4px";
+  note.style.opacity = "0.75";
+  note.textContent = `Could be anywhere in ${formatMoneyRange(
+    [costFloor, costCeiling],
+    locale,
+  )}`;
+  return note;
 };
 
 class HeaDeviceCostsCard extends HeaChartCard {
