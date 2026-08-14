@@ -55,8 +55,8 @@ describe("statisticIdsFor", () => {
       "sensor.slow_poll_aircon_energy_from_grid",
       "sensor.slow_poll_aircon_energy_from_generation",
       "sensor.slow_poll_aircon_energy_from_battery",
-      "sensor.slow_poll_aircon_cost_floor",
-      "sensor.slow_poll_aircon_cost_ceiling",
+      "sensor.slow_poll_aircon_lowest_possible_cost",
+      "sensor.slow_poll_aircon_highest_possible_cost",
     ]);
   });
 
@@ -69,7 +69,7 @@ describe("statisticIdsFor", () => {
 
     // Then — absence in the answer is what tells the card, so the request is
     // unconditional and the *response* is where availability is decided
-    expect(ids).toContain("sensor.slow_poll_aircon_cost_floor");
+    expect(ids).toContain("sensor.slow_poll_aircon_lowest_possible_cost");
   });
 
   it("asks for the whole home's range, which is published either way", () => {
@@ -81,8 +81,8 @@ describe("statisticIdsFor", () => {
     // only the bounds are fetched: they are the one figure not derivable
     expect(statisticIdsFor([AIRCON], wholeHome)).toEqual([
       ...statisticIdsFor([AIRCON]),
-      "sensor.whole_home_cost_floor",
-      "sensor.whole_home_cost_ceiling",
+      "sensor.whole_home_lowest_possible_cost",
+      "sensor.whole_home_highest_possible_cost",
     ]);
   });
 
@@ -247,11 +247,11 @@ describe("fetchDeviceStatistics", () => {
     // inside a span, and nothing in the data says where (ADR-0016)
     const hass = aHass({
       ...airconResponse,
-      "sensor.slow_poll_aircon_cost_floor": [
+      "sensor.slow_poll_aircon_lowest_possible_cost": [
         aBucket(DAY_ONE, 0.08),
         aBucket(DAY_TWO, 0.15),
       ],
-      "sensor.slow_poll_aircon_cost_ceiling": [
+      "sensor.slow_poll_aircon_highest_possible_cost": [
         aBucket(DAY_ONE, 0.14),
         aBucket(DAY_TWO, 0.29),
       ],
@@ -290,8 +290,8 @@ describe("fetchDeviceStatistics", () => {
     const other = aDevice("lifetime_counter_plug", "Lifetime Counter Plug");
     const hass = aHass({
       ...airconResponse,
-      "sensor.slow_poll_aircon_cost_floor": [aBucket(DAY_ONE, 0.08)],
-      "sensor.slow_poll_aircon_cost_ceiling": [aBucket(DAY_ONE, 0.14)],
+      "sensor.slow_poll_aircon_lowest_possible_cost": [aBucket(DAY_ONE, 0.08)],
+      "sensor.slow_poll_aircon_highest_possible_cost": [aBucket(DAY_ONE, 0.14)],
     });
 
     // When
@@ -307,8 +307,8 @@ describe("fetchDeviceStatistics", () => {
     const wholeHome = { key: "whole_home", name: "Whole Home" };
     const hass = aHass({
       ...airconResponse,
-      "sensor.whole_home_cost_floor": [aBucket(DAY_ONE, 5.88)],
-      "sensor.whole_home_cost_ceiling": [aBucket(DAY_ONE, 7.0)],
+      "sensor.whole_home_lowest_possible_cost": [aBucket(DAY_ONE, 5.88)],
+      "sensor.whole_home_highest_possible_cost": [aBucket(DAY_ONE, 7.0)],
     });
 
     // When

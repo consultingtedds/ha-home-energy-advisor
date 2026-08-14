@@ -41,10 +41,18 @@ export const CONCEPTS = Object.freeze({
  * asked for it has no such statistic. Absent is not zero — a range of zero would
  * claim perfect precision, which is the opposite of what the absence means — so
  * these accumulate to `undefined` rather than joining `zeroed()`.
+ *
+ * The values are entity-id suffixes, and Home Assistant builds an entity id from
+ * the sensor's *translated name*, not from its key. These read "lowest/highest
+ * possible cost" rather than "floor/ceiling" for that reason alone — HEA-84
+ * first shipped `cost_floor` here against a sensor named "Lowest Possible Cost",
+ * so every card asked for a statistic that could not exist. The integration side
+ * is pinned by `test_every_concept_key_is_the_entity_id_suffix`; the row *field*
+ * names stay floor/ceiling because they are ours.
  */
 export const BOUNDS = Object.freeze({
-  costFloor: "cost_floor",
-  costCeiling: "cost_ceiling",
+  costFloor: "lowest_possible_cost",
+  costCeiling: "highest_possible_cost",
 });
 
 /** Every concept at zero — the starting point for any accumulation. */

@@ -39,6 +39,12 @@ from custom_components.home_energy_advisor.const import (
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
+from custom_components.home_energy_advisor.sensor import (
+    _BOUND_CONCEPTS as BOUND_DESCRIPTIONS,
+)
+from custom_components.home_energy_advisor.sensor import (
+    _CONCEPTS as CONCEPT_DESCRIPTIONS,
+)
 
 if TYPE_CHECKING:
     from typing import Any
@@ -410,6 +416,43 @@ async def test_devices_registry_sensor_lists_devices_with_slug_name_and_flags(
     untracked = by_key["untracked_energy_devices"]
     assert untracked["untracked"] is True
     assert untracked["name"] == "Untracked Energy Devices"
+
+
+async def test_every_concept_key_is_the_entity_id_suffix(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a card builds a statistic id as `sensor.<slug>_<concept>` from the
+    # concept key alone (`hea-statistics.js`), and an entity id is built from the
+    # *translated name*. The two agree only while every concept's key and its
+    # name say the same thing, and nothing enforced that.
+    #
+    # HEA-84 shipped with `cost_floor` named "Lowest Possible Cost". The cards
+    # asked for `sensor.x_cost_floor` forever, against an entity that was really
+    # `sensor.x_lowest_possible_cost`, and both sides' tests passed because the
+    # frontend fixture was built from the same wrong constant as the card.
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry({CONF_DEVICE_COST_BOUNDS: True})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When / Then — for every concept on every device, including the aggregates
+    registry = er.async_get(hass)
+    keys = [_aircon_subentry_id(entry), "untracked", "whole_home"]
+    checked = 0
+    for device_key in keys:
+        for concept in (*CONCEPT_DESCRIPTIONS, *BOUND_DESCRIPTIONS):
+            unique_id = f"{entry.entry_id}_{device_key}_{concept.key}"
+            entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            if entity_id is None:
+                continue  # a concept this device does not carry
+            assert entity_id.endswith(f"_{concept.key}"), (
+                f"{entity_id} cannot be reached as sensor.<slug>_{concept.key}"
+            )
+            checked += 1
+    # Guard the guard: a typo in the keys above would pass vacuously.
+    assert checked >= len(CONCEPT_DESCRIPTIONS) * 2
 
 
 async def test_devices_registry_sensor_locates_the_whole_home_without_listing_it(
@@ -1029,7 +1072,7 @@ async def test_the_cost_band_is_diagnostic_context_not_a_headline_figure(
 
     # Then — off the headline device page, still recorded and chartable
     registry = er.async_get(hass)
-    for concept in ("cost_floor", "cost_ceiling"):
+    for concept in ("lowest_possible_cost", "highest_possible_cost"):
         resolved = registry.async_get_entity_id(
             "sensor", DOMAIN, f"{entry.entry_id}_whole_home_{concept}"
         )

@@ -156,8 +156,8 @@
       "energy_from_battery": { "name": "Energía de la batería" },
       "devices": { "name": "Dispositivos" },
       "unreconciled_energy": { "name": "Energía sin conciliar" },
-      "cost_floor": { "name": "Coste mínimo posible" },
-      "cost_ceiling": { "name": "Coste máximo posible" }
+      "lowest_possible_cost": { "name": "Coste mínimo posible" },
+      "highest_possible_cost": { "name": "Coste máximo posible" }
     }
   },
   "device": {

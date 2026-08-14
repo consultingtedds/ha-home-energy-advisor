@@ -207,10 +207,16 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
 #
 # `total`, like every other monetary figure (ADR-0007), and diagnostic: a bound
 # is context for a figure, not a figure to read first.
+#
+# The key is the *entity id suffix*, so it must read the way the translated name
+# does. A card builds `sensor.<slug>_<concept>` from this key alone, while Home
+# Assistant builds the entity id from the name — they meet only here. Naming
+# these `cost_floor` while calling them "Lowest Possible Cost" shipped cards
+# asking for a statistic that could never exist (HEA-84).
 _BOUND_CONCEPTS: tuple[HeaSensorDescription, ...] = (
     HeaSensorDescription(
-        key="cost_floor",
-        translation_key="cost_floor",
+        key="lowest_possible_cost",
+        translation_key="lowest_possible_cost",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -219,8 +225,8 @@ _BOUND_CONCEPTS: tuple[HeaSensorDescription, ...] = (
         value_fn=lambda totals: totals.cost_floor,
     ),
     HeaSensorDescription(
-        key="cost_ceiling",
-        translation_key="cost_ceiling",
+        key="highest_possible_cost",
+        translation_key="highest_possible_cost",
         device_class=SensorDeviceClass.MONETARY,
         state_class=SensorStateClass.TOTAL,
         entity_category=EntityCategory.DIAGNOSTIC,
