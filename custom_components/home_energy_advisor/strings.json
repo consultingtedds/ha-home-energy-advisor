@@ -156,8 +156,8 @@
       "energy_from_battery": { "name": "Energy From Battery" },
       "devices": { "name": "Devices" },
       "unreconciled_energy": { "name": "Unreconciled Energy" },
-      "cost_floor": { "name": "Lowest Possible Cost" },
-      "cost_ceiling": { "name": "Highest Possible Cost" }
+      "lowest_possible_cost": { "name": "Lowest Possible Cost" },
+      "highest_possible_cost": { "name": "Highest Possible Cost" }
     }
   },
   "device": {

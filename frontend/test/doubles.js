@@ -64,10 +64,20 @@ export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
  * The cost range a key's counter permits (ADR-0016) — absent for a household
  * that has not opted into per-device ranges, which is the case a card has to
  * tell apart from a range of zero.
+ *
+ * The suffixes are the entity ids as they exist on a real instance, verified on
+ * `homeassistant.tedds.net` 2026-08-14. They are written out rather than built
+ * from the card's own `BOUNDS`, so this fixture can disagree with the card — and
+ * it once should have: HEA-84 shipped `_cost_floor` on both sides against a
+ * sensor Home Assistant had really named `_lowest_possible_cost`.
  */
 export const boundsFor = (key, costFloor, costCeiling, at = MAY) => ({
-  [`sensor.${key}_cost_floor`]: [{ start: at.getTime(), change: costFloor }],
-  [`sensor.${key}_cost_ceiling`]: [{ start: at.getTime(), change: costCeiling }],
+  [`sensor.${key}_lowest_possible_cost`]: [
+    { start: at.getTime(), change: costFloor },
+  ],
+  [`sensor.${key}_highest_possible_cost`]: [
+    { start: at.getTime(), change: costCeiling },
+  ],
 });
 
 /** The grid / generation / battery split a device's HEA-51 sensors record. */
