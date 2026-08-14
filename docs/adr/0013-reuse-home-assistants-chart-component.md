@@ -81,6 +81,17 @@ cost. We reuse the chart *component*, not the cards built on it.
 - **ApexCharts or Plotly via HACS.** Still rejected, by ADR-0008: the flagship
   view must not require a separate install. ApexCharts also has no categorical
   x-axis (verified in HEA-25).
+
+  > **Reason corrected by ADR-0017.** ApexCharts' missing categorical axis is a
+  > real reason and is the model ADR-0017 decision 3 holds up. Citing ADR-0008's
+  > install rule is not, and **Plotly was never evaluated at all** — it was
+  > excluded by that citation alone. The conclusion still stands on stronger
+  > ground: `ha-chart-base` is core, so it wins the preference order outright and
+  > no community chart needs to beat it. Note the irony this ADR's own opening
+  > describes — "'this option is excluded' was quietly promoted into 'therefore
+  > mine is the only one left', without checking the middle" — corrected here for
+  > Home Assistant's bundled component, and left standing one line below for
+  > community ones.
 - **Waiting for a supported charting API.** Rejected on the same grounds as
   ADR-0012: none is announced, and the feature is the product's central promise.
 
