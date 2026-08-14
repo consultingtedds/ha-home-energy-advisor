@@ -35,6 +35,21 @@ export const readDevices = (hass, entityId = DEVICES_SENSOR) => {
   return rows.filter((row) => row?.key).map(toDevice);
 };
 
+/**
+ * The whole-home aggregate, or `null` where the integration publishes none.
+ *
+ * Deliberately not one of `readDevices`' rows: cards sum that list to get the
+ * household total, so a whole-home row there would double every figure. It is
+ * here for the figures that belong to no device — the cost range published for
+ * the whole home whether or not the per-device ranges are (ADR-0016).
+ *
+ * @returns {{key: string, name: string, deviceId: string|null}|null}
+ */
+export const readWholeHome = (hass, entityId = DEVICES_SENSOR) => {
+  const row = hass?.states?.[entityId]?.attributes?.whole_home;
+  return row?.key ? toDevice(row) : null;
+};
+
 const toDevice = (row) => ({
   key: row.key,
   // A device whose name has not resolved yet still has to label its row.

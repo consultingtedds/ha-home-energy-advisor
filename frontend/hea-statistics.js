@@ -33,6 +33,20 @@ export const CONCEPTS = Object.freeze({
   energyFromBattery: "energy_from_battery",
 });
 
+/**
+ * What a cost is knowable to, given how rarely a device's counter reports.
+ *
+ * Kept apart from `CONCEPTS` because these are the only figures that may not
+ * exist: the per-device range is opt-in (ADR-0016), and a household that has not
+ * asked for it has no such statistic. Absent is not zero — a range of zero would
+ * claim perfect precision, which is the opposite of what the absence means — so
+ * these accumulate to `undefined` rather than joining `zeroed()`.
+ */
+export const BOUNDS = Object.freeze({
+  costFloor: "cost_floor",
+  costCeiling: "cost_ceiling",
+});
+
 /** Every concept at zero — the starting point for any accumulation. */
 const zeroed = () =>
   Object.fromEntries(Object.keys(CONCEPTS).map((field) => [field, 0]));
@@ -50,11 +64,32 @@ const HOURLY_DAYS = 2;
  */
 const statisticIdFor = (deviceKey, concept) => `sensor.${deviceKey}_${concept}`;
 
-/** Every statistic the given devices need, in a stable order. */
-export const statisticIdsFor = (devices) =>
-  devices.flatMap((device) =>
-    Object.values(CONCEPTS).map((concept) => statisticIdFor(device.key, concept)),
+/**
+ * Every statistic the given devices need, in a stable order.
+ *
+ * The bounds are requested unconditionally. A card cannot ask whether the
+ * household opted into per-device ranges, and an absent key in the response
+ * answers that for free; a config lookup would cost a round trip and could go
+ * stale between the two.
+ *
+ * `wholeHome`, where given, contributes only its bounds: its energy and costs
+ * are the sum of the rows already fetched (the allocations are exhaustive,
+ * ADR-0002), and the range is the one household figure not derivable from them.
+ */
+export const statisticIdsFor = (devices, wholeHome) => {
+  const ids = devices.flatMap((device) =>
+    [...Object.values(CONCEPTS), ...Object.values(BOUNDS)].map((concept) =>
+      statisticIdFor(device.key, concept),
+    ),
   );
+  if (!wholeHome?.key || devices.length === 0) return ids;
+  return [
+    ...ids,
+    ...Object.values(BOUNDS).map((concept) =>
+      statisticIdFor(wholeHome.key, concept),
+    ),
+  ];
+};
 
 /**
  * How finely to bucket a period.
@@ -77,8 +112,8 @@ export const bucketPeriodFor = ({ start, end }) =>
  * @param period `{start, end, fallback}` from the energy-collection adapter
  * @returns {Promise<{period: object, devices: Array<object>, totals: object}>}
  */
-export const fetchDeviceStatistics = async (hass, devices, period) => {
-  const statisticIds = statisticIdsFor(devices);
+export const fetchDeviceStatistics = async (hass, devices, period, wholeHome) => {
+  const statisticIds = statisticIdsFor(devices, wholeHome);
   // An empty `statistic_ids` is not a request for nothing — it is a request for
   // every statistic in the database.
   const buckets = statisticIds.length
@@ -97,8 +132,27 @@ export const fetchDeviceStatistics = async (hass, devices, period) => {
     period,
     devices: rows,
     totals: sumRows(rows),
+    wholeHome: boundsFor(wholeHome?.key, buckets, period),
     series: seriesFrom(devices, buckets, period),
   };
+};
+
+/**
+ * A key's cost range over the period, or `undefined` if it publishes none.
+ *
+ * The distinction is the whole point: a household that has not opted in, and one
+ * whose figures are exact, must not read the same. Only a statistic the recorder
+ * actually holds produces a range.
+ */
+const boundsFor = (key, buckets, period) => {
+  if (!key) return undefined;
+  const bounds = {};
+  for (const [field, concept] of Object.entries(BOUNDS)) {
+    const statistic = buckets?.[statisticIdFor(key, concept)];
+    if (!Array.isArray(statistic)) return undefined;
+    bounds[field] = changeWithin(statistic, period);
+  }
+  return bounds;
 };
 
 /**
@@ -140,6 +194,7 @@ const totalsFor = (device, buckets, period) => {
   return {
     ...device,
     ...totals,
+    ...boundsFor(device.key, buckets, period),
     costSavings: totals.costAtGridPrice - totals.actualCost,
   };
 };
@@ -183,11 +238,33 @@ const changeWithin = (statistic, period) =>
  * (ADR-0002). Deriving the total from the parts also keeps a card's header
  * agreeing with the table beneath it.
  */
-const sumRows = (rows) =>
-  rows.reduce(
-    (totals, row) => {
-      for (const field of Object.keys(totals)) totals[field] += row[field];
-      return totals;
+const sumRows = (rows) => {
+  const totals = rows.reduce(
+    (running, row) => {
+      for (const field of Object.keys(running)) running[field] += row[field];
+      return running;
     },
     { ...zeroed(), costSavings: 0 },
   );
+  return { ...totals, ...summedBounds(rows) };
+};
+
+/**
+ * The household's range as the sum of its rows — but only if every row has one.
+ *
+ * Summing across a gap would bound the household by a subset of itself and read
+ * as a *narrower* range than the truth, which is the one direction a disclosure
+ * figure must never err in.
+ */
+const summedBounds = (rows) => {
+  const fields = Object.keys(BOUNDS);
+  if (!rows.length || !rows.every((row) => fields.every((f) => f in row))) {
+    return {};
+  }
+  return Object.fromEntries(
+    fields.map((field) => [
+      field,
+      rows.reduce((total, row) => total + row[field], 0),
+    ]),
+  );
+};

@@ -13,7 +13,7 @@
  */
 
 import { subscribeToPeriod } from "./ha-energy-collection.js";
-import { readDevices } from "./hea-devices.js";
+import { readDevices, readWholeHome } from "./hea-devices.js";
 import { formatPeriod, localeFrom } from "./hea-format.js";
 import { fetchDeviceStatistics } from "./hea-statistics.js";
 
@@ -129,7 +129,15 @@ export class HeaCard extends HTMLElement {
     }
 
     try {
-      const result = await fetchDeviceStatistics(this._hass, devices, this._period);
+      const result = await fetchDeviceStatistics(
+        this._hass,
+        devices,
+        this._period,
+        // Only meaningful for the whole house: a card filtered to three devices
+        // is not bounded by the household's range, and offering it there would
+        // invite a comparison between a subset and its whole.
+        this._config?.devices ? undefined : readWholeHome(this._hass),
+      );
       if (request !== this._request) return; // a newer period has overtaken this
       this._result = result;
       this._state = "ready";

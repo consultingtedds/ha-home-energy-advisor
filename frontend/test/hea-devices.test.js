@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { DEVICES_SENSOR, readDevices } from "../hea-devices.js";
+import { DEVICES_SENSOR, readDevices, readWholeHome } from "../hea-devices.js";
 
 /** A row as the HEA-55 sensor publishes it, in its own snake_case. */
 const aRow = (key, name, overrides = {}) => ({
@@ -138,5 +138,44 @@ describe("readDevices", () => {
 
     // When / Then
     expect(readDevices(hass, "sensor.hea_devices")).toHaveLength(1);
+  });
+
+  it("never returns the whole home as one of the devices", () => {
+    // Given — the whole home rides the same sensor, and every card sums this
+    // list to get the household total. A row here would double every figure.
+    const hass = aHass({
+      devices: [aRow("slow_poll_aircon", "Aircon")],
+      whole_home: aRow("whole_home", "Whole Home"),
+    });
+
+    // When / Then
+    expect(readDevices(hass).map((device) => device.key)).toEqual([
+      "slow_poll_aircon",
+    ]);
+  });
+});
+
+describe("readWholeHome", () => {
+  it("reads the whole-home slug, for figures that belong to no device", () => {
+    // Given — the cost range is published for the whole home whether or not the
+    // per-device ranges are (ADR-0016), so a card must be able to find it
+    const hass = aHass({
+      devices: [aRow("slow_poll_aircon", "Aircon")],
+      whole_home: aRow("whole_home", "Whole Home"),
+    });
+
+    // When / Then — resolved out of the registry, not guessed: a household that
+    // renamed the entity would otherwise silently lose the figure
+    expect(readWholeHome(hass)).toEqual(
+      expect.objectContaining({ key: "whole_home", name: "Whole Home" }),
+    );
+  });
+
+  it("is null on an integration too old to publish it", () => {
+    // Given / When / Then — a dashboard resource can outrun the integration, so
+    // the absence has to be a value a card can render nothing for
+    expect(readWholeHome(aHass({ devices: [] }))).toBeNull();
+    expect(readWholeHome(undefined)).toBeNull();
+    expect(readWholeHome(aHass({ whole_home: { name: "no key" } }))).toBeNull();
   });
 });

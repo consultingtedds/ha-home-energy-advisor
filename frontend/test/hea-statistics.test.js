@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  BOUNDS,
   CONCEPTS,
   bucketPeriodFor,
   fetchDeviceStatistics,
@@ -54,6 +55,34 @@ describe("statisticIdsFor", () => {
       "sensor.slow_poll_aircon_energy_from_grid",
       "sensor.slow_poll_aircon_energy_from_generation",
       "sensor.slow_poll_aircon_energy_from_battery",
+      "sensor.slow_poll_aircon_cost_floor",
+      "sensor.slow_poll_aircon_cost_ceiling",
+    ]);
+  });
+
+  it("asks for the bounds whether or not the household publishes them", () => {
+    // Given / When — the per-device range is opt-in (ADR-0016), and a card has
+    // no way to ask whether it is on. Requesting a statistic that does not exist
+    // costs one absent key in the response; a config lookup would cost a second
+    // round trip and could go stale between them.
+    const ids = statisticIdsFor([AIRCON]);
+
+    // Then — absence in the answer is what tells the card, so the request is
+    // unconditional and the *response* is where availability is decided
+    expect(ids).toContain("sensor.slow_poll_aircon_cost_floor");
+  });
+
+  it("asks for the whole home's range, which is published either way", () => {
+    // Given — the household band is always on, so a card can show it even when
+    // no device carries one
+    const wholeHome = { key: "whole_home", name: "Whole Home" };
+
+    // When / Then — its energy and costs are already the sum of the rows, so
+    // only the bounds are fetched: they are the one figure not derivable
+    expect(statisticIdsFor([AIRCON], wholeHome)).toEqual([
+      ...statisticIdsFor([AIRCON]),
+      "sensor.whole_home_cost_floor",
+      "sensor.whole_home_cost_ceiling",
     ]);
   });
 
@@ -71,7 +100,9 @@ describe("statisticIdsFor", () => {
     const devices = [AIRCON, aDevice("untracked_energy_devices", "Untracked", { untracked: true })];
 
     // When / Then
-    expect(statisticIdsFor(devices)).toHaveLength(2 * Object.keys(CONCEPTS).length);
+    expect(statisticIdsFor(devices)).toHaveLength(
+      2 * (Object.keys(CONCEPTS).length + Object.keys(BOUNDS).length),
+    );
   });
 
   it("asks for nothing when there are no devices", () => {
@@ -209,6 +240,98 @@ describe("fetchDeviceStatistics", () => {
       energyFromGeneration: 0,
       energyFromBattery: 0,
     });
+  });
+
+  it("carries each device's cost range where the household publishes one", async () => {
+    // Given — a device whose counter reports rarely: its cost accrued somewhere
+    // inside a span, and nothing in the data says where (ADR-0016)
+    const hass = aHass({
+      ...airconResponse,
+      "sensor.slow_poll_aircon_cost_floor": [
+        aBucket(DAY_ONE, 0.08),
+        aBucket(DAY_TWO, 0.15),
+      ],
+      "sensor.slow_poll_aircon_cost_ceiling": [
+        aBucket(DAY_ONE, 0.14),
+        aBucket(DAY_TWO, 0.29),
+      ],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
+
+    // Then — the range brackets what was charged, as the engine guarantees
+    const [aircon] = result.devices;
+    expect(aircon.costFloor).toBeCloseTo(0.23, 10);
+    expect(aircon.costCeiling).toBeCloseTo(0.43, 10);
+    expect(aircon.costFloor).toBeLessThanOrEqual(aircon.actualCost);
+    expect(aircon.actualCost).toBeLessThanOrEqual(aircon.costCeiling);
+  });
+
+  it("leaves the range undefined rather than zero when it is not published", async () => {
+    // Given — the household has not opted into per-device ranges, so the
+    // recorder has no such statistic. Zero would render as "€0.00 – €0.00": a
+    // confident claim of perfect precision, which is the opposite of the truth.
+    const hass = aHass(airconResponse);
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
+
+    // Then
+    expect(result.devices[0].costFloor).toBeUndefined();
+    expect(result.devices[0].costCeiling).toBeUndefined();
+    expect(result.devices[0].actualCost).toBeCloseTo(0.3, 10);
+  });
+
+  it("totals the range only when every row has one", async () => {
+    // Given — one device opted in and one not. Summing across the gap would
+    // quietly bound the household by a subset of itself and read as a narrower
+    // range than the truth.
+    const other = aDevice("lifetime_counter_plug", "Lifetime Counter Plug");
+    const hass = aHass({
+      ...airconResponse,
+      "sensor.slow_poll_aircon_cost_floor": [aBucket(DAY_ONE, 0.08)],
+      "sensor.slow_poll_aircon_cost_ceiling": [aBucket(DAY_ONE, 0.14)],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON, other], threeDays);
+
+    // Then
+    expect(result.totals.costFloor).toBeUndefined();
+    expect(result.totals.costCeiling).toBeUndefined();
+  });
+
+  it("reads the whole home's range from its own statistics", async () => {
+    // Given — the household band, published whether or not the devices are
+    const wholeHome = { key: "whole_home", name: "Whole Home" };
+    const hass = aHass({
+      ...airconResponse,
+      "sensor.whole_home_cost_floor": [aBucket(DAY_ONE, 5.88)],
+      "sensor.whole_home_cost_ceiling": [aBucket(DAY_ONE, 7.0)],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays, wholeHome);
+
+    // Then
+    expect(result.wholeHome).toEqual({
+      costFloor: expect.closeTo(5.88, 10),
+      costCeiling: expect.closeTo(7.0, 10),
+    });
+  });
+
+  it("has no whole-home range when the integration is too old to publish one", async () => {
+    // Given / When — a household that has not yet updated
+    const result = await fetchDeviceStatistics(
+      aHass(airconResponse),
+      [AIRCON],
+      threeDays,
+      { key: "whole_home", name: "Whole Home" },
+    );
+
+    // Then — undefined, so a card shows nothing rather than a range of zero
+    expect(result.wholeHome).toBeUndefined();
   });
 
   it("carries the period through, so a card can say it is a default range", async () => {
