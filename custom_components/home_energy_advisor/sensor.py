@@ -360,6 +360,10 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         self._attr_unique_id = f"{entry.entry_id}_{unique_suffix}"
         self._quantum = Decimal(1).scaleb(-precision)
         self._baseline = Decimal(0)
+        # Whether a previous state was restored at all — which the baseline
+        # cannot answer, because a device that has never drawn restores zero and
+        # a first install starts at zero. Same number, opposite meanings (HEA-47).
+        self._restored = False
 
     def _published(self, running: Decimal) -> Decimal:
         """The restored baseline plus the running total, rounded for publication.
@@ -384,6 +388,7 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         last = await self.async_get_last_sensor_data()
         if last is not None and isinstance(last.native_value, Decimal):
             self._baseline = last.native_value
+            self._restored = True
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -456,10 +461,18 @@ class HeaCostSensor(_HeaRestoringSensor):
         until its own first interval closes — it has nothing to show yet, so that
         is the same statement rather than an exception to it.
 
+        The second condition asks whether a state was restored, never whether the
+        restored figure was zero. A device that has never drawn — a seasonal
+        heater out of season, a rail that is genuinely off — restores zero and
+        has months of history behind it; a first install has zero and none. Same
+        number, opposite meanings, and reading the value conflated them: four
+        such sensors claimed to be warming up on the reference instance, on the
+        devices where a figure was never going to arrive (HEA-47).
+
         Absent rather than ``False`` once accounting flows: it explains an
         anomaly, and where there is none it should cost nothing to carry.
         """
-        if not (self.coordinator.is_warming_up() and self._baseline == 0):
+        if not (self.coordinator.is_warming_up() and not self._restored):
             return None
         return {"warming_up": True}
 
