@@ -1234,6 +1234,39 @@ async def test_a_restart_with_history_behind_it_is_never_warming_up(
     assert "warming_up" not in state.attributes
 
 
+async def test_a_device_that_has_never_cost_anything_is_not_warming_up(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a device with months of history that has simply never drawn: a
+    # seasonal heater out of season, a rail that is genuinely off. It restores a
+    # baseline, and that baseline is exactly zero
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entity_id = "sensor.coarse_step_aircon_actual_cost"
+    restored = SensorExtraStoredData(
+        native_value=Decimal("0.0000"), native_unit_of_measurement="EUR"
+    )
+    mock_restore_cache_with_extra_data(
+        hass, ((State(entity_id, "0.0000"), restored.as_dict()),)
+    )
+    entry.add_to_hass(hass)
+
+    # When — it restarts, before any interval has closed
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then — no warming-up claim. Reading zero is this device's settled answer,
+    # not a figure still on its way, and promising one that will never arrive is
+    # worse than saying nothing. Restoring *nothing* and restoring *zero* are
+    # different facts, so the signal cannot be inferred from the value: found on
+    # the live instance where four such sensors claimed it (HEA-47)
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert Decimal(state.state) == Decimal(0)
+    assert "warming_up" not in state.attributes
+
+
 async def test_the_warming_up_signal_is_kept_out_of_the_recorder(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
