@@ -19,10 +19,14 @@
  */
 
 /**
- * The sensor suffixes a device is accounted by, keyed by the field each becomes
- * on a row — the two are named alike deliberately, so a row's `costAtGridPrice`
- * is visibly `sensor.<key>_cost_at_grid_price` and nothing has to be translated
- * in the reader's head. Names settled in ADR-0009.
+ * The concepts a device is accounted by, keyed by the field each becomes on a
+ * row — the two are named alike deliberately, so a row's `costAtGridPrice` is
+ * visibly the `cost_at_grid_price` concept and nothing has to be translated in
+ * the reader's head. Names settled in ADR-0009.
+ *
+ * These are keys into the `statistics` map the devices sensor publishes, not
+ * suffixes to append to anything: the entity id itself is translated, so it is
+ * looked up rather than built (ADR-0018).
  */
 export const CONCEPTS = Object.freeze({
   energyUsed: "energy_used",
@@ -42,13 +46,17 @@ export const CONCEPTS = Object.freeze({
  * claim perfect precision, which is the opposite of what the absence means — so
  * these accumulate to `undefined` rather than joining `zeroed()`.
  *
- * The values are entity-id suffixes, and Home Assistant builds an entity id from
- * the sensor's *translated name*, not from its key. These read "lowest/highest
- * possible cost" rather than "floor/ceiling" for that reason alone — HEA-84
- * first shipped `cost_floor` here against a sensor named "Lowest Possible Cost",
- * so every card asked for a statistic that could not exist. The integration side
- * is pinned by `test_every_concept_key_is_the_entity_id_suffix`; the row *field*
- * names stay floor/ceiling because they are ours.
+ * The values are the integration's own concept keys — `description.key` on each
+ * sensor — which are never translated, and are what the published `statistics`
+ * map is keyed by. They read "lowest/highest possible cost" rather than
+ * "floor/ceiling" because HEA-84 first shipped `cost_floor` here against a sensor
+ * whose key was `lowest_possible_cost`, so every card asked for a statistic that
+ * could not exist. The row *field* names stay floor/ceiling because they are ours.
+ *
+ * That fix corrected the key half of the trap and left the language half: the
+ * value was still concatenated into an entity id, which HA names in the
+ * household's own language (HEA-89, ADR-0018). Knowing a rule and applying it
+ * turned out to be different things, one comment apart.
  */
 export const BOUNDS = Object.freeze({
   costFloor: "lowest_possible_cost",
@@ -65,12 +73,20 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOURLY_DAYS = 2;
 
 /**
- * The statistic recording a device's concept.
+ * The statistic recording a device's concept, as the integration published it.
  *
- * Written once because the request and the read of the response must agree
- * exactly: a divergence between them is not an error but an empty house.
+ * Read, never composed. Home Assistant derives an entity id from the entity's
+ * *translated* name whenever the instance language is one of the 41 in
+ * `NATIVE_ENTITY_IDS` — `es` among them, and this integration ships Spanish — so
+ * `sensor.${key}_actual_cost` names an entity that exists only on an English
+ * install. Every card rendered empty on a Spanish one, and a household renaming
+ * an entity broke the same guess (HEA-89, ADR-0018).
+ *
+ * The devices sensor knows each id exactly, because the integration owns the
+ * entities. `undefined` means it published none — a concept the household did
+ * not opt into — and is passed through rather than filled in.
  */
-const statisticIdFor = (deviceKey, concept) => `sensor.${deviceKey}_${concept}`;
+const statisticIdFor = (device, concept) => device?.statistics?.[concept];
 
 /**
  * Every statistic the given devices need, in a stable order.
@@ -86,16 +102,16 @@ const statisticIdFor = (deviceKey, concept) => `sensor.${deviceKey}_${concept}`;
  */
 export const statisticIdsFor = (devices, wholeHome) => {
   const ids = devices.flatMap((device) =>
-    [...Object.values(CONCEPTS), ...Object.values(BOUNDS)].map((concept) =>
-      statisticIdFor(device.key, concept),
-    ),
+    [...Object.values(CONCEPTS), ...Object.values(BOUNDS)]
+      .map((concept) => statisticIdFor(device, concept))
+      .filter(Boolean),
   );
-  if (!wholeHome?.key || devices.length === 0) return ids;
+  if (!wholeHome?.statistics || devices.length === 0) return ids;
   return [
     ...ids,
-    ...Object.values(BOUNDS).map((concept) =>
-      statisticIdFor(wholeHome.key, concept),
-    ),
+    ...Object.values(BOUNDS)
+      .map((concept) => statisticIdFor(wholeHome, concept))
+      .filter(Boolean),
   ];
 };
 
@@ -140,7 +156,7 @@ export const fetchDeviceStatistics = async (hass, devices, period, wholeHome) =>
     period,
     devices: rows,
     totals: sumRows(rows),
-    wholeHome: boundsFor(wholeHome?.key, buckets, period),
+    wholeHome: boundsFor(wholeHome, buckets, period),
     series: seriesFrom(devices, buckets, period),
   };
 };
@@ -152,11 +168,11 @@ export const fetchDeviceStatistics = async (hass, devices, period, wholeHome) =>
  * whose figures are exact, must not read the same. Only a statistic the recorder
  * actually holds produces a range.
  */
-const boundsFor = (key, buckets, period) => {
-  if (!key) return undefined;
+const boundsFor = (device, buckets, period) => {
+  if (!device) return undefined;
   const bounds = {};
   for (const [field, concept] of Object.entries(BOUNDS)) {
-    const statistic = buckets?.[statisticIdFor(key, concept)];
+    const statistic = buckets?.[statisticIdFor(device, concept)];
     if (!Array.isArray(statistic)) return undefined;
     bounds[field] = changeWithin(statistic, period);
   }
@@ -175,7 +191,7 @@ const seriesFrom = (devices, buckets, period) => {
   const byStart = new Map();
   for (const device of devices) {
     for (const [field, concept] of Object.entries(CONCEPTS)) {
-      const statistic = buckets?.[statisticIdFor(device.key, concept)];
+      const statistic = buckets?.[statisticIdFor(device, concept)];
       for (const bucket of bucketsWithin(statistic, period)) {
         const row = byStart.get(bucket.start) ?? zeroed();
         row[field] += bucket.change;
@@ -196,13 +212,13 @@ const totalsFor = (device, buckets, period) => {
   const totals = Object.fromEntries(
     Object.entries(CONCEPTS).map(([field, concept]) => [
       field,
-      changeWithin(buckets?.[statisticIdFor(device.key, concept)], period),
+      changeWithin(buckets?.[statisticIdFor(device, concept)], period),
     ]),
   );
   return {
     ...device,
     ...totals,
-    ...boundsFor(device.key, buckets, period),
+    ...boundsFor(device, buckets, period),
     costSavings: totals.costAtGridPrice - totals.actualCost,
   };
 };

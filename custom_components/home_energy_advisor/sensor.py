@@ -548,11 +548,15 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     """The authoritative list of tracked devices, for dashboard lookups (HEA-55).
 
     State is the tracked-device count; the ``devices`` attribute is one row per
-    tracked device plus the Untracked remainder, each carrying the device's entity
-    slug (so a card can build ``sensor.<key>_<concept>``), its display name, its
-    registry ``device_id``, and whether it is the Untracked remainder. Membership
-    is the config subentries (so it follows device add/remove, which reload the
-    entry); the names and slugs are resolved live from the registries.
+    tracked device plus the Untracked remainder, each carrying an identifying
+    ``key``, its display name, its registry ``device_id``, whether it is the
+    Untracked remainder, and ``statistics`` — every concept's real entity id.
+    Membership is the config subentries (so it follows device add/remove, which
+    reload the entry); names and ids are resolved live from the registries.
+
+    The ids are published rather than composed. A card that builds
+    ``sensor.<key>_<concept>`` assumes the English suffix, and Home Assistant
+    names entities in the instance's own language (HEA-89, ADR-0018).
     """
 
     _attr_has_entity_name = True
@@ -665,10 +669,12 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         device = dr.async_get(self.hass).async_get_device(
             identifiers={(DOMAIN, f"{self._entry_id}_{device_key}")}
         )
-        # Derive the slug from the device's own Actual Cost entity so it matches
-        # the real entity ids exactly (HA de-duplication, user renames), rather
-        # than guessing it from the name; fall back to the name only in the brief
-        # window before that entity has registered.
+        # An identifier for this device — stable, unique, and a card's handle for
+        # colour and series grouping. It is *not* a component of any entity id:
+        # `statistics` below carries those, because composing one assumes the
+        # English suffix (HEA-89, ADR-0018). Still derived from the Actual Cost
+        # entity rather than the name, because that is what makes it unique when
+        # two devices share a name and Home Assistant de-duplicates.
         actual_cost_id = er.async_get(self.hass).async_get_entity_id(
             "sensor", DOMAIN, f"{self._entry_id}_{device_key}_actual_cost"
         )
@@ -684,8 +690,34 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             "name": name,
             "device_id": device.id if device is not None else None,
             "untracked": untracked,
+            "statistics": self._statistic_ids(device_key),
             "area_id": location.area_id,
             "area_name": location.area_name,
             "floor_id": location.floor_id,
             "floor_name": location.floor_name,
         }
+
+    def _statistic_ids(self, device_key: str) -> dict[str, str]:
+        """Each concept's real entity id, so no consumer ever composes one.
+
+        Looked up by `unique_id`, which is ours and never translated. The entity
+        *id* is not: Home Assistant derives it from the entity's translated name
+        whenever the instance language is one of the 41 in `NATIVE_ENTITY_IDS`,
+        `es` among them — and this integration ships Spanish. So a card building
+        `sensor.<key>_actual_cost` asks for something that exists only on an
+        English install, and every card renders empty on a Spanish one (HEA-89,
+        ADR-0018). A household renaming an entity breaks the same guess.
+
+        A concept with no entity is omitted rather than given a guessed id: the
+        cost bounds are opt-in (ADR-0016), so absent is the ordinary case, and a
+        caller must be able to tell "no such statistic" from "here is where it
+        would be".
+        """
+        registry = er.async_get(self.hass)
+        resolved = {
+            description.key: registry.async_get_entity_id(
+                "sensor", DOMAIN, f"{self._entry_id}_{device_key}_{description.key}"
+            )
+            for description in (*_CONCEPTS, *_BOUND_CONCEPTS)
+        }
+        return {key: entity for key, entity in resolved.items() if entity is not None}

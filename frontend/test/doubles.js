@@ -36,11 +36,38 @@ export const anEnergyCollection = (start = MAY, end = JULY) => {
 };
 
 /** A row as the HEA-55 devices sensor publishes it. */
-export const aDeviceRow = (key, name, untracked = false) => ({
+/** Every concept the devices sensor publishes an entity id for. */
+export const STAT_CONCEPTS = [
+  "energy_used",
+  "actual_cost",
+  "cost_at_grid_price",
+  "cost_savings",
+  "energy_from_grid",
+  "energy_from_generation",
+  "energy_from_battery",
+  "lowest_possible_cost",
+  "highest_possible_cost",
+];
+
+/**
+ * A row as `sensor.home_energy_advisor_devices` publishes it.
+ *
+ * `statistics` defaults to the ids an English instance happens to produce, which
+ * is what the other doubles here key off. Pass it explicitly to build a row whose
+ * ids do *not* follow that pattern — a Spanish instance, or a renamed entity —
+ * which is the only way a test can tell reading the map apart from composing the
+ * id, since composing gives the right answer on every English install (HEA-89).
+ */
+export const aDeviceRow = (key, name, untracked = false, statistics = undefined) => ({
   key,
   name,
   device_id: `device-${key}`,
   untracked,
+  statistics:
+    statistics ??
+    Object.fromEntries(
+      STAT_CONCEPTS.map((concept) => [concept, `sensor.${key}_${concept}`]),
+    ),
 });
 
 /** One day's worth of buckets for a device, dated inside the picked period. */

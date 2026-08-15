@@ -15,6 +15,7 @@ const aRow = (key, name, overrides = {}) => ({
   name,
   device_id: `device-${key}`,
   untracked: false,
+  statistics: { actual_cost: `sensor.${key}_actual_cost` },
   area_id: null,
   area_name: null,
   floor_id: null,
@@ -43,19 +44,36 @@ describe("readDevices", () => {
     // When
     const devices = readDevices(hass);
 
-    // Then — the slug is what statistic ids are built from, so it matters most
+    // Then — `statistics` matters most: it carries the real entity id per
+    // concept, because Home Assistant names entities in the household's own
+    // language and a composed `sensor.<key>_<concept>` exists only on an
+    // English install (HEA-89, ADR-0018). `key` merely identifies the device.
     expect(devices).toEqual([
       {
         key: "slow_poll_aircon",
         name: "Slow Poll Aircon",
         deviceId: "device-slow_poll_aircon",
         untracked: false,
+        statistics: { actual_cost: "sensor.slow_poll_aircon_actual_cost" },
         areaId: "utility_room",
         areaName: "Utility Room",
         floorId: "ground_floor",
         floorName: "Ground Floor",
       },
     ]);
+  });
+
+  it("asks for nothing when the integration is too old to publish ids", () => {
+    // Given — cards updated ahead of the integration, so rows carry no
+    // `statistics`. The old shape invited composing an id from the key; there is
+    // nothing to compose from now, and inventing one would resurrect the fault
+    const hass = aHass({
+      devices: [aRow("slow_poll_aircon", "Slow Poll Aircon", { statistics: undefined })],
+    });
+
+    // When / Then — empty, so the card fetches nothing and shows nothing, rather
+    // than requesting entity ids that may not exist in this household's language
+    expect(readDevices(hass)[0].statistics).toEqual({});
   });
 
   it("keeps the Untracked remainder, flagged", () => {
