@@ -23,6 +23,11 @@ const aDevice = (key, name, overrides = {}) => ({
   key,
   name,
   untracked: false,
+  statistics: Object.fromEntries(
+    [...Object.values(CONCEPTS), ...Object.values(BOUNDS), "cost_savings"].map(
+      (concept) => [concept, `sensor.${key}_${concept}`],
+    ),
+  ),
   ...overrides,
 });
 
@@ -46,8 +51,9 @@ const aHass = (response = {}) => ({
 
 describe("statisticIdsFor", () => {
   it("builds the statistic ids a device is accounted by", () => {
-    // Given / When / Then — `sensor.<slug>_<concept>`, the slug the HEA-55
-    // sensor resolved out of the entity registry rather than one guessed here
+    // Given / When / Then — the ids the HEA-55 sensor published for it, in a
+    // stable order. They look composed because an English install is where the
+    // two agree; the Spanish case below is what tells them apart
     expect(statisticIdsFor([AIRCON])).toEqual([
       "sensor.slow_poll_aircon_energy_used",
       "sensor.slow_poll_aircon_actual_cost",
@@ -75,7 +81,7 @@ describe("statisticIdsFor", () => {
   it("asks for the whole home's range, which is published either way", () => {
     // Given — the household band is always on, so a card can show it even when
     // no device carries one
-    const wholeHome = { key: "whole_home", name: "Whole Home" };
+    const wholeHome = aDevice("whole_home", "Whole Home");
 
     // When / Then — its energy and costs are already the sum of the rows, so
     // only the bounds are fetched: they are the one figure not derivable
@@ -108,6 +114,50 @@ describe("statisticIdsFor", () => {
   it("asks for nothing when there are no devices", () => {
     // Given / When / Then
     expect(statisticIdsFor([])).toEqual([]);
+  });
+
+  it("uses the ids the integration published, not ones built from the key", () => {
+    // Given — a device on a Spanish instance. Home Assistant derives an entity
+    // id from the entity's *translated* name for the 41 languages in
+    // NATIVE_ENTITY_IDS, `es` among them, and this integration ships Spanish —
+    // so the ids share no suffix with the English ones (HEA-89, ADR-0018)
+    const spanish = aDevice("aire_acondicionado", "Aire Acondicionado", {
+      statistics: {
+        energy_used: "sensor.aire_acondicionado_energia_usada",
+        actual_cost: "sensor.aire_acondicionado_coste_real",
+        cost_at_grid_price: "sensor.aire_acondicionado_coste_a_precio_de_red",
+        energy_from_grid: "sensor.aire_acondicionado_energia_de_la_red",
+        energy_from_generation: "sensor.aire_acondicionado_energia_de_generacion",
+        energy_from_battery: "sensor.aire_acondicionado_energia_de_la_bateria",
+        lowest_possible_cost: "sensor.aire_acondicionado_coste_minimo_posible",
+        highest_possible_cost: "sensor.aire_acondicionado_coste_maximo_posible",
+      },
+    });
+
+    // When / Then — every requested id is one the integration said exists. This
+    // is the only shape of device that can tell reading from composing apart:
+    // on an English install the two agree, which is why the fault shipped
+    expect(statisticIdsFor([spanish])).toEqual(Object.values(spanish.statistics));
+    expect(statisticIdsFor([spanish]).join()).not.toMatch(/actual_cost/);
+  });
+
+  it("skips a concept the integration published no id for", () => {
+    // Given — the cost bounds are opt-in (ADR-0016), so a household that never
+    // asked has no such entity and the payload simply omits it
+    const unbounded = aDevice("slow_poll_aircon", "Slow Poll Aircon", {
+      statistics: {
+        energy_used: "sensor.slow_poll_aircon_energy_used",
+        actual_cost: "sensor.slow_poll_aircon_actual_cost",
+      },
+    });
+
+    // When / Then — nothing invented to fill the gap. Asking for a statistic
+    // that cannot exist was harmless when ids were guessed; now an absent id is
+    // the integration saying so, and inventing one would discard that
+    expect(statisticIdsFor([unbounded])).toEqual([
+      "sensor.slow_poll_aircon_energy_used",
+      "sensor.slow_poll_aircon_actual_cost",
+    ]);
   });
 });
 
@@ -304,7 +354,7 @@ describe("fetchDeviceStatistics", () => {
 
   it("reads the whole home's range from its own statistics", async () => {
     // Given — the household band, published whether or not the devices are
-    const wholeHome = { key: "whole_home", name: "Whole Home" };
+    const wholeHome = aDevice("whole_home", "Whole Home");
     const hass = aHass({
       ...airconResponse,
       "sensor.whole_home_lowest_possible_cost": [aBucket(DAY_ONE, 5.88)],

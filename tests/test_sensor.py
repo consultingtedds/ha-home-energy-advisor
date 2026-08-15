@@ -837,6 +837,68 @@ async def _devices_payload(
     return {device["key"]: device for device in state.attributes["devices"]}
 
 
+async def test_devices_sensor_publishes_the_real_statistic_ids(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — a running integration
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When — the devices-registry sensor is read
+    by_key = await _devices_payload(hass, entry, freezer)
+
+    # Then — each concept carries the entity id it actually has, so no card ever
+    # composes one. A card that builds `sensor.<key>_actual_cost` is guessing, and
+    # guessing in English is how HEA-89 arose (ADR-0018)
+    statistics = by_key["coarse_step_aircon"]["statistics"]
+    registry = er.async_get(hass)
+    for concept in _CONCEPTS:
+        assert statistics[concept] == registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}_{concept}"
+        )
+
+
+async def test_published_statistic_ids_follow_a_renamed_entity(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given — an entity id that is not its English concept suffix. Two ordinary
+    # causes: a household that renamed the entity, and a non-English instance,
+    # where Home Assistant builds the id from the *translated* name for the 41
+    # languages in NATIVE_ENTITY_IDS — `es` among them, and HEA's own es.json
+    # already says "Coste real" (HEA-89)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    registry = er.async_get(hass)
+    unique_id = f"{entry.entry_id}_{_aircon_subentry_id(entry)}_actual_cost"
+    original = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+    assert original == "sensor.coarse_step_aircon_actual_cost"
+
+    # When — that entity is renamed the way a Spanish instance would have named it
+    renamed = "sensor.aire_acondicionado_coste_real"
+    registry.async_update_entity(original, new_entity_id=renamed)
+    await hass.async_block_till_done()
+
+    # Then — the published id follows the registry rather than the suffix. The
+    # key must not be derived by stripping "_actual_cost" either: that suffix is
+    # absent here, so stripping leaves the whole id and a card composing from it
+    # asks for something that was never created
+    by_key = await _devices_payload(hass, entry, freezer)
+    aircon = next(
+        device
+        for device in by_key.values()
+        if device["statistics"].get("actual_cost") == renamed
+    )
+    assert aircon["statistics"]["actual_cost"] == renamed
+
+
 async def test_devices_sensor_exposes_the_source_devices_area_and_floor(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

@@ -108,6 +108,16 @@ Presentation
 16. ADR-0016: Publish the cost bounds reporting latency permits — a coarse step accrued somewhere inside a 30–90 minute span and nothing says where, so a device's cost is knowable only to a band: **+27.9 % household-wide, +8.1 % to +1252 % per device**, because a span can hold a bucket served by the sun and a bucket served entirely by the meter. (The ADR first quoted ±6.0 %, which measured the *import*-price range — the uncertainty in Cost at Grid Price, not in Actual Cost; the corrected figure is in the ADR.) The band cannot be derived from reporting cadence — it depends on price volatility during the hours a device runs — so the engine computes it and publishes floor/ceiling as costs, which aggregate over a period where percentages cannot, and which render as a money range: `(ceiling − floor) / actual` explodes on a near-zero cost, the same trap that sank HEA-75. Whole-home always, per-device opt-in; the Untracked remainder has no span and so no band (HEA-83)
 17. ADR-0017: Reuse before build, in that order — Home Assistant core, then an existing community component, then our own, each step taken only when the one before is *measured* to fall short. Written because ADR-0008 decision 4 hardened PLAN's own "custom card only if evidence demands it" into "a separate install is disqualifying": it assessed *core* cards, excluded community ones by a premise it never argued, and ADR-0012 and ADR-0013 then cited that premise as settled law. ADR-0013 had already diagnosed the exact failure — "'this option is excluded' was quietly promoted into 'therefore mine is the only one left', without checking the middle" — corrected it for HA's bundled chart component, and left it standing one line below for community ones. **Nothing shipped is reopened**: re-examined, every conclusion holds, and the HACS period picker would not even have removed ADR-0012's coupling to frontend internals, since it creates the same shared collection. What changes is that "requires a separate install" becomes a cost to weigh, and rejecting an existing component now needs a reason of its own — capability, maintenance or fit, with evidence. Expect it cited on the Sankey view and on HEA-86
 
+18. ADR-0018: The frontend is not English — card strings join the integration's
+    own `strings.json` + `en`/`es` under a `cards` category fetched over
+    `frontend/get_translations`, and the frontend never constructs an entity or
+    statistic id. Written after an audit found ~45 hardcoded English card strings
+    *and* a latent total failure: `hea-statistics.js` builds ids as
+    `sensor.${key}_${english_suffix}`, but HA derives `object_id` from the
+    *translated* name in 41 languages including `es`, so every card renders empty
+    on a Spanish install. The file already carried a comment stating the rule it
+    broke (HEA-89, HEA-88)
+
 ### Epic 3 — Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
 2. Interval ledger: 5-min energy balance from house-level inputs; device delta spreading

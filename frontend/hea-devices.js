@@ -6,10 +6,11 @@
  * adding or removing a device is picked up by every view with no dashboard
  * edit — the specific failure of the earlier hand-listed WIP.
  *
- * The `key` on each row is the device's *entity slug*, resolved by the
- * integration out of the entity registry rather than guessed from the name, so
- * `sensor.<key>_<concept>` is the real entity id even after a user rename or a
- * Home Assistant de-duplication suffix.
+ * The `key` on each row identifies a device — for a colour, a series, a sort. It
+ * is *not* half of an entity id: `statistics` carries the real id per concept,
+ * because Home Assistant names entities in the household's own language and
+ * `sensor.<key>_<concept>` therefore exists only on an English install
+ * (HEA-89, ADR-0018).
  *
  * Rows arrive in the sensor's snake_case and are normalised here, so a change
  * to that attribute schema is a one-file fix rather than a hunt through cards.
@@ -56,6 +57,10 @@ const toDevice = (row) => ({
   name: row.name || row.key,
   deviceId: row.device_id ?? null,
   untracked: Boolean(row.untracked),
+  // Passed through as published. An absent concept means the integration has no
+  // such entity — the cost bounds are opt-in — and must stay absent rather than
+  // become a guessed id (ADR-0018).
+  statistics: row.statistics ?? {},
   areaId: row.area_id ?? null,
   areaName: row.area_name ?? null,
   floorId: row.floor_id ?? null,
