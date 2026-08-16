@@ -1,27 +1,27 @@
 """Splits each interval's real cost across the devices that drew it.
 
 This is the accounting model's payoff. Within a 5-minute bucket the house is
-served by a blend of sources — grid import at the live rate, local generation at
-zero, battery at its stored cost — and every kWh consumed, by a tracked device or
+served by a blend of sources - grid import at the live rate, local generation at
+zero, battery at its stored cost - and every kWh consumed, by a tracked device or
 by the unexplained "Untracked" remainder, is priced at that same blend. The
 grid-price figure values the same energy as if every kWh had been bought off the
 meter as it was used, so the gap between them is what the household saved.
 
-The contract is a pluggable strategy so the recorded fallbacks — a deficit-capped
-model, an export-aware variant that prices generation at the export rate — can replace
+The contract is a pluggable strategy so the recorded fallbacks - a deficit-capped
+model, an export-aware variant that prices generation at the export rate - can replace
 the MVP proportional split without the sensor layer noticing.
 
 Two invariants hold (see docs/CRITICAL_INSTRUCTIONS.md):
 
 - Σ device + remainder actual costs equal the real cost of the metered energy,
-  exactly at Decimal precision — the rounding residue is folded into the largest
+  exactly at Decimal precision - the rounding residue is folded into the largest
   allocation. This holds over any period spanning the buckets a carried debt
   touches, not over a bucket taken alone: a bucket that overdraws is charged for
   energy the house meters have not yet reported, and the bucket that repays the
   debt returns it at the price it was charged (ADR-0015). Neither balances by
   itself; the pair nets to the truth.
 - No allocation is negative. Only the carried balance is signed, and it is
-  internal — nothing published ever goes below zero.
+  internal - nothing published ever goes below zero.
 """
 
 from __future__ import annotations
@@ -79,12 +79,12 @@ class CostAllocationStrategy(ABC):
 
 
 class ProportionalAllocationStrategy(CostAllocationStrategy):
-    """Splits each bucket by share of draw — the MVP model.
+    """Splits each bucket by share of draw - the MVP model.
 
     Because every source is allocated by the same draw share, a device's actual
     cost is simply its share of the blended bucket cost. When measured device
-    draw exceeds the consumption the sources account for — coarse sensor timing,
-    or a source unavailable while a device kept drawing — the remainder clamps to
+    draw exceeds the consumption the sources account for - coarse sensor timing,
+    or a source unavailable while a device kept drawing - the remainder clamps to
     zero rather than going negative, and the excess is **not priced here at all**.
     It is energy the house drew that its meters have not yet reported; the grid is
     the only place it can have come from, but that is a guess the next few buckets
@@ -93,7 +93,7 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
 
     Costing that excess is what the shipped model got wrong. Holding the bucket's
     cost fixed and dividing it across the inflated energy priced *every* label
-    below what any kWh could have been bought for — 3-6x below the tariff on a
+    below what any kWh could have been bought for - 3-6x below the tariff on a
     coarse device, and near zero when generation dominated the blend. The energy
     mismatch itself is what Repairs surfaces (HEA-74, ADR-0014).
 
@@ -105,9 +105,9 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
     nets to zero saving whether it is waiting or settled (HEA-77, ADR-0014).
 
     Clamping here is therefore only half the story, and the accountant supplies
-    the other half. Left to accumulate, the clamp rectifies a zero-mean signal —
+    the other half. Left to accumulate, the clamp rectifies a zero-mean signal -
     the house meter and the device counters agree eventually and never within one
-    bucket — into a bias that never cancels: measured at +1.9 % of published
+    bucket - into a bias that never cancels: measured at +1.9 % of published
     energy and +7.8 % of published cost over 72 h on the reference instance. The
     accountant carries each bucket's excess as debt and repays it out of a later
     bucket's surplus, so what this strategy withholds here is given back there
@@ -126,7 +126,7 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
 
         energies = _energies(bucket, consumption)
         # Only the money the meters back is published. The overdraw's energy is
-        # allocated — the accountant needs it to reconcile — but its cost waits on
+        # allocated - the accountant needs it to reconcile - but its cost waits on
         # the ledger until the debt settles and its real price is known (HEA-85).
         # Both figures are withheld together, which is what leaves Cost Savings
         # untouched while the charge is outstanding.
@@ -156,7 +156,7 @@ def split_by_source(
     grid, solar and battery that served the bucket, just as every label pays the
     same blended rate for it. Shares are taken at full Decimal precision with the
     residue folded into the largest source, so they sum back to ``energy`` exactly
-    — the invariant a self-sufficiency percentage depends on.
+    - the invariant a self-sufficiency percentage depends on.
 
     That per-label exactness is deliberately the invariant that holds. When
     tracked draw exceeds the metered consumption the labels between them then

@@ -4,18 +4,18 @@ Within a 5-minute bucket a device's counter and the house meter are rarely
 talking about the same instant: the meter reports every few seconds, a
 cycle-resetting counter every 30-90 minutes. So a bucket where tracked draw
 exceeds metered consumption is ordinary, and the excess is real energy whose
-meter reading has not arrived yet. It is charged at the import rate — the only
-place unmetered energy can have come from — and remembered here (ADR-0014).
+meter reading has not arrived yet. It is charged at the import rate - the only
+place unmetered energy can have come from - and remembered here (ADR-0014).
 
 A later bucket where the meter runs ahead of the devices repays it. Flooring the
 remainder at zero instead discards every such bucket, which rectifies a
 zero-mean signal into a bias that never cancels (ADR-0015).
 
-Settlement is where the money moves — and it is the *only* place it moves. The
+Settlement is where the money moves - and it is the *only* place it moves. The
 overdraw's cost is not published when it happens: the import rate is a guess that
 the next few buckets usually overturn, and a published figure that is later taken
 back shows up as an hour that cost less than nothing (HEA-85). So the charge
-waits here and falls due once, at the price finally learned — the repaying
+waits here and falls due once, at the price finally learned - the repaying
 interval's own blend, which may be the sun, and the sun belongs to whoever used
 it.
 
@@ -47,7 +47,7 @@ class Settlement:
     ``kwh`` is held back from the remainder, which would otherwise publish energy
     the devices have already been credited with.
 
-    ``actual`` is what the energy really cost, known only now — the repaying
+    ``actual`` is what the energy really cost, known only now - the repaying
     interval's own blend, or the import rate if the debt expired without one.
     ``naive`` is its counterfactual, always the import rate the debt was recorded
     at, because buying it off the meter is what the household was spared.
@@ -104,7 +104,7 @@ class DebtLedger:
 
         Oldest first, so a debt cannot be starved into expiring while newer ones
         are settled around it. ``unit_price`` is what the repaying interval's own
-        energy cost per kWh — the price the suspended charge was always waiting
+        energy cost per kWh - the price the suspended charge was always waiting
         for.
         """
         remaining = available_kwh
@@ -122,8 +122,8 @@ class DebtLedger:
     def expire(self, before: datetime) -> Settlement:
         """Forgives debt older than the expiry, charging it at the import rate.
 
-        The energy is written off — the meters never accounted for it, so it can
-        no longer be reconciled — but the money is not. Nothing better than the
+        The energy is written off - the meters never accounted for it, so it can
+        no longer be reconciled - but the money is not. Nothing better than the
         import rate was ever learned about it, which is exactly what ADR-0014
         priced it at, so that is what it finally costs. The counterfactual matches,
         leaving no saving: the household was spared nothing.

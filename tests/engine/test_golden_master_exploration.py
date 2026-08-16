@@ -4,7 +4,7 @@ Runs the real ``CumulativeEnergySource`` over raw recorder history captured from
 the reference instance (July 2026 exploration; provenance in the fixtures
 README) and reproduces the hand-verified published figures.
 
-Scope is deliberately narrow — this guards delta extraction (resets, unavailable
+Scope is deliberately narrow - this guards delta extraction (resets, unavailable
 spans, mid-sequence gaps) and price lookup against messy real data, the paths
 where real behaviour has surprised us before. It does **not** validate the cost
 allocation model: that invariant is proven synthetically in ``test_allocation``
@@ -13,7 +13,7 @@ the exploration's device-level method (each delta priced at the rate active when
 it landed); the product prices per 5-minute bucket.
 
 The whole module skips when the fixture directory is absent, so the public CI
-stays green while the full suite runs locally — the capture is gitignored
+stays green while the full suite runs locally - the capture is gitignored
 because it carries household occupancy patterns.
 """
 
@@ -108,27 +108,27 @@ def _within(delta: EnergyDelta, day: int) -> bool:
 
 
 def test_coarse_step_energy_reproduces_the_published_complete_days() -> None:
-    # Given — the coarse-step counter's raw run through the real delta pipeline
+    # Given - the coarse-step counter's raw run through the real delta pipeline
     deltas = _deltas("aircon_raw_batch1.json", _entity("coarse_step_aircon"))
 
-    # When — energy is summed over each fully captured day (Jul 11 is excluded:
+    # When - energy is summed over each fully captured day (Jul 11 is excluded:
     # the published table snapshotted it mid-day, the fixture has the whole day)
     daily = {
         day: sum((d.kwh for d in deltas if _within(d, day)), start=Decimal(0))
         for day in (8, 9, 10)
     }
 
-    # Then — it matches the hand-verified figures exactly, through real resets and
+    # Then - it matches the hand-verified figures exactly, through real resets and
     # scores of unavailable flaps
     assert daily == {8: Decimal("3.25"), 9: Decimal("3.25"), 10: Decimal("2.75")}
 
 
 def test_coarse_step_naive_cost_reproduces_the_published_complete_days() -> None:
-    # Given — the same deltas and the exact TOU price step function
+    # Given - the same deltas and the exact TOU price step function
     deltas = _deltas("aircon_raw_batch1.json", _entity("coarse_step_aircon"))
     points = _price_points()
 
-    # When — each delta is priced at the rate active when it landed and summed to
+    # When - each delta is priced at the rate active when it landed and summed to
     # cents per complete day
     daily = {
         day: sum(
@@ -138,20 +138,20 @@ def test_coarse_step_naive_cost_reproduces_the_published_complete_days() -> None
         for day in (8, 9, 10)
     }
 
-    # Then — it reproduces the published euro figures
+    # Then - it reproduces the published euro figures
     assert daily == {8: Decimal("0.58"), 9: Decimal("0.52"), 10: Decimal("0.41")}
 
 
 def test_slow_poll_attributes_the_full_delta_across_an_unavailable_gap() -> None:
-    # Given — the slow-poll counter reads 1.0, drops to unavailable for ~2 hours,
+    # Given - the slow-poll counter reads 1.0, drops to unavailable for ~2 hours,
     # then recovers at 2.5 (the documented Jul 9 real-data edge)
     deltas = _deltas("aircon_raw_batch2.json", _entity("slow_poll_aircon"))
 
-    # When — the delta that recovers the gap is located
+    # When - the delta that recovers the gap is located
     recovery = datetime.fromisoformat("2026-07-09T16:51:01.375342+02:00")
     spanning = next(d for d in deltas if d.end == recovery)
 
-    # Then — the full 1.5 kWh is attributed, spanning from the last good reading to
+    # Then - the full 1.5 kWh is attributed, spanning from the last good reading to
     # recovery, neither lost nor lumped at the recovery instant
     assert spanning.kwh == Decimal("1.5")
     assert spanning.start == datetime.fromisoformat("2026-07-09T14:47:06.817417+02:00")

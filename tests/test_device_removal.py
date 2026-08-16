@@ -2,11 +2,11 @@
 
 Home Assistant only offers a Delete action on a device page when the integration
 implements ``async_remove_config_entry_device``. The config *subentry* is
-authoritative, so a deletion only sticks if the subentry goes with it —
+authoritative, so a deletion only sticks if the subentry goes with it -
 otherwise the sensor platform rebuilds the device from ``entry.subentries`` on
 the next reload and it silently reappears.
 
-The aggregate devices — Untracked, whole home, and the hub — have no subentry
+The aggregate devices - Untracked, whole home, and the hub - have no subentry
 behind them, so there is nothing to delete and their removal must be refused.
 """
 
@@ -79,16 +79,16 @@ async def test_deleting_a_tracked_device_removes_its_subentry(
     hass: HomeAssistant,
 ) -> None:
     """Test the deletion sticks, rather than the device returning on reload."""
-    # Given — a household tracking one device
+    # Given - a household tracking one device
     entry = await _household(hass)
     subentry_id = next(iter(entry.subentries))
     device = _device(hass, f"{entry.entry_id}_{subentry_id}")
 
-    # When — that device is deleted from its device page
+    # When - that device is deleted from its device page
     assert await async_remove_config_entry_device(hass, entry, device)
     await hass.async_block_till_done()
 
-    # Then — its subentry is gone, so nothing rebuilds it
+    # Then - its subentry is gone, so nothing rebuilds it
     assert subentry_id not in entry.subentries
 
 
@@ -103,11 +103,11 @@ async def test_deleting_a_tracked_device_removes_its_subentry(
 async def test_an_aggregate_device_cannot_be_deleted(
     hass: HomeAssistant, suffix: str
 ) -> None:
-    """Test the aggregates are refused — they are derived, not configured."""
-    # Given — a set-up household
+    """Test the aggregates are refused - they are derived, not configured."""
+    # Given - a set-up household
     entry = await _household(hass)
     device = _device(hass, f"{entry.entry_id}{suffix}")
 
-    # When / Then — Home Assistant is told the device may not be removed
+    # When / Then - Home Assistant is told the device may not be removed
     assert not await async_remove_config_entry_device(hass, entry, device)
     assert len(entry.subentries) == 1

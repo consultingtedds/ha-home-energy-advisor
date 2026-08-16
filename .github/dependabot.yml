@@ -1,11 +1,11 @@
-# Dependency automation — HEA-71.
+# Dependency automation - HEA-71.
 #
 # Two deliberate omissions, both of which look like oversights:
 #
 # 1. `pytest-homeassistant-custom-component` is ignored below. It pins the Home
 #    Assistant version the suite tests against, so bumping it is a supported-
 #    floor decision rather than a chore, and it is recorded a second time in the
-#    ci.yml test matrix — which the test job installs *over* the requirements
+#    ci.yml test matrix - which the test job installs *over* the requirements
 #    file. A bot bump of one copy alone would be silently undone and still
 #    report success. Change both by hand, together.
 #

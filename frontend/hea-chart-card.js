@@ -7,8 +7,8 @@
  * engine.
  *
  * Home Assistant loads card modules lazily, so a dashboard carrying only HEA
- * cards may never have pulled that component in. Coaxing it into existence —
- * and saying so plainly when it will not come — lives here, so a second chart
+ * cards may never have pulled that component in. Coaxing it into existence -
+ * and saying so plainly when it will not come - lives here, so a second chart
  * card is its series and its options and nothing else.
  *
  * Subclasses implement `_series()` and `_options(locale)`, and may override

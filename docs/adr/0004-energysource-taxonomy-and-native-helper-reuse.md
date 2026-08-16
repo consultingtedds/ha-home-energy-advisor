@@ -10,8 +10,8 @@ The product tracks *any* device that shares power or energy data, not just the
 aircons that motivated it. A survey of every `device_class: energy` and
 `device_class: power` sensor on the reference instance
 (`docs/notes/DEVICE_SENSOR_SURVEY.md`) found five distinct behaviour patterns
-across real hardware — cycle-resetting counters, lifetime counters, cloud-polled
-counters, power-only sensors, and unreliable/synthetic sensors — plus "false
+across real hardware - cycle-resetting counters, lifetime counters, cloud-polled
+counters, power-only sensors, and unreliable/synthetic sensors - plus "false
 friend" sensors that carry an energy/power `device_class` but are not trackable
 loads at all (a cycling power meter reporting rider watts; phone battery-power
 sensors).
@@ -27,7 +27,7 @@ build on Home Assistant's own machinery rather than reimplement it.
 Device sources are normalised behind an `EnergySource` abstraction before they
 reach the accounting engine. The MVP ships two implementations:
 
-1. **`CumulativeEnergySource`** — for `total_increasing` counters, covering both
+1. **`CumulativeEnergySource`** - for `total_increasing` counters, covering both
    the *lifetime* pattern (Zigbee plugs, Tuya totals, an inverter meters; monotonic,
    rare resets) and the *resetting* pattern (per-cycle aircon counters, Tuya
    daily counters; frequent resets). One rule handles both: `delta = new − prev`,
@@ -64,15 +64,15 @@ dogfooding (renamed/deleted out from under us faster than Repairs can cope).
 ### Out of MVP scope
 
 - **`total` state_class net counters** (values that may decrease; `last_reset`
-  semantics) — mostly house-level on this instance; deferred for *device*
+  semantics) - mostly house-level on this instance; deferred for *device*
   tracking until a real device needs it.
-- **Forecast sensors** (Solcast, Predbat) — carry energy/power `device_class` but
+- **Forecast sensors** (Solcast, Predbat) - carry energy/power `device_class` but
   are predictions, not measurements.
-- **False friends** — a `device_class` alone never onboards a device. The config
+- **False friends** - a `device_class` alone never onboards a device. The config
   flow filters selectors by `device_class` + `state_class` + unit, but the user
   always chooses explicitly; auto-onboarding by `device_class` is forbidden
   (`CRITICAL_INSTRUCTIONS.md`).
-- **Unreliable sources** — persistently `unknown`/`unavailable` sensors (the
+- **Unreliable sources** - persistently `unknown`/`unavailable` sensors (the
   panel-heater energy) are treated as no-data, never phantom deltas, and a
   persistently dead source raises a Repair (HEA-24).
 
@@ -93,17 +93,17 @@ dogfooding (renamed/deleted out from under us faster than Repairs can cope).
   native-helper approach proves too fragile and the internal fallback becomes the
   default.
 
-## Update — feasibility validated (2026-07-21)
+## Update - feasibility validated (2026-07-21)
 
 Appended, not edited: the decision above stands and its Status remains Accepted.
 This note records that the programmatic native-helper path it chose is **proven**,
 not merely assumed.
 
 HEA-34 shipped auto-creation of a native Integral (Riemann-sum) helper for
-power-only devices — driving the `integration` component's own config flow — with
+power-only devices - driving the `integration` component's own config flow - with
 its output energy sensor feeding the `CumulativeEnergySource` pipeline unchanged.
 Verified against real Home Assistant: creation is programmatic and idempotent, and
-the helper accrues **no phantom energy across an `unavailable` span** — a device
+the helper accrues **no phantom energy across an `unavailable` span** - a device
 switched off for months resumes cleanly on recovery. So the reset-on-unavailable
 behaviour this ADR requires is inherited from the native helper rather than
 reimplemented.
@@ -115,26 +115,26 @@ Consequences for the recorded fallback:
 - HEA-23 (native `utility_meter` cycle helpers) shares this feasibility spike, so
   its native path is de-risked by the same result; reuse the HEA-34 pattern
   (`custom_components/home_energy_advisor/integral_helper.py`).
-- The helper's component must be declared in the manifest `dependencies` —
+- The helper's component must be declared in the manifest `dependencies` -
   hassfest enforces this whenever the code imports from that component.
 
-## Update — MVP source boundary now enforced (2026-07-28, HEA-54)
+## Update - MVP source boundary now enforced (2026-07-28, HEA-54)
 
 Appended, not edited: the decision stands. The taxonomy above scopes `total`
 (net) counters, forecasts, and other non-`total_increasing` sources out of the
-MVP, but originally nothing *enforced* it — device selection filtered
+MVP, but originally nothing *enforced* it - device selection filtered
 `device_class` only, so an ineligible sensor could be chosen and the engine would
 read its decreases as cycle resets, booking phantom energy. HEA-54 closes that:
 
 - **Discovery is strict.** A candidate is offered only if its `state_class` is the
   eligible one (`total_increasing` for energy, `measurement` for power); an absent
   `state_class` is treated as ineligible. A wrong `state_class` is a provable
-  mis-accounting, not a user judgement call, so it is never *suggested* — distinct
+  mis-accounting, not a user judgement call, so it is never *suggested* - distinct
   from the false-friend *name* hint, which remains a sort-last suggestion the user
   may still accept.
 - **Manual add/reconfigure is lenient on an absent `state_class`.** A
   present-but-wrong class is rejected with a translated error, but a sensor that
-  sets no `state_class` at all is allowed — an explicit manual pick of an
+  sets no `state_class` at all is allowed - an explicit manual pick of an
   unlabelled counter is the user's call (a custom template sensor, say). The maintainer's
   call; the strict-discovery / lenient-add split is deliberate.
 

@@ -1,25 +1,25 @@
-# Home Energy Advisor — Session Entry Point
+# Home Energy Advisor - Session Entry Point
 
 A Home Assistant custom integration providing per-device financial accounting:
 Energy Used, Actual Cost, Cost at Grid Price, Cost Savings.
 
 ## Read before any work
 
-1. `docs/CRITICAL_INSTRUCTIONS.md` — non-negotiable checklist; scan every session
-2. `docs/PLAN.md` — delivery plan, decisions made, epic/ticket map
-3. `docs/adr/` — accepted decisions (append-only; never edit an accepted ADR)
+1. `docs/CRITICAL_INSTRUCTIONS.md` - non-negotiable checklist; scan every session
+2. `docs/PLAN.md` - delivery plan, decisions made, epic/ticket map
+3. `docs/adr/` - accepted decisions (append-only; never edit an accepted ADR)
 4. Topic-specific: `docs/TESTING_STANDARDS.md` (writing tests),
    `docs/DOCUMENTATION_STANDARDS.md` (writing docs),
    `docs/notes/DEVICE_SENSOR_SURVEY.md` (device/sensor behaviour patterns)
 
 ## Project shape
 
-- `custom_components/home_energy_advisor/` — the integration (thin HA adapter layer)
-- `custom_components/home_energy_advisor/engine/` — accounting engine: **pure
+- `custom_components/home_energy_advisor/` - the integration (thin HA adapter layer)
+- `custom_components/home_energy_advisor/engine/` - accounting engine: **pure
   Python, zero `homeassistant.*` imports**, fully unit-testable
-- `tests/` — pytest; `tests/fixtures/exploration_2026_07/` holds golden-master
+- `tests/` - pytest; `tests/fixtures/exploration_2026_07/` holds golden-master
   data captured from the real instance (provenance in its README)
-- `docs/` — plan, ADRs, standards, notes
+- `docs/` - plan, ADRs, standards, notes
 
 ## Core architecture (detail in docs/PLAN.md and ADR-0002/0004)
 
@@ -33,8 +33,8 @@ helpers** (utility_meter, Integral), never reimplemented maths.
 ## Workflow
 
 - Plan → Linear ticket → TDD → code. Never code without a ticket.
-- Linear: team **HEA**, project "MVP — Device Cost Accounting".
-- Ask clarifying questions one at a time before writing code — do not assume.
+- Linear: team **HEA**, project "MVP - Device Cost Accounting".
+- Ask clarifying questions one at a time before writing code - do not assume.
   Debate design honestly; the maintainer decides.
 - Confirm with the maintainer before writing files unless an approved plan covers them.
 - Commits: Conventional Commits `type(HEA-nn): description`, direct to `main`,
@@ -42,14 +42,14 @@ helpers** (utility_meter, Integral), never reimplemented maths.
 - Dependabot PRs are the one accepted exception to that: a bot cannot push to
   `main`, and dependency automation is worth the branch. They carry no HEA
   number. A ruff bump arrives red until its `.pre-commit-config.yaml` rev is
-  updated on the same branch — see `.github/dependabot.yml` (HEA-71).
+  updated on the same branch - see `.github/dependabot.yml` (HEA-71).
 
 ## Development environment
 
-**The test suite requires a Unix-like OS — Linux, macOS, or WSL on Windows.**
+**The test suite requires a Unix-like OS - Linux, macOS, or WSL on Windows.**
 Home Assistant imports `fcntl`, and `pytest-homeassistant-custom-component`
 registers as a pytest plugin, so on native Windows `pytest` fails at
-*collection* — even for tests that never import HA. This is a hard platform
+*collection* - even for tests that never import HA. This is a hard platform
 limit, not a configuration problem.
 
 Python **≥3.14.2** (HA's floor). Set up with:
@@ -67,5 +67,5 @@ pytest --cov --cov-fail-under=90
 ruff check . && ruff format --check .
 mypy custom_components tests
 ./scripts/sonar-check.sh scan        # local SonarQube gate (see CRITICAL_INSTRUCTIONS)
-./scripts/sonar-check.sh qualitygate # "status" must be "OK" — read full output, never tail/head
+./scripts/sonar-check.sh qualitygate # "status" must be "OK" - read full output, never tail/head
 ```

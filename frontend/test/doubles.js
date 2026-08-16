@@ -1,6 +1,6 @@
 /**
  * Stand-ins for the parts of Home Assistant a card talks to, shared by every
- * card suite so the harness is written — and corrected — once.
+ * card suite so the harness is written - and corrected - once.
  *
  * Each double mirrors something measured on the live instance rather than
  * imagined: the energy collection as the picker creates it, the HEA-55 device
@@ -54,7 +54,7 @@ export const STAT_CONCEPTS = [
  *
  * `statistics` defaults to the ids an English instance happens to produce, which
  * is what the other doubles here key off. Pass it explicitly to build a row whose
- * ids do *not* follow that pattern — a Spanish instance, or a renamed entity —
+ * ids do *not* follow that pattern - a Spanish instance, or a renamed entity -
  * which is the only way a test can tell reading the map apart from composing the
  * id, since composing gives the right answer on every English install (HEA-89).
  */
@@ -88,13 +88,13 @@ export const bucketsFor = (
 export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
 
 /**
- * The cost range a key's counter permits (ADR-0016) — absent for a household
+ * The cost range a key's counter permits (ADR-0016) - absent for a household
  * that has not opted into per-device ranges, which is the case a card has to
  * tell apart from a range of zero.
  *
  * The suffixes are the entity ids as they exist on a real instance, verified on
  * `the reference instance` 2026-08-14. They are written out rather than built
- * from the card's own `BOUNDS`, so this fixture can disagree with the card — and
+ * from the card's own `BOUNDS`, so this fixture can disagree with the card - and
  * it once should have: HEA-84 shipped `_cost_floor` on both sides against a
  * sensor Home Assistant had really named `_lowest_possible_cost`.
  */

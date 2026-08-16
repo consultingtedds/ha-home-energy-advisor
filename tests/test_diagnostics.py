@@ -52,7 +52,7 @@ def _entry() -> MockConfigEntry:
 async def test_diagnostics_redacts_entity_ids_and_device_names(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a configured, running home
+    # Given - a configured, running home
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -62,10 +62,10 @@ async def test_diagnostics_redacts_entity_ids_and_device_names(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — the diagnostics download is produced
+    # When - the diagnostics download is produced
     result = await async_get_config_entry_diagnostics(hass, entry)
 
-    # Then — the price and per-source entity ids are redacted, but the non-personal
+    # Then - the price and per-source entity ids are redacted, but the non-personal
     # role labels that make the file useful survive
     assert result["config"]["price_entity"] == REDACTED
     grid = next(

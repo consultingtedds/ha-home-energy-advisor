@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Copy the Lovelace cards into a timestamped folder under Home Assistant's www.
 #
-# Home Assistant serves /local/ with `Cache-Control: max-age=2678400` — 31 days.
+# Home Assistant serves /local/ with `Cache-Control: max-age=2678400` - 31 days.
 # Overwriting a card in place therefore does nothing for anyone whose browser
 # already fetched it, and a `?v=` on the dashboard resource url does not help:
 # the cards are ES modules, and a relative `import "./hea-format.js"` does not
 # inherit the query string. The entry point busts; its imports do not.
 #
-# A browser left holding one stale module fails the whole import — ES modules
-# fail as a unit — so *no* card registers and every HEA card on the dashboard
+# A browser left holding one stale module fails the whole import - ES modules
+# fail as a unit - so *no* card registers and every HEA card on the dashboard
 # renders as an unknown element. Observed on a live instance (2026-08-10).
 #
 # Stamping the *folder* fixes it: every relative import resolves under the new
@@ -19,12 +19,12 @@
 # Home Assistant's `www` is often a network share rather than a local path.
 # Windows-style arguments are accepted and converted, so a drive mapped in
 # Windows can be given as `Z:\www`, `Z:/www` or `/z/www`, and a UNC share as
-# `\\homeassistant\config\www` — run it from Git Bash, where the mapping
+# `\\homeassistant\config\www` - run it from Git Bash, where the mapping
 # exists. WSL cannot see a Windows-mapped drive unless it is mounted there
 # too, so prefer the Windows shell for this one.
 #
 # Prints the resource url to set on the dashboard. Old folders are left in
-# place — they cost a few KB and let a bad release be rolled back by pointing
+# place - they cost a few KB and let a bad release be rolled back by pointing
 # the resource at the previous stamp.
 
 set -euo pipefail

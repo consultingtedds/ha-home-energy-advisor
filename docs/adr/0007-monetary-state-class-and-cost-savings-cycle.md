@@ -18,7 +18,7 @@ that split wrong in practice:
 
 1. **Home Assistant rejects `monetary` + `total_increasing`.** Current HA logs a
    validation warning that a `monetary` sensor's `state_class` must be `total` or
-   `None`, never `total_increasing` — a currency total is not a strictly-rising
+   `None`, never `total_increasing` - a currency total is not a strictly-rising
    meter (money can be refunded, corrected, netted). Every Actual Cost and Cost
    Without Solar sensor triggered this warning.
 2. **ADR-0006 already moved the Untracked remainder's costs to `total`** so late
@@ -28,7 +28,7 @@ that split wrong in practice:
 
 Separately, ADR-0003 decided Cost Savings gets **no** cycle `utility_meter`
 helper (it can go negative under battery arbitrage, and period savings is exact
-by subtraction). But the code metered **all four** concepts — the divergence
+by subtraction). But the code metered **all four** concepts - the divergence
 HEA-49 exists to close.
 
 ## Decision
@@ -36,20 +36,20 @@ HEA-49 exists to close.
 **1. All monetary cost sensors use `state_class: total`.** `actual_cost` and
 `cost_without_solar` move from `total_increasing` to `total`, joining
 `cost_savings` (and Untracked's costs, per ADR-0006). `total` models a monotonic
-accumulator perfectly well — it simply does not *assume* monotonicity — so the
+accumulator perfectly well - it simply does not *assume* monotonicity - so the
 actual/naive costs, which only grow, lose nothing, while Cost Savings' genuine
 dips stay honest. One consistent rule: **energy is `total_increasing`, money is
 `total`.** `energy_used` is unchanged (`energy` + `total_increasing` is valid and
 correct). The only per-device/Untracked difference that remains is Energy Used
-(`total_increasing` on a real device, `total` on Untracked — ADR-0006).
+(`total_increasing` on a real device, `total` on Untracked - ADR-0006).
 
 **2. Cost Savings gets no cycle meter; period savings is derived.** The code now
 honours ADR-0003: `_device_cost_sensors` excludes `cost_savings`, so no
 `cost_savings_daily/monthly/…` helper is created, and any that already exist are
 reconciled away on the next setup. A period's saving is **Cost Without Solar
-(cycle) − Actual Cost (cycle)** — needs no entity, stays exact, and cannot be
+(cycle) − Actual Cost (cycle)** - needs no entity, stays exact, and cannot be
 corrupted by a negative interval crossing a period boundary. The metered set is
-therefore `energy_used`, `actual_cost`, `cost_without_solar` — the same three
+therefore `energy_used`, `actual_cost`, `cost_without_solar` - the same three
 ADR-0003 intended (it called them "the three `total_increasing` figures"; two are
 now `total`, but the set is the same).
 
@@ -62,7 +62,7 @@ now `total`, but the set is the same).
   concepts × 2 default cycles), easing the entity-count concern (HEA-40).
 - `state_class` is a one-way door (ADR-0003): moving the costs to `total` is a
   permanent identity change. On an already-running instance HA will flag a
-  one-time "statistics type changed" for the affected cost sensors — benign,
+  one-time "statistics type changed" for the affected cost sensors - benign,
   cleared from Developer Tools → Statistics, exactly as for the ADR-0006 move.
 - The dashboard (HEA-25) already derives period savings by subtraction, so no
   card depends on the removed `cost_savings` cycle sensors.

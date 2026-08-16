@@ -3,14 +3,14 @@
 A figure this integration publishes is a restored baseline plus the runtime's
 since-startup total, and Home Assistant keeps both that baseline and the
 long-term statistics keyed by entity id. Deleting and re-adding the integration
-therefore does not clear anything — a fresh add re-adopts the old values. Short
+therefore does not clear anything - a fresh add re-adopts the old values. Short
 of filesystem surgery on a running instance, there was no way out; this module
 is the supported one.
 
 Three things have to happen together, in this order:
 
 1. the runtime's running totals and the sensors' restore baselines go to zero,
-2. the cycle meters HEA created are calibrated to zero — after step 1, never
+2. the cycle meters HEA created are calibrated to zero - after step 1, never
    before, because a net-consumption meter subtracts its source's drop,
 3. HEA's own long-term statistics are cleared, so the cleared figures are not
    contradicted by the history behind them.

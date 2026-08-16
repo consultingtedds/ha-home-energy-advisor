@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "home_energy_advisor"
 
-# House-level configuration — global, one set per household (ADR-0002).
+# House-level configuration - global, one set per household (ADR-0002).
 CONF_PRICE_ENTITY: Final = "price_entity"
 CONF_CURRENCY: Final = "currency"
 CONF_GRID_IMPORT_ENTITY: Final = "grid_import_entity"
@@ -18,7 +18,7 @@ CONF_HOUSE_CONSUMPTION_ENTITY: Final = "house_consumption_entity"
 
 DEFAULT_CURRENCY: Final = "EUR"
 
-# Per-device configuration — one config subentry per tracked device.
+# Per-device configuration - one config subentry per tracked device.
 SUBENTRY_TYPE_DEVICE: Final = "device"
 CONF_ENERGY_ENTITY: Final = "energy_entity"
 CONF_POWER_ENTITY: Final = "power_entity"
@@ -57,7 +57,7 @@ CONF_CYCLE_QUARTERLY: Final = "cycle_quarterly"
 CONF_CYCLE_YEARLY: Final = "cycle_yearly"
 
 # Optional per-device cost bounds (options flow). The whole-home band is always
-# published — it is what makes every install honest by default — but two more
+# published - it is what makes every install honest by default - but two more
 # sensors for every tracked device is a recorder cost a household should choose,
 # so the per-device band follows the same opt-in precedent (ADR-0016).
 CONF_DEVICE_COST_BOUNDS: Final = "device_cost_bounds"

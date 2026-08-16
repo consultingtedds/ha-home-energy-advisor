@@ -14,7 +14,7 @@ import { TAG as TOTALS_TAG } from "../hea-totals-card.js";
 
 describe("the card bundle", () => {
   it("registers every card and its editor", () => {
-    // Given / When / Then — importing the one entry point is enough
+    // Given / When / Then - importing the one entry point is enough
     for (const tag of [TOTALS_TAG, DEVICES_TAG, CHART_TAG]) {
       expect(customElements.get(tag)).toBeDefined();
       expect(customElements.get(`${tag}-editor`)).toBeDefined();

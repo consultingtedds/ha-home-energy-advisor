@@ -1,10 +1,10 @@
-"""Per-device cost sensors — the four figures ADR-0003 fixes.
+"""Per-device cost sensors - the four figures ADR-0003 fixes.
 
 For every tracked device and the Untracked remainder this platform publishes
 Energy Used, Actual Cost, Cost at Grid Price and Cost Savings, grouped one Home
 Assistant device per tracked device. The identities here (``unique_id``,
 ``device_class``, ``state_class``, ``translation_key``, unit) are effectively
-permanent — changing them after release orphans long-term statistics — so they
+permanent - changing them after release orphans long-term statistics - so they
 follow ADR-0003 exactly.
 
 The accounting runtime keeps *since-startup* running totals and resets to zero on
@@ -14,7 +14,7 @@ and adds the runtime's running total on top, so ``total_increasing`` stays
 continuous across restarts without the engine persisting anything.
 
 This module is also where a figure stops being an accumulator and becomes a
-recorded Home Assistant state, so it is where rounding belongs — see
+recorded Home Assistant state, so it is where rounding belongs - see
 ``HeaCostSensor.native_value`` (HEA-59).
 """
 
@@ -87,7 +87,7 @@ _UNTRACKED_TOTAL_CONCEPTS = frozenset(
 # Precision at which a figure becomes a Home Assistant state (HEA-59). Publishing
 # the accumulator's full Decimal wrote 28-significant-digit strings to the recorder
 # roughly once a minute, mirrored by every cycle meter. Both limits sit far below
-# anything a reading can mean — 1 mWh, and a hundredth of a cent — and below the
+# anything a reading can mean - 1 mWh, and a hundredth of a cent - and below the
 # display precision above, so nothing a user sees changes. The engine's own
 # accumulators keep full precision; this is only the presentation boundary.
 _ENERGY_PRECISION = 6
@@ -129,7 +129,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
     # rejects `total_increasing` for the monetary device class (a currency total is
     # not a strictly-rising meter), and Cost Savings genuinely dips on battery
     # arbitrage. `total` models a monotonic accumulator too, so the actual/naive
-    # costs use it as well — one consistent choice for all money (ADR-0007).
+    # costs use it as well - one consistent choice for all money (ADR-0007).
     HeaSensorDescription(
         key="actual_cost",
         translation_key="actual_cost",
@@ -158,12 +158,12 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         value_fn=lambda totals: totals.cost_savings,
     ),
     # Energy Used split across the sources that served it, for energy
-    # self-sufficiency — "how much of this device ran on the sun" (HEA-51). The
+    # self-sufficiency: how much of this device ran on the sun (HEA-51). The
     # engine already computes the split per 5-minute bucket to price the energy;
     # publishing it is the only way to reach it, because unlike a period total
     # (derivable from statistics `change`) or the whole-home aggregate (derivable
     # as Σ siblings) it cannot be recovered retroactively from anything else.
-    # Never cycle-metered — see ADR-0008 §3 and `cycle_meter._METERED_CONCEPTS`.
+    # Never cycle-metered - see ADR-0008 §3 and `cycle_meter._METERED_CONCEPTS`.
     HeaSensorDescription(
         key="energy_from_grid",
         translation_key="energy_from_grid",
@@ -200,8 +200,8 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
 # (ADR-0016). A coarse counter reveals a step that accrued somewhere inside a
 # 30-90 minute span; priced at the cheapest 5-minute slice of that span it is one
 # figure, at the dearest another. Published as money rather than as a width,
-# because `(ceiling - floor) / actual` explodes as actual approaches zero — the
-# same near-zero denominator that sank run-signal weighting in HEA-75 — and
+# because `(ceiling - floor) / actual` explodes as actual approaches zero - the
+# same near-zero denominator that sank run-signal weighting in HEA-75 - and
 # because a range can be rendered directly while a percentage can still be
 # derived from one.
 #
@@ -210,7 +210,7 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
 #
 # The key is the *entity id suffix*, so it must read the way the translated name
 # does. A card builds `sensor.<slug>_<concept>` from this key alone, while Home
-# Assistant builds the entity id from the name — they meet only here. Naming
+# Assistant builds the entity id from the name - they meet only here. Naming
 # these `cost_floor` while calling them "Lowest Possible Cost" shipped cards
 # asking for a statistic that could never exist (HEA-84).
 _BOUND_CONCEPTS: tuple[HeaSensorDescription, ...] = (
@@ -246,7 +246,7 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
 
-    # One integration-level "hub" device carries the devices-registry sensor —
+    # One integration-level "hub" device carries the devices-registry sensor -
     # the authoritative list dashboards read to enumerate tracked devices without
     # hardcoding them (HEA-55); a natural home for future house-level sensors too.
     hub_info = DeviceInfo(
@@ -262,7 +262,7 @@ async def async_setup_entry(
 
     # A normal device (like the real tracked devices) whose display name is set by
     # the "untracked" translation key. It reads as a genuine entry rather than a
-    # placeholder; the name — not a service-device flag — is what keeps it from
+    # placeholder; the name - not a service-device flag - is what keeps it from
     # looking like a setup error (HEA-44).
     #
     # Deliberately without a cost band: Untracked is derived per slice from meters
@@ -286,7 +286,7 @@ async def async_setup_entry(
 
     # The whole-home aggregate: the monotonic total the derived split rolls up to
     # (Σ devices + Untracked). A device of its own, carrying lifetime running totals
-    # only — its period figures are derivable and duplicate the Energy Dashboard, so
+    # only - its period figures are derivable and duplicate the Energy Dashboard, so
     # it is excluded from cycle metering (HEA-48).
     whole_home_info = DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{_WHOLE_HOME_KEY}")},
@@ -360,7 +360,7 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         self._attr_unique_id = f"{entry.entry_id}_{unique_suffix}"
         self._quantum = Decimal(1).scaleb(-precision)
         self._baseline = Decimal(0)
-        # Whether a previous state was restored at all — which the baseline
+        # Whether a previous state was restored at all - which the baseline
         # cannot answer, because a device that has never drawn restores zero and
         # a first install starts at zero. Same number, opposite meanings (HEA-47).
         self._restored = False
@@ -370,13 +370,13 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
 
         Rounding happens here and only here: an accumulator is kept at full
         Decimal precision (docs/CRITICAL_INSTRUCTIONS.md) and rounded when it is
-        presented, and handing a value to Home Assistant *is* presentation — the
+        presented, and handing a value to Home Assistant *is* presentation - the
         state is recorded, roughly once a minute, for every HEA entity and every
         cycle meter mirroring one (HEA-59).
 
         Because this published state is also what a restart restores as the
         baseline, rounding bounds the error a restart can introduce to half an
-        ulp — not cumulative within a run, and immaterial at 1 mWh. Rounding is
+        ulp - not cumulative within a run, and immaterial at 1 mWh. Rounding is
         half-even, so repeated restarts do not bias the total in either direction,
         and monotonic, so a `total_increasing` figure can never step backwards.
         """
@@ -411,7 +411,7 @@ class HeaCostSensor(_HeaRestoringSensor):
     """One device's running figure: restored baseline plus the live total."""
 
     entity_description: HeaSensorDescription
-    # True for a household's first twenty minutes and never again — noise in a
+    # True for a household's first twenty minutes and never again - noise in a
     # history that records every HEA entity roughly once a minute (HEA-59).
     _unrecorded_attributes = frozenset({"warming_up"})
 
@@ -448,7 +448,7 @@ class HeaCostSensor(_HeaRestoringSensor):
 
         Costs lag real time by the lateness margin plus the bucket, so a new
         install reads zero for about twenty minutes while the engine counts
-        correctly behind it — which on the first live install read as "nothing is
+        correctly behind it - which on the first live install read as "nothing is
         working" (HEA-47). The signal sits on the sensor because that is where a
         household is already looking; a Repair was rejected, since HEA-24 reserves
         those for degraded inputs and spending one on normal startup teaches users
@@ -458,12 +458,12 @@ class HeaCostSensor(_HeaRestoringSensor):
         the accountant is rebuilt from nothing on every restart, so the first
         alone would announce months of history as a fresh install. A sensor added
         by a later version restores no baseline either, and reports warming up
-        until its own first interval closes — it has nothing to show yet, so that
+        until its own first interval closes - it has nothing to show yet, so that
         is the same statement rather than an exception to it.
 
         The second condition asks whether a state was restored, never whether the
-        restored figure was zero. A device that has never drawn — a seasonal
-        heater out of season, a rail that is genuinely off — restores zero and
+        restored figure was zero. A device that has never drawn - a seasonal
+        heater out of season, a rail that is genuinely off - restores zero and
         has months of history behind it; a first install has zero and none. Same
         number, opposite meanings, and reading the value conflated them: four
         such sensors claimed to be warming up on the reference instance, on the
@@ -491,7 +491,7 @@ class HeaUnreconciledSensor(_HeaRestoringSensor):
     Device counters and a house meter are sampled thousands of times apart, so
     they disagree within any one 5-minute bucket and agree over a longer span.
     The engine carries that disagreement and repays it (ADR-0015); what it can
-    never repay — because the meter never went on to account for it — is written
+    never repay - because the meter never went on to account for it - is written
     off after the quiet span and counted here.
 
     Diagnostic rather than headline: it is context for the cost figures, and on a
@@ -536,7 +536,7 @@ _NOWHERE = _Location()
 
 
 def _source_entity(data: Mapping[str, Any]) -> str | None:
-    """The sensor the user chose for a device — an energy counter or a power meter.
+    """The sensor the user chose for a device - an energy counter or a power meter.
 
     For a power-only device this is the *power* sensor, never the Integral helper
     derived from it: the helper is HEA's own creation and sits in no room.
@@ -550,7 +550,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     State is the tracked-device count; the ``devices`` attribute is one row per
     tracked device plus the Untracked remainder, each carrying an identifying
     ``key``, its display name, its registry ``device_id``, whether it is the
-    Untracked remainder, and ``statistics`` — every concept's real entity id.
+    Untracked remainder, and ``statistics`` - every concept's real entity id.
     Membership is the config subentries (so it follows device add/remove, which
     reload the entry); names and ids are resolved live from the registries.
 
@@ -562,7 +562,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "devices"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    # The list can be long and rarely changes — keep it out of the recorder.
+    # The list can be long and rarely changes - keep it out of the recorder.
     _unrecorded_attributes = frozenset({"devices", "whole_home"})
 
     def __init__(self, coordinator: HeaCoordinator, *, device_info: DeviceInfo) -> None:
@@ -582,8 +582,8 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         """The authoritative tracked-device list for dashboards to enumerate.
 
         ``whole_home`` sits beside that list rather than inside it. Cards sum
-        ``devices`` to get the household total — the allocations are exhaustive
-        (ADR-0002) — so a whole-home row there would double every figure on every
+        ``devices`` to get the household total - the allocations are exhaustive
+        (ADR-0002) - so a whole-home row there would double every figure on every
         card. It is here because some household figures belong to no device: the
         cost range is published for the whole home whether or not the per-device
         ranges are (ADR-0016), and a card must resolve its slug rather than guess
@@ -613,13 +613,13 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         return rows
 
     def _location_of(self, source: str | None) -> _Location:
-        """Where the sensor measuring a device sits — its area and floor (HEA-58).
+        """Where the sensor measuring a device sits - its area and floor (HEA-58).
 
         Read from the *source* sensor, because that is where the household's
         hierarchy actually lives; HEA's own devices are deliberately left
-        unassigned. Assigning them would rewrite every entity id — Home Assistant
+        unassigned. Assigning them would rewrite every entity id - Home Assistant
         composes an id as ``area + device + entity`` with no de-duplication, so a
-        device whose name already repeats its area gets that word twice — and
+        device whose name already repeats its area gets that word twice - and
         ``suggested_area``, the only way to set one at creation, is removed in HA
         2026.9. Exposing the hierarchy as data costs no registry writes and no
         renames.
@@ -669,7 +669,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         device = dr.async_get(self.hass).async_get_device(
             identifiers={(DOMAIN, f"{self._entry_id}_{device_key}")}
         )
-        # An identifier for this device — stable, unique, and a card's handle for
+        # An identifier for this device - stable, unique, and a card's handle for
         # colour and series grouping. It is *not* a component of any entity id:
         # `statistics` below carries those, because composing one assumes the
         # English suffix (HEA-89, ADR-0018). Still derived from the Actual Cost
@@ -703,7 +703,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         Looked up by `unique_id`, which is ours and never translated. The entity
         *id* is not: Home Assistant derives it from the entity's translated name
         whenever the instance language is one of the 41 in `NATIVE_ENTITY_IDS`,
-        `es` among them — and this integration ships Spanish. So a card building
+        `es` among them - and this integration ships Spanish. So a card building
         `sensor.<key>_actual_cost` asks for something that exists only on an
         English install, and every card renders empty on a Spanish one (HEA-89,
         ADR-0018). A household renaming an entity breaks the same guess.

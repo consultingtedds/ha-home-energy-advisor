@@ -31,13 +31,13 @@ strictly positive number, every time, which nothing downstream ever cancels.
 And the signal *is* zero-mean. A house meter and a device counter are not two
 views of the same clock. On the reference instance over 72 hours the house meter
 wrote **18,728** readings while individual device counters wrote between **3 and
-87** — a sampling ratio of up to 6000:1. Cycle-resetting counters hold still for
-30–90 minutes and then reveal a whole step; a cloud-polled counter reports when
+87** - a sampling ratio of up to 6000:1. Cycle-resetting counters hold still for
+30-90 minutes and then reveal a whole step; a cloud-polled counter reports when
 its vendor's API feels like it. None of them are wrong, and all of them are late
 by different amounts. They agree eventually and never instantaneously.
 
 Because tracked devices are ~68 % of that house, the remainder has only ~32 % of
-headroom before the subtraction crosses zero — and a single 0.25 kWh step
+headroom before the subtraction crosses zero - and a single 0.25 kWh step
 against a 0.19 kWh bucket clears that easily. The estimate crosses zero
 constantly, and every crossing was rectified.
 
@@ -56,7 +56,7 @@ grew = max(retained.consumption, retained.draw + kwh) - max(
 )
 ```
 
-and that is the *dominant* path — of 113.8 kWh of device energy in the capture,
+and that is the *dominant* path - of 113.8 kWh of device energy in the capture,
 only 62.5 kWh arrived through live allocation. A fix confined to `_energies`
 would have left most of the bias in place.
 
@@ -78,7 +78,7 @@ and becomes bounded by the largest excursion.
 **2. Published allocations stay non-negative.**
 
 Only the internal balance is signed. The invariant in `allocation.py` and
-`CRITICAL_INSTRUCTIONS.md` — no allocation is negative — is preserved exactly,
+`CRITICAL_INSTRUCTIONS.md` - no allocation is negative - is preserved exactly,
 which is why this needs no change to what the sensors may publish.
 
 **3. The debt expires after `MAX_QUIET_SPAN`, and that is a derivation.**
@@ -101,14 +101,14 @@ suspended until it settles.**
 
 *Amended by HEA-85. This decision originally charged the overdraw at the import
 rate immediately and refunded the difference on repayment. The money was right
-and the timing was not — see below.*
+and the timing was not - see below.*
 
 A deficit repaid at a later bucket's blended price would break `Σ allocations =
 real costs`, so the debt remembers what it was recorded at.
 
 *Where* it lands is not a detail. An overdrawing device would be charged the
 import rate, because energy the meters have not yet reported can only have come
-off the grid (ADR-0014). When the meters catch up they may say otherwise — that
+off the grid (ADR-0014). When the meters catch up they may say otherwise - that
 the energy was partly generated, and free. The correction belongs to the devices
 that incurred the debt, in proportion to their draw in the bucket that incurred
 it, never to the remainder: that would leave a device paying grid price for
@@ -123,7 +123,7 @@ refunding later publishes a figure we expect to withdraw, and a withdrawal can
 only land in the bucket that discovered it: the sensors are cumulative running
 totals and Home Assistant derives each bucket's `change` from their value at the
 boundaries. On the reference instance two adjacent hours of near identical draw
-published **+€0.105 and −€0.118** — the household was told they had been *paid*
+published **+€0.105 and −€0.118** - the household was told they had been *paid*
 to run their appliances. The totals reconciled at every level; nobody would
 believe them.
 
@@ -138,7 +138,7 @@ Measured over the same 72-hour capture: **3 negative whole-home hours and 10
 negative device-hours become 0**, with the period total unchanged to the cent
 (€6.2741), published energy unchanged (166.609 kWh) and nothing forgiven. The
 cost is that up to **1.47 %** of the running bill is unpublished at any moment,
-median **67 minutes** before it arrives — a figure that converges upward, never
+median **67 minutes** before it arrives - a figure that converges upward, never
 one that is taken back.
 
 Revising a device's total after the fact is not a new behaviour: `_correct`
@@ -153,28 +153,28 @@ that mismatch, in kWh. It is surfaced as an unreconciled-energy figure rather
 than absorbed, with a Repair only at an egregious threshold (ADR-0016 covers the
 disclosure).
 
-The *energy* is written off — the meters never accounted for it, so it can never
-be reconciled — but the *money* is not. Under decision 5 as amended it has been
+The *energy* is written off - the meters never accounted for it, so it can never
+be reconciled - but the *money* is not. Under decision 5 as amended it has been
 waiting unpublished, and expiry is the moment nothing better will be learned, so
 it falls due at the import rate ADR-0014 always intended. Its counterfactual
 matches it exactly, so an expired debt contributes no saving: the household was
 spared nothing.
 
 Expiry is therefore driven by time, not by activity. Each closing bucket checks
-it — that keeps the ordering right while buckets are being settled — and
+it - that keeps the ordering right while buckets are being settled - and
 `finalize` sweeps once more, because a household whose meters have gone quiet
 closes no buckets at all and a suspended charge must still arrive.
 
 ## Rejected alternatives
 
-- **Publish a signed remainder.** The sensor could carry it — Untracked is
+- **Publish a signed remainder.** The sensor could carry it - Untracked is
   `total` since HEA-48, and late corrections already push individual buckets
   negative. Rejected because it breaks the non-negativity invariant for no gain
   the carry does not already deliver, and a cumulative figure that visibly dips
   reads as a fault.
 - **Longer accounting buckets.** Measured to remove ~76 % of the bias at 30
   minutes and ~97 % at 60. Rejected: it attacks the variance rather than the
-  rectifier, and it coarsens the source mix — the grid/generation/battery split
+  rectifier, and it coarsens the source mix - the grid/generation/battery split
   is the product's central claim (ADR-0002), and an hourly bucket cannot see a
   cloud passing.
 - **Deskewing each source by its measured latency.** Rejected as the
@@ -188,7 +188,7 @@ closes no buckets at all and a suspended charge must still arrive.
 ## Consequences
 
 Published whole-home energy reconciles to metered consumption over the window.
-On the capture it is not approximately equal — it is **exactly** equal, 166.609
+On the capture it is not approximately equal - it is **exactly** equal, 166.609
 kWh against 166.609 kWh.
 
 ADR-0014's overdraw rule stops being the routine path and becomes the fallback
@@ -203,7 +203,7 @@ A household whose meters genuinely disagree is no longer flattered. The carry
 absorbs timing and refuses to absorb calibration, so a persistent over-read now
 shows up as growing unreconciled energy instead of quietly inflating the home
 total. On the reference instance that figure is zero over 72 hours at every
-expiry tested, including "never" — the meters do reconcile, they simply never do
+expiry tested, including "never" - the meters do reconcile, they simply never do
 so within a single bucket.
 
 The replay reproduces live behaviour to about 2 percentage points (+3.2 % against

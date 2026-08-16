@@ -1,4 +1,4 @@
-"""Home Energy Advisor — per-device financial accounting for Home Assistant.
+"""Home Energy Advisor - per-device financial accounting for Home Assistant.
 
 Home Assistant's Energy Dashboard explains energy flows; this integration
 explains money: what each tracked device actually cost to run, what it would
@@ -60,7 +60,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # (daily/monthly + opt-in longer cycles), creating and cleaning up as needed.
     await async_sync_cycle_meters(hass, entry)
     # Reload on any config change so adding, editing or removing a device takes
-    # effect live — and so a removed device's auto-created helpers (Integral and
+    # effect live - and so a removed device's auto-created helpers (Integral and
     # cycle meters) are reconciled away on the next setup (HEA-34, HEA-23).
     entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     return True
@@ -74,7 +74,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
     to ``generation_entity``. Nothing else about the entry changes.
 
     This exists for installations that predate the rename. It can go once none
-    remain — pre-release, that is a single household.
+    remain - pre-release, that is a single household.
     """
     if entry.version == 1:
         data = {**entry.data}
@@ -89,7 +89,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool
 
     Flushes the coordinator's in-flight accounting first, while the sensors still
     exist, so they bank up to ~20 min of otherwise-discarded buckets into their
-    restore baseline before teardown — otherwise every restart and every
+    restore baseline before teardown - otherwise every restart and every
     options/config change silently drops them (HEA-53).
     """
     coordinator = entry.runtime_data
@@ -104,7 +104,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None
     The Integral (power-only devices) and utility_meter (cycle totals) helpers are
     independent config entries owned via the entry's data. Reconciliation only
     prunes them when a *device* is removed, so without this hook they would be
-    orphaned when the whole integration is deleted — leaving no clean uninstall.
+    orphaned when the whole integration is deleted - leaving no clean uninstall.
 
     Only helpers HEA created are removed: a helper the user already had over a
     source (adopted) is theirs to keep, never deleted on uninstall (HEA-52).
@@ -145,7 +145,7 @@ async def async_remove_config_entry_device(
 
     Removing the device alone would not stick: the subentry is authoritative, so
     the sensor platform would rebuild the device on the next reload. Removing the
-    subentry is what makes the deletion real — and Home Assistant's own
+    subentry is what makes the deletion real - and Home Assistant's own
     ``async_remove_subentry`` clears the device registry for it, while the update
     listener below reloads the entry and reconciles the auto-created Integral and
     cycle-meter helpers away (HEA-34, HEA-23).

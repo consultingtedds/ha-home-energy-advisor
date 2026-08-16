@@ -3,7 +3,7 @@
 Discovery only ever *suggests*: it scans registered energy/power sensors and
 returns the ones that could be tracked devices, excluding the house-level inputs,
 the price entity, already-tracked devices, and HEA's own sensors. It never adds
-anything — the options flow lets the user pick from the suggestions (false
+anything - the options flow lets the user pick from the suggestions (false
 friends like a phone battery are the user's to reject, not ours to auto-add).
 
 A well-formed sensor is not automatically a device, so discovery also asks what a
@@ -72,7 +72,7 @@ def _register(  # noqa: PLR0913 - a test fixture builder; each kwarg is a distin
 
     ``state`` additionally puts the sensor in the state machine, as Home Assistant
     writes it: an available sensor carries its device_class and state_class, while
-    an ``unavailable`` one carries no attributes at all — which is exactly why
+    an ``unavailable`` one carries no attributes at all - which is exactly why
     discovery falls back to the registry capabilities.
     """
     resolved = (
@@ -115,7 +115,7 @@ def _helper_output(  # noqa: PLR0913 - a test fixture builder; each kwarg is a d
     """Create a helper config entry over ``source``; return its output sensor.
 
     Models how a native `utility_meter` / Integral / Derivative helper records its
-    input — ``options["source"]`` on its own config entry — which is the only
+    input - ``options["source"]`` on its own config entry - which is the only
     declaration of provenance Home Assistant offers and what discovery walks.
     """
     helper = MockConfigEntry(domain=helper_domain, options={CONF_SOURCE: source})
@@ -158,7 +158,7 @@ def _entry(hass: HomeAssistant, **house_inputs: str) -> MockConfigEntry:
 async def test_discovery_offers_untracked_energy_and_power_sensors(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a home with a price entity, a grid meter, and one already-tracked
+    # Given - a home with a price entity, a grid meter, and one already-tracked
     # device, plus two untracked candidates (an energy meter and a power sensor)
     entry = _entry(hass)
     _register(hass, "grid_import", "energy")  # house input
@@ -169,10 +169,10 @@ async def test_discovery_offers_untracked_energy_and_power_sensors(
         hass, "power_only_lights_power", "power", name="Power Only Lights Power"
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — only the two untracked sensors are offered; house/price/tracked excluded
+    # Then - only the two untracked sensors are offered; house/price/tracked excluded
     by_entity = {c.entity_id: c for c in candidates}
     assert set(by_entity) == {dryer, lights}
     # ...with the source key each device subentry needs, and a trimmed name
@@ -185,7 +185,7 @@ async def test_discovery_offers_untracked_energy_and_power_sensors(
 async def test_discovery_prefers_the_energy_sensor_when_a_device_has_both(
     hass: HomeAssistant,
 ) -> None:
-    # Given — one physical device exposing both an energy and a power sensor
+    # Given - one physical device exposing both an energy and a power sensor
     entry = _entry(hass)
     devices = dr.async_get(hass)
     device = devices.async_get_or_create(
@@ -194,17 +194,17 @@ async def test_discovery_prefers_the_energy_sensor_when_a_device_has_both(
     energy = _register(hass, "utility_plug_energy", "energy", device_id=device.id)
     _register(hass, "utility_plug_power", "power", device_id=device.id)
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the device is offered once, as its energy sensor (not double-counted)
+    # Then - the device is offered once, as its energy sensor (not double-counted)
     assert [c.entity_id for c in candidates] == [energy]
 
 
 async def test_discovery_names_a_device_from_its_parent_ha_device(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a sensor whose own name is just "Energy" (has_entity_name), while its
+    # Given - a sensor whose own name is just "Energy" (has_entity_name), while its
     # real identity lives on the parent HA device
     entry = _entry(hass)
     device = dr.async_get(hass).async_get_or_create(
@@ -220,10 +220,10 @@ async def test_discovery_names_a_device_from_its_parent_ha_device(
         device_id=device.id,
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the suggested name is the device's, not the bare "Energy"
+    # Then - the suggested name is the device's, not the bare "Energy"
     by_entity = {c.entity_id: c for c in candidates}
     assert by_entity[heater].name == "Power Only Panel Heater"
 
@@ -231,16 +231,16 @@ async def test_discovery_names_a_device_from_its_parent_ha_device(
 async def test_discovery_sorts_likely_false_friends_last(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a genuine device power sensor and an obvious false friend (a phone
+    # Given - a genuine device power sensor and an obvious false friend (a phone
     # battery power sensor)
     entry = _entry(hass)
     _register(hass, "phone_battery_power", "power", name="Phone Battery Power")
     real = _register(hass, "dishwasher_power", "power", name="Dishwasher Power")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — both are offered (the user decides), but the false friend sorts last
+    # Then - both are offered (the user decides), but the false friend sorts last
     assert candidates[0].entity_id == real
     assert candidates[-1].entity_id.endswith("phone_battery_power")
     assert candidates[-1].likely_false_friend is True
@@ -249,10 +249,10 @@ async def test_discovery_sorts_likely_false_friends_last(
 async def test_discovery_sorts_sensors_without_an_ha_device_last(
     hass: HomeAssistant,
 ) -> None:
-    # Given — an appliance sensor belonging to an HA device, alongside two
+    # Given - an appliance sensor belonging to an HA device, alongside two
     # device-less sensors that would otherwise sort ahead of it by name. On a
     # real instance the device-less sensors are overwhelmingly template outputs
-    # and helper results — house infrastructure rather than appliances — while
+    # and helper results - house infrastructure rather than appliances - while
     # every genuinely trackable device has a device behind it, so the link is the
     # best evidence discovery holds (HEA-70). It only ranks; nothing is hidden
     entry = _entry(hass)
@@ -267,17 +267,17 @@ async def test_discovery_sorts_sensors_without_an_ha_device_last(
     )
     load = _register(hass, "grid_load_total_power", "power", name="Grid Load Total")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the appliance leads, despite sorting last of the three by name
+    # Then - the appliance leads, despite sorting last of the three by name
     assert [c.entity_id for c in candidates] == [appliance, load, inverter]
 
 
 async def test_discovery_ranks_the_device_link_above_the_false_friend_hint(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a phone battery power sensor, which the name hints flag, but which
+    # Given - a phone battery power sensor, which the name hints flag, but which
     # belongs to a real HA device; and a device-less sensor with an innocent
     # name. Belonging to a device is the stronger signal: a flagged false friend
     # is one row the user skips, whereas the device-less tail is where the
@@ -295,10 +295,10 @@ async def test_discovery_ranks_the_device_link_above_the_false_friend_hint(
     )
     device_less = _register(hass, "house_load_power", "power", name="House Load Power")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the flagged sensor still ranks above the device-less one
+    # Then - the flagged sensor still ranks above the device-less one
     assert [c.entity_id for c in candidates] == [flagged, device_less]
     assert candidates[0].likely_false_friend is True
 
@@ -306,11 +306,11 @@ async def test_discovery_ranks_the_device_link_above_the_false_friend_hint(
 async def test_discovery_excludes_sensors_with_an_ineligible_state_class(
     hass: HomeAssistant,
 ) -> None:
-    # Given — valid candidates alongside sources the engine would mis-account: a
+    # Given - valid candidates alongside sources the engine would mis-account: a
     # net (`total`) energy counter, a forecast energy sensor with no state_class,
     # and a "power" sensor that is really a running total. Unlike a false-friend
-    # name, a wrong state_class is not a user judgement call — it is provably
-    # mis-accounted — so discovery never suggests it (HEA-54).
+    # name, a wrong state_class is not a user judgement call - it is provably
+    # mis-accounted - so discovery never suggests it (HEA-54).
     entry = _entry(hass)
     good_energy = _register(
         hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy"
@@ -320,17 +320,17 @@ async def test_discovery_excludes_sensors_with_an_ineligible_state_class(
     _register(hass, "solar_forecast_energy", "energy", state_class=None)
     _register(hass, "grid_power_total", "power", state_class="total_increasing")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — only the two eligible sensors are offered
+    # Then - only the two eligible sensors are offered
     assert {c.entity_id for c in candidates} == {good_energy, good_power}
 
 
 async def test_discovery_excludes_a_cycle_meter_over_a_house_level_input(
     hass: HomeAssistant,
 ) -> None:
-    # Given — the household's own daily utility_meter over the configured grid
+    # Given - the household's own daily utility_meter over the configured grid
     # import meter. It is a well-formed total_increasing kWh counter, so every
     # structural check passes; it is nonetheless house energy the integration
     # already consumes, and picking it would book it a second time as a device
@@ -345,17 +345,17 @@ async def test_discovery_excludes_a_cycle_meter_over_a_house_level_input(
     )
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the period aggregate is not offered; the genuine device still is
+    # Then - the period aggregate is not offered; the genuine device still is
     assert [c.entity_id for c in candidates] == [dryer]
 
 
 async def test_discovery_follows_a_derivation_chain_through_several_helpers(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a helper over a helper over the grid meter: a Derivative giving the
+    # Given - a helper over a helper over the grid meter: a Derivative giving the
     # import rate in watts, and a Riemann integral turning that back into kWh.
     # Neither names the grid meter directly, so the chain has to be walked
     entry = _entry(hass)
@@ -377,17 +377,17 @@ async def test_discovery_follows_a_derivation_chain_through_several_helpers(
     )
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — every link in the chain is excluded, however many hops from the meter
+    # Then - every link in the chain is excluded, however many hops from the meter
     assert [c.entity_id for c in candidates] == [dryer]
 
 
 async def test_discovery_excludes_a_helper_over_an_already_tracked_device_source(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a utility_meter the household built over the tracked aircon's own
+    # Given - a utility_meter the household built over the tracked aircon's own
     # energy counter. Selecting it would book that device's energy twice, and
     # proportional allocation would then under-report every other device
     entry = _entry(hass)
@@ -401,19 +401,19 @@ async def test_discovery_excludes_a_helper_over_an_already_tracked_device_source
     )
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the meter over a tracked source is not offered
+    # Then - the meter over a tracked source is not offered
     assert [c.entity_id for c in candidates] == [dryer]
 
 
 async def test_discovery_offers_an_integral_the_user_built_over_a_plug(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a smart plug the user tracks through their own Riemann integral over
+    # Given - a smart plug the user tracks through their own Riemann integral over
     # its power sensor. The candidate is a helper output, but its chain terminates
-    # in an ordinary device sensor, so it is a legitimate way to track the plug —
+    # in an ordinary device sensor, so it is a legitimate way to track the plug -
     # the case that stops the derivation filter becoming "exclude all helpers"
     entry = _entry(hass)
     plug = dr.async_get(hass).async_get_or_create(
@@ -431,17 +431,17 @@ async def test_discovery_offers_an_integral_the_user_built_over_a_plug(
         device_id=plug.id,
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the plug is offered once, by the energy the user's helper produces
+    # Then - the plug is offered once, by the energy the user's helper produces
     assert [c.entity_id for c in candidates] == [integral]
 
 
 async def test_discovery_excludes_the_other_outputs_of_the_supply_hardware(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a hybrid inverter supplying the generation and battery house inputs.
+    # Given - a hybrid inverter supplying the generation and battery house inputs.
     # Its remaining outputs are the same physical system measured differently, so
     # none of them is an appliance the user could track
     entry = _entry(
@@ -462,20 +462,20 @@ async def test_discovery_excludes_the_other_outputs_of_the_supply_hardware(
     _register(hass, "inverter_load_power", "power", device_id=inverter.id)
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the whole family goes, including outputs never named in the config
+    # Then - the whole family goes, including outputs never named in the config
     assert [c.entity_id for c in candidates] == [dryer]
 
 
 async def test_discovery_still_offers_the_circuits_of_a_whole_home_meter(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a multi-channel CT clamp: one HA device whose mains channel is the
+    # Given - a multi-channel CT clamp: one HA device whose mains channel is the
     # configured grid import and whose remaining channels are separate circuits.
     # A metering point is not the supply system, so its siblings are real devices
-    # and must survive — ADR-0010 hides only what is *provably* not a device
+    # and must survive - ADR-0010 hides only what is *provably* not a device
     entry = _entry(hass)
     clamp = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -490,17 +490,17 @@ async def test_discovery_still_offers_the_circuits_of_a_whole_home_meter(
         hass, "circuit_3_energy", "energy", name="Heating Circuit", device_id=clamp.id
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the mains channel is excluded and both circuits are still offered
+    # Then - the mains channel is excluded and both circuits are still offered
     assert {c.entity_id for c in candidates} == {oven, heating}
 
 
 async def test_discovery_drops_the_power_sibling_of_a_tracked_energy_sensor(
     hass: HomeAssistant,
 ) -> None:
-    # Given — the already-tracked aircon's device also exposes a power sensor.
+    # Given - the already-tracked aircon's device also exposes a power sensor.
     # Offering it invites the user to add the same appliance a second time
     entry = _entry(hass)
     aircon = dr.async_get(hass).async_get_or_create(
@@ -512,17 +512,17 @@ async def test_discovery_drops_the_power_sibling_of_a_tracked_energy_sensor(
     _register(hass, "coarse_step_aircon_power", "power", device_id=aircon.id)
     dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the tracked device is not offered again through its power sensor
+    # Then - the tracked device is not offered again through its power sensor
     assert [c.entity_id for c in candidates] == [dryer]
 
 
 async def test_discovery_offers_power_when_the_energy_sensor_never_reports(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a duty-cycle heater whose energy counter is a well-formed
+    # Given - a duty-cycle heater whose energy counter is a well-formed
     # total_increasing kWh sensor that only ever yields `unknown`, beside a power
     # sensor genuinely reading 0 W and a static nameplate wattage. Offered by the
     # energy sensor the device could only ever accumulate nothing (HEA-64)
@@ -551,10 +551,10 @@ async def test_discovery_offers_power_when_the_energy_sensor_never_reports(
         state="300",
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — the device is offered once, by the sensor that actually reports; the
+    # Then - the device is offered once, by the sensor that actually reports; the
     # nameplate wattage stays out on its missing state_class
     assert [c.entity_id for c in candidates] == [effective]
     assert candidates[0].source_key == CONF_POWER_ENTITY
@@ -563,9 +563,9 @@ async def test_discovery_offers_power_when_the_energy_sensor_never_reports(
 async def test_discovery_keeps_energy_for_a_device_that_is_merely_switched_off(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a seasonal device switched off out of season: neither its energy
+    # Given - a seasonal device switched off out of season: neither its energy
     # counter nor its power sensor reports anything. Silence now is not evidence
-    # a counter is dead — seasonal silence is normal (HEA-24) — so the preference
+    # a counter is dead - seasonal silence is normal (HEA-24) - so the preference
     # for a measured counter must not flip
     entry = _entry(hass)
     aircon = dr.async_get(hass).async_get_or_create(
@@ -588,17 +588,17 @@ async def test_discovery_keeps_energy_for_a_device_that_is_merely_switched_off(
         state=STATE_UNAVAILABLE,
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — still offered by its energy counter, exactly as when it is running
+    # Then - still offered by its energy counter, exactly as when it is running
     assert [c.entity_id for c in candidates] == [energy]
 
 
 async def test_discovery_still_offers_a_device_whose_only_sensor_never_reports(
     hass: HomeAssistant,
 ) -> None:
-    # Given — the same dead energy counter, with no power sensor to fall back to
+    # Given - the same dead energy counter, with no power sensor to fall back to
     entry = _entry(hass)
     boiler = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -613,9 +613,9 @@ async def test_discovery_still_offers_a_device_whose_only_sensor_never_reports(
         state=STATE_UNKNOWN,
     )
 
-    # When — candidates are discovered
+    # When - candidates are discovered
     candidates = async_discover_candidates(hass, entry)
 
-    # Then — offered anyway: a device is never silently hidden, and the user can
+    # Then - offered anyway: a device is never silently hidden, and the user can
     # still see it and judge for themselves (ADR-0004, never auto-onboard)
     assert [c.entity_id for c in candidates] == [energy]

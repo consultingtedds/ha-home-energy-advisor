@@ -1,7 +1,7 @@
 /**
  * @vitest-environment happy-dom
  *
- * Where each device's energy came from — grid, generation or battery (HEA-51).
+ * Where each device's energy came from - grid, generation or battery (HEA-51).
  *
  * The table mechanics are `HeaTableCard`'s and are covered by the devices
  * card's suite; what is tested here is this card's own columns, and one thing
@@ -82,7 +82,7 @@ describe("the split", () => {
     const card = mount(aHass({ devices: [AIRCON], response: SPLIT }));
     await ready(card);
 
-    // Then — energy, then grid, generation and battery, which sum back to it
+    // Then - energy, then grid, generation and battery, which sum back to it
     expect(rows(card)[0]).toEqual([
       "Slow Poll Aircon",
       "10 kWh",
@@ -94,11 +94,11 @@ describe("the split", () => {
   });
 
   it("shows what share came off the grid", async () => {
-    // Given — a pump that ran almost entirely on generation
+    // Given - a pump that ran almost entirely on generation
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: SPLIT }));
     await ready(card);
 
-    // Then — 2 of 20 kWh
+    // Then - 2 of 20 kWh
     const shares = Object.fromEntries(rows(card).map((row) => [row[0], row[5]]));
     expect(shares["Cloud Polled Pump"]).toBe("10%");
   });
@@ -108,7 +108,7 @@ describe("the split", () => {
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: SPLIT }));
     await ready(card);
 
-    // Then — 6 kWh of grid across 30 kWh is 20 %. Averaging the two rows'
+    // Then - 6 kWh of grid across 30 kWh is 20 %. Averaging the two rows'
     // shares would give 25 %, which is not a share of anything: a proportion
     // of a whole is not the mean of its parts' proportions
     const total = totalRow(card);
@@ -130,7 +130,7 @@ describe("the split", () => {
   });
 
   it("shows no share for a device that used no energy", async () => {
-    // Given — a device that reported nothing over the period
+    // Given - a device that reported nothing over the period
     const card = mount(
       aHass({
         devices: [AIRCON],
@@ -142,12 +142,12 @@ describe("the split", () => {
     );
     await ready(card);
 
-    // Then — a dash, not 0 %: no share can be derived from no energy
-    expect(rows(card)[0][5]).toBe("—");
+    // Then - a dash, not 0 %: no share can be derived from no energy
+    expect(rows(card)[0][5]).toBe("-");
   });
 
   it("does not hide a split that fails to account for the energy", async () => {
-    // Given — a device whose sources sum to less than its energy, which is what
+    // Given - a device whose sources sum to less than its energy, which is what
     // a real defect looks like. HEA-77 documents one legitimate cause: a device
     // whose by-source sensors started later than its energy sensor carries a
     // permanent skew.
@@ -162,7 +162,7 @@ describe("the split", () => {
     );
     await ready(card);
 
-    // Then — the figures are shown as recorded, so the shortfall is visible
+    // Then - the figures are shown as recorded, so the shortfall is visible
     // rather than silently normalised away into percentages that always total
     // a hundred
     expect(rows(card)[0].slice(1, 5)).toEqual(["10 kWh", "1 kWh", "1 kWh", "1 kWh"]);

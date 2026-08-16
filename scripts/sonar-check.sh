@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Local SonarQube gate. Never wired into GitHub CI — external contributors have
+# Local SonarQube gate. Never wired into GitHub CI - external contributors have
 # no server, and the pipeline must stay green without one.
 #
 #   ./scripts/sonar-check.sh scan          analyse, wait for the server, print measures
@@ -8,7 +8,7 @@
 #   ./scripts/sonar-check.sh issues        list unresolved issues (rule, file, line)
 #
 # Requires SONAR_TOKEN. SONAR_HOST_URL defaults to http://localhost:9000.
-# `scan` requires coverage.xml — generate it first, in whatever environment runs
+# `scan` requires coverage.xml - generate it first, in whatever environment runs
 # your tests:
 #
 #   pytest --cov --cov-report=xml
@@ -34,7 +34,7 @@ api() {
 
 # Run this where the working tree natively lives. The scanner is a JVM process,
 # and pointing it at a Windows working tree from inside WSL takes ~14 minutes
-# against ~1.5 on the host — the filesystem boundary, not the analysis, is the
+# against ~1.5 on the host - the filesystem boundary, not the analysis, is the
 # cost.
 run_scanner() {
   if command -v sonar-scanner >/dev/null 2>&1; then
@@ -42,7 +42,7 @@ run_scanner() {
   elif command -v npx >/dev/null 2>&1; then
     npx --no -- sonarqube-scanner
   else
-    die "no scanner found — run: npm install"
+    die "no scanner found - run: npm install"
   fi
 }
 
@@ -50,7 +50,7 @@ run_scanner() {
 # asynchronously. Measures read before the Compute Engine task finishes are the
 # *previous* run's, which is how a local gate silently reports stale results.
 await_compute_engine() {
-  [ -f "$REPORT_TASK" ] || die "no $REPORT_TASK — did the scan run?"
+  [ -f "$REPORT_TASK" ] || die "no $REPORT_TASK - did the scan run?"
   local task_id
   task_id="$(sed -n 's/^ceTaskId=//p' "$REPORT_TASK")"
 
@@ -79,7 +79,7 @@ for m in sorted(measures, key=lambda entry: entry["metric"]):
 
 cmd_scan() {
   require_token
-  [ -f coverage.xml ] || die "coverage.xml not found — run: pytest --cov --cov-report=xml"
+  [ -f coverage.xml ] || die "coverage.xml not found - run: pytest --cov --cov-report=xml"
 
   SONAR_HOST_URL="$SONAR_HOST_URL" SONAR_TOKEN="$SONAR_TOKEN" run_scanner
   await_compute_engine

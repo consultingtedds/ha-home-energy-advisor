@@ -3,12 +3,12 @@
 Per the build-on-foundations decision (ADR-0004), daily/monthly (and opt-in
 weekly/quarterly/yearly) cost and energy totals are provided by programmatically
 creating native `utility_meter` helpers over the integration's own per-device
-sensors — not by reimplementing period-reset logic. Each helper is one
+sensors - not by reimplementing period-reset logic. Each helper is one
 (source sensor x cycle) pair; its output sensor is a terminal figure the user
 reads, so nothing here feeds back into the accounting engine.
 
 The creation mechanism is the `SchemaConfigFlowHandler` path proven in HEA-34
-(`integral_helper.py`); this module reuses that shape — idempotent create,
+(`integral_helper.py`); this module reuses that shape - idempotent create,
 ownership tracked on the config entry, reconcile-and-remove on device removal.
 """
 
@@ -64,16 +64,16 @@ _OPT_IN_CYCLES = {
 _CYCLE_LABEL_PREFIX = f"component.{UTILITY_METER_DOMAIN}.selector.cycle.options."
 
 # The sensor concepts that get cycle totals. Deliberately absent:
-#   cost_savings   — derived per period by subtracting the Actual Cost cycle from
+#   cost_savings   - derived per period by subtracting the Actual Cost cycle from
 #                    the Cost at Grid Price cycle, so metering it would add
 #                    helpers for a figure computable from the others, and
 #                    utility_meter assumes a monotonic source it is not
 #                    (ADR-0007).
-#   energy_from_*  — their per-period figures are a chart question that long-term
+#   energy_from_*  - their per-period figures are a chart question that long-term
 #                    statistics already answer; metering them would add ~90
 #                    helpers on a 14-device home for no capability the statistics
 #                    path lacks (ADR-0008 §3, firm).
-#   devices        — the hub's diagnostic registry sensor, not a figure at all.
+#   devices        - the hub's diagnostic registry sensor, not a figure at all.
 _METERED_CONCEPTS = frozenset({"energy_used", "actual_cost", "cost_at_grid_price"})
 
 
@@ -121,7 +121,7 @@ async def async_reset_cycle_meters(hass: HomeAssistant, entry: ConfigEntry) -> N
 
     Call *after* the source sensors have been rebased, never before. A cost
     meter is a net-consumption meter (its source is `total`, ADR-0007), so it
-    subtracts the source's drop to zero — calibrating first would leave it
+    subtracts the source's drop to zero - calibrating first would leave it
     holding the negative of what it had.
 
     ``calibrate`` is the only route: utility_meter's own ``reset`` targets the
@@ -169,7 +169,7 @@ async def async_sync_cycle_meters(hass: HomeAssistant, entry: ConfigEntry) -> No
     await _ensure_meters(hass, sources, cycles, labels, owned)
     _persist_owned_meters(hass, entry, owned)
     if recreated:
-        # One aggregate Repair — a user may delete several cycle meters at once,
+        # One aggregate Repair - a user may delete several cycle meters at once,
         # and one meter per (sensor x cycle) would flood Repairs.
         issues.async_raise(
             hass,
@@ -206,15 +206,15 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     """Entity ids of the integration's own per-device and Untracked cost sensors.
 
     Membership is an explicit allow-list (``_METERED_CONCEPTS``), not "everything
-    except the known exceptions". Metering is the expensive default — one helper
-    per (sensor x cycle), 90 of them on a 14-device home — so a sensor concept
+    except the known exceptions". Metering is the expensive default - one helper
+    per (sensor x cycle), 90 of them on a 14-device home - so a sensor concept
     added later must be opted *in* deliberately rather than swept up silently.
     That is exactly how the by-source sensors would otherwise have acquired ~90
     helpers the moment they shipped, against ADR-0008 §3.
 
     Two further filters remain. A removed device's registry entries linger briefly
     (they are cleared after the reload the removal triggers), so a sensor counts
-    only while its subentry is still live — Untracked sensors carry no subentry.
+    only while its subentry is still live - Untracked sensors carry no subentry.
     And the whole-home aggregate is excluded: its period totals are the sum of the
     device and Untracked cycle meters and duplicate the Energy Dashboard, so it
     carries lifetime running totals only (HEA-48).

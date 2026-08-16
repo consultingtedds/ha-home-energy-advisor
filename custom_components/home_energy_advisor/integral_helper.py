@@ -16,7 +16,7 @@ Two deliberate choices keep this thin:
   with a one-minute ``max_sub_interval`` keeps energy advancing while a light
   holds a steady wattage without pushing updates, yet the native helper stops
   integrating the moment the source is ``unavailable``/``unknown`` and resumes
-  cleanly on recovery — the reset-on-unavailable behaviour ADR-0004 requires,
+  cleanly on recovery - the reset-on-unavailable behaviour ADR-0004 requires,
   inherited rather than rebuilt.
 """
 
@@ -96,7 +96,7 @@ async def async_sync_power_device_helpers(
     creates a helper for each power-only device, removes helpers whose device is
     gone, remembers which helper belongs to which device, and returns
     ``{subentry_id: output_sensor_entity_id}`` for the coordinator to wire.
-    Energy-metered devices are absent — the coordinator wires those directly.
+    Energy-metered devices are absent - the coordinator wires those directly.
     """
     power_devices = _power_only_devices(entry)
     owned = dict(entry.data.get(CONF_INTEGRAL_HELPERS, {}))
@@ -175,7 +175,7 @@ async def _ensure_helpers(
     for subentry_id, power_entity in power_devices.items():
         # Name the helper after the device itself: the title is the user's own
         # (already localised) name, so no hardcoded, untranslated word is coined
-        # for it here — i18n stays honest without a translation lookup.
+        # for it here - i18n stays honest without a translation lookup.
         name = entry.subentries[subentry_id].title
         # Whether a helper already existed over this source *before* we ensure one
         # decides provenance: pre-existing means the user's (adopt, never delete).

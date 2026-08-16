@@ -1,8 +1,8 @@
 """HA-free accounting runtime: readings in, per-device running cost out.
 
-Wraps the engine primitives — the cumulative delta calculator, the interval
+Wraps the engine primitives - the cumulative delta calculator, the interval
 spreading, the battery stored-cost ledger, and the proportional allocation
-strategy — and does the energy-balance decomposition (ADR-0005) that turns raw
+strategy - and does the energy-balance decomposition (ADR-0005) that turns raw
 meter deltas into the house-served sources the allocation model needs.
 
 The Home Assistant coordinator (HEA-21 stage B) feeds this class state changes
@@ -15,12 +15,12 @@ Completed intervals are finalised on a lateness margin, but not sealed: each
 finalised bucket's context (its served sources, prices and draws) is retained in
 a bounded ring (24 h by default). Energy that arrives late for a retained bucket
 re-runs that bucket's allocation with its own retained prices and applies only the
-difference — the late device gains, the Untracked remainder gives back, and no
+difference - the late device gains, the Untracked remainder gives back, and no
 already-published device figure is revised. This matters because the founding
 devices (cycle-resetting aircons) report in coarse steps every 15-90 min, so most deltas
 span past the watermark; dropping them silently reattributed 30-50 % of their
 energy to Untracked (ADR-0006, HEA-48). Only portions older than the ring are
-dropped, and never silently — a ``DROPPED_LATE`` decision is logged.
+dropped, and never silently - a ``DROPPED_LATE`` decision is logged.
 
 The Untracked remainder is *derived*, not accumulated: whole-home totals minus
 the tracked-device totals holds identically because every label shares each
@@ -68,7 +68,7 @@ _DEFAULT_RETENTION = timedelta(hours=24)
 # How many finalised buckets the plausibility guard weighs a device against the
 # whole house over (HEA-60). One hour, and deliberately not one bucket: a coarse
 # device's step legitimately lands entirely inside a single interval and exceeds
-# what the house was served in it — that is the spreading approximation ADR-0006
+# what the house was served in it - that is the spreading approximation ADR-0006
 # is built around, not a fault. Over an hour those artefacts cancel; a counter
 # that is lying does not. The window must be *full* before anything is judged,
 # so a fresh start never condemns a device on one interval's evidence.
@@ -161,7 +161,7 @@ class _RetainedBucket:
     reclaimed energy is attributed to the sources of *its own* interval rather
     than whichever ones happen to be running when it finally arrives. The
     whole-home and real cost are fixed once finalised, so a correction only moves
-    value from the Untracked remainder to the late device — never between devices.
+    value from the Untracked remainder to the late device - never between devices.
     """
 
     consumption: Decimal
@@ -329,13 +329,13 @@ class Accountant:
         """Track which house-level inputs are currently readable at all.
 
         ``value is None`` is the integration layer's signal that the state is
-        ``unavailable`` or ``unknown`` — a genuinely silent meter. A meter that
+        ``unavailable`` or ``unknown`` - a genuinely silent meter. A meter that
         reports an unchanged reading is healthy and has simply not moved, and the
         two must never be conflated: on a coarse counter a quiet house yields
         unchanged readings for many buckets, so treating that as a failure would
         swap the decomposition model back and forth during normal running.
 
-        This is why the bucket's contents cannot be the signal — a no-movement
+        This is why the bucket's contents cannot be the signal - a no-movement
         reading produces no delta, so it leaves no trace there either (HEA-67).
         """
         if reporting:
@@ -352,8 +352,8 @@ class Accountant:
             self._finalize_bucket(start)
             self._watermark = start
         # Expiry is a function of time, not of activity. Each closing bucket
-        # checks it too — that keeps the ordering right while buckets are being
-        # settled — but a household whose meters have gone quiet closes no
+        # checks it too - that keeps the ordering right while buckets are being
+        # settled - but a household whose meters have gone quiet closes no
         # buckets at all, and a suspended charge must still fall due (HEA-85).
         self._release(self._debts.expire(cutoff))
         self._evict_stale()
@@ -364,9 +364,9 @@ class Accountant:
 
         Called on unload (restart or any options/config change): finalising past
         the lateness margin banks up to ~20 min of otherwise-discarded accounting
-        so the sensors capture it into their restore baseline. The trade-off — a
+        so the sensors capture it into their restore baseline. The trade-off - a
         bucket sealed here can no longer receive late portions after the reload, and
-        the rebuilt runtime's retention ring starts empty — is accepted in ADR-0006.
+        the rebuilt runtime's retention ring starts empty - is accepted in ADR-0006.
         """
         self.finalize(now + self._lateness + BUCKET)
 
@@ -375,14 +375,14 @@ class Accountant:
 
         Backs the supported reset of a household's accumulated figures. Alongside
         the totals it drops the in-flight buckets and the retained ring, so no
-        energy earned before the rebase can land after it — including as a late
+        energy earned before the rebase can land after it - including as a late
         correction to a bucket that no longer contributes to any total.
 
         Two kinds of state deliberately survive. Each meter's last reading stays,
         so a climbing counter is read neither as a fresh start (dropping the next
         delta) nor as a climb from zero (re-counting everything before the
         rebase). And the battery's stored-cost ledger stays, because it records
-        physical fact — the battery still holds energy bought at a known price,
+        physical fact - the battery still holds energy bought at a known price,
         and discharging it after a rebase is not free.
         """
         self._running = {device: _Running() for device in self._running}
@@ -406,7 +406,7 @@ class Accountant:
         untracked = self._derive_untracked(whole_home, devices.values())
         # Bounds are the one figure the household total does not accumulate. The
         # remainder is priced within its own slice, so it carries no doubt, and a
-        # late correction moves value out of it long after the slice closed —
+        # late correction moves value out of it long after the slice closed -
         # accumulating a bound alongside would drift from the figure it bounds.
         # Composing it from the parts keeps it exact however value has moved.
         bounded = _sum(d.cost_floor for d in devices.values()) + untracked.actual_cost
@@ -449,7 +449,7 @@ class Accountant:
         """Per-source accumulator state and decision log, keyed by entity id.
 
         Feeds the diagnostics download (HEA-24): every meter the runtime has
-        observed — house-level and per-device — with its last reading and the
+        observed - house-level and per-device - with its last reading and the
         gating decisions that explain its accounting.
         """
         return {entity: source.snapshot() for entity, source in self._sources.items()}
@@ -457,8 +457,8 @@ class Accountant:
     def has_finalised(self) -> bool:
         """Whether any interval has closed, and so whether a figure exists at all.
 
-        Costs lag real time by the lateness margin plus the bucket — around twenty
-        minutes — because that margin is what lets a coarse device's delta land
+        Costs lag real time by the lateness margin plus the bucket - around twenty
+        minutes - because that margin is what lets a coarse device's delta land
         before its bucket seals (ADR-0006). It buys correctness, so it is not a
         knob to turn down; what it costs is a first install that reads as broken
         while it is in fact counting. This says which of the two is happening
@@ -482,8 +482,8 @@ class Accountant:
         self, device: str, delta: EnergyDelta, source: CumulativeEnergySource
     ) -> None:
         portions = spread_energy(delta)
-        # The whole delta is one question — "where in this span did the energy
-        # happen" — so it is bounded as a whole, over every slice it touched,
+        # The whole delta is one question - "where in this span did the energy
+        # happen" - so it is bounded as a whole, over every slice it touched,
         # rather than portion by portion.
         self._pending_bounds.append(
             _PendingBound(
@@ -511,16 +511,16 @@ class Accountant:
 
         The bucket's metered consumption is fixed, so the device takes what the
         Untracked remainder can still fund at the bucket's blended price, and
-        *buys* the rest at the import price — energy the house drew that its
+        *buys* the rest at the import price - energy the house drew that its
         meters had not yet reported can only have come off the grid. Leaving that
         excess free, as this path first did, published device costs far below the
         tariff whenever a coarse counter overshot a bucket (HEA-74, ADR-0014).
         Untracked is derived, so it gives back exactly what the device gains from
-        the funded part — no other device moves (ADR-0006, HEA-48).
+        the funded part - no other device moves (ADR-0006, HEA-48).
 
-        This is also the path a lying cloud-polled counter mostly arrives by — the
+        This is also the path a lying cloud-polled counter mostly arrives by - the
         utility plug reported every ~30 minutes, so most of each delta fell past the
-        watermark — so the plausibility guard has to cover it too, or it would have
+        watermark - so the plausibility guard has to cover it too, or it would have
         missed the very case it exists for (HEA-60).
         """
         self._claim(device, kwh)
@@ -531,7 +531,7 @@ class Accountant:
         headroom = max(Decimal(0), retained.consumption - retained.draw)
         funded = min(kwh, headroom)
         # Only the part the bucket's meters can still fund is priced. The rest is
-        # the same overdraw the live path suspends, arriving later — and this is
+        # the same overdraw the live path suspends, arriving later - and this is
         # the path most of a coarse counter's energy takes, so charging it here
         # would leave the symptom untouched (HEA-85).
         cost = funded * retained.blended
@@ -581,7 +581,7 @@ class Accountant:
         Buckets finalise in order, so a delta is resolvable once the newest slice
         it touched is retained. Both paths arrive here: energy accounted live
         resolves at its own last slice, and energy arriving late for slices
-        already closed resolves at the next finalisation — which matters, because
+        already closed resolves at the next finalisation - which matters, because
         that is the path most of a coarse counter's energy takes (ADR-0006).
         """
         waiting: list[_PendingBound] = []
@@ -636,7 +636,7 @@ class Accountant:
         The overdraw was never charged when it happened: pricing it at import was
         a guess, and publishing a guess means taking it back, which reads as an
         hour that cost less than nothing (HEA-85, ADR-0015 decision 5). It arrives
-        here instead — at the repaying interval's blend, or at import if the debt
+        here instead - at the repaying interval's blend, or at import if the debt
         expired unpaid.
 
         Actual and counterfactual move together. On expiry they are equal and the
@@ -668,7 +668,7 @@ class Accountant:
         """Unreconciled energy as a fraction of everything published.
 
         The same gap the ``unreconciled_energy`` figure carries, expressed the way
-        a household would check it — "my totals sit this far above my meter". A
+        a household would check it - "my totals sit this far above my meter". A
         fraction rather than a quantity because that is what survives comparison
         between a flat and a farmhouse, and what a threshold can be set on.
 
@@ -713,7 +713,7 @@ class Accountant:
         While any house-level input is silent the house total is not evidence of
         anything: an unavailable meter reads as a zero, shrinking consumption
         until honest devices appear to exceed the house they sit in. Nothing is
-        recorded and nothing is condemned — the fault is the meter's, and it is
+        recorded and nothing is condemned - the fault is the meter's, and it is
         reported as such elsewhere.
 
         This protects the figures, not just the message. A condemned device has
@@ -734,7 +734,7 @@ class Accountant:
 
         A part-filled window judges nothing: with one interval's evidence this
         would be the per-bucket test that coarse devices legitimately fail. A
-        house total of zero judges nothing either — a silent house meter is its
+        house total of zero judges nothing either - a silent house meter is its
         own fault, reported elsewhere, and is no evidence against a device.
         """
         if len(self._window) < _PLAUSIBILITY_WINDOW:
@@ -796,7 +796,7 @@ class Accountant:
         Every interval left to finalise starts after the watermark, so the only
         price at or before the watermark that can still apply is the newest one;
         anything older is superseded. Without this the list grows unbounded and is
-        rescanned from index zero per bucket — pathological for a spot tariff.
+        rescanned from index zero per bucket - pathological for a spot tariff.
         """
         if self._watermark is None:
             return
@@ -843,7 +843,7 @@ class Accountant:
 
         # The branch follows what is *readable*, not merely what is configured.
         # A failed house meter otherwise reads as a zero, collapsing consumption
-        # to grid + battery and discarding generation entirely — while the
+        # to grid + battery and discarding generation entirely - while the
         # household may well have the meters for the full-balance model (HEA-67).
         if self._is_readable(SourceRole.HOUSE_CONSUMPTION):
             house = raw.get(SourceRole.HOUSE_CONSUMPTION, Decimal(0))

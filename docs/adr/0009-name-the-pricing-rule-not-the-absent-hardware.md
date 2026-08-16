@@ -4,7 +4,7 @@
 
 Accepted
 
-Supersedes the **naming** of one concept in ADR-0003 — "Cost Without Solar"
+Supersedes the **naming** of one concept in ADR-0003 - "Cost Without Solar"
 becomes **"Cost at Grid Price"** (`cost_without_solar` → `cost_at_grid_price`).
 Everything else in ADR-0003 stands: the `unique_id` scheme, the
 `device_class`/`state_class` table, the Untracked remainder, and the reasoning
@@ -26,17 +26,17 @@ Three distinct problems with "Cost Without Solar":
 1. **Battery arbitrage is not solar.** On the reference instance Predbat
    force-charges from the *grid* at ~€0.093 overnight and discharges at the
    evening peak. That saving is real, is captured by this figure, and has
-   nothing to do with solar — nor is the energy self-produced. It is grid
+   nothing to do with solar - nor is the energy self-produced. It is grid
    energy, time-shifted.
 2. **Generation is not only solar.** Wind, micro-hydro, a generator, a shared
-   supply — anything not coming off the metered import behaves identically in
+   supply - anything not coming off the metered import behaves identically in
    the model, because `SourceKind.GENERATION` is priced at zero at the margin.
    The engine never cared which technology produced it. Naming a source after
    one technology guarantees the name goes stale.
 3. **ADR-0003 already made this argument and did not apply it.** Its rejected
    alternatives say "Solar Saving" was rejected because *"the figure captures
    savings from both local generation and cheap-battery arbitrage, not solar
-   alone — 'Solar' would misdescribe it."* But
+   alone - 'Solar' would misdescribe it."* But
    `Savings ≡ Cost Without Solar − Actual Cost`, so the identical objection
    applies to the minuend. ADR-0003's own Context paragraph says "what it would
    have cost **without local generation**"; its decision table then says
@@ -77,7 +77,7 @@ history or a migration.
 sources a household has. It needs no revision when a fourth source kind appears.
 
 **2. HEA-51's by-source sensor ships as `energy_from_generation`,** never
-`energy_from_solar` — decided before it shipped, so it cost nothing. The trio is
+`energy_from_solar` - decided before it shipped, so it cost nothing. The trio is
 `energy_from_grid` / `energy_from_generation` / `energy_from_battery`.
 
 **3. `CONF_SOLAR_ENTITY` keeps its storage key `"solar_entity"`.** It is
@@ -87,20 +87,20 @@ is retained too, so the key and the symbol do not drift apart.
 
 ### Rejected alternatives
 
-- **"Cost Without Solar and Battery"**: rejected — enumerating hardware is the
+- **"Cost Without Solar and Battery"**: rejected - enumerating hardware is the
   original mistake in a longer form. It goes stale the moment a household has a
   wind turbine, and it cannot describe a source we have not thought of.
-- **"Cost Without Self-Supply" / "Cost Without Self Production"**: rejected —
+- **"Cost Without Self-Supply" / "Cost Without Self Production"**: rejected -
   both inherit the same *class* of error as "Solar", just less visibly. Energy
   discharged from a grid-charged battery was never self-supplied or
   self-produced; it was bought from the grid earlier and more cheaply. These
   names would misdescribe a large part of the winter Predbat saving.
-- **"Grid-Only Cost"**: rejected — ambiguous against HEA-51's new
+- **"Grid-Only Cost"**: rejected - ambiguous against HEA-51's new
   `energy_from_grid`. It reads as "the cost of the grid-supplied portion only",
   which is a different and entirely plausible figure.
-- **Renaming `CONF_SOLAR_ENTITY`'s storage key**: rejected — a config-entry
+- **Renaming `CONF_SOLAR_ENTITY`'s storage key**: rejected - a config-entry
   migration for zero user-visible benefit.
-- **Deferring until after HEA-28's validation week**: rejected — the free window
+- **Deferring until after HEA-28's validation week**: rejected - the free window
   is exactly this deploy, and shipping HEA-51 under a name already agreed to be
   wrong would mean renaming twice.
 
@@ -119,5 +119,5 @@ is retained too, so the key and the symbol do not drift apart.
   work (`docs/dashboard.md`, `docs/dashboard-template.yaml`).
 - Spanish: "Coste sin solar" → "Coste a precio de red".
 - **Revisit if** the export-aware allocation variant (HEA-38) changes what the
-  counterfactual means — pricing generation at the export rate rather than zero
+  counterfactual means - pricing generation at the export rate rather than zero
   would make "at grid price" describe only part of the comparison.

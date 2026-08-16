@@ -68,7 +68,7 @@ def _entry() -> MockConfigEntry:
 async def test_coordinator_accounts_for_a_device_over_an_interval(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a configured home with a grid meter, a tracked device, and a price,
+    # Given - a configured home with a grid meter, a tracked device, and a price,
     # all reading zero at the top of a 5-minute interval
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -79,7 +79,7 @@ async def test_coordinator_accounts_for_a_device_over_an_interval(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — over the interval the house imports 1 kWh and the device draws 0.6
+    # When - over the interval the house imports 1 kWh and the device draws 0.6
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
     hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
@@ -90,7 +90,7 @@ async def test_coordinator_accounts_for_a_device_over_an_interval(
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — the coordinator has priced the device at the import rate
+    # Then - the coordinator has priced the device at the import rate
     coordinator = entry.runtime_data
     subentry_id = next(iter(entry.subentries))
     aircon = coordinator.data.devices[subentry_id]
@@ -102,7 +102,7 @@ async def test_coordinator_accounts_for_a_device_over_an_interval(
 async def test_unchanged_reports_advance_a_sources_last_seen_time(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration whose device counter last changed at 22:00
+    # Given - a running integration whose device counter last changed at 22:00
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -112,13 +112,13 @@ async def test_unchanged_reports_advance_a_sources_last_seen_time(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — a polled integration re-reports the *same* counter value 20 minutes
+    # When - a polled integration re-reports the *same* counter value 20 minutes
     # later: a state_report, not a state_change
     freezer.move_to(datetime(2026, 7, 8, 22, 20, tzinfo=UTC))
     hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     await hass.async_block_till_done()
 
-    # Then — the source's last-seen time advances to the report, so the next real
+    # Then - the source's last-seen time advances to the report, so the next real
     # step spans only the poll gap rather than the whole quiet stretch (HEA-48)
     coordinator = entry.runtime_data
     sources = {s["entity_id"]: s for s in coordinator.diagnostics()["sources"]}
@@ -130,7 +130,7 @@ async def test_unchanged_reports_advance_a_sources_last_seen_time(
 async def test_setup_creates_the_coordinator_and_unload_tears_it_down(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a configured, running integration
+    # Given - a configured, running integration
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -140,11 +140,11 @@ async def test_setup_creates_the_coordinator_and_unload_tears_it_down(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — the coordinator is attached and holds initial (zero) totals
+    # Then - the coordinator is attached and holds initial (zero) totals
     subentry_id = next(iter(entry.subentries))
     assert entry.runtime_data.data.devices[subentry_id].energy_kwh == Decimal(0)
 
-    # When / Then — the entry unloads cleanly, tearing down its listeners and timer
+    # When / Then - the entry unloads cleanly, tearing down its listeners and timer
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.state is ConfigEntryState.NOT_LOADED
@@ -153,7 +153,7 @@ async def test_setup_creates_the_coordinator_and_unload_tears_it_down(
 async def test_unload_flushes_in_flight_accounting_before_teardown(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration with an interval's readings in, but not yet past
+    # Given - a running integration with an interval's readings in, but not yet past
     # the lateness margin, so the finalisation timer has banked nothing
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -173,12 +173,12 @@ async def test_unload_flushes_in_flight_accounting_before_teardown(
     subentry_id = next(iter(entry.subentries))
     assert coordinator.data.devices[subentry_id].energy_kwh == Decimal(0)
 
-    # When — the entry unloads (a restart, or any options/config change)
+    # When - the entry unloads (a restart, or any options/config change)
     freezer.move_to(datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — the in-flight interval was flushed and published before teardown, so
+    # Then - the in-flight interval was flushed and published before teardown, so
     # the sensors banked it into their restore baseline rather than dropping it
     assert entry.state is ConfigEntryState.NOT_LOADED
     assert coordinator.data.devices[subentry_id].energy_kwh == Decimal("0.6")
@@ -187,7 +187,7 @@ async def test_unload_flushes_in_flight_accounting_before_teardown(
 async def test_price_changes_and_bad_readings_are_handled(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration
+    # Given - a running integration
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.10")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -197,7 +197,7 @@ async def test_price_changes_and_bad_readings_are_handled(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — the price changes, then briefly goes unavailable, and the grid meter
+    # When - the price changes, then briefly goes unavailable, and the grid meter
     # reports a garbage value before the real reading lands
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -212,7 +212,7 @@ async def test_price_changes_and_bad_readings_are_handled(
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — accounting carries on through the noise; the bucket is priced at the
+    # Then - accounting carries on through the noise; the bucket is priced at the
     # rate active at its start (€0.10), the mid-bucket change and outages ignored
     coordinator = entry.runtime_data
     subentry_id = next(iter(entry.subentries))
@@ -224,7 +224,7 @@ async def test_price_changes_and_bad_readings_are_handled(
 async def test_coordinator_diagnostics_reports_config_sources_and_totals(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home that has accounted for one interval
+    # Given - a running home that has accounted for one interval
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -241,10 +241,10 @@ async def test_coordinator_diagnostics_reports_config_sources_and_totals(
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # When — a diagnostics snapshot is built
+    # When - a diagnostics snapshot is built
     diagnostics = entry.runtime_data.diagnostics()
 
-    # Then — the config records the house inputs as redaction-friendly records
+    # Then - the config records the house inputs as redaction-friendly records
     subentry_id = next(iter(entry.subentries))
     config = diagnostics["config"]
     assert config["currency"] == "EUR"
@@ -295,32 +295,32 @@ async def _setup_running_home(
 async def test_critical_source_unavailable_past_the_grace_raises_and_clears(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home whose grid meter then goes unavailable
+    # Given - a running home whose grid meter then goes unavailable
     entry = await _setup_running_home(hass, freezer)
     issue_id = source_unavailable_issue_id("sensor.grid_import")
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "unavailable")
     await hass.async_block_till_done()
 
-    # When — half an hour passes: still inside the one-hour grace
+    # When - half an hour passes: still inside the one-hour grace
     await _tick(hass, freezer, datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
 
-    # Then — no Repair yet; brief outages and restarts must not nag
+    # Then - no Repair yet; brief outages and restarts must not nag
     assert not _has_issue(hass, issue_id)
 
-    # When — the outage passes the one-hour grace
+    # When - the outage passes the one-hour grace
     await _tick(hass, freezer, datetime(2026, 7, 8, 23, 5, tzinfo=UTC))
 
-    # Then — the Repair is raised
+    # Then - the Repair is raised
     assert _has_issue(hass, issue_id)
 
-    # When — the meter recovers
+    # When - the meter recovers
     freezer.move_to(datetime(2026, 7, 8, 23, 10, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "5.0", _ENERGY)
     await hass.async_block_till_done()
     await _tick(hass, freezer, datetime(2026, 7, 8, 23, 11, tzinfo=UTC))
 
-    # Then — the Repair clears itself
+    # Then - the Repair clears itself
     assert not _has_issue(hass, issue_id)
     assert entry.state is ConfigEntryState.LOADED
 
@@ -328,16 +328,16 @@ async def test_critical_source_unavailable_past_the_grace_raises_and_clears(
 async def test_price_entity_unavailable_past_the_grace_raises_its_own_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home whose price entity goes unavailable
+    # Given - a running home whose price entity goes unavailable
     await _setup_running_home(hass, freezer)
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
     hass.states.async_set("sensor.price", "unavailable")
     await hass.async_block_till_done()
 
-    # When — the outage passes the grace period
+    # When - the outage passes the grace period
     await _tick(hass, freezer, datetime(2026, 7, 8, 23, 5, tzinfo=UTC))
 
-    # Then — the dedicated price Repair is raised (tied to the unavailable-price
+    # Then - the dedicated price Repair is raised (tied to the unavailable-price
     # policy: accounting continues at the last known price)
     assert _has_issue(hass, ISSUE_PRICE_UNAVAILABLE)
 
@@ -345,16 +345,16 @@ async def test_price_entity_unavailable_past_the_grace_raises_its_own_repair(
 async def test_a_device_sensor_going_unavailable_never_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home whose tracked device goes offline for the season
+    # Given - a running home whose tracked device goes offline for the season
     await _setup_running_home(hass, freezer)
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
     hass.states.async_set("sensor.coarse_step_energy", "unavailable")
     await hass.async_block_till_done()
 
-    # When — a full day passes with the device still unavailable
+    # When - a full day passes with the device still unavailable
     await _tick(hass, freezer, datetime(2026, 7, 9, 22, 5, tzinfo=UTC))
 
-    # Then — no Repair: a device unplugged out of season is expected, not a fault
+    # Then - no Repair: a device unplugged out of season is expected, not a fault
     assert not _has_issue(
         hass, source_unavailable_issue_id("sensor.coarse_step_energy")
     )
@@ -389,7 +389,7 @@ async def _setup_home_with_a_silent_device(
 async def test_a_device_source_that_never_reports_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a device added with an energy sensor that only ever yields
+    # Given - a device added with an energy sensor that only ever yields
     # `unknown`. It is well formed and structurally valid, and it can never
     # accumulate anything: left alone the device sits at zero indefinitely,
     # reading as a quiet appliance rather than a misconfiguration (HEA-69)
@@ -397,35 +397,35 @@ async def test_a_device_source_that_never_reports_raises_a_repair(
     issue_id = source_never_reported_issue_id("sensor.coarse_step_energy")
 
     with patch(_HISTORY, AsyncMock(return_value=False)):
-        # When — half an hour passes: still inside the grace period
+        # When - half an hour passes: still inside the grace period
         await _tick(hass, freezer, datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
 
-        # Then — nothing yet; a slow-polling integration must not be accused
+        # Then - nothing yet; a slow-polling integration must not be accused
         assert not _has_issue(hass, issue_id)
 
-        # When — the silence outlasts the grace, and the recorder confirms there
+        # When - the silence outlasts the grace, and the recorder confirms there
         # is no reading anywhere in its history either
         await _tick(hass, freezer, datetime(2026, 7, 8, 23, 15, tzinfo=UTC))
 
-    # Then — a Repair is raised for the source that has never worked
+    # Then - a Repair is raised for the source that has never worked
     assert _has_issue(hass, issue_id)
 
 
 async def test_a_device_source_with_recorded_history_is_off_not_dead(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — the same silence, but the recorder holds readings from before the
+    # Given - the same silence, but the recorder holds readings from before the
     # integration started watching: a device switched off for the season, not a
-    # dead sensor. HEA-24's rule is absolute — seasonal silence must never nag
+    # dead sensor. HEA-24's rule is absolute - seasonal silence must never nag
     await _setup_home_with_a_silent_device(hass, freezer)
     issue_id = source_never_reported_issue_id("sensor.coarse_step_energy")
 
-    # When — a full day of unbroken silence passes
+    # When - a full day of unbroken silence passes
     probe = AsyncMock(return_value=True)
     with patch(_HISTORY, probe):
         await _tick(hass, freezer, datetime(2026, 7, 9, 22, 5, tzinfo=UTC))
 
-    # Then — nothing is raised, however long the silence lasts...
+    # Then - nothing is raised, however long the silence lasts...
     assert not _has_issue(hass, issue_id)
     # ...and the recorder really was consulted, so the silence is a decision
     # taken on its answer rather than a question never asked
@@ -435,17 +435,17 @@ async def test_a_device_source_with_recorded_history_is_off_not_dead(
 async def test_nothing_is_raised_while_the_recorder_cannot_answer(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — the same silence on an instance with no recorder, so "has this ever
+    # Given - the same silence on an instance with no recorder, so "has this ever
     # reported" has no answer at all
     await _setup_home_with_a_silent_device(hass, freezer)
     issue_id = source_never_reported_issue_id("sensor.coarse_step_energy")
 
-    # When — a full day of silence passes
+    # When - a full day of silence passes
     probe = AsyncMock(return_value=None)
     with patch(_HISTORY, probe):
         await _tick(hass, freezer, datetime(2026, 7, 9, 22, 5, tzinfo=UTC))
 
-    # Then — silence rather than a guess: an unanswerable question is not
+    # Then - silence rather than a guess: an unanswerable question is not
     # evidence a sensor is dead, and a wrong accusation costs the user trust
     assert not _has_issue(hass, issue_id)
     assert probe.await_count == 1
@@ -454,38 +454,38 @@ async def test_nothing_is_raised_while_the_recorder_cannot_answer(
 async def test_the_never_reported_repair_clears_once_the_source_reports(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a device whose dead source has already been reported
+    # Given - a device whose dead source has already been reported
     await _setup_home_with_a_silent_device(hass, freezer)
     issue_id = source_never_reported_issue_id("sensor.coarse_step_energy")
     with patch(_HISTORY, AsyncMock(return_value=False)):
         await _tick(hass, freezer, datetime(2026, 7, 8, 23, 15, tzinfo=UTC))
     assert _has_issue(hass, issue_id)
 
-    # When — the user repoints it, or the sensor finally produces a reading
+    # When - the user repoints it, or the sensor finally produces a reading
     freezer.move_to(datetime(2026, 7, 8, 23, 10, tzinfo=UTC))
     hass.states.async_set("sensor.coarse_step_energy", "12.5", _ENERGY)
     await hass.async_block_till_done()
     await _tick(hass, freezer, datetime(2026, 7, 8, 23, 11, tzinfo=UTC))
 
-    # Then — the Repair clears itself; one reading settles the question for good
+    # Then - the Repair clears itself; one reading settles the question for good
     assert not _has_issue(hass, issue_id)
 
 
 async def test_a_configured_entity_removed_from_hass_raises_a_removed_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home whose device sensor is deleted (or renamed away)
+    # Given - a running home whose device sensor is deleted (or renamed away)
     await _setup_running_home(hass, freezer)
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
     hass.states.async_remove("sensor.coarse_step_energy")
     await hass.async_block_till_done()
 
-    # When — the very next tick notices it is gone (a removed entity has no state,
+    # When - the very next tick notices it is gone (a removed entity has no state,
     # so grace is measured from first sight), then an hour passes still gone
     await _tick(hass, freezer, datetime(2026, 7, 8, 22, 2, tzinfo=UTC))
     await _tick(hass, freezer, datetime(2026, 7, 8, 23, 5, tzinfo=UTC))
 
-    # Then — a removed/renamed Repair is raised even for a device: a vanished
+    # Then - a removed/renamed Repair is raised even for a device: a vanished
     # entity is a real misconfiguration, unlike mere unavailability
     assert _has_issue(hass, source_removed_issue_id("sensor.coarse_step_energy"))
 
@@ -493,12 +493,12 @@ async def test_a_configured_entity_removed_from_hass_raises_a_removed_repair(
 async def test_a_house_whose_meters_reconcile_is_never_told_they_do_not(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a device whose coarse counter regularly out-draws the house within a
+    # Given - a device whose coarse counter regularly out-draws the house within a
     # bucket, which is ordinary rather than a fault: it reports every half hour
     # against a meter read every few seconds (ADR-0015)
     await _setup_running_home(hass, freezer)
 
-    # When — the device steps ahead of the meter, and the meter then catches up
+    # When - the device steps ahead of the meter, and the meter then catches up
     start = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
     for minute in range(5, 80, 5):
         freezer.move_to(start + timedelta(minutes=minute))
@@ -509,7 +509,7 @@ async def test_a_house_whose_meters_reconcile_is_never_told_they_do_not(
         await hass.async_block_till_done()
     await _tick(hass, freezer, start + timedelta(minutes=100))
 
-    # Then — nothing is raised. Every debt was repaid, so there is nothing to
+    # Then - nothing is raised. Every debt was repaid, so there is nothing to
     # tell the household about (HEA-69: a Repair that fires on normal behaviour
     # is worse than none).
     assert not _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
@@ -518,12 +518,12 @@ async def test_a_house_whose_meters_reconcile_is_never_told_they_do_not(
 async def test_totals_that_never_reconcile_raise_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home whose device sensor reports far more energy than the
+    # Given - a running home whose device sensor reports far more energy than the
     # house is ever metered as using: a double-counted sensor rather than a
     # counter reporting late
     entry = await _setup_running_home(hass, freezer)
 
-    # When — the grid imports a trickle while the device claims a hundred times
+    # When - the grid imports a trickle while the device claims a hundred times
     # more, for long enough that the debt passes the quiet span and is written off
     start = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
     for minute in range(5, 200, 5):
@@ -535,11 +535,11 @@ async def test_totals_that_never_reconcile_raise_a_repair(
         await hass.async_block_till_done()
     await _tick(hass, freezer, start + timedelta(minutes=220))
 
-    # Then — the household is told their totals no longer add up to their meter
+    # Then - the household is told their totals no longer add up to their meter
     assert _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
     assert entry.state is ConfigEntryState.LOADED
 
-    # When — the sensor selection is fixed and the household rebases their figures
+    # When - the sensor selection is fixed and the household rebases their figures
     with patch(
         "custom_components.home_energy_advisor.reset.get_instance",
         return_value=MagicMock(),
@@ -552,18 +552,18 @@ async def test_totals_that_never_reconcile_raise_a_repair(
         )
     await _tick(hass, freezer, start + timedelta(minutes=225))
 
-    # Then — the Repair clears with the figures it was raised on
+    # Then - the Repair clears with the figures it was raised on
     assert not _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
 
 
 async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running home whose device source is lying about its energy, the
+    # Given - a running home whose device source is lying about its energy, the
     # way a bugged upstream counter does (HEA-60)
     await _setup_running_home(hass, freezer)
 
-    # When — for over an hour the device claims far more than the house consumes
+    # When - for over an hour the device claims far more than the house consumes
     start = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
     for minute in range(5, 80, 5):
         freezer.move_to(start + timedelta(minutes=minute))
@@ -574,7 +574,7 @@ async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
         await hass.async_block_till_done()
     await _tick(hass, freezer, start + timedelta(minutes=100))
 
-    # Then — a Repair names the offending device, so the user is told which source
+    # Then - a Repair names the offending device, so the user is told which source
     # to look at rather than left to infer it from a flat cost figure
     issue = ir.async_get(hass).async_get_issue(
         DOMAIN, issues.implausible_source_issue_id("Coarse Step Aircon")
@@ -582,7 +582,7 @@ async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
     assert issue is not None
     assert issue.translation_placeholders == {"name": "Coarse Step Aircon"}
 
-    # When — the source starts telling the truth again for a full window
+    # When - the source starts telling the truth again for a full window
     for index, minute in enumerate(range(105, 180, 5)):
         freezer.move_to(start + timedelta(minutes=minute))
         hass.states.async_set("sensor.grid_import", f"{10 + index:.3f}", _ENERGY)
@@ -591,7 +591,7 @@ async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
         await hass.async_block_till_done()
     await _tick(hass, freezer, start + timedelta(minutes=200))
 
-    # Then — the Repair clears. A device is never condemned on past behaviour
+    # Then - the Repair clears. A device is never condemned on past behaviour
     assert not _has_issue(
         hass, issues.implausible_source_issue_id("Coarse Step Aircon")
     )
@@ -622,7 +622,7 @@ def _power_only_entry() -> MockConfigEntry:
 async def test_a_power_only_device_is_costed_via_an_auto_created_helper(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a home whose only tracked device is power-only (smart wall lights),
+    # Given - a home whose only tracked device is power-only (smart wall lights),
     # holding a steady 600 W
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -633,7 +633,7 @@ async def test_a_power_only_device_is_costed_via_an_auto_created_helper(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — the house imports 1 kWh while the lights hold 600 W across the interval
+    # When - the house imports 1 kWh while the lights hold 600 W across the interval
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
     hass.states.async_set("sensor.wall_lights_power", "600", _POWER)
@@ -642,7 +642,7 @@ async def test_a_power_only_device_is_costed_via_an_auto_created_helper(
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — the device is wired through the auto-created Integral helper and
+    # Then - the device is wired through the auto-created Integral helper and
     # draws real energy (~0.1 kWh). (Exact W->kWh accuracy is the native helper's
     # own concern, proven in test_integral_helper; per-bucket source allocation is
     # proven in the engine tests. This asserts the seam: a power-only device is no
@@ -658,12 +658,12 @@ async def test_a_power_only_device_is_costed_via_an_auto_created_helper(
     # correcting later is what HEA-85 removed.
     assert lights.naive_cost == Decimal(0)
 
-    # When — the quiet span passes with the meter still silent
+    # When - the quiet span passes with the meter still silent
     freezer.move_to(datetime(2026, 7, 9, 1, 0, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — the charge falls due at the import rate, through the whole stack.
+    # Then - the charge falls due at the import rate, through the whole stack.
     # Deferred, never dropped.
     settled = coordinator.data.devices[subentry_id]
     assert settled.naive_cost > Decimal(0)
@@ -673,7 +673,7 @@ async def test_a_power_only_device_is_costed_via_an_auto_created_helper(
 async def test_a_watt_hour_device_is_normalised_to_kwh(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a device whose energy sensor reports in Wh, not kWh
+    # Given - a device whose energy sensor reports in Wh, not kWh
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -684,7 +684,7 @@ async def test_a_watt_hour_device_is_normalised_to_kwh(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — it climbs by 600 Wh over the interval
+    # When - it climbs by 600 Wh over the interval
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
     hass.states.async_set("sensor.coarse_step_energy", "600", watt_hours)
@@ -693,7 +693,7 @@ async def test_a_watt_hour_device_is_normalised_to_kwh(
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — that is accounted as 0.6 kWh, not 600
+    # Then - that is accounted as 0.6 kWh, not 600
     aircon = entry.runtime_data.data.devices[next(iter(entry.subentries))]
     assert aircon.energy_kwh == Decimal("0.6")
 
@@ -701,7 +701,7 @@ async def test_a_watt_hour_device_is_normalised_to_kwh(
 async def test_the_coordinator_reports_warming_up_until_an_interval_closes(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a freshly configured home, metering from its first minute
+    # Given - a freshly configured home, metering from its first minute
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -712,19 +712,19 @@ async def test_the_coordinator_reports_warming_up_until_an_interval_closes(
     await hass.async_block_till_done()
     coordinator = entry.runtime_data
 
-    # When — readings arrive but the lateness margin has not yet elapsed
+    # When - readings arrive but the lateness margin has not yet elapsed
     freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
     hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
     hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
     await hass.async_block_till_done()
 
-    # Then — the integration is warming up: counting, with nothing to show for it
+    # Then - the integration is warming up: counting, with nothing to show for it
     assert coordinator.is_warming_up() is True
 
-    # When — the finalisation timer fires past the margin
+    # When - the finalisation timer fires past the margin
     freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then — it is warming up no longer
+    # Then - it is warming up no longer
     assert coordinator.is_warming_up() is False

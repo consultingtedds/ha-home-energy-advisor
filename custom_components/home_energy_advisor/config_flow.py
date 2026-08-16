@@ -1,9 +1,9 @@
-"""Config flow for Home Energy Advisor — the global house-level setup.
+"""Config flow for Home Energy Advisor - the global house-level setup.
 
 Collects the house-level energy inputs (ADR-0002): the import price and currency,
 grid import, and the optional local generation and battery sources. Source entities are
 pre-filled from the Energy Dashboard configuration where the household has set it
-up, on a best-effort basis — prefill never blocks the flow. Per-device tracking
+up, on a best-effort basis - prefill never blocks the flow. Per-device tracking
 is added afterwards as config subentries, not here.
 """
 
@@ -208,7 +208,7 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
 
     A device is identified by exactly one source sensor: an energy counter, or a
     power sensor (whose energy is derived later via an auto-created Integral
-    helper, ADR-0004). Selection is always explicit — devices are never
+    helper, ADR-0004). Selection is always explicit - devices are never
     auto-onboarded from a matching ``device_class`` (false friends, ADR-0004).
     """
 
@@ -277,7 +277,7 @@ def _validate_house_sources(
 
     Validation follows what the model actually consumes, not the whole form. With
     a house-load meter, ADR-0005 takes the residual branch and never reads
-    generation or export, so a net counter there is genuinely harmless — and
+    generation or export, so a net counter there is genuinely harmless - and
     rejecting it would block a configuration that works. Without one, the
     full-balance branch does read them, and a net counter there is booked as
     generation with no warning at all.
@@ -307,7 +307,7 @@ def _validate_device_sources(
     Exactly one of an energy or a power sensor, then a state_class check: a
     *present-but-wrong* class is rejected (a `total` net counter or a measurement
     where a total_increasing counter is needed would book phantom energy). An
-    absent state_class is allowed on this explicit manual pick — discovery is
+    absent state_class is allowed on this explicit manual pick - discovery is
     stricter and simply never suggests one (HEA-54).
     """
     energy = user_input.get(CONF_ENERGY_ENTITY, "")
@@ -338,9 +338,9 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
 
     Daily and monthly cycle totals are always created; the longer cycles are
     opt-in to keep the entity count in check across many devices (ADR-0004). The
-    per-device cost range is opt-in for the same reason (ADR-0016) — the
+    per-device cost range is opt-in for the same reason (ADR-0016) - the
     whole-home range is published either way. Discovery (HEA-45) offers untracked
-    energy/power sensors to add as devices — it only suggests; the user picks.
+    energy/power sensors to add as devices - it only suggests; the user picks.
     All are re-runnable from Configure.
     """
 
@@ -488,7 +488,7 @@ async def _candidate_label_templates(hass: HomeAssistant) -> dict[str, str]:
 
     A candidate row is built per entity, so its wording cannot live in the step's
     own strings. It is looked up from ``common`` instead, which keeps the phrase
-    in `strings.json` where every user-facing string belongs — the Spanish step
+    in `strings.json` where every user-facing string belongs - the Spanish step
     description already promises this marker, and hardcoding it in English meant
     a Spanish user was told to look for something they could never see.
     """

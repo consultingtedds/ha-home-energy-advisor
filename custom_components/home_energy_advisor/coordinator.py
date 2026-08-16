@@ -72,7 +72,7 @@ _FINALIZE_INTERVAL = timedelta(minutes=1)
 _UNAVAILABLE = {"unavailable", "unknown"}
 
 # HEA-24 Repairs. A critical input (price or a house-level source) may be gone
-# this long before a Repair is raised — long enough to ride out restarts and brief
+# this long before a Repair is raised - long enough to ride out restarts and brief
 # outages, short enough to surface a genuinely dead sensor the same day.
 _UNAVAILABLE_GRACE = timedelta(hours=1)
 # How far the published totals may sit above the metered house before the
@@ -80,7 +80,7 @@ _UNAVAILABLE_GRACE = timedelta(hours=1)
 # readings forgives nothing at all, and drifting those same readings through a
 # synthetic over-read gives 0.01 % at 1 %, 0.17 % at 10 % and 0.61 % at 25 %. One
 # percent is therefore far outside anything reporting latency produces, and needs
-# roughly a 30-40 % over-read to reach — egregious, which is the bar a Repair
+# roughly a 30-40 % over-read to reach - egregious, which is the bar a Repair
 # nobody can act on has to clear (HEA-69, HEA-82).
 _UNRECONCILED_SHARE_LIMIT = Decimal("0.01")
 
@@ -131,7 +131,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # Repairs health monitoring (HEA-24). Critical inputs (price + house-level
         # sources) raise a Repair when unavailable past the grace period; any
         # configured entity does when it leaves Home Assistant entirely. The
-        # auto-created helper outputs of power-only devices are excluded — their
+        # auto-created helper outputs of power-only devices are excluded - their
         # health is the helper's concern (surfaced via the helper-recreated Repair).
         helper_outputs = set((power_energy_entities or {}).values())
         self._critical_entities = {*house_sources.values(), self._price_entity}
@@ -142,7 +142,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._input_issues: dict[str, str] = {}
         # HEA-69. Device sources are watched for one thing device unavailability
         # deliberately does not cover: never having reported at all. Helper
-        # outputs are included — a power-only device whose power sensor is dead
+        # outputs are included - a power-only device whose power sensor is dead
         # yields a helper that never reports, and the user's loss is identical.
         self._device_sources = set(self._device_of_entity)
         self._reporting_seen: set[str] = set()
@@ -172,7 +172,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # Polled integrations (aircon ~1/min, Tuya cloud) re-report an unchanged
         # counter between its rare steps. Tracking those reports advances each
         # source's last-seen time, so when the counter finally moves the delta spans
-        # only the poll interval rather than the whole quiet stretch — keeping late
+        # only the poll interval rather than the whole quiet stretch - keeping late
         # portions few and shallow (HEA-48 / ADR-0006). Price is not tracked here:
         # its unchanged re-reports carry no new information.
         self._entry.async_on_unload(
@@ -202,7 +202,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def async_flush(self) -> None:
         """Seal in-flight accounting and publish once, before the entry unloads.
 
-        A reload — restart, or any options/config change — otherwise discards up to
+        A reload - restart, or any options/config change - otherwise discards up to
         ~20 min of unfinalised buckets. Finalising them here and publishing while
         the sensors still exist lets each RestoreSensor bank the totals into its
         restore baseline on removal, so nothing is lost across the reload (HEA-53).
@@ -294,7 +294,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     async def _async_judge_silent_source(self, entity: str) -> None:
         """Raise the Repair only for a source with no history to speak for it.
 
-        An unanswerable question — no recorder — is not evidence, so it is
+        An unanswerable question - no recorder - is not evidence, so it is
         treated the same as history found: say nothing. Wrongly accusing a
         working sensor costs more than staying quiet about a broken one.
         """
@@ -341,7 +341,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _pending_issue(self, entity: str, now: datetime) -> tuple[str, str] | None:
         """The (issue_id, translation_key) an input warrants now, or ``None``.
 
-        ``None`` means healthy, or not yet past the grace period — either way no
+        ``None`` means healthy, or not yet past the grace period - either way no
         issue should stand.
         """
         state = self.hass.states.get(entity)
@@ -353,7 +353,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         return None
 
     def _removed_issue(self, entity: str, now: datetime) -> tuple[str, str] | None:
-        # A removed entity has no state, so no onset timestamp — track from the
+        # A removed entity has no state, so no onset timestamp - track from the
         # first tick that sees it gone and let the grace period ride out restarts.
         since = self._unhealthy_since.setdefault(entity, now)
         if now - since < _UNAVAILABLE_GRACE:
@@ -449,7 +449,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         """Whether the engine is counting but has not yet closed an interval.
 
         True for roughly the first twenty minutes of a runtime's life. On its own
-        that is not enough to tell a first install from a routine restart — the
+        that is not enough to tell a first install from a routine restart - the
         accountant is rebuilt from nothing every startup, so a household with
         months of history passes through this state too. The sensors pair it with
         their own restored baseline to tell the two apart (HEA-47).
@@ -460,7 +460,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         """Assemble the diagnostics download (HEA-24) as JSON-safe primitives.
 
         Joins the entry configuration, the engine's per-source accumulator state
-        and decision log, and the running totals — everything needed to explain
+        and decision log, and the running totals - everything needed to explain
         any published figure without a live instance.
         """
         return {

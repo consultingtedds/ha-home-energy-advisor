@@ -1,6 +1,6 @@
 # pytest-homeassistant-custom-component pins the Home Assistant version it
 # tests against (2026.7.2) along with pytest and its plugins. Do not pin pytest
-# or pytest-cov here — the pins would conflict with it.
+# or pytest-cov here - the pins would conflict with it.
 pytest-homeassistant-custom-component==0.13.346
 
 ruff==0.16.1

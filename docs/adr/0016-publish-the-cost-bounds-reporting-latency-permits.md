@@ -10,7 +10,7 @@ at all, given how rarely its counter reports.
 
 ## Context
 
-A cycle-resetting counter holds still for 30–90 minutes and then reveals a whole
+A cycle-resetting counter holds still for 30-90 minutes and then reveals a whole
 step. The engine spreads that step across the span it accrued over and prices
 each 5-minute slice at that slice's own rate (ADR-0002, and the quiet-run cap in
 HEA-74). This is the best available answer, and it is still an estimate: the
@@ -23,7 +23,7 @@ So the cost has a floor and a ceiling. If every kWh landed in the cheapest
 **This ADR first quoted the wrong measurement, and the corrected one is much
 wider.** The original bounded each delta by the range of *import prices* over its
 span. That is the uncertainty in **Cost at Grid Price**, which is priced at
-import — a well-behaved ±6.0 % on the reference instance. Actual cost is priced
+import - a well-behaved ±6.0 % on the reference instance. Actual cost is priced
 at the *blend* of grid, generation and battery serving each bucket, so its span
 may hold a bucket served by the sun and a bucket served entirely by the meter.
 Re-measured against the per-bucket blends the engine actually charges, over the
@@ -41,8 +41,8 @@ The width is not a household constant, and the spread is far larger than the
 import-price figure suggested: **+8.1 % to +1252 %** per device. The extremes are
 not noise. A device that ran only in the middle of the day costs almost nothing
 because it ran on generation, while a two-hour span containing one grid-served
-bucket permits a cost a hundred times higher — and nothing in the data says which
-happened. Even the well-behaved devices sit at 20–33 %, not 6 %.
+bucket permits a cost a hundred times higher - and nothing in the data says which
+happened. Even the well-behaved devices sit at 20-33 %, not 6 %.
 
 The honest summary for this house is that per-device actual cost is knowable to
 roughly ±15 %, not ±3 %.
@@ -94,11 +94,11 @@ typical error is a fraction of the width and partly cancels across devices.
 
 **5. It is shown as a range in money, never as a percentage.**
 
-`(ceiling − floor) / actual` explodes as actual approaches zero — the +1252 %
+`(ceiling − floor) / actual` explodes as actual approaches zero - the +1252 %
 above is a device that cost less than a cent. That is the same defect that
 sank run-signal weighting in HEA-75: a near-zero denominator turning a small
 absolute uncertainty into a meaningless percentage. Currency has no such
-failure mode, so a device reads `€0.01 (€0.00 – €0.10)`, which says "we cannot
+failure mode, so a device reads `€0.01 (€0.00 - €0.10)`, which says "we cannot
 tell whether this ran on the sun" without arithmetic theatre.
 
 This is also why the bounds are published as costs rather than as a width:
@@ -114,7 +114,7 @@ meters, and how precisely can this energy be priced.
 ## Rejected alternatives
 
 - **A single band percentage per device.** Cannot be aggregated over a period by
-  the statistics substrate, and loses the asymmetry — the priced figure does not
+  the statistics substrate, and loses the asymmetry - the priced figure does not
   sit at the midpoint of its own band.
 - **Bounds as attributes on the existing cost sensors.** No statistics, so the
   band could not be shown for a picked period, which is the only place it is
@@ -136,7 +136,7 @@ and it is the difference between a figure a user trusts and one they check.
 
 A household with fast-reporting metering sees narrow bands and learns their
 figures are solid. One with slow cloud-polled counters sees wide ones and learns
-where to spend money on better metering — which is actionable in a way "results
+where to spend money on better metering - which is actionable in a way "results
 may vary" is not.
 
 Bounds must be maintained on the same paths as cost itself, including the late-

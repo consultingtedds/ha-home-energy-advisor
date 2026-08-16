@@ -1,7 +1,7 @@
 """Repairs issue registry for Home Energy Advisor (HEA-24).
 
 The single home for the integration's issue keys and the thin wrappers that raise
-and clear them, so every caller uses the same translation keys and severity — the
+and clear them, so every caller uses the same translation keys and severity - the
 coordinator (runtime health of sources, the price entity, and the Untracked
 remainder) and the helper-sync modules (a native helper the user deleted, which
 HEA re-created). Every issue is informational (``is_fixable=False``): the fix is
@@ -19,7 +19,7 @@ from .const import DOMAIN
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
-# Translation keys — each has a matching block under ``issues`` in strings.json.
+# Translation keys - each has a matching block under ``issues`` in strings.json.
 ISSUE_SOURCE_REMOVED = "source_removed"
 ISSUE_SOURCE_UNAVAILABLE = "source_unavailable"
 ISSUE_SOURCE_NEVER_REPORTED = "source_never_reported"

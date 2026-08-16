@@ -6,7 +6,7 @@
  *
  * It is drawn by Home Assistant's `ha-chart-base` (ADR-0013), which is theirs
  * and never defined in these tests. What is asserted is therefore the contract
- * we hand it — the series and options — not pixels. A chart that draws a
+ * we hand it - the series and options - not pixels. A chart that draws a
  * convincing picture from the wrong arithmetic is the failure worth catching,
  * and that shows up in the series values.
  */
@@ -78,7 +78,7 @@ describe("registration", () => {
   });
 
   it("offers the same editor as the other cards", () => {
-    // Given / When / Then — one shared editor (HEA-73)
+    // Given / When / Then - one shared editor (HEA-73)
     expect(customElements.get(TAG).getConfigElement()).toBeInstanceOf(HTMLElement);
   });
 });
@@ -88,12 +88,12 @@ describe("the card header", () => {
     card.shadowRoot.querySelector("ha-card").getAttribute("header");
 
   it("names itself, so a chart on a dashboard says what it shows", async () => {
-    // Given — a card added with no configuration at all, which is how the
+    // Given - a card added with no configuration at all, which is how the
     // picker adds it
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then — a bare chart of coloured bars says nothing about what is being
+    // Then - a bare chart of coloured bars says nothing about what is being
     // measured; the legend names the segments but not the subject
     expect(headerOf(card)).toBe("Cost over time");
   });
@@ -110,13 +110,13 @@ describe("the card header", () => {
   });
 
   it("takes an empty title as a deliberate request for no header", async () => {
-    // Given — a user stacking several cards under one heading of their own
+    // Given - a user stacking several cards under one heading of their own
     const card = mount(aHass({ devices: AIRCON, response: twoDays }), {
       title: "",
     });
     await ready(card);
 
-    // Then — absent means "use the default"; empty means "show nothing"
+    // Then - absent means "use the default"; empty means "show nothing"
     expect(headerOf(card)).toBe(null);
   });
 });
@@ -127,7 +127,7 @@ describe("the series handed to the chart", () => {
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then — one stack, so the two segments sum to Cost at Grid Price
+    // Then - one stack, so the two segments sum to Cost at Grid Price
     expect(seriesOf(card, "paid").stack).toBe("cost");
     expect(seriesOf(card, "saved").stack).toBe(seriesOf(card, "paid").stack);
     expect(seriesOf(card, "paid").type).toBe("bar");
@@ -138,7 +138,7 @@ describe("the series handed to the chart", () => {
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then — day one paid 1 of 3, day two paid 2 of 3
+    // Then - day one paid 1 of 3, day two paid 2 of 3
     expect(seriesOf(card, "paid").data).toEqual([
       [DAY_ONE.getTime(), 1],
       [DAY_TWO.getTime(), 2],
@@ -150,20 +150,20 @@ describe("the series handed to the chart", () => {
   });
 
   it("keeps a loss negative, so it stacks below the axis", async () => {
-    // Given — paid 5 where the grid would have cost 3
+    // Given - paid 5 where the grid would have cost 3
     const card = mount(aHass({ devices: AIRCON, response: aLoss }));
     await ready(card);
 
     // When
     const [point] = seriesOf(card, "saved").data;
 
-    // Then — negative is how Home Assistant renders exported energy, and
+    // Then - negative is how Home Assistant renders exported energy, and
     // ECharts stacks it downwards (ADR-0012 decision 3)
     expect(point.value).toEqual([DAY_ONE.getTime(), -2]);
   });
 
   it("colours a loss differently from a saving", async () => {
-    // Given — the one figure a user must not misread as a gain
+    // Given - the one figure a user must not misread as a gain
     const card = mount(aHass({ devices: AIRCON, response: aLoss }));
     await ready(card);
 
@@ -206,12 +206,12 @@ describe("the options handed to the chart", () => {
   });
 
   it("formats hovered figures as money, not as raw numbers", async () => {
-    // Given — a bucket whose cost divides into recurring decimals, which is
+    // Given - a bucket whose cost divides into recurring decimals, which is
     // what an allocated share normally does
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then — the tooltip reads like a price. Unrounded, this shows fourteen
+    // Then - the tooltip reads like a price. Unrounded, this shows fourteen
     // decimal places of a euro, which is unreadable and says nothing true:
     // money is not accurate to the femto-cent
     const shown = chartOf(card).options.tooltip.valueFormatter(1.2345678901234);
@@ -225,7 +225,7 @@ describe("the options handed to the chart", () => {
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then — the minus survives formatting (HEA-39)
+    // Then - the minus survives formatting (HEA-39)
     expect(chartOf(card).options.tooltip.valueFormatter(-0.5)).toMatch(/-/);
   });
 
@@ -242,7 +242,7 @@ describe("the options handed to the chart", () => {
 
 describe("when there is nothing to draw", () => {
   it("says so when the period holds no buckets at all", async () => {
-    // Given — a range earlier than any recorded statistic. An empty axis reads
+    // Given - a range earlier than any recorded statistic. An empty axis reads
     // as "it cost nothing", which is a different claim.
     const card = mount(aHass({ devices: AIRCON, response: {} }));
     await ready(card);
@@ -253,7 +253,7 @@ describe("when there is nothing to draw", () => {
   });
 
   it("says so when Home Assistant's chart component never loaded", async () => {
-    // Given — a dashboard carrying only HEA cards, where nothing has pulled
+    // Given - a dashboard carrying only HEA cards, where nothing has pulled
     // ha-chart-base in and the nudge did not work either (ADR-0013)
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
@@ -262,13 +262,13 @@ describe("when there is nothing to draw", () => {
     card._chartReady = false;
     card._render();
 
-    // Then — an empty box would leave the user with nothing to act on
+    // Then - an empty box would leave the user with nothing to act on
     expect(card.shadowRoot.textContent).toMatch(/chart component is not loaded/i);
     expect(card.shadowRoot.textContent).toMatch(/energy or statistics card/i);
   });
 
   it("asks Home Assistant to load the component when it is missing", async () => {
-    // Given — creating any built-in chart card imports it as a side effect
+    // Given - creating any built-in chart card imports it as a side effect
     const createCardElement = vi.fn().mockResolvedValue(document.createElement("div"));
     globalThis.loadCardHelpers = vi.fn().mockResolvedValue({ createCardElement });
     const card = document.createElement(TAG);
@@ -287,7 +287,7 @@ describe("when there is nothing to draw", () => {
   });
 
   it("survives the nudge itself failing", async () => {
-    // Given — loadCardHelpers can reject on an instance where the helper is
+    // Given - loadCardHelpers can reject on an instance where the helper is
     // unavailable; the card must degrade, not throw inside a promise nobody
     // is awaiting
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -299,7 +299,7 @@ describe("when there is nothing to draw", () => {
     // When
     document.body.append(card);
 
-    // Then — it warns and re-checks rather than throwing inside a promise
+    // Then - it warns and re-checks rather than throwing inside a promise
     // nobody awaits, and here the component turns out to be present anyway
     await vi.waitFor(() => expect(warn).toHaveBeenCalled());
     expect(card._chartReady).toBe(true);

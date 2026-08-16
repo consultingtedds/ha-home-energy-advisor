@@ -2,7 +2,7 @@
  * The adapter is the only module allowed to touch Home Assistant frontend
  * internals (ADR-0012 decision 5), so it is the only place these assumptions
  * can be pinned. Each test below corresponds to something the HEA-50 spike
- * established by probing 2026.8 — none of it is a published contract.
+ * established by probing 2026.8 - none of it is a published contract.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ const anEnergyCollection = (start, end) => {
 
 /**
  * One of Home Assistant's own registries. Carries `subscribe` and `refresh`
- * exactly like an energy collection — which is what made shape-matching alone
+ * exactly like an energy collection - which is what made shape-matching alone
  * latch onto the entity registry during the spike.
  */
 const aRegistry = () => ({
@@ -56,14 +56,14 @@ const JULY = new Date("2026-07-15T23:59:59Z");
 
 describe("connectionKeyFor", () => {
   it("caches under the collection key itself, as Home Assistant does", () => {
-    // Given / When / Then — verified against the live instance on 2026-08-10:
+    // Given / When / Then - verified against the live instance on 2026-08-10:
     // a picker configured `collection_key: energy_hea-costs` put its collection
     // at `_energy_hea-costs`, not `_energy_energy_hea-costs`
     expect(connectionKeyFor("energy_hea-costs")).toBe("_energy_hea-costs");
   });
 
   it("accepts a key written without the prefix Home Assistant demands", () => {
-    // Given — a user who wrote the key the way it reads, not the way it
+    // Given - a user who wrote the key the way it reads, not the way it
     // validates. No collection can exist under it, because the picker would
     // have refused the key outright, so this is what they meant.
     // When / Then
@@ -71,7 +71,7 @@ describe("connectionKeyFor", () => {
   });
 
   it("falls back to the key Home Assistant derives from the dashboard", () => {
-    // Given — no collection_key anywhere, on the `hea-costs` dashboard. Home
+    // Given - no collection_key anywhere, on the `hea-costs` dashboard. Home
     // Assistant gives each dashboard its own collection rather than one shared
     // across all of them (verified live: panelUrl `hea-costs`).
     // When / Then
@@ -95,18 +95,18 @@ describe("isEnergyCollection", () => {
   });
 
   it("rejects Home Assistant's entity registry", () => {
-    // Given — the registry that shape-matching wrongly selected during the spike
+    // Given - the registry that shape-matching wrongly selected during the spike
     const registry = aRegistry();
 
-    // When / Then — it subscribes and refreshes, but it is not a period
+    // When / Then - it subscribes and refreshes, but it is not a period
     expect(isEnergyCollection("_ent", registry)).toBe(false);
   });
 
   it("rejects an energy-prefixed object that carries no period", () => {
-    // Given — the right key but the wrong shape
+    // Given - the right key but the wrong shape
     const notAPeriod = { subscribe: () => () => {}, refresh: () => {} };
 
-    // When / Then — the prefix alone is not enough
+    // When / Then - the prefix alone is not enough
     expect(isEnergyCollection("_energy_hea-costs", notAPeriod)).toBe(false);
   });
 
@@ -119,13 +119,13 @@ describe("isEnergyCollection", () => {
 
 describe("fallbackPeriod", () => {
   it("offers a month ending now, so a card without a picker still draws", () => {
-    // Given — a dashboard with no energy-date-selection card on it
+    // Given - a dashboard with no energy-date-selection card on it
     const now = new Date("2026-08-09T14:30:00Z");
 
     // When
     const period = fallbackPeriod(now);
 
-    // Then — 30 whole days back, and flagged so a card can say it is a default
+    // Then - 30 whole days back, and flagged so a card can say it is a default
     expect(period.end).toEqual(now);
     expect(period.fallback).toBe(true);
     const days = (period.end - period.start) / (1000 * 60 * 60 * 24);
@@ -145,7 +145,7 @@ describe("fallbackPeriod", () => {
 
 describe("findEnergyCollections", () => {
   it("finds the energy collection among Home Assistant's registries", () => {
-    // Given — the connection as observed live: registries plus one picker
+    // Given - the connection as observed live: registries plus one picker
     const energy = anEnergyCollection(MAY, JULY);
     const hass = aHass({
       _ent: aRegistry(),
@@ -158,12 +158,12 @@ describe("findEnergyCollections", () => {
     // When
     const found = findEnergyCollections(hass);
 
-    // Then — only the energy one, however similar the others look
+    // Then - only the energy one, however similar the others look
     expect(Object.keys(found)).toEqual(["_energy_hea-costs"]);
   });
 
   it("ignores a connection property whose getter throws", () => {
-    // Given — a connection carrying a hostile property
+    // Given - a connection carrying a hostile property
     const energy = anEnergyCollection(MAY, JULY);
     const connection = { "_energy_hea-costs": energy };
     Object.defineProperty(connection, "_explosive", {
@@ -173,14 +173,14 @@ describe("findEnergyCollections", () => {
       },
     });
 
-    // When / Then — discovery survives it
+    // When / Then - discovery survives it
     expect(Object.keys(findEnergyCollections(aHass(connection)))).toEqual([
       "_energy_hea-costs",
     ]);
   });
 
   it("returns nothing when there is no connection", () => {
-    // Given / When / Then — a card can be constructed before hass arrives
+    // Given / When / Then - a card can be constructed before hass arrives
     expect(findEnergyCollections(undefined)).toEqual({});
     expect(findEnergyCollections({})).toEqual({});
   });
@@ -188,7 +188,7 @@ describe("findEnergyCollections", () => {
 
 describe("resolveCollection", () => {
   it("prefers the collection key the card was configured with", () => {
-    // Given — two pickers on one dashboard
+    // Given - two pickers on one dashboard
     const mine = anEnergyCollection(MAY, JULY);
     const theirs = anEnergyCollection(MAY, JULY);
     const hass = aHass({ "_energy_hea-costs": mine, _energy_other: theirs });
@@ -198,7 +198,7 @@ describe("resolveCollection", () => {
   });
 
   it("picks the right one of two pickers, given the key as HA validates it", () => {
-    // Given — two pickers on one dashboard, and a card configured the way Home
+    // Given - two pickers on one dashboard, and a card configured the way Home
     // Assistant requires the key to be written. Getting this wrong misses the
     // lookup and silently falls through to whichever picker was found first.
     const mine = anEnergyCollection(MAY, JULY);
@@ -213,7 +213,7 @@ describe("resolveCollection", () => {
   });
 
   it("uses the dashboard's own collection when the card names no key", () => {
-    // Given — two dashboards' collections on one connection, and a card on the
+    // Given - two dashboards' collections on one connection, and a card on the
     // `hea-costs` dashboard that declares nothing
     const mine = anEnergyCollection(MAY, JULY);
     const theirs = anEnergyCollection(MAY, JULY);
@@ -227,11 +227,11 @@ describe("resolveCollection", () => {
   });
 
   it("follows the only picker present when the configured key misses", () => {
-    // Given — the card names a key the dashboard's picker does not use
+    // Given - the card names a key the dashboard's picker does not use
     const onlyOne = anEnergyCollection(MAY, JULY);
     const hass = aHass({ "_energy_hea-costs": onlyOne });
 
-    // When / Then — following the visible picker beats showing a stale period
+    // When / Then - following the visible picker beats showing a stale period
     expect(resolveCollection(hass, "a-key-nobody-configured")).toBe(onlyOne);
   });
 
@@ -245,7 +245,7 @@ describe("resolveCollection", () => {
 
 describe("subscribeToPeriod", () => {
   it("emits a fallback period immediately so a card never renders empty", () => {
-    // Given — a dashboard with no picker yet
+    // Given - a dashboard with no picker yet
     const onPeriod = vi.fn();
 
     // When
@@ -257,14 +257,14 @@ describe("subscribeToPeriod", () => {
   });
 
   it("emits the picker's period as soon as it attaches", () => {
-    // Given — a picker already on the page
+    // Given - a picker already on the page
     const energy = anEnergyCollection(MAY, JULY);
     const onPeriod = vi.fn();
 
     // When
     subscribeToPeriod(aHass({ "_energy_hea-costs": energy }), "hea-costs", onPeriod);
 
-    // Then — the fallback first, then the real period
+    // Then - the fallback first, then the real period
     expect(onPeriod).toHaveBeenCalledTimes(2);
     expect(onPeriod).toHaveBeenLastCalledWith({
       start: MAY,
@@ -274,12 +274,12 @@ describe("subscribeToPeriod", () => {
   });
 
   it("emits again when the user changes the period", () => {
-    // Given — a card following the picker
+    // Given - a card following the picker
     const energy = anEnergyCollection(MAY, JULY);
     const onPeriod = vi.fn();
     subscribeToPeriod(aHass({ "_energy_hea-costs": energy }), "hea-costs", onPeriod);
 
-    // When — the user picks a different range
+    // When - the user picks a different range
     const august = new Date("2026-08-01T00:00:00Z");
     const now = new Date("2026-08-09T00:00:00Z");
     energy.announce(august, now);
@@ -293,13 +293,13 @@ describe("subscribeToPeriod", () => {
   });
 
   it("attaches later when the picker renders after the card", () => {
-    // Given — card ordering on a view is not guaranteed, so the picker may
+    // Given - card ordering on a view is not guaranteed, so the picker may
     // create the collection only after this card's first hass update
     const onPeriod = vi.fn();
     const subscription = subscribeToPeriod(aHass({}), "hea-costs", onPeriod);
     expect(subscription.retry(aHass({}))).toBe(false);
 
-    // When — the picker appears
+    // When - the picker appears
     const energy = anEnergyCollection(MAY, JULY);
     const attached = subscription.retry(aHass({ "_energy_hea-costs": energy }));
 
@@ -313,7 +313,7 @@ describe("subscribeToPeriod", () => {
   });
 
   it("stops updating once unsubscribed, and tolerates being unsubscribed twice", () => {
-    // Given — a card following the picker, then removed from the dashboard
+    // Given - a card following the picker, then removed from the dashboard
     const energy = anEnergyCollection(MAY, JULY);
     const onPeriod = vi.fn();
     const subscription = subscribeToPeriod(
@@ -327,7 +327,7 @@ describe("subscribeToPeriod", () => {
     subscription.unsubscribe();
     energy.announce(new Date("2026-08-01T00:00:00Z"), new Date());
 
-    // Then — no listener left behind, and no further callbacks
+    // Then - no listener left behind, and no further callbacks
     expect(energy.listenerCount).toBe(0);
     expect(onPeriod).toHaveBeenCalledTimes(2);
   });
