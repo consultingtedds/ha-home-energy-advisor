@@ -2,7 +2,7 @@
 
 Home Assistant's ``total_increasing`` counters come in two flavours on real
 hardware: lifetime counters that climb for years, and counters that reset
-constantly — per-cycle counters that restart whenever the appliance's cycle
+constantly - per-cycle counters that restart whenever the appliance's cycle
 ends, device-side daily counters that roll over at midnight. Both are handled by
 one rule, validated against real instance data in
 ``docs/notes/AIRCON_COST_EXPLORATION.md``.
@@ -36,8 +36,8 @@ if TYPE_CHECKING:
 
 _WH_PER_KWH = Decimal(1000)
 
-# How far back into a *quiet* run — one where the source kept reporting an
-# unchanged counter — a delta may reach for the energy it finally reveals.
+# How far back into a *quiet* run - one where the source kept reporting an
+# unchanged counter - a delta may reach for the energy it finally reveals.
 #
 # Coarse counters hold still for 30-90 minutes and then jump a whole step. That
 # step accrued across the quiet run, so anchoring it to the previous *reading*
@@ -55,7 +55,7 @@ _WH_PER_KWH = Decimal(1000)
 # hours, and 53 %, then 29 %, then 4 % beyond it. The cliff is the boundary
 # between "working slowly" and "switched off", and it falls exactly here.
 # Independently, the energy a capped spread misplaces against a run-signal
-# weighting is minimised at the same value — 6.9 % of fleet energy, against
+# weighting is minimised at the same value - 6.9 % of fleet energy, against
 # 10.4 % at one hour and 34 % at thirty minutes.
 #
 # Weighting by the run signal itself was measured and rejected: it moves
@@ -81,7 +81,7 @@ class EnergyUnit(Enum):
 class Reading:
     """One observation of a counter.
 
-    A ``value`` of ``None`` means the source had no reading — Home Assistant's
+    A ``value`` of ``None`` means the source had no reading - Home Assistant's
     ``unavailable`` and ``unknown`` states, mapped by the integration layer so
     that the engine never learns Home Assistant's vocabulary.
     """
@@ -151,7 +151,7 @@ class SourceSnapshot:
 
 @dataclass(frozen=True)
 class _Observation:
-    """A reading known to carry a value — the only kind worth remembering."""
+    """A reading known to carry a value - the only kind worth remembering."""
 
     at: datetime
     value: Decimal
@@ -161,7 +161,7 @@ class CumulativeEnergySource:
     """Extracts energy deltas from a ``total_increasing`` counter.
 
     A falling counter is a reset, not negative consumption: the new value is
-    taken as a fresh cycle's energy. Gaps are always attributed — a counter that
+    taken as a fresh cycle's energy. Gaps are always attributed - a counter that
     climbs while its sensor is unavailable really did consume that energy, so it
     is reported spanning the gap rather than discarded.
     """
@@ -238,8 +238,8 @@ class CumulativeEnergySource:
     def note_dropped_late(self, at: datetime, kwh: Decimal) -> None:
         """Record that a portion of energy fell past the accountant's ring (HEA-48).
 
-        The accountant, not the source, decides a portion is unplaceable — it lands
-        in a bucket already evicted from the retention ring — but the drop is logged
+        The accountant, not the source, decides a portion is unplaceable - it lands
+        in a bucket already evicted from the retention ring - but the drop is logged
         here so it rides the same per-source decision log the diagnostics read.
         """
         self._log(at, DecisionReason.DROPPED_LATE, kwh)
@@ -247,8 +247,8 @@ class CumulativeEnergySource:
     def note_implausible(self, at: datetime, kwh: Decimal) -> None:
         """Record energy refused because this source cannot be telling the truth.
 
-        The accountant, not the source, makes the judgement — it needs the whole
-        house to compare against — but it is logged here so the diagnostics
+        The accountant, not the source, makes the judgement - it needs the whole
+        house to compare against - but it is logged here so the diagnostics
         download can explain a device whose figures have stopped moving (HEA-60).
         """
         self._log(at, DecisionReason.IMPLAUSIBLE, kwh)
@@ -256,8 +256,8 @@ class CumulativeEnergySource:
     def note_zero_priced(self, at: datetime) -> None:
         """Record that a bucket finalised before any import price was known (HEA-53).
 
-        Costing it at zero is deliberate — the price for that instant is genuinely
-        unknowable in real time — but logging it here, on the price-bearing import
+        Costing it at zero is deliberate - the price for that instant is genuinely
+        unknowable in real time - but logging it here, on the price-bearing import
         source, lets the diagnostics download explain the zero-cost early bucket.
         """
         self._log(at, DecisionReason.ZERO_PRICED, None)

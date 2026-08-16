@@ -8,7 +8,7 @@ Accepted
 
 Home Energy Advisor complements Home Assistant's Energy Dashboard by explaining
 money rather than energy flows (ADR-0000). That framing already assumes the
-product lives *inside* Home Assistant — but the delivery form was still a choice,
+product lives *inside* Home Assistant - but the delivery form was still a choice,
 and it shapes everything downstream: how users install and configure it, what
 kind of entities it produces, how history is retained, and how it is distributed.
 
@@ -20,20 +20,20 @@ cycle totals.
 
 ## Decision
 
-Ship as a **native Home Assistant custom integration** —
+Ship as a **native Home Assistant custom integration** -
 `custom_components/home_energy_advisor/`, config-flow-installed, HACS-distributed.
 
 This buys, as first-class citizens rather than bolt-ons:
 
-- **Config flow / options flow** — guided setup and later reconfiguration,
+- **Config flow / options flow** - guided setup and later reconfiguration,
   pre-filled from Energy Dashboard preferences; no YAML surgery.
 - **First-class entities** with `unique_id`, `device_class`, `state_class` and
   device grouping (ADR-0003), so the sensors behave like any other HA entity.
-- **Recorder + long-term statistics** — the durable, trustworthy history the PRD
+- **Recorder + long-term statistics** - the durable, trustworthy history the PRD
   demands, and the substrate for historical backfill (Epic 7).
-- **Repairs and diagnostics** — to explain any cost figure and flag broken source
+- **Repairs and diagnostics** - to explain any cost figure and flag broken source
   entities, meeting the PRD's transparency constraint.
-- **HACS distribution** — the norm for community integrations, matching the
+- **HACS distribution** - the norm for community integrations, matching the
   charter's open-source-first principle.
 
 Internally this pairs with a strict separation (ADR-0002/0004): a pure-Python
@@ -64,12 +64,12 @@ unit-testable.
   constraints: Python, async event loop, `hassfest`/HACS validation, and the
   Unix-only test story (`pytest-homeassistant-custom-component`; see
   `CLAUDE.md`).
-- Enables the whole downstream plan — config flow (HEA-20), native helper reuse
+- Enables the whole downstream plan - config flow (HEA-20), native helper reuse
   (ADR-0004), long-term statistics and backfill (Epic 7), Repairs/diagnostics
-  (HEA-24) — none of which the alternatives support cleanly.
+  (HEA-24) - none of which the alternatives support cleanly.
 - The engine/adapter split (this ADR + ADR-0002) keeps the financial core
   portable in principle; if the integration form ever had to change, the engine
   would survive intact.
 - Revisit if: Home Assistant's integration model changes fundamentally, or a use
-  case emerges that genuinely cannot be served from inside HA (none is foreseen —
+  case emerges that genuinely cannot be served from inside HA (none is foreseen -
   the product is defined as complementing the Energy Dashboard).

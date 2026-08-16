@@ -3,7 +3,7 @@
  *
  * The visual editors (HEA-73). Without one, a custom card drops the user into
  * raw YAML and expects them to know that a device is called
- * `fine_meter_aircon` — a slug that appears nowhere in the interface.
+ * `fine_meter_aircon` - a slug that appears nowhere in the interface.
  *
  * `ha-form` belongs to Home Assistant and is never defined in these tests, so
  * what is asserted is the contract we hand it: the schema, the data, and the
@@ -56,14 +56,14 @@ describe("a card's editor", () => {
     // Given / When
     const editor = anEditorFor(TOTALS_TAG, { title: "Running costs" });
 
-    // Then — ha-form renders from this, so it is what the user sees pre-filled
+    // Then - ha-form renders from this, so it is what the user sees pre-filled
     expect(formOf(editor).data).toEqual(
       expect.objectContaining({ title: "Running costs" }),
     );
   });
 
   it("labels its fields in words, not in config keys", () => {
-    // Given — ha-form asks the editor what to call each field, and
+    // Given - ha-form asks the editor what to call each field, and
     // "collection_key" means nothing to a household
     const editor = anEditorFor(TOTALS_TAG);
 
@@ -75,7 +75,7 @@ describe("a card's editor", () => {
   });
 
   it("waits for its configuration when hass arrives first", () => {
-    // Given — Home Assistant sets hass and setConfig in whichever order suits
+    // Given - Home Assistant sets hass and setConfig in whichever order suits
     // it, and an editor that rendered without a config would crash the panel
     const editor = customElements.get(TOTALS_TAG).getConfigElement();
     document.body.append(editor);
@@ -101,14 +101,14 @@ describe("a card's editor", () => {
 
 describe("choosing devices", () => {
   it("lists devices by the name the household gave them", () => {
-    // Given — the whole point: `fine_meter_aircon` appears nowhere in the
+    // Given - the whole point: `fine_meter_aircon` appears nowhere in the
     // interface, so nobody should have to type it
     const editor = anEditorFor(TOTALS_TAG);
 
     // When
     const options = fieldOf(editor, "devices").selector.select.options;
 
-    // Then — the name is shown, the key is what gets written
+    // Then - the name is shown, the key is what gets written
     expect(options).toEqual([
       { value: "fine_meter_aircon", label: "Fine Meter Aircon" },
       { value: "slow_poll_aircon", label: "Slow Poll Aircon" },
@@ -116,14 +116,14 @@ describe("choosing devices", () => {
   });
 
   it("lets more than one be chosen", () => {
-    // Given / When / Then — "this device, or these devices, cost x"
+    // Given / When / Then - "this device, or these devices, cost x"
     expect(fieldOf(anEditorFor(TOTALS_TAG), "devices").selector.select.multiple).toBe(
       true,
     );
   });
 
   it("offers nothing rather than breaking when the integration is absent", () => {
-    // Given — a card being configured before HEA is set up
+    // Given - a card being configured before HEA is set up
     const editor = anEditorFor(TOTALS_TAG, {}, aHass({ devices: null }));
 
     // When / Then
@@ -131,7 +131,7 @@ describe("choosing devices", () => {
   });
 
   it("follows the device list as it changes", () => {
-    // Given — a device added while the editor is open
+    // Given - a device added while the editor is open
     const editor = anEditorFor(TOTALS_TAG, {}, aHass({ devices: [TWO_DEVICES[0]] }));
     expect(fieldOf(editor, "devices").selector.select.options).toHaveLength(1);
 
@@ -148,7 +148,7 @@ describe("the devices card's own options", () => {
     // Given / When
     const sort = fieldOf(anEditorFor(DEVICES_TAG), "sort_by");
 
-    // Then — the same four the card validates, so the editor cannot produce a
+    // Then - the same four the card validates, so the editor cannot produce a
     // config the card would reject
     expect(sort.selector.select.options.map((option) => option.value)).toEqual([
       "actual_cost",
@@ -171,7 +171,7 @@ describe("reporting a change", () => {
     const changed = vi.fn();
     editor.addEventListener("config-changed", changed);
 
-    // When — the user picks two devices
+    // When - the user picks two devices
     userEdits(editor, {
       title: "Running costs",
       devices: ["slow_poll_aircon", "fine_meter_aircon"],
@@ -187,7 +187,7 @@ describe("reporting a change", () => {
   });
 
   it("crosses the shadow boundary, or the dashboard never hears it", () => {
-    // Given — Home Assistant listens on an ancestor, not on the editor
+    // Given - Home Assistant listens on an ancestor, not on the editor
     const editor = anEditorFor(TOTALS_TAG);
     const heard = vi.fn();
     document.body.addEventListener("config-changed", heard);
@@ -200,7 +200,7 @@ describe("reporting a change", () => {
   });
 
   it("drops a field the user cleared instead of writing an empty one", () => {
-    // Given — a card whose title the user has just deleted
+    // Given - a card whose title the user has just deleted
     const editor = anEditorFor(TOTALS_TAG, { title: "Running costs" });
     const changed = vi.fn();
     editor.addEventListener("config-changed", changed);
@@ -208,22 +208,22 @@ describe("reporting a change", () => {
     // When
     userEdits(editor, { title: "" });
 
-    // Then — the yaml stays as small as what was actually chosen
+    // Then - the yaml stays as small as what was actually chosen
     expect(changed.mock.calls[0][0].detail.config).toEqual({
       type: `custom:${TOTALS_TAG}`,
     });
   });
 
   it("treats choosing no devices as the whole house, not as an empty filter", () => {
-    // Given — a card filtered to one device
+    // Given - a card filtered to one device
     const editor = anEditorFor(TOTALS_TAG, { devices: ["slow_poll_aircon"] });
     const changed = vi.fn();
     editor.addEventListener("config-changed", changed);
 
-    // When — the user unticks it
+    // When - the user unticks it
     userEdits(editor, { devices: [] });
 
-    // Then — an empty list would show an empty card; absent means everything
+    // Then - an empty list would show an empty card; absent means everything
     expect(changed.mock.calls[0][0].detail.config).toEqual({
       type: `custom:${TOTALS_TAG}`,
     });

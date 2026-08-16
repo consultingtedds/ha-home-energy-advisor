@@ -9,7 +9,7 @@ cancels (ADR-0015).
 
 These tests assert the two figures a user can verify without trusting anything:
 published energy against the meter, and published cost against the real cost of
-that energy. Both hold over a period rather than over a single bucket — a bucket
+that energy. Both hold over a period rather than over a single bucket - a bucket
 that overdraws is charged for energy the meters have not yet reported, and the
 bucket that repays gives it back at the price it was charged.
 
@@ -57,7 +57,7 @@ def _roles(sources: dict[str, str]) -> dict[SourceRole, str]:
 def overdraw_then_repay(acc: Accountant) -> None:
     """One bucket where the counter overshoots the meter, then one where it catches up.
 
-    The house draws 0.1 kWh and then 0.5 kWh — 0.6 kWh altogether. The device's
+    The house draws 0.1 kWh and then 0.5 kWh - 0.6 kWh altogether. The device's
     counter reveals a 0.4 kWh step in the first bucket and holds still through
     the second, which is exactly how a counter that reports every half hour
     behaves against a meter that reports every few seconds. Nothing here is
@@ -74,13 +74,13 @@ def overdraw_then_repay(acc: Accountant) -> None:
 
 
 def test_published_energy_equals_the_metered_house_over_the_period() -> None:
-    # Given — a counter that overshoots one bucket and is quiet the next
+    # Given - a counter that overshoots one bucket and is quiet the next
     acc = a_home()
 
     # When
     overdraw_then_repay(acc)
 
-    # Then — the house consumed 0.6 kWh and that is what is published. Clamping
+    # Then - the house consumed 0.6 kWh and that is what is published. Clamping
     # each bucket at zero would publish max(0.1, 0.4) + max(0.5, 0) = 0.9.
     assert acc.totals().whole_home.energy_kwh == Decimal("0.6")
 
@@ -90,20 +90,20 @@ def test_published_cost_equals_the_real_cost_of_that_energy() -> None:
     acc = a_home()
     overdraw_then_repay(acc)
 
-    # Then — 0.6 kWh at the 0.30 tariff is 0.18. Charging the overdraw without
+    # Then - 0.6 kWh at the 0.30 tariff is 0.18. Charging the overdraw without
     # ever giving it back bills 0.12 + 0.15 = 0.27, half again over the meter.
     assert acc.totals().whole_home.actual_cost == Decimal("0.18")
 
 
 def test_the_device_still_pays_the_tariff_for_what_it_drew() -> None:
-    # Given — reconciling the total must not be done by quietly discounting the
+    # Given - reconciling the total must not be done by quietly discounting the
     # device, which is the dilution HEA-74 fixed
     acc = a_home()
 
     # When
     overdraw_then_repay(acc)
 
-    # Then — 0.4 kWh at 0.30
+    # Then - 0.4 kWh at 0.30
     assert acc.totals().devices["coarse_step_aircon"].actual_cost == Decimal("0.12")
 
 
@@ -112,7 +112,7 @@ def test_the_remainder_absorbs_the_correction_and_never_goes_negative() -> None:
     acc = a_home()
     overdraw_then_repay(acc)
 
-    # Then — the remainder carries what is left: 0.2 kWh for 0.06, and it is the
+    # Then - the remainder carries what is left: 0.2 kWh for 0.06, and it is the
     # only label that moves. Published figures stay non-negative however deep the
     # internal balance went (ADR-0015 decision 2).
     untracked = acc.totals().untracked
@@ -121,14 +121,14 @@ def test_the_remainder_absorbs_the_correction_and_never_goes_negative() -> None:
 
 
 def test_reconciliation_survives_a_blend_the_debt_was_not_charged_at() -> None:
-    # Given — a home whose generation serves part of the second bucket, so the
+    # Given - a home whose generation serves part of the second bucket, so the
     # blend there is cheaper than the import rate the debt was charged at. A debt
     # repaid at the later bucket's blend would leave the period short.
     acc = a_home(generation=GENERATION, house_consumption=HOUSE)
     for entity in (GRID, GENERATION, HOUSE, COARSE_STEP_AIRCON):
         acc.observe(entity, at(0), Decimal(0))
 
-    # When — the house consumes 0.1 kWh off the grid, then 0.5 kWh of which 0.3
+    # When - the house consumes 0.1 kWh off the grid, then 0.5 kWh of which 0.3
     # is generated; the device reveals 0.4 kWh in the first bucket
     acc.observe(GRID, at(5), Decimal("0.1"))
     acc.observe(GENERATION, at(5), Decimal(0))
@@ -140,7 +140,7 @@ def test_reconciliation_survives_a_blend_the_debt_was_not_charged_at() -> None:
     acc.observe(COARSE_STEP_AIRCON, at(10), Decimal("0.4"))
     acc.finalize(at(40))
 
-    # Then — 0.6 kWh consumed, of which 0.3 came off the meter at 0.30 and 0.3
+    # Then - 0.6 kWh consumed, of which 0.3 came off the meter at 0.30 and 0.3
     # was generated at nothing. The bill is 0.09, and the energy still ties out.
     totals = acc.totals()
     assert totals.whole_home.energy_kwh == Decimal("0.6")
@@ -148,7 +148,7 @@ def test_reconciliation_survives_a_blend_the_debt_was_not_charged_at() -> None:
 
 
 def test_the_device_is_refunded_when_its_overdraw_turns_out_to_be_generated() -> None:
-    # Given — the same pair, where the meter later reveals the second bucket was
+    # Given - the same pair, where the meter later reveals the second bucket was
     # half generation. The device was charged the import rate for energy the
     # meters had not yet reported (ADR-0014), and that turns out to have been an
     # over-estimate.
@@ -167,7 +167,7 @@ def test_the_device_is_refunded_when_its_overdraw_turns_out_to_be_generated() ->
     acc.observe(COARSE_STEP_AIRCON, at(10), Decimal("0.4"))
     acc.finalize(at(40))
 
-    # Then — the refund goes to the device that drew the energy, not to the
+    # Then - the refund goes to the device that drew the energy, not to the
     # remainder. Its 0.3 kWh of debt is repriced from the import rate it was
     # charged (0.090) to the blend that actually served it (0.036), so 0.054
     # comes back and it pays 0.066. The remainder keeps 0.2 kWh at that same
@@ -182,7 +182,7 @@ def test_the_device_is_refunded_when_its_overdraw_turns_out_to_be_generated() ->
 
 
 def test_a_debt_the_house_never_repays_is_forgiven_not_carried_forever() -> None:
-    # Given — a counter claiming more than the house ever consumes. This is not
+    # Given - a counter claiming more than the house ever consumes. This is not
     # timing, it is a source that cannot be telling the truth, and absorbing it
     # indefinitely would suppress the remainder to zero for good while hiding the
     # fault (ADR-0015 decision 6).
@@ -192,19 +192,19 @@ def test_a_debt_the_house_never_repays_is_forgiven_not_carried_forever() -> None
     acc.observe(GRID, at(5), Decimal("0.1"))
     acc.observe(COARSE_STEP_AIRCON, at(5), Decimal("0.4"))
 
-    # When — the house keeps metering, and never draws enough to repay the debt
+    # When - the house keeps metering, and never draws enough to repay the debt
     for minute in range(10, 60 * 5, 5):
         acc.observe(GRID, at(minute), Decimal("0.1") + Decimal("0.01") * (minute // 5))
     acc.finalize(at(60 * 6))
 
-    # Then — the debt expires after the quiet span rather than eating every
+    # Then - the debt expires after the quiet span rather than eating every
     # later bucket's remainder, and the energy it stood for is surfaced
     assert acc.unreconciled_energy() > 0
     assert acc.totals().untracked.energy_kwh > 0
 
 
 def test_unreconciled_energy_is_exactly_the_gap_against_the_meter() -> None:
-    # Given — a counter claiming more than the house ever consumes, so its debt
+    # Given - a counter claiming more than the house ever consumes, so its debt
     # can never be repaid
     acc = a_home()
     acc.observe(GRID, at(0), Decimal(0))
@@ -212,7 +212,7 @@ def test_unreconciled_energy_is_exactly_the_gap_against_the_meter() -> None:
     acc.observe(GRID, at(5), Decimal("0.1"))
     acc.observe(COARSE_STEP_AIRCON, at(5), Decimal("0.4"))
 
-    # When — the house trickles along for four hours, never metering enough to
+    # When - the house trickles along for four hours, never metering enough to
     # repay the 0.3 kWh the device claimed beyond it
     metered = reading = Decimal("0.1")
     for minute in range(10, 60 * 4, 5):
@@ -221,7 +221,7 @@ def test_unreconciled_energy_is_exactly_the_gap_against_the_meter() -> None:
         acc.observe(GRID, at(minute), reading)
     acc.finalize(at(60 * 5))
 
-    # Then — since the carry landed, forgiven debt is the only thing that can
+    # Then - since the carry landed, forgiven debt is the only thing that can
     # inflate the whole-home figure. So this number is not a diagnostic *about*
     # the gap against the household's own meter: it is that gap, in kWh.
     published = acc.totals().whole_home.energy_kwh
@@ -230,16 +230,16 @@ def test_unreconciled_energy_is_exactly_the_gap_against_the_meter() -> None:
 
 
 def test_the_unreconciled_share_is_that_gap_as_a_fraction_of_the_total() -> None:
-    # Given / When — a house whose meters reconcile
+    # Given / When - a house whose meters reconcile
     acc = a_home()
     overdraw_then_repay(acc)
 
-    # Then — nothing forgiven, so nothing unreconciled. This is what a healthy
+    # Then - nothing forgiven, so nothing unreconciled. This is what a healthy
     # install reads, which is what makes any other reading worth acting on.
     assert acc.unreconciled_energy() == Decimal(0)
     assert acc.unreconciled_share() == Decimal(0)
 
 
 def test_an_accountant_that_has_published_nothing_reports_no_share() -> None:
-    # Given / When / Then — a share of nothing is not an error to divide by
+    # Given / When / Then - a share of nothing is not an error to divide by
     assert a_home().unreconciled_share() == Decimal(0)

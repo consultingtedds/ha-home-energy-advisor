@@ -12,7 +12,7 @@ one level deeper.
 ## Context
 
 ADR-0009 renamed the concept from solar to local generation, on the grounds that
-naming a source after one technology guarantees the name goes stale — the model
+naming a source after one technology guarantees the name goes stale - the model
 prices any non-metered supply identically, whether it is solar, wind,
 micro-hydro or a generator. It renamed the sensor, the `SourceKind`, the
 `SourceRole` and the config label.
@@ -26,7 +26,7 @@ It deliberately stopped short of the stored key:
 That reasoning weighed a certain cost (a migration) against a benefit it judged
 to be zero. Both halves have since looked wrong.
 
-**The benefit is not zero.** The key is not merely persisted — it is read in
+**The benefit is not zero.** The key is not merely persisted - it is read in
 `coordinator.py`'s `_ROLE_BY_CONF`, in `discovery.py`'s `_HOUSE_CONF_KEYS` and
 `_SUPPLY_CONF_KEYS`, and in `config_flow.py`'s `_FULL_BALANCE_ONLY`. A reader
 following generation through the integration meets `solar` at every one of those
@@ -63,7 +63,7 @@ remains.
 
 **4. Two categories of `solar` deliberately survive:**
 
-- `config_flow.py`'s `elif kind == "solar"` — that is Home Assistant's own
+- `config_flow.py`'s `elif kind == "solar"` - that is Home Assistant's own
   Energy Dashboard preference schema, not ours to rename.
 - Docstrings citing solar as an *example* of generation
   (`allocation.py`, `interval_ledger.py`). Solar is the common case; the
@@ -72,8 +72,8 @@ remains.
 ### Rejected alternatives
 
 - **Leave the key alone, as ADR-0009 decided.** Rejected: it preserves a
-  contradiction in the one place a reader is most likely to trust — the stored
-  schema — for a saving that shrinks every day.
+  contradiction in the one place a reader is most likely to trust - the stored
+  schema - for a saving that shrinks every day.
 - **Rename the key without a migration**, accepting that the existing household
   silently loses its generation input. Rejected: it would present as
   generation quietly reading zero, which under ADR-0005's full-balance branch is
@@ -89,7 +89,7 @@ through the integration no longer requires translating as you go. The naming
 principle from ADR-0009 is fully applied rather than applied to the surface.
 
 The live household's config entry is rewritten on the next start. Nothing
-accumulated changes — no sensor is renamed, no statistic is orphaned, no reset
+accumulated changes - no sensor is renamed, no statistic is orphaned, no reset
 is needed. The rename is invisible to a user who is not reading `.storage`.
 
 The migration is throwaway. Carrying it indefinitely costs a branch that can

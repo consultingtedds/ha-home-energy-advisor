@@ -41,7 +41,7 @@ const aBucket = (start, change) => ({
 });
 
 /**
- * Home Assistant answers on `hass.callWS` — the same tier of the hass object as
+ * Home Assistant answers on `hass.callWS` - the same tier of the hass object as
  * `states` and `callService`, and deliberately not the frontend internals the
  * energy-collection adapter fronts (ADR-0012 decision 5).
  */
@@ -51,7 +51,7 @@ const aHass = (response = {}) => ({
 
 describe("statisticIdsFor", () => {
   it("builds the statistic ids a device is accounted by", () => {
-    // Given / When / Then — the ids the HEA-55 sensor published for it, in a
+    // Given / When / Then - the ids the HEA-55 sensor published for it, in a
     // stable order. They look composed because an English install is where the
     // two agree; the Spanish case below is what tells them apart
     expect(statisticIdsFor([AIRCON])).toEqual([
@@ -67,23 +67,23 @@ describe("statisticIdsFor", () => {
   });
 
   it("asks for the bounds whether or not the household publishes them", () => {
-    // Given / When — the per-device range is opt-in (ADR-0016), and a card has
+    // Given / When - the per-device range is opt-in (ADR-0016), and a card has
     // no way to ask whether it is on. Requesting a statistic that does not exist
     // costs one absent key in the response; a config lookup would cost a second
     // round trip and could go stale between them.
     const ids = statisticIdsFor([AIRCON]);
 
-    // Then — absence in the answer is what tells the card, so the request is
+    // Then - absence in the answer is what tells the card, so the request is
     // unconditional and the *response* is where availability is decided
     expect(ids).toContain("sensor.slow_poll_aircon_lowest_possible_cost");
   });
 
   it("asks for the whole home's range, which is published either way", () => {
-    // Given — the household band is always on, so a card can show it even when
+    // Given - the household band is always on, so a card can show it even when
     // no device carries one
     const wholeHome = aDevice("whole_home", "Whole Home");
 
-    // When / Then — its energy and costs are already the sum of the rows, so
+    // When / Then - its energy and costs are already the sum of the rows, so
     // only the bounds are fetched: they are the one figure not derivable
     expect(statisticIdsFor([AIRCON], wholeHome)).toEqual([
       ...statisticIdsFor([AIRCON]),
@@ -96,7 +96,7 @@ describe("statisticIdsFor", () => {
     // Given / When
     const ids = statisticIdsFor([AIRCON]);
 
-    // Then — deriving it is what guarantees the stacked bar's segments sum to
+    // Then - deriving it is what guarantees the stacked bar's segments sum to
     // the whole (ADR-0012), rather than three numbers that nearly agree
     expect(ids).not.toContain("sensor.slow_poll_aircon_cost_savings");
   });
@@ -117,9 +117,9 @@ describe("statisticIdsFor", () => {
   });
 
   it("uses the ids the integration published, not ones built from the key", () => {
-    // Given — a device on a Spanish instance. Home Assistant derives an entity
+    // Given - a device on a Spanish instance. Home Assistant derives an entity
     // id from the entity's *translated* name for the 41 languages in
-    // NATIVE_ENTITY_IDS, `es` among them, and this integration ships Spanish —
+    // NATIVE_ENTITY_IDS, `es` among them, and this integration ships Spanish -
     // so the ids share no suffix with the English ones (HEA-89, ADR-0018)
     const spanish = aDevice("aire_acondicionado", "Aire Acondicionado", {
       statistics: {
@@ -134,7 +134,7 @@ describe("statisticIdsFor", () => {
       },
     });
 
-    // When / Then — every requested id is one the integration said exists. This
+    // When / Then - every requested id is one the integration said exists. This
     // is the only shape of device that can tell reading from composing apart:
     // on an English install the two agree, which is why the fault shipped
     expect(statisticIdsFor([spanish])).toEqual(Object.values(spanish.statistics));
@@ -142,7 +142,7 @@ describe("statisticIdsFor", () => {
   });
 
   it("skips a concept the integration published no id for", () => {
-    // Given — the cost bounds are opt-in (ADR-0016), so a household that never
+    // Given - the cost bounds are opt-in (ADR-0016), so a household that never
     // asked has no such entity and the payload simply omits it
     const unbounded = aDevice("slow_poll_aircon", "Slow Poll Aircon", {
       statistics: {
@@ -151,7 +151,7 @@ describe("statisticIdsFor", () => {
       },
     });
 
-    // When / Then — nothing invented to fill the gap. Asking for a statistic
+    // When / Then - nothing invented to fill the gap. Asking for a statistic
     // that cannot exist was harmless when ids were guessed; now an absent id is
     // the integration saying so, and inventing one would discard that
     expect(statisticIdsFor([unbounded])).toEqual([
@@ -163,7 +163,7 @@ describe("statisticIdsFor", () => {
 
 describe("bucketPeriodFor", () => {
   it("buckets a day or two by hour, so a short range still has shape", () => {
-    // Given — the picker's "today", part-way through the day
+    // Given - the picker's "today", part-way through the day
     const period = aPeriod(
       new Date("2026-08-09T00:00:00Z"),
       new Date("2026-08-09T14:30:00Z"),
@@ -183,7 +183,7 @@ describe("bucketPeriodFor", () => {
   });
 
   it("never buckets by month, however long the range", () => {
-    // Given — "20 May to 15 July", the question this ticket exists to answer.
+    // Given - "20 May to 15 July", the question this ticket exists to answer.
     // Home Assistant's own energy collection would switch to month buckets
     // here; month buckets cannot express a range that starts and ends
     // mid-month, so summing them would quietly bill all of May and all of July.
@@ -229,7 +229,7 @@ describe("fetchDeviceStatistics", () => {
     // When
     await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
-    // Then — `change` is the per-bucket delta of a cumulative meter; asking for
+    // Then - `change` is the per-bucket delta of a cumulative meter; asking for
     // `sum` instead would hand back the meter reading, not the period's cost
     expect(hass.callWS).toHaveBeenCalledWith({
       type: "recorder/statistics_during_period",
@@ -248,7 +248,7 @@ describe("fetchDeviceStatistics", () => {
     // When
     const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
-    // Then — saved is Cost at Grid Price less Actual Cost, so the three
+    // Then - saved is Cost at Grid Price less Actual Cost, so the three
     // reconcile by construction
     expect(result.devices).toEqual([
       expect.objectContaining({
@@ -263,7 +263,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("totals the whole house, the Untracked remainder included", async () => {
-    // Given — the remainder is part of what the household actually paid, and
+    // Given - the remainder is part of what the household actually paid, and
     // the invariant is that the allocations sum to the real cost (ADR-0002)
     const untracked = aDevice("untracked_energy_devices", "Untracked", {
       untracked: true,
@@ -293,7 +293,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("carries each device's cost range where the household publishes one", async () => {
-    // Given — a device whose counter reports rarely: its cost accrued somewhere
+    // Given - a device whose counter reports rarely: its cost accrued somewhere
     // inside a span, and nothing in the data says where (ADR-0016)
     const hass = aHass({
       ...airconResponse,
@@ -310,7 +310,7 @@ describe("fetchDeviceStatistics", () => {
     // When
     const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
-    // Then — the range brackets what was charged, as the engine guarantees
+    // Then - the range brackets what was charged, as the engine guarantees
     const [aircon] = result.devices;
     expect(aircon.costFloor).toBeCloseTo(0.23, 10);
     expect(aircon.costCeiling).toBeCloseTo(0.43, 10);
@@ -319,8 +319,8 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("leaves the range undefined rather than zero when it is not published", async () => {
-    // Given — the household has not opted into per-device ranges, so the
-    // recorder has no such statistic. Zero would render as "€0.00 – €0.00": a
+    // Given - the household has not opted into per-device ranges, so the
+    // recorder has no such statistic. Zero would render as "€0.00 - €0.00": a
     // confident claim of perfect precision, which is the opposite of the truth.
     const hass = aHass(airconResponse);
 
@@ -334,7 +334,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("totals the range only when every row has one", async () => {
-    // Given — one device opted in and one not. Summing across the gap would
+    // Given - one device opted in and one not. Summing across the gap would
     // quietly bound the household by a subset of itself and read as a narrower
     // range than the truth.
     const other = aDevice("towel_rail", "Towel Rail");
@@ -353,7 +353,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("reads the whole home's range from its own statistics", async () => {
-    // Given — the household band, published whether or not the devices are
+    // Given - the household band, published whether or not the devices are
     const wholeHome = aDevice("whole_home", "Whole Home");
     const hass = aHass({
       ...airconResponse,
@@ -372,7 +372,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("has no whole-home range when the integration is too old to publish one", async () => {
-    // Given / When — a household that has not yet updated
+    // Given / When - a household that has not yet updated
     const result = await fetchDeviceStatistics(
       aHass(airconResponse),
       [AIRCON],
@@ -380,12 +380,12 @@ describe("fetchDeviceStatistics", () => {
       { key: "whole_home", name: "Whole Home" },
     );
 
-    // Then — undefined, so a card shows nothing rather than a range of zero
+    // Then - undefined, so a card shows nothing rather than a range of zero
     expect(result.wholeHome).toBeUndefined();
   });
 
   it("carries the period through, so a card can say it is a default range", async () => {
-    // Given — no picker on the dashboard
+    // Given - no picker on the dashboard
     const fallback = { ...threeDays, fallback: true };
 
     // When
@@ -396,7 +396,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("ignores a bucket that starts where the period ends", async () => {
-    // Given — the recorder returns any bucket *overlapping* the window, so a
+    // Given - the recorder returns any bucket *overlapping* the window, so a
     // request ending at midnight comes back with the whole of the next day
     // attached; counting it would bill the user for time they did not ask about
     const hass = aHass({
@@ -434,7 +434,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("reads the recorder's older ISO bucket boundaries too", async () => {
-    // Given — the recorder moved from ISO strings to epoch milliseconds; a
+    // Given - the recorder moved from ISO strings to epoch milliseconds; a
     // household on an older Home Assistant should still see its costs
     const hass = aHass({
       "sensor.slow_poll_aircon_actual_cost": [
@@ -450,14 +450,14 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("reports zero for a device the recorder knows nothing about", async () => {
-    // Given — a device added today, over a range that predates it
+    // Given - a device added today, over a range that predates it
     const newDevice = aDevice("new_heater", "New Heater");
     const hass = aHass(airconResponse);
 
     // When
     const result = await fetchDeviceStatistics(hass, [AIRCON, newDevice], threeDays);
 
-    // Then — zero, and the devices around it are unaffected
+    // Then - zero, and the devices around it are unaffected
     expect(result.devices[1]).toEqual(
       expect.objectContaining({
         key: "new_heater",
@@ -471,7 +471,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("skips a bucket carrying no change rather than counting it as zero-cost", async () => {
-    // Given — a gap in the statistics, which the recorder reports as null
+    // Given - a gap in the statistics, which the recorder reports as null
     const hass = aHass({
       "sensor.slow_poll_aircon_actual_cost": [
         aBucket(DAY_ONE, 0.1),
@@ -485,7 +485,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("asks the recorder nothing when there are no devices", async () => {
-    // Given — HEA set up but with no devices tracked yet. An empty
+    // Given - HEA set up but with no devices tracked yet. An empty
     // statistic_ids list is not a request for nothing; it is a request for
     // every statistic in the database.
     const hass = aHass();
@@ -500,7 +500,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("keeps each device's place in the house, for the views that group by it", async () => {
-    // Given — the distribution view groups device → room → floor (HEA-58)
+    // Given - the distribution view groups device → room → floor (HEA-58)
     const located = aDevice("slow_poll_aircon", "Slow Poll Aircon", {
       areaName: "Utility Room",
       floorName: "Ground Floor",
@@ -520,14 +520,14 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("returns the period bucket by bucket, for the charts to draw", async () => {
-    // Given — the same fetch has to feed a total and a shape over time, or
+    // Given - the same fetch has to feed a total and a shape over time, or
     // every chart card costs a second round trip for data already in hand
     const hass = aHass(airconResponse);
 
     // When
     const result = await fetchDeviceStatistics(hass, [AIRCON], threeDays);
 
-    // Then — one row per bucket, oldest first
+    // Then - one row per bucket, oldest first
     expect(result.series).toEqual([
       expect.objectContaining({ start: DAY_ONE, energyUsed: 6.2 }),
       expect.objectContaining({ start: DAY_TWO, energyUsed: 8.0 }),
@@ -535,7 +535,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("adds the devices together within each bucket", async () => {
-    // Given — the chart is of the house, or of whatever the filter selected
+    // Given - the chart is of the house, or of whatever the filter selected
     const other = aDevice("fine_meter_aircon", "Fine Meter Aircon");
     const hass = aHass({
       ...airconResponse,
@@ -547,7 +547,7 @@ describe("fetchDeviceStatistics", () => {
     // When
     const result = await fetchDeviceStatistics(hass, [AIRCON, other], threeDays);
 
-    // Then — day one carries both devices, day two only the one that ran
+    // Then - day one carries both devices, day two only the one that ran
     expect(result.series[0].actualCost).toBeCloseTo(0.6, 10);
     expect(result.series[0].costAtGridPrice).toBeCloseTo(3.6, 10);
     expect(result.series[1].actualCost).toBeCloseTo(0.2, 10);
@@ -557,7 +557,7 @@ describe("fetchDeviceStatistics", () => {
     // Given / When
     const result = await fetchDeviceStatistics(aHass(airconResponse), [AIRCON], threeDays);
 
-    // Then — so a stacked bar's segments sum to the bar (ADR-0012)
+    // Then - so a stacked bar's segments sum to the bar (ADR-0012)
     expect(result.series[0].costSavings).toBeCloseTo(1.0, 10);
     expect(result.series[1].costSavings).toBeCloseTo(1.2, 10);
   });
@@ -588,7 +588,7 @@ describe("fetchDeviceStatistics", () => {
   });
 
   it("uses the concepts the sensors are actually named for", () => {
-    // Given / When / Then — pinned because a typo here shows an empty house
+    // Given / When / Then - pinned because a typo here shows an empty house
     // rather than an error (ADR-0009 settled the grid-price name)
     expect(CONCEPTS).toEqual({
       energyUsed: "energy_used",

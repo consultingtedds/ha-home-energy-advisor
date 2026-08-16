@@ -5,8 +5,8 @@ Assistant keeps `restore_state` and long-term statistics keyed by entity id, so
 a fresh add re-adopts the old baselines. The only alternative was filesystem
 surgery on a running instance, which is not something a user can be asked to do.
 
-These tests pin the three things the reset has to do together — rebase the
-sensors, zero the cycle meters HEA created, and clear HEA's own statistics —
+These tests pin the three things the reset has to do together - rebase the
+sensors, zero the cycle meters HEA created, and clear HEA's own statistics -
 and, just as importantly, what it must not touch.
 """
 
@@ -97,12 +97,12 @@ def _state(hass: HomeAssistant, entity_id: str) -> Decimal:
 async def test_the_action_rebases_the_household_to_zero(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a household with real accumulated cost across its figures
+    # Given - a household with real accumulated cost across its figures
     entry = await _running_household(hass, freezer)
     assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
     assert _state(hass, "sensor.whole_home_actual_cost") > 0
 
-    # When — the reset action is called for that config entry
+    # When - the reset action is called for that config entry
     with patch(
         "custom_components.home_energy_advisor.reset.get_instance",
         return_value=MagicMock(),
@@ -115,7 +115,7 @@ async def test_the_action_rebases_the_household_to_zero(
         )
     await hass.async_block_till_done()
 
-    # Then — every figure starts again from zero: the tracked device, the
+    # Then - every figure starts again from zero: the tracked device, the
     # Untracked remainder and the whole-home aggregate alike
     assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal(0)
     assert _state(hass, "sensor.coarse_step_aircon_actual_cost") == Decimal(0)
@@ -126,12 +126,12 @@ async def test_the_action_rebases_the_household_to_zero(
 async def test_the_action_clears_only_heas_own_statistics(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running household, alongside a statistic that is nothing to do
+    # Given - a running household, alongside a statistic that is nothing to do
     # with this integration
     entry = await _running_household(hass, freezer)
     hass.states.async_set("sensor.next_door_meter", "5.0", _ENERGY)
 
-    # When — the reset action runs
+    # When - the reset action runs
     recorder = MagicMock()
     with patch(
         "custom_components.home_energy_advisor.reset.get_instance",
@@ -145,7 +145,7 @@ async def test_the_action_clears_only_heas_own_statistics(
         )
     await hass.async_block_till_done()
 
-    # Then — statistics are cleared for HEA's own sensors and the cycle meters it
+    # Then - statistics are cleared for HEA's own sensors and the cycle meters it
     # created, and for nothing else. A blanket recorder purge would take out the
     # rest of the user's home
     recorder.async_clear_statistics.assert_called_once()
@@ -160,14 +160,14 @@ async def test_the_action_clears_only_heas_own_statistics(
 async def test_the_options_flow_offers_a_confirmed_reset(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a household with accumulated figures, and a user in Configure
+    # Given - a household with accumulated figures, and a user in Configure
     entry = await _running_household(hass, freezer)
     assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     assert menu["type"] is FlowResultType.MENU
     assert "reset_totals" in menu["menu_options"]
 
-    # When — they choose the reset branch and confirm it
+    # When - they choose the reset branch and confirm it
     form = await hass.config_entries.options.async_configure(
         menu["flow_id"], {"next_step_id": "reset_totals"}
     )
@@ -179,7 +179,7 @@ async def test_the_options_flow_offers_a_confirmed_reset(
         done = await hass.config_entries.options.async_configure(form["flow_id"], {})
     await hass.async_block_till_done()
 
-    # Then — the household is rebased, and the flow closes without rewriting the
+    # Then - the household is rebased, and the flow closes without rewriting the
     # options (which would reload the entry for no reason)
     assert done["type"] is FlowResultType.ABORT
     assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal(0)
@@ -188,17 +188,17 @@ async def test_the_options_flow_offers_a_confirmed_reset(
 async def test_the_reset_branch_does_nothing_until_it_is_confirmed(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a household with accumulated figures
+    # Given - a household with accumulated figures
     entry = await _running_household(hass, freezer)
 
-    # When — the user opens the reset branch but goes no further
+    # When - the user opens the reset branch but goes no further
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.config_entries.options.async_configure(
         menu["flow_id"], {"next_step_id": "reset_totals"}
     )
     await hass.async_block_till_done()
 
-    # Then — nothing has been destroyed: showing the confirmation is not the
+    # Then - nothing has been destroyed: showing the confirmation is not the
     # confirmation
     assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
 
@@ -206,10 +206,10 @@ async def test_the_reset_branch_does_nothing_until_it_is_confirmed(
 async def test_the_action_rejects_an_unknown_config_entry(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running household
+    # Given - a running household
     await _running_household(hass, freezer)
 
-    # When / Then — asking to reset an entry that does not exist is refused with a
+    # When / Then - asking to reset an entry that does not exist is refused with a
     # translated error, not a traceback
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(

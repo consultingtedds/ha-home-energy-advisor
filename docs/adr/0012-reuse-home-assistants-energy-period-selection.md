@@ -16,9 +16,9 @@ that long-term statistics can, and that HEA therefore ships its own Lovelace
 card. HEA-50 then specified that card as needing a date-range picker with
 presets, a device filter, and per-device cost figures over the chosen range.
 
-Specifying a date-range picker is easy. Building a good one — presets, arbitrary
+Specifying a date-range picker is easy. Building a good one - presets, arbitrary
 ranges, previous/next stepping, comparison against a prior period, timezone and
-DST correctness, translation into every language Home Assistant supports — is
+DST correctness, translation into every language Home Assistant supports - is
 weeks of work, and it is work someone has already done.
 
 **Home Assistant's Energy Dashboard already ships exactly this control.**
@@ -34,7 +34,7 @@ second, subtly different picker on a second energy-ish dashboard is a worse
 experience even if it is built perfectly.
 
 The governing principle, stated by the maintainer: *if it exists already, use it
-rather than rewrite it* — and ideally, when Home Assistant improves it, that
+rather than rewrite it* - and ideally, when Home Assistant improves it, that
 improvement arrives with no work on our side.
 
 ## Decision
@@ -59,8 +59,8 @@ divergence should be something we choose deliberately rather than drift into.
 
 **3. Negative values follow Home Assistant's existing convention.**
 
-The Energy Dashboard already renders negative quantities — exported energy,
-battery charge — as bars *below the axis* within the same stacked series. Cost
+The Energy Dashboard already renders negative quantities - exported energy,
+battery charge - as bars *below the axis* within the same stacked series. Cost
 Savings goes negative under battery arbitrage loss (ADR-0003, HEA-39), and it
 uses that same treatment. This settles HEA-39's open question: the mechanism is
 not a `binary_sensor`, an attribute or a Repair, but the presentation convention
@@ -69,7 +69,7 @@ users already read elsewhere in the product they are already using.
 **4. We do not attempt to reuse Home Assistant's energy *graph* cards.**
 
 `energy-usage-graph` and its siblings are bound to Home Assistant's energy
-preferences — the grid, solar and battery statistics configured in the Energy
+preferences - the grid, solar and battery statistics configured in the Energy
 Dashboard. They cannot be pointed at per-device cost data. This is the same wall
 ADR-0008 hit. **We reuse the chrome, not the data cards.**
 
@@ -77,8 +77,8 @@ ADR-0008 hit. **We reuse the chrome, not the data cards.**
 
 Reading the energy collection (`getEnergyDataCollection` and friends) uses
 Home Assistant frontend internals, which carry no stability guarantee. The
-approach is proven — community cards extend `hui-energy-date-selection-card`
-today — but a frontend refactor can break it.
+approach is proven - community cards extend `hui-energy-date-selection-card`
+today - but a frontend refactor can break it.
 
 That risk is accepted and contained: every touch of a frontend internal lives
 behind a single adapter module. A breaking change upstream is then a one-file
@@ -94,25 +94,25 @@ fix, not a hunt through every card.
   trades one unstable dependency for another that is also unmaintained-by-us.
 
   > **Reason corrected by ADR-0017**, conclusion unchanged. Citing ADR-0008's
-  > install rule was not a reason — see ADR-0017 decision 3. The real one, found
+  > install rule was not a reason - see ADR-0017 decision 3. The real one, found
   > by re-examining it: a HACS picker **would not remove the coupling at all.**
   > It is also a picker that creates the same shared energy collection, so a card
   > must still read that collection off `hass.connection` to follow it. The
-  > dependency on frontend internals comes from decision 1 — sharing a period
-  > with Home Assistant's own energy cards — not from refusing an install.
+  > dependency on frontend internals comes from decision 1 - sharing a period
+  > with Home Assistant's own energy cards - not from refusing an install.
 - **Wait for a public frontend extension API.** Rejected: none is announced, and
   the feature is the product's central promise. Waiting indefinitely for a
   guarantee is not a plan.
 - **Only use the picker's *output* (a start and end date) and manage our own
   state.** Rejected: it drops the shared collection, so our cards and any
-  Home Assistant energy card on the same dashboard would drift out of sync — the
+  Home Assistant energy card on the same dashboard would drift out of sync - the
   familiarity argument is lost precisely when both are on screen together.
 
 ## Consequences
 
 The date-range capability HEA-50 was scoped to build no longer needs building.
 That removes the largest and fiddliest piece of the card and lets the work start
-on what is actually unique to HEA — the counterfactual, the per-device
+on what is actually unique to HEA - the counterfactual, the per-device
 allocation, and the ranked comparison.
 
 The dashboard gains a hard dependency on Home Assistant's energy frontend
@@ -128,6 +128,6 @@ without a collection must degrade to a sensible default range rather than
 render empty.
 
 This decision would be worth revisiting if Home Assistant published a supported
-extension API for energy collections — at which point decision 5's adapter is
-the single place that changes — or if the internals proved unstable enough that
+extension API for energy collections - at which point decision 5's adapter is
+the single place that changes - or if the internals proved unstable enough that
 the maintenance outweighed the parity gained.

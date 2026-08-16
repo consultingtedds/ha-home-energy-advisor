@@ -8,6 +8,6 @@ if command -v pre-commit >/dev/null 2>&1; then
 elif python -m pre_commit --version >/dev/null 2>&1; then
   python -m pre_commit run
 else
-  echo "pre-commit not found — install it: pip install -r requirements_dev.txt" >&2
+  echo "pre-commit not found - install it: pip install -r requirements_dev.txt" >&2
   exit 1
 fi

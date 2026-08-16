@@ -1,6 +1,6 @@
-# Aircon Cost Exploration — Session Notes (2026-07-11)
+# Aircon Cost Exploration - Session Notes (2026-07-11)
 
-> Working notes from an ad-hoc exploration session. Nothing described here was built —
+> Working notes from an ad-hoc exploration session. Nothing described here was built -
 > no Home Assistant config, helpers, or entities were created. This is a manual, one-off
 > validation of the MVP accounting model (see `PRD.md` → Minimum Viable Product,
 > `IMPLEMENTATION_IDEAS.md` → Device Cost Model) against real data from the
@@ -8,7 +8,7 @@
 
 ## Why this happened
 
-Started as a simple question — "what does my Coarse Step Aircon actually cost to run?" —
+Started as a simple question - "what does my Coarse Step Aircon actually cost to run?" -
 and turned into a hand-computed proof of the exact concepts the PRD defines for the MVP:
 **Energy Used**, **Cost Without Solar** ("naive cost" below), **Actual Cost**, and
 **Solar Saving** (the delta between the two). Doing this manually against live HA history
@@ -25,16 +25,16 @@ integration.
   `automation.coarse_step_hvac_solar`. It already gates on
   `sensor.inverter_power_less_consumption` (solar power minus house consumption, in W;
   positive = surplus, negative = deficit) plus battery SoC. This is the established
-  "are we running on solar" signal in this house — reused it rather than inventing a new one.
+  "are we running on solar" signal in this house - reused it rather than inventing a new one.
 
 ## Key entities
 
 | Purpose | Entity | Notes |
 |---|---|---|
 | Per-device energy | `sensor.<room>_aircon_energy_usage_cycle` | The local air-conditioning integration. `device_class: energy`, `state_class: total_increasing`. Updates in coarse 0.25 kWh steps, resets to 0 per compressor cycle. No instantaneous power sensor exists on these units. |
-| Live import price | `sensor.electricity_price_import` | EUR/kWh, already resolves peak/standard/off-peak windows into one current value. Observed pattern: 00:00–08:00 €0.093, 08:00–10:00 & 14:00–18:00 & 22:00–24:00 €0.152, 10:00–14:00 & 18:00–22:00 €0.234 (repeats daily). |
+| Live import price | `sensor.electricity_price_import` | EUR/kWh, already resolves peak/standard/off-peak windows into one current value. Observed pattern: 00:00-08:00 €0.093, 08:00-10:00 & 14:00-18:00 & 22:00-24:00 €0.152, 10:00-14:00 & 18:00-22:00 €0.234 (repeats daily). |
 | Solar vs. consumption gate (chosen) | `sensor.inverter_power_less_consumption` | W. Negative = house consuming more than solar generates → "actual cost" applies. Same sensor the house's existing solar-HVAC automations use. |
-| Alternative gate (not used) | `predbat.grid_power` | True grid import/export (kW), positive = importing. More accurate for "money actually leaving your account" since it accounts for the battery covering a solar shortfall — but doesn't match how the question was framed ("using more than solar generates"), so parked for later. |
+| Alternative gate (not used) | `predbat.grid_power` | True grid import/export (kW), positive = importing. More accurate for "money actually leaving your account" since it accounts for the battery covering a solar shortfall - but doesn't match how the question was framed ("using more than solar generates"), so parked for later. |
 
 **Decision made:** gate on solar-vs-consumption (`inverter_power_less_consumption < 0`),
 not true grid import. Worth revisiting if the product wants strict bill-accuracy rather
@@ -42,7 +42,7 @@ than "was this solar-covered."
 
 ## Methodology used for the manual calculation
 
-No HA helpers were created — this was done by pulling history/statistics via the HA MCP
+No HA helpers were created - this was done by pulling history/statistics via the HA MCP
 tools and computing in a Python script (Bash tool), asc-ordered:
 
 1. Pull raw `history` for each aircon's `_energy_usage_cycle` sensor (10-day retention).
@@ -57,16 +57,16 @@ tools and computing in a Python script (Bash tool), asc-ordered:
 4. `naive_cost = delta_kWh × price`. `gated_cost = naive_cost if hourly_mean < 0 else 0`.
 5. Sum per device / per day.
 
-**Known limitation:** gating on an hourly *average* is an approximation — it assumes the
+**Known limitation:** gating on an hourly *average* is an approximation - it assumes the
 solar/deficit state was constant across the hour, and the underlying energy sensor itself
-only reports in 0.25 kWh jumps every 15 min–few hours, so this is "rough snapshot"
+only reports in 0.25 kWh jumps every 15 min-few hours, so this is "rough snapshot"
 accuracy, not billing-grade. Good enough for validating the concept; a real
 implementation would ideally have finer-grained power sensors per device, which don't
 currently exist for these units.
 
 ## Results
 
-### Coarse Step Aircon, day-by-day (Jul 8–11)
+### Coarse Step Aircon, day-by-day (Jul 8-11)
 
 | Day | Energy used | Cost ignoring solar | Actual cost (solar-gated) |
 |---|---|---|---|
@@ -98,14 +98,14 @@ and in the local-only fixture.
 ## Backfill capability (confirmed, not yet used)
 
 - `recorder.import_statistics` (native HA service) can inject historical values into a
-  new sensor's **long-term statistics** table — the same mechanism integrations use to
+  new sensor's **long-term statistics** table - the same mechanism integrations use to
   backfill on first setup. It doesn't rewrite raw state history, but long-term stats are
   what drive the Energy Dashboard / History graphs / Statistics cards, which is what
   matters for a running-cost total.
 - Confirmed `sensor.coarse_step_aircon_energy_usage_cycle` already has long-term `sum`
   statistics going back to at least mid-April 2026 (90+ days), and they correctly handle
   the cycle resets. So a real cost sensor could be backfilled much further than the
-  10-day raw-history window used for the tables above — bounded by how far back the
+  10-day raw-history window used for the tables above - bounded by how far back the
   price and solar sensors' own statistics extend (not yet checked).
 
 ## Proposed live-sensor design (discussed, not built)
@@ -115,13 +115,13 @@ and in the local-only fixture.
    the delta (handling resets as above), multiplies by `sensor.electricity_price_import`,
    accumulates into its own state (`device_class: monetary`, `state_class:
    total_increasing`). This is a legitimate template-helper use case per HA best
-   practices — no dedicated helper does "priced delta accumulation," so it's the
+   practices - no dedicated helper does "priced delta accumulation," so it's the
    documented escape hatch, not an anti-pattern.
 2. A `utility_meter` helper on top for clean daily/monthly resets ("cost today", "cost
    this month") instead of hand-rolling reset logic.
 3. Same trigger template, extended: only add to the running total when
    `inverter_power_less_consumption < 0` at the moment of the update, for the "actual
-   cost" variant. Would produce both a "naive" and "actual" cost entity side by side —
+   cost" variant. Would produce both a "naive" and "actual" cost entity side by side -
    directly matching the PRD's `Cost Without Solar` / `Actual Cost` pair.
 4. Backfill via `recorder.import_statistics` once the live sensor exists, using the same
    calculation approach as this session but sourced from long-term statistics instead of
@@ -133,12 +133,12 @@ and in the local-only fixture.
 - Does this become a real HA integration (per `IMPLEMENTATION_IDEAS.md` → "Native Home
   Assistant Integration" preference), or stay as manually-created Template Helpers per
   device for now? The manual approach doesn't scale well to "every measurable device"
-  from the PRD — probably validates the need for the real integration.
+  from the PRD - probably validates the need for the real integration.
 - Entity/attribute naming still undecided per `IMPLEMENTATION_IDEAS.md` (`Actual Cost`,
   `Cost Without Solar`, `Solar Saving`, `Energy Used` are the candidate concepts, not
   final names).
 - Gating definition: solar-vs-consumption (used here) vs. true grid import
-  (`predbat.grid_power`) — may want both as configurable strategies eventually (ties into
+  (`predbat.grid_power`) - may want both as configurable strategies eventually (ties into
   the "Cost Allocation" open question in `IMPLEMENTATION_IDEAS.md`).
 - No decision yet on whether/how to handle devices without per-device energy sensors
   (most of these units only expose the coarse cycle-energy sensor, no

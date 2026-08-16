@@ -4,9 +4,9 @@
  * Nothing in the dashboard names a device (HEA-50). The integration publishes
  * the authoritative list on `sensor.home_energy_advisor_devices` (HEA-55), so
  * adding or removing a device is picked up by every view with no dashboard
- * edit — the specific failure of the earlier hand-listed WIP.
+ * edit - the specific failure of the earlier hand-listed WIP.
  *
- * The `key` on each row identifies a device — for a colour, a series, a sort. It
+ * The `key` on each row identifies a device - for a colour, a series, a sort. It
  * is *not* half of an entity id: `statistics` carries the real id per concept,
  * because Home Assistant names entities in the household's own language and
  * `sensor.<key>_<concept>` therefore exists only on an English install
@@ -23,7 +23,7 @@ export const DEVICES_SENSOR = "sensor.home_energy_advisor_devices";
  * The tracked devices plus the Untracked remainder, or `[]` if unavailable.
  *
  * Empty covers a card constructed before its first `hass`, a dashboard placed
- * before the integration is set up, and an unavailable sensor — none of which
+ * before the integration is set up, and an unavailable sensor - none of which
  * is an error worth failing a whole view over.
  *
  * @returns {Array<{key: string, name: string, deviceId: string|null,
@@ -41,7 +41,7 @@ export const readDevices = (hass, entityId = DEVICES_SENSOR) => {
  *
  * Deliberately not one of `readDevices`' rows: cards sum that list to get the
  * household total, so a whole-home row there would double every figure. It is
- * here for the figures that belong to no device — the cost range published for
+ * here for the figures that belong to no device - the cost range published for
  * the whole home whether or not the per-device ranges are (ADR-0016).
  *
  * @returns {{key: string, name: string, deviceId: string|null}|null}
@@ -58,7 +58,7 @@ const toDevice = (row) => ({
   deviceId: row.device_id ?? null,
   untracked: Boolean(row.untracked),
   // Passed through as published. An absent concept means the integration has no
-  // such entity — the cost bounds are opt-in — and must stay absent rather than
+  // such entity - the cost bounds are opt-in - and must stay absent rather than
   // become a guessed id (ADR-0018).
   statistics: row.statistics ?? {},
   areaId: row.area_id ?? null,

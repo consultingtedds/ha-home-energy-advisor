@@ -8,8 +8,8 @@ prove the two risky premises of that decision against real Home Assistant:
 
 1. the helper can be created *programmatically* and produces a working
    power->energy sensor, and
-2. it accrues **no phantom energy** across an ``unavailable`` span — the
-   "heater unplugged for six months" case — which is exactly the reset-on-
+2. it accrues **no phantom energy** across an ``unavailable`` span - the
+   "heater unplugged for six months" case - which is exactly the reset-on-
    unavailable behaviour our NEVER list demands, inherited for free.
 
 If Home Assistant ever regresses either premise, these go red and the recorded
@@ -64,11 +64,11 @@ def _reading(hass: HomeAssistant, entity_id: str) -> Decimal:
 async def test_a_native_integral_helper_integrates_power_to_energy(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a power-only device (smart wall lights) reporting 100 W
+    # Given - a power-only device (smart wall lights) reporting 100 W
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
 
-    # When — we auto-create a native Integral helper on its power sensor
+    # When - we auto-create a native Integral helper on its power sensor
     entry_id = await async_ensure_integral_helper(
         hass,
         name="Wall Lights Energy",
@@ -76,11 +76,11 @@ async def test_a_native_integral_helper_integrates_power_to_energy(
     )
     await hass.async_block_till_done()
 
-    # Then — a native integration config entry with an output energy sensor exists
+    # Then - a native integration config entry with an output energy sensor exists
     output = integral_output_sensor(hass, entry_id)
     assert output is not None
 
-    # And — after the light holds 100 W for an hour, the helper reports ~100 Wh
+    # And - after the light holds 100 W for an hour, the helper reports ~100 Wh
     # (100 W x 1 h), integrated by Home Assistant, not by us
     freezer.move_to(datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
     hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
@@ -96,7 +96,7 @@ async def test_a_native_integral_helper_integrates_power_to_energy(
 async def test_ensuring_a_helper_twice_reuses_the_existing_one(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a power-only device with a native Integral helper already created
+    # Given - a power-only device with a native Integral helper already created
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.wall_lights_power", "100", _POWER)
     first = await async_ensure_integral_helper(
@@ -106,7 +106,7 @@ async def test_ensuring_a_helper_twice_reuses_the_existing_one(
     )
     await hass.async_block_till_done()
 
-    # When — setup runs again for the same source (config entry reload)
+    # When - setup runs again for the same source (config entry reload)
     second = await async_ensure_integral_helper(
         hass,
         name="Wall Lights Energy",
@@ -114,7 +114,7 @@ async def test_ensuring_a_helper_twice_reuses_the_existing_one(
     )
     await hass.async_block_till_done()
 
-    # Then — the existing helper is reused, not duplicated
+    # Then - the existing helper is reused, not duplicated
     assert second == first
     integration_entries = hass.config_entries.async_entries("integration")
     assert len(integration_entries) == 1
@@ -145,7 +145,7 @@ def _power_only_entry() -> MockConfigEntry:
 async def test_removing_a_power_device_removes_its_integral_helper(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration whose one device is power-only, so a native
+    # Given - a running integration whose one device is power-only, so a native
     # Integral helper was auto-created for it
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -158,18 +158,18 @@ async def test_removing_a_power_device_removes_its_integral_helper(
     assert len(hass.config_entries.async_entries("integration")) == 1
     subentry_id = next(iter(entry.subentries))
 
-    # When — the user removes the device (removing a subentry reloads the entry)
+    # When - the user removes the device (removing a subentry reloads the entry)
     hass.config_entries.async_remove_subentry(entry, subentry_id)
     await hass.async_block_till_done()
 
-    # Then — the orphaned Integral helper is cleaned up, not left behind
+    # Then - the orphaned Integral helper is cleaned up, not left behind
     assert hass.config_entries.async_entries("integration") == []
 
 
 async def test_an_adopted_user_helper_survives_device_removal(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — the user already had their own Integral helper over the wall-light
+    # Given - the user already had their own Integral helper over the wall-light
     # power sensor before HEA existed
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -182,7 +182,7 @@ async def test_an_adopted_user_helper_survives_device_removal(
     )
     await hass.async_block_till_done()
 
-    # When — HEA is set up with a power-only device on that same sensor (so it
+    # When - HEA is set up with a power-only device on that same sensor (so it
     # reuses the user's helper, not a second one), then the device is removed
     entry = _power_only_entry()
     entry.add_to_hass(hass)
@@ -193,7 +193,7 @@ async def test_an_adopted_user_helper_survives_device_removal(
     hass.config_entries.async_remove_subentry(entry, subentry_id)
     await hass.async_block_till_done()
 
-    # Then — the user's helper is left intact, not deleted as if HEA owned it
+    # Then - the user's helper is left intact, not deleted as if HEA owned it
     assert hass.config_entries.async_get_entry(users_helper) is not None
     assert len(hass.config_entries.async_entries("integration")) == 1
 
@@ -201,7 +201,7 @@ async def test_an_adopted_user_helper_survives_device_removal(
 async def test_uninstall_deletes_created_helpers_but_spares_an_adopted_one(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — the user's own Integral helper pre-exists; HEA adopts it for a
+    # Given - the user's own Integral helper pre-exists; HEA adopts it for a
     # power-only device and creates utility_meter cycle totals of its own
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -220,11 +220,11 @@ async def test_uninstall_deletes_created_helpers_but_spares_an_adopted_one(
     assert len(hass.config_entries.async_entries("integration")) == 1  # adopted, not +1
     assert len(hass.config_entries.async_entries("utility_meter")) > 0  # HEA-created
 
-    # When — the whole integration is uninstalled
+    # When - the whole integration is uninstalled
     assert await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — HEA's own cycle meters are gone, but the user's Integral helper survives
+    # Then - HEA's own cycle meters are gone, but the user's Integral helper survives
     assert hass.config_entries.async_get_entry(users_helper) is not None
     assert hass.config_entries.async_entries("utility_meter") == []
 
@@ -232,7 +232,7 @@ async def test_uninstall_deletes_created_helpers_but_spares_an_adopted_one(
 async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration whose power-only device has an Integral helper
+    # Given - a running integration whose power-only device has an Integral helper
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", {"device_class": "energy"})
@@ -244,14 +244,14 @@ async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
     subentry_id = next(iter(entry.subentries))
     helper_id = hass.config_entries.async_entries("integration")[0].entry_id
 
-    # When — the user deletes the auto-created helper, then the entry reloads
+    # When - the user deletes the auto-created helper, then the entry reloads
     # (a restart, or any config change)
     await hass.config_entries.async_remove(helper_id)
     await hass.async_block_till_done()
     await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — the helper is recreated (the device would be un-costed without it),
+    # Then - the helper is recreated (the device would be un-costed without it),
     # and an informational Repair explains why it reappeared
     assert len(hass.config_entries.async_entries("integration")) == 1
     issue = ir.async_get(hass).async_get_issue(
@@ -263,7 +263,7 @@ async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
 async def test_removing_the_integration_cleans_up_all_auto_created_helpers(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running integration whose power-only device has caused both an
+    # Given - a running integration whose power-only device has caused both an
     # Integral helper and utility_meter cycle totals to be auto-created
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -276,11 +276,11 @@ async def test_removing_the_integration_cleans_up_all_auto_created_helpers(
     assert len(hass.config_entries.async_entries("integration")) == 1
     assert len(hass.config_entries.async_entries("utility_meter")) > 0
 
-    # When — the whole integration is removed (not just a device)
+    # When - the whole integration is removed (not just a device)
     assert await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then — every owned helper is cleaned up, so uninstalling leaves nothing
+    # Then - every owned helper is cleaned up, so uninstalling leaves nothing
     # orphaned behind (HEA-42)
     assert hass.config_entries.async_entries("integration") == []
     assert hass.config_entries.async_entries("utility_meter") == []
@@ -289,7 +289,7 @@ async def test_removing_the_integration_cleans_up_all_auto_created_helpers(
 async def test_no_phantom_energy_accrues_across_an_unavailable_span(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running Integral helper on a panel-heater power sensor at 100 W,
+    # Given - a running Integral helper on a panel-heater power sensor at 100 W,
     # having already integrated an hour's worth of energy
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.hallway_panel_heater_power", "100", _POWER)
@@ -308,7 +308,7 @@ async def test_no_phantom_energy_accrues_across_an_unavailable_span(
     await hass.async_block_till_done()
     before = _reading(hass, output)
 
-    # When — the rail is unplugged: its power sensor goes unavailable for six hours,
+    # When - the rail is unplugged: its power sensor goes unavailable for six hours,
     # then it is switched back on
     hass.states.async_set("sensor.hallway_panel_heater_power", "unavailable")
     await hass.async_block_till_done()
@@ -319,6 +319,6 @@ async def test_no_phantom_energy_accrues_across_an_unavailable_span(
     await hass.async_block_till_done()
     after = _reading(hass, output)
 
-    # Then — nothing accrued during the outage; a phantom would be 100 W x 6 h =
+    # Then - nothing accrued during the outage; a phantom would be 100 W x 6 h =
     # 600 Wh, so anything under 1 Wh proves the gap was treated as no-data
     assert after - before < Decimal(1)

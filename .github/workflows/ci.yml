@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         # One entry while the supported floor is the latest release. Adding an
-        # older floor means adding its matching phacc pin here — phacc hard-pins
+        # older floor means adding its matching phacc pin here - phacc hard-pins
         # the Home Assistant version it tests against.
         include:
           - ha-version: "2026.7.2"

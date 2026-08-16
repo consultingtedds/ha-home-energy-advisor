@@ -4,7 +4,7 @@
 
 Accepted
 
-Amends ADR-0008 decision 4, and the reasoning — though not the conclusions — of
+Amends ADR-0008 decision 4, and the reasoning - though not the conclusions - of
 ADR-0012 and ADR-0013.
 
 ## Context
@@ -15,7 +15,7 @@ the job, look at what the community has already built; write our own only when
 neither will. Writing something that already exists is work we then have to
 maintain forever.
 
-`PLAN.md` records it correctly — *"Custom card only if evidence demands it"* —
+`PLAN.md` records it correctly - *"Custom card only if evidence demands it"* -
 and the charter's Open Source First principle says to avoid **unnecessary**
 dependencies, not to avoid dependencies.
 
@@ -28,9 +28,9 @@ require a separate install.
 
 That premise then travelled as settled law:
 
-- ADR-0012 rejected a HACS period picker — *"ADR-0008 requires the flagship view
+- ADR-0012 rejected a HACS period picker - *"ADR-0008 requires the flagship view
   to work without a separate install"*.
-- ADR-0013 rejected ApexCharts and Plotly — *"Still rejected, by ADR-0008: the
+- ADR-0013 rejected ApexCharts and Plotly - *"Still rejected, by ADR-0008: the
   flagship view must not require a separate install"*.
 
 In both, the option is dismissed by citation rather than by evaluation.
@@ -43,8 +43,8 @@ opening, about a different option:
 > *"This option is excluded" was quietly promoted into "therefore mine is the
 > only one left", without checking the middle.*
 
-It corrected the error for Home Assistant's bundled chart component — reaching
-the right answer, `ha-chart-base` — and left the same error standing one line
+It corrected the error for Home Assistant's bundled chart component - reaching
+the right answer, `ha-chart-base` - and left the same error standing one line
 below for community cards.
 
 **Re-examined, the conclusions hold.** No community card accepts an arbitrary
@@ -57,7 +57,7 @@ Home Assistant's own energy cards*, which is ADR-0012 decision 1, not from
 refusing an install.
 
 So nothing shipped needs undoing. What needs fixing is the rule, because it will
-be cited again — on the Sankey view PLAN sketches, on HEA-86's chart band, and on
+be cited again - on the Sankey view PLAN sketches, on HEA-86's chart band, and on
 whatever comes after.
 
 ## Decision
@@ -67,7 +67,7 @@ then our own.**
 
 Applies to everything, not only Lovelace cards: integrations, add-ons, frontend
 components, Python dependencies. Each step is taken only when the one before it
-is *measured* to fall short — the same evidence standard the charter already
+is *measured* to fall short - the same evidence standard the charter already
 demands.
 
 **2. "Requires a separate install" is a cost to weigh, never a disqualifier.**
@@ -81,10 +81,10 @@ first run. Weigh it. Do not let it end the comparison before it starts.
 Naming a rule is not a reason. A rejection must say which of these applies, with
 evidence:
 
-- **Capability** — it cannot do the job (ApexCharts' missing categorical axis is
+- **Capability** - it cannot do the job (ApexCharts' missing categorical axis is
   the model: verified, then recorded).
-- **Maintenance** — abandoned, or a dependency we would end up owning anyway.
-- **Fit** — it forces a shape that breaks something we have decided elsewhere.
+- **Maintenance** - abandoned, or a dependency we would end up owning anyway.
+- **Fit** - it forces a shape that breaks something we have decided elsewhere.
 
 "ADR-000n excludes it" is a pointer to a reason, not a reason. If the cited ADR
 did not evaluate the option either, the chain has no evidence at the bottom.
@@ -98,7 +98,7 @@ all stand, re-examined above. This governs the next decision, not the last one.
 
 - **Amend ADR-0008 decision 4 in place and stop there.** Smallest change, and it
   keeps the fix where the rule originated. Rejected because the principle is
-  cross-cutting — it governs add-ons and libraries too — and burying it in an ADR
+  cross-cutting - it governs add-ons and libraries too - and burying it in an ADR
   about the statistics substrate is how it got lost the first time.
 - **Leave it and rely on the maintainer catching it.** That is what happened
   here, three ADRs late, and only because the rule was quoted back to him in a
@@ -112,7 +112,7 @@ all stand, re-examined above. This governs the next decision, not the last one.
 A rejection is now falsifiable. "We looked at X and it cannot do Y" can be
 checked and overturned when X gains Y; "the rules forbid X" cannot.
 
-Some evaluations will cost real time — reading a card's source to find out
+Some evaluations will cost real time - reading a card's source to find out
 whether it can do the job is slower than citing a rule. That is the intended
 trade: the alternative is maintaining a reimplementation forever.
 
@@ -121,5 +121,5 @@ exist and are the obvious first thing to test against the requirement, ahead of
 extending our own suite.
 
 The card suite HEA already ships is not evidence that building is the default. It
-is evidence that this particular view had no existing answer — a conclusion that
+is evidence that this particular view had no existing answer - a conclusion that
 was reached, in the end, on capability.

@@ -2,16 +2,16 @@
 
 Every Integral / utility_meter helper HEA tracks is one of two kinds:
 
-* **created** — HEA made it, so HEA may delete it on device removal or uninstall.
-* **adopted** — a helper the user already had over the same source, which HEA
+* **created** - HEA made it, so HEA may delete it on device removal or uninstall.
+* **adopted** - a helper the user already had over the same source, which HEA
   merely reuses. Deleting it would destroy the user's own config, so HEA must
   never remove it.
 
 The owned maps persisted on the config entry therefore store a small provenance
-record per helper — ``{"id": entry_id, "created": bool}`` — instead of a bare id.
+record per helper - ``{"id": entry_id, "created": bool}`` - instead of a bare id.
 Records written before HEA-52 are plain id strings; those predate any adoption
 (the reuse-by-source-match that could grab a user's helper is what HEA-52 fixes),
-so a legacy record is read as *created* — existing HEA-made helpers still get
+so a legacy record is read as *created* - existing HEA-made helpers still get
 cleaned up, and provenance is tracked correctly for every helper from here on.
 """
 
@@ -55,7 +55,7 @@ def resolve_provenance(
     Sticky across reloads: if the entry already tracked this exact helper, its
     recorded provenance is kept (HEA's own helper still exists on reload, so it
     must not be re-read as adopted). Otherwise the helper is *created* only if
-    nothing already existed over the source — a pre-existing helper is adopted.
+    nothing already existed over the source - a pre-existing helper is adopted.
     """
     if prior is not None and helper_entry_id(prior) == entry_id:
         created = helper_was_created(prior)

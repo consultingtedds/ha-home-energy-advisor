@@ -1,7 +1,7 @@
 """Discover candidate device sensors to offer for tracking (HEA-45).
 
 The guided "add devices" step scans registered energy and power sensors and
-suggests the ones that could be tracked devices — excluding the house-level
+suggests the ones that could be tracked devices - excluding the house-level
 inputs, the price entity, already-tracked devices, and the integration's own
 sensors and auto-created helper outputs. It only ever *suggests*: the options
 flow lets the user pick from the list, so false friends (a phone battery, an
@@ -9,7 +9,7 @@ exercise bike's power) are the user's to reject, never auto-onboarded (ADR-0004)
 
 A physical device exposing both an energy and a power sensor is offered once, as
 its energy sensor, so the same device is never tracked twice. Sensors whose names
-look like non-devices are sorted last rather than hidden — the user still decides.
+look like non-devices are sorted last rather than hidden - the user still decides.
 
 Structural eligibility is only the entry condition. A well-formed counter can
 still be house energy already accounted for, or dead, so discovery also asks what
@@ -19,8 +19,8 @@ already consumes, refuses the other outputs of the generation and storage
 hardware, and prefers a source that is actually reporting.
 
 What survives is *ranked* rather than trimmed further. Belonging to an HA device
-is the strongest evidence a sensor is an appliance, so device-less sensors — the
-template outputs and helper results a household accumulates — sort below the rest
+is the strongest evidence a sensor is an appliance, so device-less sensors - the
+template outputs and helper results a household accumulates - sort below the rest
 instead of being hidden, and the user still sees everything (HEA-70).
 """
 
@@ -79,8 +79,8 @@ _HOUSE_CONF_KEYS = (
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
 )
-# The house inputs that identify their device as the *supply* system — an
-# inverter or battery — whose every other output is house infrastructure rather
+# The house inputs that identify their device as the *supply* system - an
+# inverter or battery - whose every other output is house infrastructure rather
 # than an appliance. Deliberately not the grid and house-consumption meters: on a
 # multi-channel CT clamp the mains channel sits on the same HA device as the
 # circuits feeding individual appliances, and those are real devices (HEA-66).
@@ -92,7 +92,7 @@ _SUPPLY_CONF_KEYS = (
 # Where each helper integration records the sensor it derives its output from.
 # This is the only provenance Home Assistant states outright, and reading it is
 # proven in-repo (`cycle_meter`, `integral_helper` both match on it). A helper of
-# any other domain simply ends the walk — unknown provenance is not a reason to
+# any other domain simply ends the walk - unknown provenance is not a reason to
 # hide a device.
 _DERIVED_SOURCE_KEYS = {
     DERIVATIVE_DOMAIN: CONF_SOURCE,
@@ -110,7 +110,7 @@ REQUIRED_STATE_CLASS = {
     CONF_ENERGY_ENTITY: "total_increasing",
     CONF_POWER_ENTITY: "measurement",
 }
-# Trailing words trimmed from a suggested device name — the concept, not the device.
+# Trailing words trimmed from a suggested device name - the concept, not the device.
 _NAME_SUFFIXES = (" energy", " power", " consumption")
 # Substrings that mark a sensor as a likely non-device; offered, but sorted last.
 _FALSE_FRIEND_HINTS = (
@@ -142,7 +142,7 @@ class _Exclusions:
     """What a scan must not offer, resolved once from the config entry.
 
     Attributes:
-        entities: Sensors that are provably not devices — the house-level inputs,
+        entities: Sensors that are provably not devices - the house-level inputs,
             the price entity, the sources already tracked, and the helper outputs
             HEA created. A candidate derived from any of them is one too.
         supply_devices: The HA devices behind the generation and storage inputs.
@@ -178,7 +178,7 @@ def _rank(candidate: DeviceCandidate) -> tuple[bool, bool, str]:
     """Sort key: most plausible devices first, never hiding the rest (HEA-70).
 
     Belonging to an HA device leads, because it is the strongest evidence
-    available and it is structural rather than linguistic — on the reference
+    available and it is structural rather than linguistic - on the reference
     instance all 14 trackable appliances have a device, while the house inputs,
     every period helper and most of the inverter's outputs have none. It costs
     nothing to maintain and works the same in any language, which a substring
@@ -202,9 +202,9 @@ def _is_provably_not_a_device(
 ) -> bool:
     """Whether the sensor, or anything it derives from, cannot be an appliance.
 
-    Walks the derivation chain hop by hop — a utility_meter over a Riemann
+    Walks the derivation chain hop by hop - a utility_meter over a Riemann
     integral over the grid meter is three links from house energy, and names it
-    nowhere — stopping at the first link that is an input the integration already
+    nowhere - stopping at the first link that is an input the integration already
     consumes or sits on the supply hardware.
 
     What matters is where the chain *terminates*, not that derivation exists: an
@@ -267,7 +267,7 @@ def _candidate(
 def is_eligible_source(hass: HomeAssistant, entity_id: str, source_key: str) -> bool:
     """Whether a sensor's state_class exactly matches its source's requirement.
 
-    Strict — an absent state_class fails too. Discovery uses it so it never
+    Strict - an absent state_class fails too. Discovery uses it so it never
     *suggests* a source the engine would mis-account; the add flow is more lenient
     on an absent class, where the pick is an explicit user choice (HEA-54).
     """
@@ -336,14 +336,14 @@ def _prefer_working_energy(
     """Offer each physical device once, by its energy sensor where that works.
 
     A measured counter beats an integrated one, so a device's power candidate is
-    dropped when the same device has an energy candidate — or already supplies a
+    dropped when the same device has an energy candidate - or already supplies a
     tracked energy source, whose sibling power sensor would otherwise return as a
     second copy of a device the user is already tracking (HEA-66).
 
     The preference flips only when the energy sensor reports no number *and* the
     power sensor beside it does: a well-formed counter that never yields a value
     can only produce a device stuck at zero (HEA-64). Both silent means the device
-    is simply off, which is normal and seasonal (HEA-24), so nothing is inferred —
+    is simply off, which is normal and seasonal (HEA-24), so nothing is inferred -
     and with no power candidate the device is still offered by the energy sensor,
     because a device is never hidden for looking unpromising.
     """

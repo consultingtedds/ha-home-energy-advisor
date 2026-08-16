@@ -1,5 +1,5 @@
 /**
- * Per-device figures for the period the user picked — the data layer under
+ * Per-device figures for the period the user picked - the data layer under
  * every HEA card (HEA-50).
  *
  * A `utility_meter` is a fixed-period accumulator and cannot answer "20 May to
@@ -20,7 +20,7 @@
 
 /**
  * The concepts a device is accounted by, keyed by the field each becomes on a
- * row — the two are named alike deliberately, so a row's `costAtGridPrice` is
+ * row - the two are named alike deliberately, so a row's `costAtGridPrice` is
  * visibly the `cost_at_grid_price` concept and nothing has to be translated in
  * the reader's head. Names settled in ADR-0009.
  *
@@ -42,12 +42,12 @@ export const CONCEPTS = Object.freeze({
  *
  * Kept apart from `CONCEPTS` because these are the only figures that may not
  * exist: the per-device range is opt-in (ADR-0016), and a household that has not
- * asked for it has no such statistic. Absent is not zero — a range of zero would
- * claim perfect precision, which is the opposite of what the absence means — so
+ * asked for it has no such statistic. Absent is not zero - a range of zero would
+ * claim perfect precision, which is the opposite of what the absence means - so
  * these accumulate to `undefined` rather than joining `zeroed()`.
  *
- * The values are the integration's own concept keys — `description.key` on each
- * sensor — which are never translated, and are what the published `statistics`
+ * The values are the integration's own concept keys - `description.key` on each
+ * sensor - which are never translated, and are what the published `statistics`
  * map is keyed by. They read "lowest/highest possible cost" rather than
  * "floor/ceiling" because HEA-84 first shipped `cost_floor` here against a sensor
  * whose key was `lowest_possible_cost`, so every card asked for a statistic that
@@ -63,7 +63,7 @@ export const BOUNDS = Object.freeze({
   costCeiling: "highest_possible_cost",
 });
 
-/** Every concept at zero — the starting point for any accumulation. */
+/** Every concept at zero - the starting point for any accumulation. */
 const zeroed = () =>
   Object.fromEntries(Object.keys(CONCEPTS).map((field) => [field, 0]));
 
@@ -77,14 +77,14 @@ const HOURLY_DAYS = 2;
  *
  * Read, never composed. Home Assistant derives an entity id from the entity's
  * *translated* name whenever the instance language is one of the 41 in
- * `NATIVE_ENTITY_IDS` — `es` among them, and this integration ships Spanish — so
+ * `NATIVE_ENTITY_IDS` - `es` among them, and this integration ships Spanish - so
  * `sensor.${key}_actual_cost` names an entity that exists only on an English
  * install. Every card rendered empty on a Spanish one, and a household renaming
  * an entity broke the same guess (HEA-89, ADR-0018).
  *
  * The devices sensor knows each id exactly, because the integration owns the
- * entities. `undefined` means it published none — a concept the household did
- * not opt into — and is passed through rather than filled in.
+ * entities. `undefined` means it published none - a concept the household did
+ * not opt into - and is passed through rather than filled in.
  */
 const statisticIdFor = (device, concept) => device?.statistics?.[concept];
 
@@ -121,7 +121,7 @@ export const statisticIdsFor = (devices, wholeHome) => {
  * Home Assistant's own energy collection switches to month buckets for long
  * ranges. We never do: a month bucket cannot express a range that starts or
  * ends mid-month, so summing them would quietly bill the user for all of May
- * and all of July when they asked for 20 May to 15 July — precisely the
+ * and all of July when they asked for 20 May to 15 July - precisely the
  * question this work exists to answer. Day buckets align with the picker's
  * local-midnight boundaries at any length, so they stay exact.
  */
@@ -138,7 +138,7 @@ export const bucketPeriodFor = ({ start, end }) =>
  */
 export const fetchDeviceStatistics = async (hass, devices, period, wholeHome) => {
   const statisticIds = statisticIdsFor(devices, wholeHome);
-  // An empty `statistic_ids` is not a request for nothing — it is a request for
+  // An empty `statistic_ids` is not a request for nothing - it is a request for
   // every statistic in the database.
   const buckets = statisticIds.length
     ? await hass.callWS({
@@ -185,7 +185,7 @@ const boundsFor = (device, buckets, period) => {
  * The same fetch has to answer both "what did this cost" and "what did it look
  * like over time", or every chart card costs a second round trip for data
  * already in hand. Rows are oldest first, and a bucket is present if any device
- * recorded one — devices need not share bucket boundaries.
+ * recorded one - devices need not share bucket boundaries.
  */
 const seriesFrom = (devices, buckets, period) => {
   const byStart = new Map();
@@ -229,7 +229,7 @@ const totalsFor = (device, buckets, period) => {
  * The recorder returns every bucket *overlapping* the window, so a request
  * ending at midnight comes back with the following day attached; counting it
  * would bill the user for time they did not ask about. Bucket boundaries are
- * epoch milliseconds on current Home Assistant and ISO strings on older ones —
+ * epoch milliseconds on current Home Assistant and ISO strings on older ones -
  * both are accepted, since a household on an older release should still see
  * its costs.
  *
@@ -257,7 +257,7 @@ const changeWithin = (statistic, period) =>
   );
 
 /**
- * The whole house, the Untracked remainder included — that remainder is part of
+ * The whole house, the Untracked remainder included - that remainder is part of
  * what the household actually paid, and the allocations sum to the real cost
  * (ADR-0002). Deriving the total from the parts also keeps a card's header
  * agreeing with the table beneath it.
@@ -274,7 +274,7 @@ const sumRows = (rows) => {
 };
 
 /**
- * The household's range as the sum of its rows — but only if every row has one.
+ * The household's range as the sum of its rows - but only if every row has one.
  *
  * Summing across a gap would bound the household by a subset of itself and read
  * as a *narrower* range than the truth, which is the one direction a disclosure

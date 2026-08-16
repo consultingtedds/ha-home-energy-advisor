@@ -1,7 +1,7 @@
 """HEA-60 end-to-end: a counter with a real upstream bug, replayed.
 
 The guard's rules are pinned synthetically in ``test_accountant.py``. This module
-pins the *outcome* against the failure mode that motivated the ticket — a cloud
+pins the *outcome* against the failure mode that motivated the ticket - a cloud
 metering plug whose integration accumulates
 
     total_energy += consumption
@@ -42,7 +42,7 @@ OPENING_LIFETIME = Decimal("5.043")
 
 
 def _honest_readings() -> list[tuple[datetime, Decimal]]:
-    """What the plug's own lifetime counter reports — slow, monotonic, true."""
+    """What the plug's own lifetime counter reports - slow, monotonic, true."""
     return [
         (START + timedelta(minutes=30 * poll), OPENING_LIFETIME + REAL_PER_POLL * poll)
         for poll in range(POLLS + 1)
@@ -92,20 +92,20 @@ def _replay(plug: list[tuple[datetime, Decimal]]) -> Accountant:
 
 
 def test_the_runaway_counter_is_caught_and_its_energy_refused() -> None:
-    # Given / When — the bugged counter is replayed against a normal household
+    # Given / When - the bugged counter is replayed against a normal household
     accountant = _replay(_bugged_readings())
     claimed = _bugged_readings()[-1][1] - _bugged_readings()[0][1]
 
-    # Then — it is condemned: no load inside a house can exceed the house itself
+    # Then - it is condemned: no load inside a house can exceed the house itself
     assert "utility_plug" in accountant.implausible_devices()
 
-    # And — nearly all of the claim is refused. Some still lands: detection needs a
+    # And - nearly all of the claim is refused. Some still lands: detection needs a
     # full window of evidence, so up to an hour of the lie is booked before the
     # guard trips. That is the accepted trade-off and the Repair says so
     booked = accountant.totals().devices["utility_plug"].energy_kwh
     assert booked < claimed / 20, f"booked {booked} of a claimed {claimed}"
 
-    # And — the refusal is on the record rather than a silent gap
+    # And - the refusal is on the record rather than a silent gap
     decisions = accountant.source_diagnostics()[
         "sensor.utility_plug_energy"
     ].recent_decisions
@@ -113,11 +113,11 @@ def test_the_runaway_counter_is_caught_and_its_energy_refused() -> None:
 
 
 def test_the_same_plugs_honest_counter_is_left_alone() -> None:
-    # Given / When — the truthful lifetime counter, same plug, same house. This is
+    # Given / When - the truthful lifetime counter, same plug, same house. This is
     # the sensor a user is told to switch to
     accountant = _replay(_honest_readings())
 
-    # Then — nothing is condemned and the real usage is booked in full. A guard
+    # Then - nothing is condemned and the real usage is booked in full. A guard
     # that cannot separate these two would be worthless; they differ ~100-fold
     assert accountant.implausible_devices() == frozenset()
     booked = accountant.totals().devices["utility_plug"].energy_kwh
@@ -130,17 +130,17 @@ def test_the_same_plugs_honest_counter_is_left_alone() -> None:
 
 
 def test_the_guard_bounds_how_far_a_lie_can_move_the_household_total() -> None:
-    # Given — the same window replayed against each source in turn
+    # Given - the same window replayed against each source in turn
     lying = _replay(_bugged_readings()).totals().whole_home.energy_kwh
     honest = _replay(_honest_readings()).totals().whole_home.energy_kwh
     metered = HOUSE_PER_BUCKET * BUCKETS
     claimed = _bugged_readings()[-1][1] - _bugged_readings()[0][1]
 
-    # Then — with an honest source the whole-home figure is exactly what the house
+    # Then - with an honest source the whole-home figure is exactly what the house
     # meter said
     assert honest == metered
 
-    # And — with a lying one it is inflated, because whole-home is
+    # And - with a lying one it is inflated, because whole-home is
     # `max(consumption, draw)` so that the split always reconciles (ADR-0006). The
     # guard does not prevent that; it *bounds* it, to the window it takes to
     # detect the lie. Contamination is a few kWh instead of the ~600 claimed

@@ -2,7 +2,7 @@
 
 A bucket whose tracked draw exceeds metered consumption is charged for energy the
 house meters have not reported yet. ADR-0014 prices that at the import rate,
-because unmetered energy can only have come off the grid — and then the bucket
+because unmetered energy can only have come off the grid - and then the bucket
 that repays the debt discovers the interval was served by the sun, and hands most
 of it back.
 
@@ -13,7 +13,7 @@ so a refund shows up as an hour that cost *less than nothing*. On the reference
 instance two adjacent hours of near identical draw published +EUR0.105 and
 -EUR0.118.
 
-So the charge is not published until it is known. The overdraw's money waits —
+So the charge is not published until it is known. The overdraw's money waits -
 released at the repaying interval's real blend, or at the import rate if the debt
 expires unpaid. Same money, and it only ever arrives.
 """
@@ -72,7 +72,7 @@ def overdraw_then_repay(acc: Accountant) -> list[dict[str, Decimal]]:
     """The pair from `test_reconciliation`, finalised one bucket at a time.
 
     The house draws 0.1 kWh then 0.5 kWh. The device's counter reveals a 0.4 kWh
-    step in the first bucket and holds still through the second — a counter that
+    step in the first bucket and holds still through the second - a counter that
     reports every half hour, against a meter that reports every few seconds.
     Nothing is faulty. Snapshots are taken after each bucket closes, because a
     single finalise at the end would hide the very thing under test.
@@ -95,12 +95,12 @@ def overdraw_then_repay(acc: Accountant) -> list[dict[str, Decimal]]:
 
 
 def test_no_published_figure_ever_falls_while_a_debt_settles() -> None:
-    # Given / When — the overdraw is charged in one bucket and found to have been
+    # Given / When - the overdraw is charged in one bucket and found to have been
     # cheaper in the next, which is the whole mechanism
     acc = a_home()
     snapshots = overdraw_then_repay(acc)
 
-    # Then — every figure a household reads only ever rises. A single fall here
+    # Then - every figure a household reads only ever rises. A single fall here
     # is an hour that published a negative cost.
     for figure in snapshots[0]:
         series = [snapshot[figure] for snapshot in snapshots]
@@ -108,12 +108,12 @@ def test_no_published_figure_ever_falls_while_a_debt_settles() -> None:
 
 
 def test_the_overdrawing_bucket_publishes_only_what_the_meters_back() -> None:
-    # Given / When — the first bucket metered 0.1 kWh while the device claimed
+    # Given / When - the first bucket metered 0.1 kWh while the device claimed
     # 0.4, so 0.3 kWh has no meter reading behind it yet
     acc = a_home()
     first, *_ = overdraw_then_repay(acc)
 
-    # Then — the household is charged for the 0.1 kWh its meter actually saw, and
+    # Then - the household is charged for the 0.1 kWh its meter actually saw, and
     # nothing for the 0.3 kWh still unaccounted. Charging that at import would
     # publish 0.12 and then take 0.09 of it back.
     assert first["house_cost"] == Decimal("0.03")
@@ -125,20 +125,20 @@ def test_the_charge_arrives_in_full_once_the_meter_catches_up() -> None:
     acc = a_home()
     *_, last = overdraw_then_repay(acc)
 
-    # Then — the same totals reconciliation has always guaranteed: 0.6 kWh at the
+    # Then - the same totals reconciliation has always guaranteed: 0.6 kWh at the
     # 0.30 tariff, and the device paying the tariff for its own 0.4 kWh
     assert last["house_cost"] == Decimal("0.18")
     assert last["device_cost"] == Decimal("0.12")
 
 
 def test_cost_savings_does_not_spike_while_a_charge_waits() -> None:
-    # Given — a home with no generation, so there is no saving to be had at all
+    # Given - a home with no generation, so there is no saving to be had at all
     acc = a_home()
 
     # When
     snapshots = overdraw_then_repay(acc)
 
-    # Then — suspending the charge must withhold the counterfactual with it.
+    # Then - suspending the charge must withhold the counterfactual with it.
     # Holding back actual cost alone would inflate the saving and then correct it
     # downwards, which is the same artefact moved onto a different sensor
     # (ADR-0014's invariance, measured in HEA-77).
@@ -146,7 +146,7 @@ def test_cost_savings_does_not_spike_while_a_charge_waits() -> None:
 
 
 def test_a_debt_nobody_repays_is_charged_at_the_import_rate() -> None:
-    # Given — an overdraw whose surplus never arrives. Nothing better than the
+    # Given - an overdraw whose surplus never arrives. Nothing better than the
     # import rate is ever learned about it, so that is what it costs (ADR-0014).
     acc = a_home()
     acc.observe(GRID, at(0), Decimal(0))
@@ -156,7 +156,7 @@ def test_a_debt_nobody_repays_is_charged_at_the_import_rate() -> None:
     acc.finalize(at(20))
     held = published(acc)
 
-    # When — the quiet span passes with the house drawing nothing, so no surplus
+    # When - the quiet span passes with the house drawing nothing, so no surplus
     # ever arrives to settle the debt against. The meter keeps reporting: expiry
     # is checked as buckets close, and a house with no readings closes none.
     for minute in range(10, 205, 5):
@@ -164,7 +164,7 @@ def test_a_debt_nobody_repays_is_charged_at_the_import_rate() -> None:
     acc.finalize(at(200))
     settled = published(acc)
 
-    # Then — the 0.3 kWh unaccounted energy is charged at 0.30, and the
+    # Then - the 0.3 kWh unaccounted energy is charged at 0.30, and the
     # counterfactual with it, so the saving stays zero
     assert held["device_cost"] == Decimal("0.03")
     assert settled["device_cost"] == Decimal("0.12")
@@ -172,7 +172,7 @@ def test_a_debt_nobody_repays_is_charged_at_the_import_rate() -> None:
 
 
 def test_a_late_arrival_suspends_its_overdraw_too() -> None:
-    # Given — a counter reporting every 40 minutes, so most of its step lands in
+    # Given - a counter reporting every 40 minutes, so most of its step lands in
     # buckets already finalised. That path carries the bulk of a coarse counter's
     # energy, and leaving it charging at import would keep the symptom.
     acc = a_home()
@@ -183,12 +183,12 @@ def test_a_late_arrival_suspends_its_overdraw_too() -> None:
     acc.finalize(at(40))
     before = published(acc)
 
-    # When — the device reveals far more than those buckets had headroom for
+    # When - the device reveals far more than those buckets had headroom for
     acc.observe(COARSE_STEP_AIRCON, at(40), Decimal("1.2"))
     acc.finalize(at(60))
     after = published(acc)
 
-    # Then — the late energy is published, but the part with no meter reading
+    # Then - the late energy is published, but the part with no meter reading
     # behind it is not charged yet, so nothing has to be taken back later
     assert after["device_cost"] >= before["device_cost"]
     assert acc.totals().devices[DEVICE].energy_kwh == Decimal("1.2")
@@ -196,7 +196,7 @@ def test_a_late_arrival_suspends_its_overdraw_too() -> None:
 
 
 def test_the_household_total_is_still_the_sum_of_its_parts() -> None:
-    # Given / When — suspending money must not break the invariant every card
+    # Given / When - suspending money must not break the invariant every card
     # and every ADR leans on
     acc = a_home(generation=GENERATION, house_consumption=HOUSE)
     for entity in (GRID, GENERATION, HOUSE, COARSE_STEP_AIRCON):

@@ -13,7 +13,7 @@ data) that grounds it.
 ## Decision
 
 The decision, stated plainly. Include the rejected alternatives and *why*
-each was rejected — future readers need the losing arguments too.
+each was rejected - future readers need the losing arguments too.
 
 ## Consequences
 

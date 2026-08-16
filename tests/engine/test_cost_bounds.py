@@ -7,8 +7,8 @@ best available answer and still an estimate.
 
 So each figure has a floor and a ceiling: what it would have cost had all of that
 energy landed in the cheapest slice of its span, and in the dearest. On a house
-with generation those can be far apart — a span may hold a slice served by the
-sun and a slice served entirely by the meter — and saying so is the point
+with generation those can be far apart - a span may hold a slice served by the
+sun and a slice served entirely by the meter - and saying so is the point
 (ADR-0016).
 
 These are outer bounds, not a confidence interval. They assume every kWh landed
@@ -52,7 +52,7 @@ def a_home(*, generation: bool = False) -> Accountant:
 
 
 def test_a_step_reported_within_one_slice_is_known_exactly() -> None:
-    # Given — a counter that moves every interval, so there is nowhere else its
+    # Given - a counter that moves every interval, so there is nowhere else its
     # energy could have been
     acc = a_home()
     acc.record_price(at(0), DEAR)
@@ -64,14 +64,14 @@ def test_a_step_reported_within_one_slice_is_known_exactly() -> None:
     acc.observe(COARSE_STEP_AIRCON, at(5), Decimal("0.5"))
     acc.finalize(at(40))
 
-    # Then — floor and ceiling meet at what was charged: no span, no doubt
+    # Then - floor and ceiling meet at what was charged: no span, no doubt
     aircon = acc.totals().devices["coarse_step_aircon"]
     assert aircon.cost_floor == aircon.actual_cost
     assert aircon.cost_ceiling == aircon.actual_cost
 
 
 def test_a_step_spanning_a_tariff_change_is_bounded_by_both_rates() -> None:
-    # Given — a counter that holds still across a tariff change and then reveals
+    # Given - a counter that holds still across a tariff change and then reveals
     # 0.6 kWh, so the energy may have accrued before the change, after it, or
     # anywhere between
     acc = a_home()
@@ -83,12 +83,12 @@ def test_a_step_spanning_a_tariff_change_is_bounded_by_both_rates() -> None:
         acc.observe(GRID, at(minute), Decimal("0.5") * (minute // 5))
         acc.observe(COARSE_STEP_AIRCON, at(minute), Decimal(0))
 
-    # When — the step finally lands, covering four slices at two different rates
+    # When - the step finally lands, covering four slices at two different rates
     acc.observe(GRID, at(20), Decimal("2.0"))
     acc.observe(COARSE_STEP_AIRCON, at(20), Decimal("0.6"))
     acc.finalize(at(60))
 
-    # Then — all of it at the cheap rate, or all of it at the dear one
+    # Then - all of it at the cheap rate, or all of it at the dear one
     aircon = acc.totals().devices["coarse_step_aircon"]
     assert aircon.cost_floor == Decimal("0.6") * CHEAP
     assert aircon.cost_ceiling == Decimal("0.6") * DEAR
@@ -96,7 +96,7 @@ def test_a_step_spanning_a_tariff_change_is_bounded_by_both_rates() -> None:
 
 
 def test_generation_makes_the_band_much_wider_than_the_tariff_does() -> None:
-    # Given — a house where the sun serves one slice completely and none of the
+    # Given - a house where the sun serves one slice completely and none of the
     # next, at an unchanging tariff. The tariff says the cost is certain; the
     # blend says it is anything but (ADR-0016).
     acc = a_home(generation=True)
@@ -104,7 +104,7 @@ def test_generation_makes_the_band_much_wider_than_the_tariff_does() -> None:
     for entity in (GRID, GENERATION, HOUSE, COARSE_STEP_AIRCON):
         acc.observe(entity, at(0), Decimal(0))
 
-    # When — the sun serves all but a thousandth of the first slice and none of
+    # When - the sun serves all but a thousandth of the first slice and none of
     # the second, and the device's counter spans both before revealing 0.4 kWh.
     # The grid meter has to keep moving: a counter that reports an unchanged
     # reading has its next step spread back over the quiet run (HEA-74), which
@@ -119,7 +119,7 @@ def test_generation_makes_the_band_much_wider_than_the_tariff_does() -> None:
     acc.observe(COARSE_STEP_AIRCON, at(10), Decimal("0.4"))
     acc.finalize(at(45))
 
-    # Then — a thousandth of the tariff if it ran on the sun, the whole tariff if
+    # Then - a thousandth of the tariff if it ran on the sun, the whole tariff if
     # it did not: a band a thousand times wide, on an unchanging price. This is
     # what a percentage cannot express once the floor approaches zero.
     aircon = acc.totals().devices["coarse_step_aircon"]
@@ -129,7 +129,7 @@ def test_generation_makes_the_band_much_wider_than_the_tariff_does() -> None:
 
 
 def test_the_remainder_carries_no_doubt_of_its_own() -> None:
-    # Given — Untracked is derived per slice from meters that reported for that
+    # Given - Untracked is derived per slice from meters that reported for that
     # slice, so unlike a coarse counter it has no span to be uncertain about
     acc = a_home()
     acc.record_price(at(0), DEAR)
@@ -148,7 +148,7 @@ def test_the_remainder_carries_no_doubt_of_its_own() -> None:
 
 
 def test_the_whole_home_bounds_are_the_sum_of_what_they_bound() -> None:
-    # Given / When — the same interval, read at the top
+    # Given / When - the same interval, read at the top
     acc = a_home()
     acc.record_price(at(0), CHEAP)
     acc.record_price(at(10), DEAR)
@@ -159,7 +159,7 @@ def test_the_whole_home_bounds_are_the_sum_of_what_they_bound() -> None:
     acc.observe(COARSE_STEP_AIRCON, at(20), Decimal("0.6"))
     acc.finalize(at(60))
 
-    # Then — the household's bounds reconcile the way its costs do, so a card can
+    # Then - the household's bounds reconcile the way its costs do, so a card can
     # show a range for any subset and have the parts add up
     totals = acc.totals()
     devices = list(totals.devices.values())
@@ -177,7 +177,7 @@ def test_the_whole_home_bounds_are_the_sum_of_what_they_bound() -> None:
 
 
 def test_late_energy_is_bounded_by_the_slices_it_belongs_to() -> None:
-    # Given — a counter reporting every 40 minutes, so most of its step lands in
+    # Given - a counter reporting every 40 minutes, so most of its step lands in
     # buckets the accountant has already finalised. That path carries the bulk of
     # a coarse counter's energy, and bounds that stop there stop qualifying the
     # figure they exist for (ADR-0016).
@@ -190,11 +190,11 @@ def test_late_energy_is_bounded_by_the_slices_it_belongs_to() -> None:
         acc.observe(GRID, at(minute), Decimal("0.5") * (minute // 5))
     acc.finalize(at(40))
 
-    # When — the step arrives for a span whose buckets are mostly already closed
+    # When - the step arrives for a span whose buckets are mostly already closed
     acc.observe(COARSE_STEP_AIRCON, at(40), Decimal("0.8"))
     acc.finalize(at(75))
 
-    # Then — still bracketed, at the rates of the slices it really spanned
+    # Then - still bracketed, at the rates of the slices it really spanned
     aircon = acc.totals().devices["coarse_step_aircon"]
     assert aircon.cost_floor == Decimal("0.8") * CHEAP
     assert aircon.cost_ceiling == Decimal("0.8") * DEAR

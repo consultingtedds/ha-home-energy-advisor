@@ -12,8 +12,8 @@ consumption the house meters accounted for. What that clamp implied for *cost*
 was never decided: the shipped code held the bucket's metered cost fixed and
 divided it across the inflated energy.
 
-HEA-74 found what that costs. Coarse counters — the ones this product was built
-around — hold still for 30-90 minutes and then report a whole step. Anchoring
+HEA-74 found what that costs. Coarse counters - the ones this product was built
+around - hold still for 30-90 minutes and then report a whole step. Anchoring
 that step to the previous *reading* booked an hour of energy into a single
 bucket, where overnight it routinely exceeded everything the house consumed in
 that interval. HEA-74 fixes the anchoring; this ADR owns what happens in the
@@ -37,7 +37,7 @@ argument that neither was decided:
 
 Both err in the flattering direction: they understate cost and overstate the
 saving, which is the product's headline claim. On the measured weekday the
-claimed daily saving was €9.31 against a true €6.94 — overstated by 34 %.
+claimed daily saving was €9.31 against a true €6.94 - overstated by 34 %.
 
 ## Decision
 
@@ -45,7 +45,7 @@ claimed daily saving was €9.31 against a true €6.94 — overstated by 34 %.
 > and is still what an unrepaid overdraw finally costs. What changed is **when**
 > it is charged: the import rate is now applied at settlement rather than at the
 > time, because a charge published immediately is one the repaying bucket usually
-> takes most of back — and a withdrawal can only land in the bucket that
+> takes most of back - and a withdrawal can only land in the bucket that
 > discovered it, which published an hour reading −€0.118 on the reference
 > instance. Read "is priced at" below as "will be priced at, once nothing better
 > can be learned". The two paths still agree with each other; both now suspend.
@@ -63,7 +63,7 @@ bucket; they cannot supply the same kWh twice.
 A device's late energy therefore takes what the Untracked remainder can still
 fund at the blended rate, and *buys* the rest at the import rate.
 
-**Rejected — keep the metered cost fixed and dilute (the shipped behaviour).**
+**Rejected - keep the metered cost fixed and dilute (the shipped behaviour).**
 It preserves "Σ allocated cost == the metered bill" exactly, which is the more
 elegant invariant. It was rejected because it buys that elegance with a figure
 that is knowingly false: on a bucket served largely by generation the blended
@@ -73,13 +73,13 @@ under-charged tracked devices by 2× to 4×, and by 60× on a single hourly-poll
 counter. An invariant that holds only by mispricing the thing the user reads is
 the wrong invariant to protect.
 
-**Rejected — refuse the excess energy.** It keeps both the cost and the energy
+**Rejected - refuse the excess energy.** It keeps both the cost and the energy
 invariants, and is what the plausibility guard already does for a source proven
 to be lying (HEA-60). It was rejected because the energy here is real: the
 device did draw it, and the meters are behind, not wrong. Refusing it would
 reintroduce exactly the silent under-count ADR-0006 was written to end.
 
-**Rejected — price the excess at the blended rate.** Cheaper to reason about and
+**Rejected - price the excess at the blended rate.** Cheaper to reason about and
 enough to remove the zero-cost path. Rejected as arbitrary: the blend describes
 what the bucket's *metered* supply cost, and the excess by definition was not
 part of that supply.
@@ -99,23 +99,23 @@ part of that supply.
 - Whole-home energy and whole-home cost now move together. Previously energy grew
   on overdraw while cost did not, which is what let a published €/kWh fall below
   anything the household could have paid.
-- Overdraw becomes rare once HEA-74's anchoring lands — residual inflation
+- Overdraw becomes rare once HEA-74's anchoring lands - residual inflation
   measured at **+1.1 %** across a weekday and **+4.6 %** overnight, against
-  +29.5 % and +44 % before — so this rule governs an exception rather than the
+  +29.5 % and +44 % before - so this rule governs an exception rather than the
   common case. It is not a licence to leave overdraw unfixed.
 - The negative-remainder Repair (HEA-36) becomes the user-visible signal that the
   inputs disagree, and had to change to serve that: it counted *consecutive*
   overdrawn buckets, which an intermittent coarse counter reset every time, so it
   stayed silent throughout the period this ADR describes. It now counts overdrawn
   buckets across a window.
-- Revisit if the residual inflation stops being an exception — a household whose
+- Revisit if the residual inflation stops being an exception - a household whose
   meters routinely lag its devices would be paying an import-rate premium on a
   systematic timing artefact rather than on real grid energy.
 
 ## The residual is the floor, and it does not reach Cost Savings (HEA-77)
 
 Traced across five days and all fourteen devices of the reference instance:
-published whole-home energy runs **1.07 %** above the metered house load —
+published whole-home energy runs **1.07 %** above the metered house load -
 2.816 kWh of accounted overdraw, 72 % of it arriving through the late-correction
 path and 28 % through live allocation. It occurs in 31 buckets out of 1,498. No
 single device causes it and no house meter reads zero; it is several devices'
@@ -139,7 +139,7 @@ contributes precisely zero savings:
           = consumption × import − metered_cost
 ```
 
-— the savings the bucket would have had with no overdraw at all. Measured across
+- the savings the bucket would have had with no overdraw at all. Measured across
 three spreading strategies, the week's savings figure was identical to four
 decimal places.
 

@@ -60,12 +60,12 @@ async def _open_cycles(hass: HomeAssistant, entry: MockConfigEntry) -> ConfigFlo
 
 
 async def test_options_flow_records_the_cycle_opt_ins(hass: HomeAssistant) -> None:
-    # Given — a configured household, on the cycle-totals form
+    # Given - a configured household, on the cycle-totals form
     entry = _entry(hass)
     result = await _open_cycles(hass, entry)
     assert result["type"] is FlowResultType.FORM
 
-    # When — the optional cycle totals are toggled
+    # When - the optional cycle totals are toggled
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         {
@@ -75,7 +75,7 @@ async def test_options_flow_records_the_cycle_opt_ins(hass: HomeAssistant) -> No
         },
     )
 
-    # Then — the choices are stored in the entry options
+    # Then - the choices are stored in the entry options
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_CYCLE_WEEKLY] is True
     assert entry.options[CONF_CYCLE_QUARTERLY] is False
@@ -83,14 +83,14 @@ async def test_options_flow_records_the_cycle_opt_ins(hass: HomeAssistant) -> No
 
 
 async def test_options_flow_defaults_the_opt_ins_off(hass: HomeAssistant) -> None:
-    # Given — a household that has never set cycle options, on the cycle form
+    # Given - a household that has never set cycle options, on the cycle form
     entry = _entry(hass)
     result = await _open_cycles(hass, entry)
 
-    # When — the form is accepted unchanged
+    # When - the form is accepted unchanged
     result = await hass.config_entries.options.async_configure(result["flow_id"], {})
 
-    # Then — the optional cycles are off by default (entity-count discipline)
+    # Then - the optional cycles are off by default (entity-count discipline)
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_CYCLE_WEEKLY] is False
     assert entry.options[CONF_CYCLE_QUARTERLY] is False
@@ -100,7 +100,7 @@ async def test_options_flow_defaults_the_opt_ins_off(hass: HomeAssistant) -> Non
 async def test_options_flow_records_the_per_device_cost_range_opt_in(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a household on the cost-range form. The whole-home range is always
+    # Given - a household on the cost-range form. The whole-home range is always
     # published; this asks whether to publish one per device too (ADR-0016).
     entry = _entry(hass)
     menu = await hass.config_entries.options.async_init(entry.entry_id)
@@ -109,7 +109,7 @@ async def test_options_flow_records_the_per_device_cost_range_opt_in(
     )
     assert result["type"] is FlowResultType.FORM
 
-    # When — accepted unchanged, then turned on
+    # When - accepted unchanged, then turned on
     unchanged = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert entry.options[CONF_DEVICE_COST_BOUNDS] is False
     assert unchanged["type"] is FlowResultType.CREATE_ENTRY
@@ -122,21 +122,21 @@ async def test_options_flow_records_the_per_device_cost_range_opt_in(
         result["flow_id"], {CONF_DEVICE_COST_BOUNDS: True}
     )
 
-    # Then — off by default (two more sensors per device is a real recorder cost)
+    # Then - off by default (two more sensors per device is a real recorder cost)
     # and stored when asked for
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_DEVICE_COST_BOUNDS] is True
 
 
 async def test_one_options_branch_does_not_clear_another(hass: HomeAssistant) -> None:
-    # Given — a household that has opted into yearly cycle totals
+    # Given - a household that has opted into yearly cycle totals
     entry = _entry(hass)
     result = await _open_cycles(hass, entry)
     await hass.config_entries.options.async_configure(
         result["flow_id"], {CONF_CYCLE_YEARLY: True}
     )
 
-    # When — a different branch is submitted. Options are written wholesale, so a
+    # When - a different branch is submitted. Options are written wholesale, so a
     # branch that stores only its own keys would silently drop every other one.
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
@@ -146,7 +146,7 @@ async def test_one_options_branch_does_not_clear_another(hass: HomeAssistant) ->
         result["flow_id"], {CONF_DEVICE_COST_BOUNDS: True}
     )
 
-    # Then — both survive
+    # Then - both survive
     assert entry.options[CONF_CYCLE_YEARLY] is True
     assert entry.options[CONF_DEVICE_COST_BOUNDS] is True
 
@@ -166,7 +166,7 @@ def _register(hass: HomeAssistant, object_id: str, device_class: str, name: str)
 async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given — a running, device-less household with two untracked candidates
+    # Given - a running, device-less household with two untracked candidates
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.electricity_price_import", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
@@ -178,7 +178,7 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    # When — the user opens discovery and selects both candidates
+    # When - the user opens discovery and selects both candidates
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     form = await hass.config_entries.options.async_configure(
         menu["flow_id"], {"next_step_id": "discover_devices"}
@@ -189,7 +189,7 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     )
     await hass.async_block_till_done()
 
-    # Then — a device subentry exists for each, with the right source sensor...
+    # Then - a device subentry exists for each, with the right source sensor...
     assert result["type"] is FlowResultType.CREATE_ENTRY
     by_title = {s.title: s for s in entry.subentries.values()}
     assert set(by_title) == {"Tumble Dryer", "Hallway Lights"}
@@ -203,20 +203,20 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
 async def test_discovery_step_offers_a_browsable_checkbox_list(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a household with a genuine candidate and an obvious false friend
+    # Given - a household with a genuine candidate and an obvious false friend
     dryer = _register(hass, "tumble_dryer_energy", "energy", "Tumble Dryer Energy")
     phone = _register(hass, "phone_battery_power", "power", "Phone Battery Power")
     hass.states.async_set(dryer, "0", _ENERGY)
     hass.states.async_set(phone, "3", _POWER)
     entry = _entry(hass)
 
-    # When — the user opens discovery
+    # When - the user opens discovery
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     form = await hass.config_entries.options.async_configure(
         menu["flow_id"], {"next_step_id": "discover_devices"}
     )
 
-    # Then — the multi-select stays a checkbox list. The step is for *browsing*
+    # Then - the multi-select stays a checkbox list. The step is for *browsing*
     # what a household has; a dropdown shows nothing until the user types a name
     # they do not yet know, so ordering carries a long list, not search (HEA-70)
     schema = form["data_schema"]
@@ -231,22 +231,22 @@ async def test_discovery_step_offers_a_browsable_checkbox_list(
     by_value = {option["value"]: option["label"] for option in field.config["options"]}
     assert by_value[dryer] == "Tumble Dryer (sensor.tumble_dryer_energy)"
     assert by_value[phone] == (
-        "Phone Battery (sensor.phone_battery_power) — may not be a device"
+        "Phone Battery (sensor.phone_battery_power) - may not be a device"
     )
 
 
 async def test_discovery_step_aborts_when_nothing_to_add(
     hass: HomeAssistant,
 ) -> None:
-    # Given — a household with no untracked energy/power sensors
+    # Given - a household with no untracked energy/power sensors
     entry = _entry(hass)
 
-    # When — the user opens discovery
+    # When - the user opens discovery
     menu = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(
         menu["flow_id"], {"next_step_id": "discover_devices"}
     )
 
-    # Then — it aborts cleanly rather than showing an empty list
+    # Then - it aborts cleanly rather than showing an empty list
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_candidates"

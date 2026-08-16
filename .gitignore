@@ -29,7 +29,7 @@ node_modules/
 .DS_Store
 Thumbs.db
 
-# Real-instance captured data — never committed. Whole-house readings are an
+# Real-instance captured data - never committed. Whole-house readings are an
 # occupancy trace, and this is a public repo (HEA-19, HEA-63). Tests that use a
 # capture must skip when it is absent, so CI stays green without it; anything CI
 # needs to prove must be reproduced by a synthetic fixture instead.

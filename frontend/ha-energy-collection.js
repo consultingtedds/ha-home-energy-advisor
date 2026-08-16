@@ -3,7 +3,7 @@
  *
  * Home Assistant's energy cards coordinate through a shared *energy
  * collection*, cached on the websocket connection and created by whichever card
- * asks for it first — normally the `energy-date-selection` picker. HEA's cards
+ * asks for it first - normally the `energy-date-selection` picker. HEA's cards
  * subscribe to that same collection instead of owning a date range, so the
  * period control is Home Assistant's and its improvements arrive for free.
  *
@@ -18,7 +18,7 @@
 
 /**
  * A collection is cached on the connection as `_` + its collection key, and
- * Home Assistant requires every collection key to start with `energy_` — so
+ * Home Assistant requires every collection key to start with `energy_` - so
  * every cached key begins `_energy`.
  */
 const ENERGY_PREFIX = "_energy";
@@ -38,7 +38,7 @@ const FALLBACK_DAYS = 30;
  * rather than sharing one.
  *
  * A key written without the `energy_` prefix is accepted and prefixed here: no
- * collection can exist under it — the picker would have refused it — so the
+ * collection can exist under it - the picker would have refused it - so the
  * user meant the prefixed one, and matching what they meant beats showing an
  * empty card.
  *

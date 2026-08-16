@@ -1,5 +1,5 @@
 // Commit message rules. Replaces .commitlintrc.json, which could not express
-// the `ignores` predicate below — that has to be a function, so the config has
+// the `ignores` predicate below - that has to be a function, so the config has
 // to be JavaScript.
 
 export default {

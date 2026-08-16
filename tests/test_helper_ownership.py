@@ -1,7 +1,7 @@
 """Provenance records for auto-created helpers (HEA-52).
 
 Pins the created-vs-adopted rules that decide whether HEA may delete a native
-helper on cleanup — the difference between tidying up after itself and destroying
+helper on cleanup - the difference between tidying up after itself and destroying
 a helper the user made themselves.
 """
 
@@ -42,13 +42,13 @@ def test_a_freshly_created_helper_is_recorded_created() -> None:
 
 def test_a_freshly_adopted_helper_is_recorded_adopted() -> None:
     # A helper already existed over the source and HEA is seeing it for the first
-    # time (no prior record) — it is the user's, so adopted.
+    # time (no prior record) - it is the user's, so adopted.
     record = resolve_provenance(None, "users-id", pre_existing="users-id")
     assert record == owned_helper("users-id", created=False)
 
 
 def test_provenance_is_sticky_across_a_reload() -> None:
-    # On reload HEA's own created helper still exists, so source-match finds it —
+    # On reload HEA's own created helper still exists, so source-match finds it -
     # but the prior record pins it as created, not re-read as adopted.
     prior = owned_helper("mine", created=True)
     record = resolve_provenance(prior, "mine", pre_existing="mine")

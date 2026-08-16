@@ -4,16 +4,16 @@ A battery breaks the link between when energy is bought and when it is used:
 Predbat force-charges cheaply overnight (~€0.093) or banks free surplus local
 generation, then discharges at the evening peak. Pricing that discharge at the
 live import rate would be badly wrong. This ledger instead prices each charge at
-its source — grid charge at the import rate of the moment, generated charge at
-zero — and draws discharge down at the weighted-average stored cost, the standard
+its source - grid charge at the import rate of the moment, generated charge at
+zero - and draws discharge down at the weighted-average stored cost, the standard
 moving-average inventory method.
 
 Deliberate MVP simplifications, each a documented optimistic bias to be measured
 against Predbat's own accounting in dogfooding (HEA-28):
 
 - **Starts empty.** Energy already in the battery when the integration starts
-  has no known cost. Discharging it — or discharging more than the ledger has
-  tracked — prices the shortfall at zero, as if locally generated. The error is
+  has no known cost. Discharging it - or discharging more than the ledger has
+  tracked - prices the shortfall at zero, as if locally generated. The error is
   transient: it washes out within a cycle or two as real charge data arrives.
 - **Round-trip losses are not inflated.** Charging 10 kWh to retrieve 9 leaves
   the lost kWh's cost stranded on the books rather than raising the per-kWh

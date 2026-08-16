@@ -2,8 +2,8 @@
 
 A source that is silent right now proves nothing: a seasonal device is
 legitimately off for months, and HEA-24 settled that device silence must never
-raise a Repair. The question worth asking is narrower — has this sensor *ever*
-reported? — and the recorder is the only thing that can answer it for a source
+raise a Repair. The question worth asking is narrower - has this sensor *ever*
+reported? - and the recorder is the only thing that can answer it for a source
 that was already configured before the integration started watching.
 
 The probe runs at most once per source, only for one that has stayed silent past
@@ -32,7 +32,7 @@ _NO_READING = {STATE_UNAVAILABLE, STATE_UNKNOWN}
 async def async_has_ever_reported(hass: HomeAssistant, entity_id: str) -> bool | None:
     """Whether the recorder holds any real reading for ``entity_id``.
 
-    Returns ``None`` when the question cannot be answered — there is no recorder,
+    Returns ``None`` when the question cannot be answered - there is no recorder,
     so there is no history to consult. That is not the same as ``False``, and the
     caller must treat it as "say nothing": accusing a working sensor of being
     dead costs more than staying quiet about a dead one.

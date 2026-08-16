@@ -1,21 +1,21 @@
-# MVP Delivery Plan — Device Cost Accounting
+# MVP Delivery Plan - Device Cost Accounting
 
 > Agreed 2026-07-11, revised 2026-07-11 after critical review (see Revision
 > note below). This is the working plan for the MVP defined in `PRD.md`.
-> Tracked in the maintainer's private issue tracker as project *MVP — Device Cost
+> Tracked in the maintainer's private issue tracker as project *MVP - Device Cost
 > Accounting*; the `HEA-nn` references throughout these docs are its issue ids.
-> They are provenance markers, not required reading — see `CONTRIBUTING.md`.
+> They are provenance markers, not required reading - see `CONTRIBUTING.md`.
 > Decisions recorded here are candidates for ADRs (see Epic 2); once an ADR is
 > accepted it supersedes the corresponding summary below.
 
 ## Revision note (2026-07-11)
 
 The original plan shipped a binary solar gate as the MVP accounting model.
-Critical review showed it violates the aggregate invariant — the sum of
+Critical review showed it violates the aggregate invariant - the sum of
 device "actual costs" can exceed the house's real import cost by an order of
 magnitude when the deficit is small relative to tracked draw, and it prices
 battery-covered energy at live import rates. Decision: **accuracy is the
-product** — the MVP implements full source allocation from day one, falling
+product** - the MVP implements full source allocation from day one, falling
 back to a deficit-capped model only if a hard blocker emerges. The July 2026
 binary-gate validation figures remain useful as fixtures and historical
 reference, not as target outputs.
@@ -27,17 +27,17 @@ reference, not as target outputs.
 | Product form | Native Home Assistant custom integration (`custom_components/`, config flow, HACS-installable) | Preferred direction in `IMPLEMENTATION_IDEAS.md`; the manual validation (`notes/AIRCON_COST_EXPLORATION.md`) proved the data foundations; template-helper prototyping would be throwaway work that doesn't scale to 14+ devices |
 | Cost attribution | **Full proportional source allocation** behind a pluggable `CostAllocationStrategy` interface | Per interval, house consumption is served by grid import (live price), solar (0 at margin), and battery discharge (stored cost). Each bucket is allocated across tracked devices + remainder in proportion to draw. Restores the invariant Σ device costs = real costs; honest in the winter Predbat regime. Binary gate rejected (aggregate over-charge); deficit-capped model is the recorded fallback |
 | Battery pricing | **Tracked stored cost**: charge ledger (grid charge at live import price, solar charge at 0), discharge priced at weighted average stored cost | Predbat charges cheap overnight (€0.093) and discharges at peak; flat-rate or free would misprice winter substantially |
-| Energy-balance decomposition | **Adaptive** (ADR-0005): derive house-served sources (grid→house = import − grid-charge, battery→house = discharge, solar→house = remainder) from raw meters — residual model (house-load anchor) when a load sensor exists, else full-balance (generation + export). Added during HEA-21 | Raw grid import includes battery charging; feeding it in raw double-counts and breaks the aggregate invariant. Households differ in available sensors, so adaptive serves both Energy-Dashboard users (export + generation) and those with a house-load sensor. Requires adding grid-export to the HEA-20 config |
+| Energy-balance decomposition | **Adaptive** (ADR-0005): derive house-served sources (grid→house = import − grid-charge, battery→house = discharge, solar→house = remainder) from raw meters - residual model (house-load anchor) when a load sensor exists, else full-balance (generation + export). Added during HEA-21 | Raw grid import includes battery charging; feeding it in raw double-counts and breaks the aggregate invariant. Households differ in available sensors, so adaptive serves both Energy-Dashboard users (export + generation) and those with a house-load sensor. Requires adding grid-export to the HEA-20 config |
 | Interval model | Engine buckets on **5-minute intervals**; coarse energy deltas are spread across the intervals they span | Allocation needs synchronized cross-device intervals; 5 min balances fidelity vs noise; to be justified in ADR-0002 |
-| Solar & battery inputs | **Optional** in config | Without them, Actual = naive cost and the product still serves the (large) no-solar HA population as a per-device TOU cost tracker — PRD target users explicitly include tariff-only households |
+| Solar & battery inputs | **Optional** in config | Without them, Actual = naive cost and the product still serves the (large) no-solar HA population as a per-device TOU cost tracker - PRD target users explicitly include tariff-only households |
 | Remainder bucket | House consumption minus tracked devices = an "Untracked" pseudo-device with the same cost sensors | Answers "which devices drive my bill" honestly (shows the unexplained share) and doubles as a live reconciliation check |
-| Build on native foundations | Prefer existing HA machinery over reimplementation: config flow pre-fills from **Energy Dashboard preferences**; daily/weekly/monthly/quarterly/yearly totals via **auto-created native `utility_meter` helpers** (PowerCalc-style); power-only devices via **auto-created native Integral helper** | "Don't rebuild what exists." Default cycles: daily + monthly; weekly/quarterly/yearly as a global opt-in (entity-count discipline: all-on would create ~200+ helper entities across 14 devices). Lifetime totals are the integration's own sensors. Feasibility of programmatic helper creation validated early in Epic 4; internal implementation is the recorded fallback. **Amended by ADR-0008 (2026-07-28):** cycle helpers are a day-to-day *convenience*, not the mechanism for period accounting — a `utility_meter` is a fixed-period accumulator and cannot answer an arbitrary range. Long-term statistics, which the integration's own sensors already emit, are the substrate for "what did this cost between any two dates" |
-| Export opportunity cost | **Deferred, post-MVP** — explicitly documented | Solar-covered energy forgoes export revenue, so MVP Solar Saving is knowingly optimistic; documented in ADR-0002 and README, tracked as a backlog issue |
+| Build on native foundations | Prefer existing HA machinery over reimplementation: config flow pre-fills from **Energy Dashboard preferences**; daily/weekly/monthly/quarterly/yearly totals via **auto-created native `utility_meter` helpers** (PowerCalc-style); power-only devices via **auto-created native Integral helper** | "Don't rebuild what exists." Default cycles: daily + monthly; weekly/quarterly/yearly as a global opt-in (entity-count discipline: all-on would create ~200+ helper entities across 14 devices). Lifetime totals are the integration's own sensors. Feasibility of programmatic helper creation validated early in Epic 4; internal implementation is the recorded fallback. **Amended by ADR-0008 (2026-07-28):** cycle helpers are a day-to-day *convenience*, not the mechanism for period accounting - a `utility_meter` is a fixed-period accumulator and cannot answer an arbitrary range. Long-term statistics, which the integration's own sensors already emit, are the substrate for "what did this cost between any two dates" |
+| Export opportunity cost | **Deferred, post-MVP** - explicitly documented | Solar-covered energy forgoes export revenue, so MVP Solar Saving is knowingly optimistic; documented in ADR-0002 and README, tracked as a backlog issue |
 | i18n | **Day one**: `strings.json` + `translations/` (en, es) | Same discipline as the retirement platform; retrofitting translations is worse than starting with them |
-| Quality gates | ruff (strict) + mypy (strict) + pytest coverage ≥90% enforced in CI; **SonarQube as a local pre-commit gate** (existing local server, same `sonar-check.sh` workflow as the retirement repos), never a CI-blocking step | Revised 2026-07-12: with the server and workflow already in place the marginal cost is near zero, and Sonar adds what ruff+mypy don't — cognitive-complexity enforcement (the mechanism behind the "orchestrators read as linear steps" rule), cross-file duplication detection, and the new-code quality-gate ratchet. CI stays green without it so external contributors are never blocked; revisit SonarCloud (free for OSS) if the project attracts contributors |
-| Local dev environment | **WSL (Ubuntu-24.04) + uv**, Python 3.14, venv at `~/.venvs/hea` — not Windows | Discovered 2026-07-12 while building the CI pipeline: Home Assistant imports `fcntl` (Unix-only) and `pytest-homeassistant-custom-component` loads as a pytest plugin, so on Windows `pytest` dies at collection even for tests with no HA imports. Windows is not a supported HA platform and never will be. WSL also makes the local pre-commit gate byte-identical to CI (same Linux, Python and HA versions), so the gate genuinely predicts CI rather than approximating it. ruff and mypy do still run natively on Windows — they never execute the code — but the split is not worth maintaining |
+| Quality gates | ruff (strict) + mypy (strict) + pytest coverage ≥90% enforced in CI; **SonarQube as a local pre-commit gate** (existing local server, same `sonar-check.sh` workflow as the retirement repos), never a CI-blocking step | Revised 2026-07-12: with the server and workflow already in place the marginal cost is near zero, and Sonar adds what ruff+mypy don't - cognitive-complexity enforcement (the mechanism behind the "orchestrators read as linear steps" rule), cross-file duplication detection, and the new-code quality-gate ratchet. CI stays green without it so external contributors are never blocked; revisit SonarCloud (free for OSS) if the project attracts contributors |
+| Local dev environment | **WSL (Ubuntu-24.04) + uv**, Python 3.14, venv at `~/.venvs/hea` - not Windows | Discovered 2026-07-12 while building the CI pipeline: Home Assistant imports `fcntl` (Unix-only) and `pytest-homeassistant-custom-component` loads as a pytest plugin, so on Windows `pytest` dies at collection even for tests with no HA imports. Windows is not a supported HA platform and never will be. WSL also makes the local pre-commit gate byte-identical to CI (same Linux, Python and HA versions), so the gate genuinely predicts CI rather than approximating it. ruff and mypy do still run natively on Windows - they never execute the code - but the split is not worth maintaining |
 | Workflow | TDD, conventional commits with ticket scope (`fix(HEA-nn):`), direct-to-main, append-only ADRs, adapted ways-of-working doc set | Same principles as `ai-shared-config/CRITICAL_INSTRUCTIONS.md`, tuned for Python/HA |
-| Tracking | Linear team **Home Energy Advisor (HEA)**, one project "MVP — Device Cost Accounting", epics as parent issues | Clean separation from retirement-platform work |
+| Tracking | Linear team **Home Energy Advisor (HEA)**, one project "MVP - Device Cost Accounting", epics as parent issues | Clean separation from retirement-platform work |
 | Distribution | Public GitHub repo under `consultingtedds`, MIT licence, HACS custom repository first; HACS default store later | HACS requires a public repo; matches the charter's Open Source First principle (MIT is the norm for HA custom integrations). Public repos get unlimited GitHub Actions minutes |
 
 ## Architecture
@@ -49,12 +49,12 @@ patterns; energy sources are normalised before allocation.
 ```
 Accounting engine (pure Python, no HA imports)
   • EnergySource normalisation:
-      CumulativeEnergySource — total_increasing counters, handling resets
+      CumulativeEnergySource - total_increasing counters, handling resets
       (power-only devices arrive as energy via auto-created Integral helpers)
-  • Interval ledger (5-min buckets): per-bucket house energy balance —
+  • Interval ledger (5-min buckets): per-bucket house energy balance -
     consumption = import + solar_used + battery_discharge; device deltas
     spread across the buckets they span
-  • Battery stored-cost ledger — charge events priced at source
+  • Battery stored-cost ledger - charge events priced at source
     (grid @ live import price, solar @ 0); discharge at weighted avg cost
   • CostAllocationStrategy interface →
       ProportionalAllocationStrategy (MVP): each source bucket allocated
@@ -64,7 +64,7 @@ Accounting engine (pure Python, no HA imports)
         ▼
 HA integration layer (custom_components/home_energy_advisor/)
   • Config flow: house-level inputs (grid import, solar, battery,
-    house consumption — pre-filled from Energy Dashboard preferences;
+    house consumption - pre-filled from Energy Dashboard preferences;
     solar/battery optional) + price entity + currency
     + per-device (name, energy or power sensor); options flow
   • Auto-created native helpers: utility_meter cycles (daily+monthly
@@ -83,32 +83,32 @@ Presentation
 
 ## Epics and tickets
 
-### Epic 1 — Foundation
+### Epic 1 - Foundation
 1. ~~Create public GitHub repo~~ (done 2026-07-11); hassfest-compliant integration skeleton (`manifest.json`, `hacs.json`)
 2. CI: ruff, mypy, pytest + coverage gate, hassfest action, HACS validation action, commitlint
 3. Pre-commit hooks + husky/commitlint local setup
 4. Ways-of-working docs adapted from `ai-shared-config`: `CRITICAL_INSTRUCTIONS.md`, `TESTING_STANDARDS.md`, `DOCUMENTATION_STANDARDS.md`, `CLAUDE.md`, ADR template
 
-### Epic 2 — ADRs
+### Epic 2 - ADRs
 1. ADR-0001: Native HA integration (over template helpers / AppDaemon)
-2. ADR-0002: Cost attribution — full proportional source allocation; 5-min interval model; battery stored-cost pricing; binary gate rejected with reasons; deficit-capped fallback; export opportunity cost deferred with bias documented
-3. ADR-0003: Entity naming — finalise Energy Used / Actual Cost / Cost Without Solar / Solar Saving + Untracked remainder naming
-4. ADR-0004: EnergySource taxonomy — cumulative counters natively; power-only via auto-created native Integral helpers; `total` state_class and forecast/false-friend sensors out of MVP scope
-5. ADR-0005: Energy-balance decomposition — adaptive (residual / full-balance / import-only) derivation of house-served source energies from raw meters, so the aggregate invariant holds (mid-implementation discovery, HEA-21)
-6. ADR-0006: Late-arrival correction policy — retained-context ring reallocates coarse-device energy that lands past the finalisation watermark; Untracked derived (`total` state_class); whole-home total exposed; `state_reported` tracking (HEA-48)
+2. ADR-0002: Cost attribution - full proportional source allocation; 5-min interval model; battery stored-cost pricing; binary gate rejected with reasons; deficit-capped fallback; export opportunity cost deferred with bias documented
+3. ADR-0003: Entity naming - finalise Energy Used / Actual Cost / Cost Without Solar / Solar Saving + Untracked remainder naming
+4. ADR-0004: EnergySource taxonomy - cumulative counters natively; power-only via auto-created native Integral helpers; `total` state_class and forecast/false-friend sensors out of MVP scope
+5. ADR-0005: Energy-balance decomposition - adaptive (residual / full-balance / import-only) derivation of house-served source energies from raw meters, so the aggregate invariant holds (mid-implementation discovery, HEA-21)
+6. ADR-0006: Late-arrival correction policy - retained-context ring reallocates coarse-device energy that lands past the finalisation watermark; Untracked derived (`total` state_class); whole-home total exposed; `state_reported` tracking (HEA-48)
 7. ADR-0007: Monetary cost sensors are `state_class: total`; Cost Savings is not cycle-metered (HEA-49)
-8. ADR-0008: Long-term statistics are the period-accounting substrate — a `utility_meter` is a *fixed-period* accumulator and cannot answer an arbitrary range, which is the question the product exists to answer; cycle meters are demoted to a day-to-day convenience, HEA-51's by-source sensors are never metered, and HEA ships its own Lovelace card (HEA-40)
-9. ADR-0009: Name the pricing rule, not the absent hardware — "Cost Without Solar" becomes **Cost at Grid Price**, and `SourceKind.SOLAR` becomes `GENERATION`, because the figure covers battery arbitrage (grid energy time-shifted, not solar) and any non-metered supply (wind, hydro, a generator). Supersedes that one name in ADR-0003; done in the HEA-57 reset deploy, when clearing statistics makes it free (HEA-61)
-10. ADR-0010: A sensor's shape does not establish its fitness — `device_class`/`state_class` gate whether a reading *can* be interpreted; whether it is true, arriving, or already counted is asked separately at suggestion time (discovery semantics), add time (lenient, the user is explicit) and ingest time (continuous plausibility). Names the pattern behind four defects — HEA-54, HEA-60, HEA-64, HEA-66 — each a well-formed sensor that was nonetheless the wrong answer
-11. ADR-0011: Migrate the generation storage key — `solar_entity` becomes `generation_entity`, superseding ADR-0009's decision 3. That decision weighed a migration against a benefit it judged zero; the key is in fact read across the coordinator, discovery and the config flow, so leaving it applied the renaming principle only to the surface. Done now because the cost is at its floor (no tags, one installation) and a migration mechanism has to be proven at some point. The migration is deliberately untested and deliberately throwaway (HEA-68)
-12. ADR-0012: Reuse Home Assistant's energy period selection, don't rebuild it — `energy-date-selection` is a core card usable on any dashboard, and energy cards coordinate through a shared collection, so HEA's cards subscribe to Home Assistant's own picker rather than owning a date range. Removes the largest piece of HEA-50's scope, keeps both dashboards behaving identically, and settles HEA-39: negative Cost Savings renders below the axis, the convention the Energy Dashboard already uses for export and battery charge. The frontend-internals dependency is isolated to one adapter module (HEA-50)
-13. ADR-0013: Reuse Home Assistant's chart component, don't draw our own — refines ADR-0012 decision 4 (which excludes HA's energy *cards*) by deciding what HEA's own cards draw *with*, and corrects a misreading of ADR-0008 along the way (HEA-50)
-14. ADR-0014: Price overdrawn energy at the marginal import rate — when tracked device draw exceeds the consumption the house meters accounted for, the excess is charged at the import rate in both the live and late-arrival paths, rather than diluting a fixed cost across inflated energy (which priced devices 3-6× under the tariff) or booking it free (which the late path did). Amends ADR-0002's clamp and ADR-0006 decision 2. Makes Cost Savings exactly invariant to the residual overdraw, where dilution would have manufactured a saving from it (HEA-74, HEA-77)
-15. ADR-0015: Carry the remainder's deficit, don't clamp it per bucket — flooring the remainder at zero rectifies a zero-mean signal, so published whole-home energy exceeded the metered house by a bias that never cancelled (+1.9 % over 72 h, +3.2 % post-HEA-74). The house meter and the device counters agree eventually and never instantaneously — up to 6000:1 apart in sampling rate — so the deficit is carried and repaid instead, expiring after `MAX_QUIET_SPAN` (a derivation, not a second knob). Both the live and late-correction paths clamp, and the late one dominates. Refines ADR-0006 and narrows ADR-0014 to the unpayable case; published allocations stay non-negative (HEA-81). **Decision 5 amended by HEA-85**: charging the overdraw at import and refunding it later was right about the money and wrong about the timing — a withdrawal can only land in the bucket that discovered it, so two adjacent hours of near identical draw published +€0.105 and −€0.118 and told the household they had been *paid* to run their appliances. The charge is now suspended until the debt settles, falling due once at the repaying interval's blend or at import on expiry. Zero negative hours over the same capture, whole-home and per-device, total unchanged to the cent; the cost is ~1.5 % of the running bill unpublished at any moment, median 67 min
-16. ADR-0016: Publish the cost bounds reporting latency permits — a coarse step accrued somewhere inside a 30–90 minute span and nothing says where, so a device's cost is knowable only to a band: **+27.9 % household-wide, +8.1 % to +1252 % per device**, because a span can hold a bucket served by the sun and a bucket served entirely by the meter. (The ADR first quoted ±6.0 %, which measured the *import*-price range — the uncertainty in Cost at Grid Price, not in Actual Cost; the corrected figure is in the ADR.) The band cannot be derived from reporting cadence — it depends on price volatility during the hours a device runs — so the engine computes it and publishes floor/ceiling as costs, which aggregate over a period where percentages cannot, and which render as a money range: `(ceiling − floor) / actual` explodes on a near-zero cost, the same trap that sank HEA-75. Whole-home always, per-device opt-in; the Untracked remainder has no span and so no band (HEA-83)
-17. ADR-0017: Reuse before build, in that order — Home Assistant core, then an existing community component, then our own, each step taken only when the one before is *measured* to fall short. Written because ADR-0008 decision 4 hardened PLAN's own "custom card only if evidence demands it" into "a separate install is disqualifying": it assessed *core* cards, excluded community ones by a premise it never argued, and ADR-0012 and ADR-0013 then cited that premise as settled law. ADR-0013 had already diagnosed the exact failure — "'this option is excluded' was quietly promoted into 'therefore mine is the only one left', without checking the middle" — corrected it for HA's bundled chart component, and left it standing one line below for community ones. **Nothing shipped is reopened**: re-examined, every conclusion holds, and the HACS period picker would not even have removed ADR-0012's coupling to frontend internals, since it creates the same shared collection. What changes is that "requires a separate install" becomes a cost to weigh, and rejecting an existing component now needs a reason of its own — capability, maintenance or fit, with evidence. Expect it cited on the Sankey view and on HEA-86
+8. ADR-0008: Long-term statistics are the period-accounting substrate - a `utility_meter` is a *fixed-period* accumulator and cannot answer an arbitrary range, which is the question the product exists to answer; cycle meters are demoted to a day-to-day convenience, HEA-51's by-source sensors are never metered, and HEA ships its own Lovelace card (HEA-40)
+9. ADR-0009: Name the pricing rule, not the absent hardware - "Cost Without Solar" becomes **Cost at Grid Price**, and `SourceKind.SOLAR` becomes `GENERATION`, because the figure covers battery arbitrage (grid energy time-shifted, not solar) and any non-metered supply (wind, hydro, a generator). Supersedes that one name in ADR-0003; done in the HEA-57 reset deploy, when clearing statistics makes it free (HEA-61)
+10. ADR-0010: A sensor's shape does not establish its fitness - `device_class`/`state_class` gate whether a reading *can* be interpreted; whether it is true, arriving, or already counted is asked separately at suggestion time (discovery semantics), add time (lenient, the user is explicit) and ingest time (continuous plausibility). Names the pattern behind four defects - HEA-54, HEA-60, HEA-64, HEA-66 - each a well-formed sensor that was nonetheless the wrong answer
+11. ADR-0011: Migrate the generation storage key - `solar_entity` becomes `generation_entity`, superseding ADR-0009's decision 3. That decision weighed a migration against a benefit it judged zero; the key is in fact read across the coordinator, discovery and the config flow, so leaving it applied the renaming principle only to the surface. Done now because the cost is at its floor (no tags, one installation) and a migration mechanism has to be proven at some point. The migration is deliberately untested and deliberately throwaway (HEA-68)
+12. ADR-0012: Reuse Home Assistant's energy period selection, don't rebuild it - `energy-date-selection` is a core card usable on any dashboard, and energy cards coordinate through a shared collection, so HEA's cards subscribe to Home Assistant's own picker rather than owning a date range. Removes the largest piece of HEA-50's scope, keeps both dashboards behaving identically, and settles HEA-39: negative Cost Savings renders below the axis, the convention the Energy Dashboard already uses for export and battery charge. The frontend-internals dependency is isolated to one adapter module (HEA-50)
+13. ADR-0013: Reuse Home Assistant's chart component, don't draw our own - refines ADR-0012 decision 4 (which excludes HA's energy *cards*) by deciding what HEA's own cards draw *with*, and corrects a misreading of ADR-0008 along the way (HEA-50)
+14. ADR-0014: Price overdrawn energy at the marginal import rate - when tracked device draw exceeds the consumption the house meters accounted for, the excess is charged at the import rate in both the live and late-arrival paths, rather than diluting a fixed cost across inflated energy (which priced devices 3-6× under the tariff) or booking it free (which the late path did). Amends ADR-0002's clamp and ADR-0006 decision 2. Makes Cost Savings exactly invariant to the residual overdraw, where dilution would have manufactured a saving from it (HEA-74, HEA-77)
+15. ADR-0015: Carry the remainder's deficit, don't clamp it per bucket - flooring the remainder at zero rectifies a zero-mean signal, so published whole-home energy exceeded the metered house by a bias that never cancelled (+1.9 % over 72 h, +3.2 % post-HEA-74). The house meter and the device counters agree eventually and never instantaneously - up to 6000:1 apart in sampling rate - so the deficit is carried and repaid instead, expiring after `MAX_QUIET_SPAN` (a derivation, not a second knob). Both the live and late-correction paths clamp, and the late one dominates. Refines ADR-0006 and narrows ADR-0014 to the unpayable case; published allocations stay non-negative (HEA-81). **Decision 5 amended by HEA-85**: charging the overdraw at import and refunding it later was right about the money and wrong about the timing - a withdrawal can only land in the bucket that discovered it, so two adjacent hours of near identical draw published +€0.105 and −€0.118 and told the household they had been *paid* to run their appliances. The charge is now suspended until the debt settles, falling due once at the repaying interval's blend or at import on expiry. Zero negative hours over the same capture, whole-home and per-device, total unchanged to the cent; the cost is ~1.5 % of the running bill unpublished at any moment, median 67 min
+16. ADR-0016: Publish the cost bounds reporting latency permits - a coarse step accrued somewhere inside a 30-90 minute span and nothing says where, so a device's cost is knowable only to a band: **+27.9 % household-wide, +8.1 % to +1252 % per device**, because a span can hold a bucket served by the sun and a bucket served entirely by the meter. (The ADR first quoted ±6.0 %, which measured the *import*-price range - the uncertainty in Cost at Grid Price, not in Actual Cost; the corrected figure is in the ADR.) The band cannot be derived from reporting cadence - it depends on price volatility during the hours a device runs - so the engine computes it and publishes floor/ceiling as costs, which aggregate over a period where percentages cannot, and which render as a money range: `(ceiling − floor) / actual` explodes on a near-zero cost, the same trap that sank HEA-75. Whole-home always, per-device opt-in; the Untracked remainder has no span and so no band (HEA-83)
+17. ADR-0017: Reuse before build, in that order - Home Assistant core, then an existing community component, then our own, each step taken only when the one before is *measured* to fall short. Written because ADR-0008 decision 4 hardened PLAN's own "custom card only if evidence demands it" into "a separate install is disqualifying": it assessed *core* cards, excluded community ones by a premise it never argued, and ADR-0012 and ADR-0013 then cited that premise as settled law. ADR-0013 had already diagnosed the exact failure - "'this option is excluded' was quietly promoted into 'therefore mine is the only one left', without checking the middle" - corrected it for HA's bundled chart component, and left it standing one line below for community ones. **Nothing shipped is reopened**: re-examined, every conclusion holds, and the HACS period picker would not even have removed ADR-0012's coupling to frontend internals, since it creates the same shared collection. What changes is that "requires a separate install" becomes a cost to weigh, and rejecting an existing component now needs a reason of its own - capability, maintenance or fit, with evidence. Expect it cited on the Sankey view and on HEA-86
 
-18. ADR-0018: The frontend is not English — card strings join the integration's
+18. ADR-0018: The frontend is not English - card strings join the integration's
     own `strings.json` + `en`/`es` under a `cards` category fetched over
     `frontend/get_translations`, and the frontend never constructs an entity or
     statistic id. Written after an audit found ~45 hardcoded English card strings
@@ -118,111 +118,111 @@ Presentation
     on a Spanish install. The file already carried a comment stating the rule it
     broke (HEA-89, HEA-88)
 
-### Epic 3 — Accounting engine (pure Python, TDD)
+### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
 2. Interval ledger: 5-min energy balance from house-level inputs; device delta spreading
 3. Battery stored-cost ledger (charge pricing, weighted-average discharge cost)
 4. `CostAllocationStrategy` interface + `ProportionalAllocationStrategy` (+ remainder computation)
 5. Golden-master tests: fixtures from the July 2026 exploration; energy (107.75 kWh) and naive (€19.30) figures unchanged; allocated-cost expectations recomputed under the new model; binary-gate €7.63 retained as reference only; invariant tests (Σ allocations = bucket totals)
 
-### Epic 4 — HA integration layer
-1. Config flow: house-level inputs pre-filled from Energy Dashboard preferences (solar/battery optional), price entity, currency, per-device energy-or-power sensor selection — validated for an eligible `state_class` (a net/forecast/measurement counter the engine would mis-account is rejected; absent is allowed on an explicit manual pick, HEA-54); options flow
+### Epic 4 - HA integration layer
+1. Config flow: house-level inputs pre-filled from Energy Dashboard preferences (solar/battery optional), price entity, currency, per-device energy-or-power sensor selection - validated for an eligible `state_class` (a net/forecast/measurement counter the engine would mis-account is rejected; absent is allowed on an explicit manual pick, HEA-54); options flow
 2. Feasibility spike + implementation: programmatic creation of native utility_meter / Integral helpers (fallback: internal implementation, recorded in ADR-0004)
 3. Runtime wiring: listeners/coordinator connecting engine to HA state machine. On unload the coordinator flushes in-flight buckets so a reload/restart banks up to ~20 min of accounting into the sensors' restore baseline rather than dropping it; the engine prunes superseded prices and logs a `ZERO_PRICED` decision for cold-start buckets finalised before any price (HEA-53)
 4. Per-device + Untracked remainder sensors (×4) with restore-on-restart. Untracked is derived (whole-home − Σ devices) and a monotonic whole-home aggregate is exposed (running totals only); late-arriving coarse-device energy is reallocated into a retained-context ring rather than dropped (HEA-48 / ADR-0006)
 5. Cycle totals via auto-created utility_meter helpers (daily + monthly default; weekly/quarterly/yearly global opt-in)
 6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
-8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add — multi-select, never auto-onboarded (false-friend rule); candidates with an ineligible `state_class` are excluded outright (HEA-54). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility — dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
+8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add - multi-select, never auto-onboarded (false-friend rule); candidates with an ineligible `state_class` are excluded outright (HEA-54). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility - dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
 9. Pre-release hygiene arising from the 2026-07-28 review of the live instance:
-   a supported **reset of HEA totals** (HEA-57 — zero sensor baselines and engine
+   a supported **reset of HEA totals** (HEA-57 - zero sensor baselines and engine
    running totals, reset only HEA-*created* cycle meters, clear HEA's own
    statistics), because a sensor introduced in a later version restores a zero
    baseline while its siblings keep history (whole-home read 68.8 kWh against
    250 kWh of parts on the live instance); **rounding published values**
-   (HEA-59 — states were recorded at 28 significant digits, ~1/min, mirrored by
-   every cycle meter); and **hierarchy exposure** (HEA-58 — the devices sensor
+   (HEA-59 - states were recorded at 28 significant digits, ~1/min, mirrored by
+   every cycle meter); and **hierarchy exposure** (HEA-58 - the devices sensor
    carries each device's area and floor, resolved from its *source* device, so
    room/floor roll-ups are possible without HEA writing to any registry)
 11. Delivered 2026-08-04, completing the pre-deploy set:
-    **per-device energy by source** (HEA-51 — `energy_from_grid` /
+    **per-device energy by source** (HEA-51 - `energy_from_grid` /
     `_generation` / `_battery`, each device's energy carrying its bucket's source
     mix so a self-sufficiency share totals 100 %; never cycle-metered, enforced by
     inverting the metering filter to an allow-list);
-    **the Cost at Grid Price rename** (HEA-61 / ADR-0009 — naming the pricing rule
+    **the Cost at Grid Price rename** (HEA-61 / ADR-0009 - naming the pricing rule
     rather than absent hardware, since the figure also captures battery arbitrage
     and any non-metered supply);
-    and **the implausible-source guard** (HEA-60 — a device claiming more energy
+    and **the implausible-source guard** (HEA-60 - a device claiming more energy
     than the whole house over a rolling hour is refused, logged and surfaced as a
     named Repair, after a bugged upstream counter inflated one device ~97× and
     silently under-reported every other one for days)
-10. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list — `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
-12. Delivered 2026-08-05 — ADR-0010 applied to the paths that *suggest* and
+10. Devices-registry sensor (HEA-55): a hub-level diagnostic sensor (`sensor.home_energy_advisor_devices`, on a new "Home Energy Advisor" hub device) exposing the authoritative tracked-device list - `[{key, name, device_id, untracked}]`, resolved live from the registries with membership from the config subentries. Lets dashboards (Jinja and JS cards alike) enumerate tracked devices without hardcoded or drift-prone lists; the foundation for the HEA-25 charts
+12. Delivered 2026-08-05 - ADR-0010 applied to the paths that *suggest* and
     *ingest* sources, after four defects in four weeks all turned out to be
     well-formed sensors that were nonetheless the wrong answer:
-    **provenance at suggestion time** (HEA-66 — each candidate's derivation chain
+    **provenance at suggestion time** (HEA-66 - each candidate's derivation chain
     is walked through the source every helper records on its own config entry, so
     a period aggregate over the household's own house-level meters is refused
     rather than offered as a device; ~90 of 216 candidates on the reference
-    instance. A Riemann integral the user built over a plug is still offered —
+    instance. A Riemann integral the user built over a plug is still offered -
     what matters is where the chain terminates, not that derivation exists);
-    **liveness at suggestion time** (HEA-64 — a device whose energy counter has
+    **liveness at suggestion time** (HEA-64 - a device whose energy counter has
     never produced a value is offered by the power sensor beside it instead, but
     only when that sensor *is* reporting, so a device merely switched off out of
     season is untouched);
-    **ranking rather than hiding** (HEA-70 — belonging to an HA device orders the
+    **ranking rather than hiding** (HEA-70 - belonging to an HA device orders the
     list, after the device-based infrastructure filter proved *inert* on an
     instance whose six house-level inputs are all device-less template sensors.
     A structural signal was preferred to extending the English substring list,
     which cannot work in a bilingual integration);
-    **liveness at ingest time** (HEA-69 — a configured device source with no
+    **liveness at ingest time** (HEA-69 - a configured device source with no
     reading and no recorder history is named in a Repair, while one that has ever
     reported is left alone however long it stays silent);
-    and **house-input fitness** (HEA-67 — house inputs validated against the
+    and **house-input fitness** (HEA-67 - house inputs validated against the
     branch that actually reads them, ADR-0005's branch following what is
     *readable* rather than what is configured, and the plausibility guard
     suspended while a house input is silent, since a condemned device has its
     energy refused outright and a meter failure would otherwise move real
     consumption into Untracked)
 
-### Epic 5 — Presentation & documentation
-1. **HEA-shipped Lovelace card (HEA-50) — the flagship.** Date-range picker ×
+### Epic 5 - Presentation & documentation
+1. **HEA-shipped Lovelace card (HEA-50) - the flagship.** Date-range picker ×
    device filter over long-term statistics: "from 20 May to 15 July these devices
    cost x, would have cost y, saved z". Served by the integration itself (no HACS
-   dependency). The foundation for a family of shareable example views —
+   dependency). The foundation for a family of shareable example views -
    per-device comparison, a Sankey of cost flowing device → room → floor
    (needs HEA-58's area inheritance), energy self-sufficiency (needs HEA-51).
    Required because no core card accepts a user-driven date range with a device
    filter (ADR-0008)
-2. Core-cards dashboard (HEA-25) — the **secondary**, zero-dependency day-to-day
+2. Core-cards dashboard (HEA-25) - the **secondary**, zero-dependency day-to-day
    view: devices-by-cost comparison + per-device detail + untracked share
    (consult HA best-practices skill)
-3. README per documentation standards (including a plain-language explanation of the allocation model and its known limitations — export opportunity cost, interval approximation)
+3. README per documentation standards (including a plain-language explanation of the allocation model and its known limitations - export opportunity cost, interval approximation)
 
-### Epic 6 — Dogfood on production instance
+### Epic 6 - Dogfood on production instance
 1. Install and configure a device set on the reference instance covering every behaviour pattern in `notes/DEVICE_SENSOR_SURVEY.md`: cycle-resetting energy counters, lifetime counters over Zigbee2MQTT, a cloud-polled counter, and a power-only device
-2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; **Σ published energy vs the house meter**; battery ledger vs Predbat's own accounting. The energy check was added after the first attempt (`notes/VALIDATION_WEEK_2026_08.md`) — the cost check stayed within ~4 % throughout HEA-74 and would have passed, while the energy check would have failed on day one by 29-44 %
-3. Fixes arising; note: summer dogfooding cannot exercise the winter battery regime — revisit accuracy after the first winter month (tracked as follow-up). Partially anticipated under HEA-75 by replaying a captured week against January's solar profile; that answered the *spreading* question but not the stored-cost ledger under force-charging, which still needs real winter data
+2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; **Σ published energy vs the house meter**; battery ledger vs Predbat's own accounting. The energy check was added after the first attempt (`notes/VALIDATION_WEEK_2026_08.md`) - the cost check stayed within ~4 % throughout HEA-74 and would have passed, while the energy check would have failed on day one by 29-44 %
+3. Fixes arising; note: summer dogfooding cannot exercise the winter battery regime - revisit accuracy after the first winter month (tracked as follow-up). Partially anticipated under HEA-75 by replaying a captured week against January's solar profile; that answered the *spreading* question but not the stored-cost ledger under force-charging, which still needs real winter data
 
-### Epic 7 — Historical backfill (deferred 2026-07-23 — not deleted)
+### Epic 7 - Historical backfill (deferred 2026-07-23 - not deleted)
 1. ~~Backfill via `recorder.import_statistics` on device setup~~
 2. ~~Validate backfilled statistics against manual tables~~
 
 > **Deferred, not deleted (2026-07-23).** Backfill would have to recompute **and
-> overwrite** long-term statistics — including rewriting the Untracked remainder
+> overwrite** long-term statistics - including rewriting the Untracked remainder
 > across the whole window (adding a device otherwise double-counts against the
 > Untracked that held everything pre-device). A bug there corrupts the exact
 > history the product promises to protect. And beyond ~10 days only **hourly**
 > input statistics survive, so backfilled figures are a coarse approximation that
-> won't reconcile with the live 5-minute accounting — a poor fit for an
+> won't reconcile with the live 5-minute accounting - a poor fit for an
 > accuracy-first product. A one-time onboarding nicety doesn't justify the
 > permanent complexity (re-runnable action, statistics surgery, baseline
 > reconciliation, HA-version maintenance). Kept in the backlog (HEA-29/30);
 > revisit only on strong user demand. Design insight if revisited: "rebuild all
-> HEA statistics from recorder input history for the current config" —
+> HEA statistics from recorder input history for the current config" -
 > idempotent, re-runnable, overwriting Untracked too.
 
-### Epic 8 — Release
+### Epic 8 - Release
 1. Semver tagging + GitHub release CI
 2. HACS custom-repository install docs + first tagged release
 3. (Backlog) HACS default store submission; community forum post for demand validation
@@ -239,7 +239,7 @@ dependencies and can start as soon as Epic 1 lands.
 - **Helper auto-creation feasibility.** ~~Programmatic utility_meter/Integral
   creation is proven in the wild (PowerCalc) but not first-party API; spike
   early in Epic 4, internal implementation as fallback.~~ **Resolved (2026-07-21,
-  HEA-34):** the Integral path shipped — programmatic native-helper creation is
+  HEA-34):** the Integral path shipped - programmatic native-helper creation is
   proven against real HA (idempotent, and no phantom energy across `unavailable`
   spans). The internal-implementation fallback was not needed. The shared spike
   de-risks the native `utility_meter` path (HEA-23). See ADR-0004 → Update.
@@ -247,16 +247,16 @@ dependencies and can start as soon as Epic 1 lands.
   sensor; spreading deltas across 5-min buckets is an approximation.
   **Observed (2026-07-23) and corrected (2026-07-27, HEA-48):** a coarse device's
   deltas span past the ~20-min finalisation watermark, and the engine originally
-  *dropped* the older portions — silently reattributing an estimated 30-50 % of
+  *dropped* the older portions - silently reattributing an estimated 30-50 % of
   such a device's energy to Untracked (the aggregate invariant still held, which
   hid it). The earlier "energy totals stay correct" note here was wrong. Fixed by
   retained-context reallocation (ADR-0006): late portions correct their finalised
-  bucket for 24 h, and only energy older than that is dropped — then logged.
+  bucket for 24 h, and only energy older than that is dropped - then logged.
   Per-bucket *cost* allocation remains the approximation; energy is now conserved.
   **Reopened and closed properly (2026-08-10/11, HEA-74/77).** "Energy is now
   conserved" was still too confident. HEA-48's fix let a coarse step be booked
   into the *single* bucket where the counter moved, and overnight one step can
-  exceed everything the house consumes in five minutes — published whole-home
+  exceed everything the house consumes in five minutes - published whole-home
   energy ran 29-44 % above the metered house load, and tracked devices were
   priced at a quarter to a sixth of the tariff. Deltas now accrue from the
   counter's last *movement* rather than its last reading. What remains is a
@@ -268,7 +268,7 @@ dependencies and can start as soon as Epic 1 lands.
   Reconciliation validation is HEA-28.
 - **Finalisation lag (first-run UX).** The engine waits a ~20-minute margin
   (15-min lateness + 5-min bucket) before finalising an interval, so costs lag
-  real time and a fresh install reads as "nothing is working" for ~20 min —
+  real time and a fresh install reads as "nothing is working" for ~20 min -
   observed on the first live install. Tuning / a "warming up" signal tracked in
   HEA-47.
 - **Seasonality.** One summer week cannot validate the winter battery regime;

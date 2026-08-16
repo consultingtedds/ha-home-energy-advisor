@@ -1,8 +1,8 @@
 """Diagnostics download for Home Energy Advisor (HEA-24).
 
 Home Assistant discovers this platform automatically and offers the download from
-the config entry's menu. The coordinator assembles the full picture — config,
-per-source accumulator state and gating decision log, and the running totals — as
+the config entry's menu. The coordinator assembles the full picture - config,
+per-source accumulator state and gating decision log, and the running totals - as
 JSON-safe primitives; this module only redacts the parts that could identify a
 household before the file is shared.
 """

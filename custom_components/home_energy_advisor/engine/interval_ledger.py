@@ -1,4 +1,4 @@
-"""Spreads energy deltas into aligned 5-minute buckets — the interval ledger.
+"""Spreads energy deltas into aligned 5-minute buckets - the interval ledger.
 
 Allocation needs a common time grid so that, within one interval, each device's
 draw lines up with the house-level sources serving it. This ledger provides that
@@ -12,7 +12,7 @@ spreads over the one real hour that elapsed, not the two the wall clock skipped.
 
 All time arithmetic is done in integer microseconds, never
 ``timedelta.total_seconds()`` (a float), so no binary-float error contaminates
-the Decimal energy values — the parts of a spread delta sum back to it exactly.
+the Decimal energy values - the parts of a spread delta sum back to it exactly.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ _MICROSECOND = timedelta(microseconds=1)
 class SourceKind(Enum):
     """A house-level energy source that serves consumption within a bucket.
 
-    ``GENERATION`` is any supply that did not come off the metered import —
+    ``GENERATION`` is any supply that did not come off the metered import -
     solar, wind, micro-hydro, a generator. It is priced at zero at the margin, so
     what matters to the model is only that it was not bought from the grid, never
     which technology produced it (HEA-61).
