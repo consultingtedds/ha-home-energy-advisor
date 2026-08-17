@@ -15,6 +15,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG, register } from "../hea-cost-over-time-card.js";
 import { formatMoney } from "../hea-format.js";
+import { DEFAULTS as LABELS } from "../hea-labels.js";
 import { aDeviceRow, aHass, mountCard, settled } from "./doubles.js";
 
 const EURO = { language: "en-GB", currency: "EUR" };
@@ -181,6 +182,66 @@ describe("the series handed to the chart", () => {
     // Then
     expect(seriesOf(card, "paid").name).toBe("Paid");
     expect(seriesOf(card, "saved").name).toBe("Saved");
+  });
+});
+
+describe("the legend", () => {
+  const legendOf = (card) => chartOf(card).options.legend;
+
+  it("asks for the legend in the only shape that renders one", async () => {
+    // Given - `ha-chart-base` builds its legend from the first option that is
+    // both `show` and `type: "custom"`. With `show` alone the option falls
+    // through to ECharts, which draws its own inside the canvas - so the card
+    // never looks broken, it just wears a different legend from every other
+    // card on the dashboard, with no overflow chip and no toggling (HEA-87)
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then
+    expect(legendOf(card).show).toBe(true);
+    expect(legendOf(card).type).toBe("custom");
+  });
+
+  it("names series that exist, so clicking an entry hides one", async () => {
+    // Given - the component resolves an entry against the series by id and
+    // silently renders an entry that matches nothing, which then does nothing
+    // when clicked. This card's series are one per concept rather than a pair
+    // per device, so an entry owns exactly one and needs no `secondaryIds`
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then
+    const ids = new Set(chartOf(card).data.map((series) => series.id));
+    const entries = legendOf(card).data;
+    expect(entries).toHaveLength(ids.size);
+    expect(entries.every((entry) => ids.has(entry.id))).toBe(true);
+  });
+
+  it("labels its entries in the household's language", async () => {
+    // Given - the legend names the same two figures the cards name everywhere
+    // else, so it reads from the shared vocabulary rather than repeating it
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then
+    expect(legendOf(card).data.map((entry) => entry.name)).toEqual([
+      LABELS.paid,
+      LABELS.saved,
+    ]);
+  });
+
+  it("swatches each entry in its series colour", async () => {
+    // Given - the swatch is the key to the bar. The saved series recolours an
+    // individual losing point to the error colour, so the entry must carry the
+    // series colour rather than inherit whatever the last point happened to be
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then
+    const entries = legendOf(card).data;
+    for (const entry of entries) {
+      expect(entry.itemStyle.color).toBe(seriesOf(card, entry.id).itemStyle.color);
+    }
   });
 });
 

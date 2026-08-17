@@ -67,6 +67,7 @@ class HeaCostOverTimeCard extends HeaChartCard {
   }
 
   _options(locale) {
+    const labels = this._labels;
     return {
       xAxis: { type: "time" },
       yAxis: {
@@ -84,7 +85,26 @@ class HeaCostOverTimeCard extends HeaChartCard {
         axisPointer: { type: "shadow" },
         valueFormatter: (value) => formatMoney(value, locale),
       },
-      legend: { show: true },
+      // Named explicitly, for the same reason the device-costs card does it:
+      // `show` alone falls through to ECharts' own in-canvas legend, which
+      // renders - so it never looks broken - but wears different spacing, no
+      // overflow chip and no toggling, beside a card that has all three
+      // (HEA-87, docs/notes/CHART_COMPONENT_CONTRACT.md).
+      //
+      // One entry per series here, where that card needs `secondaryIds`: its
+      // series are a pair per device, ours are one per concept.
+      legend: {
+        show: true,
+        type: "custom",
+        data: [SERIES.paid, SERIES.saved].map((series) => ({
+          id: series.id,
+          name: labels[series.name],
+          // The series colour, not whatever the last point drew: the saving
+          // recolours an individual losing bar, and a swatch keyed to that
+          // would change with the data.
+          itemStyle: { color: this._colour(series) },
+        })),
+      },
     };
   }
 }
