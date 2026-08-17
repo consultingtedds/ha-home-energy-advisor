@@ -7,14 +7,15 @@
  * last part differs between cards, so only that part is left to them.
  *
  * Subclasses implement `_body(locale)` and set `static cardStyle`; everything
- * below — the subscription and its teardown, coalescing a burst of period
- * announcements, dropping a response that has been overtaken, and the states —
+ * below - the subscription and its teardown, coalescing a burst of period
+ * announcements, dropping a response that has been overtaken, and the states -
  * is shared, and is where the bugs would otherwise be duplicated.
  */
 
 import { subscribeToPeriod } from "./ha-energy-collection.js";
 import { readDevices, readWholeHome } from "./hea-devices.js";
 import { formatPeriod, localeFrom } from "./hea-format.js";
+import { labelsFor, loadLabels } from "./hea-labels.js";
 import { fetchDeviceStatistics } from "./hea-statistics.js";
 
 const BASE_STYLE = `
@@ -32,6 +33,19 @@ const BASE_STYLE = `
 export class HeaCard extends HTMLElement {
   /** Extra CSS for the subclass's own markup. */
   static cardStyle = "";
+
+  /** The `cards` translation key naming this card when no title is configured. */
+  static titleKey = "";
+
+  /**
+   * This household's words, for the synchronous render path.
+   *
+   * English until `loadLabels` has answered, which is before any paint that
+   * shows figures. A card is never blocked on its vocabulary (ADR-0018).
+   */
+  get _labels() {
+    return labelsFor(this._hass);
+  }
 
   constructor() {
     super();
@@ -128,6 +142,12 @@ export class HeaCard extends HTMLElement {
       return;
     }
 
+    // Alongside the figures, not before them: the words and the numbers are
+    // wanted at the same moment, and a household should not wait for one to
+    // start the other. A failed fetch resolves to English rather than rejecting,
+    // so this can never be what stops a card rendering (ADR-0018).
+    await loadLabels(this._hass);
+
     try {
       const result = await fetchDeviceStatistics(
         this._hass,
@@ -165,15 +185,15 @@ export class HeaCard extends HTMLElement {
     // An absent title takes the card's own default: a card added from the
     // picker should say what it shows, and a chart of coloured bars says
     // nothing on its own. An *empty* title is a deliberate request for no
-    // header, for a user stacking cards under a heading of their own — so the
+    // header, for a user stacking cards under a heading of their own - so the
     // two cases are distinguished rather than both treated as "unset".
-    const title = this._config?.title ?? this.constructor.defaultTitle;
+    const title = this._config?.title ?? this._labels[this.constructor.titleKey];
     if (title) this.shadowRoot.querySelector("ha-card").setAttribute("header", title);
     this._afterRender();
   }
 
   /**
-   * A hook for cards whose markup needs properties set rather than attributes —
+   * A hook for cards whose markup needs properties set rather than attributes -
    * `ha-chart-base` takes its data and options as properties (ADR-0013), and
    * markup alone cannot express an object.
    */
@@ -202,7 +222,7 @@ export class HeaCard extends HTMLElement {
 /**
  * Register a card and offer it in the card picker.
  *
- * Tolerates a dashboard that lists the resource twice — a second
+ * Tolerates a dashboard that lists the resource twice - a second
  * `customElements.define` throws, and would take the whole view with it.
  */
 export const registerCard = (tag, cardClass, { name, description }) => {

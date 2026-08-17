@@ -4,14 +4,15 @@
  * The first card on the data layer (HEA-50): what the period actually cost,
  * what it would have cost at grid price, and the difference.
  *
- * The element's lifecycle is where card bugs live — a subscription left behind
+ * The element's lifecycle is where card bugs live - a subscription left behind
  * on a removed card, a stale response overwriting a newer one, a dashboard
- * placed before the integration is set up — so it is exercised here as a real
+ * placed before the integration is set up - so it is exercised here as a real
  * DOM element rather than through a view-model standing in for one.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DEFAULTS as LABELS } from "../hea-labels.js";
 import { TAG, register } from "../hea-totals-card.js";
 import {
   AIRCON_BUCKETS,
@@ -44,7 +45,7 @@ describe("registration", () => {
   });
 
   it("survives the resource being added to a dashboard twice", () => {
-    // Given — a user who lists the same resource url twice; a second
+    // Given - a user who lists the same resource url twice; a second
     // `customElements.define` throws and takes the whole dashboard with it
     // When / Then
     expect(() => register()).not.toThrow();
@@ -60,10 +61,10 @@ describe("registration", () => {
 
 describe("configuration", () => {
   it("rejects a device filter that is not a list", () => {
-    // Given — a hand-edited dashboard yaml
+    // Given - a hand-edited dashboard yaml
     const card = document.createElement(TAG);
 
-    // When / Then — Home Assistant shows the thrown message in the card editor
+    // When / Then - Home Assistant shows the thrown message in the card editor
     expect(() => card.setConfig({ type: `custom:${TAG}`, devices: "fine_meter_aircon" })).toThrow(
       /devices/,
     );
@@ -80,10 +81,10 @@ describe("configuration", () => {
   });
 
   it("names itself when no title is configured", () => {
-    // Given / When — added from the picker, with nothing filled in
+    // Given / When - added from the picker, with nothing filled in
     const card = mount(aHass());
 
-    // Then — three unlabelled money figures do not say what they are
+    // Then - three unlabelled money figures do not say what they are
     expect(card.shadowRoot.querySelector("ha-card").getAttribute("header")).toBe(
       "Cost summary",
     );
@@ -103,25 +104,31 @@ describe("the figures", () => {
     // When
     await settled(card);
 
-    // Then — Saved is the difference, so the three always reconcile on screen
+    // Then - Saved is the difference, so the three always reconcile on screen
     expect(figure(card, "actualCost").textContent).toMatch(/0[.,]11/);
     expect(figure(card, "costAtGridPrice").textContent).toMatch(/5[.,]78/);
     expect(figure(card, "costSavings").textContent).toMatch(/5[.,]67/);
   });
 
   it("labels each figure by the name the project settled on", async () => {
-    // Given / When — "Cost at Grid Price", never "Cost Without Solar" (ADR-0009)
+    // Given / When - the same three words every card uses, so a household does
+    // not have to learn that "Actual Cost" here and "Paid" there are one figure
+    // (HEA-88). "Would have paid" carries the counterfactual in its grammar,
+    // where "at grid price" left it to be inferred; the pricing rule itself is
+    // unchanged and still never names absent hardware (ADR-0009)
     const card = mount(aHass());
     await settled(card);
 
     // Then
-    expect(text(card)).toContain("Actual Cost");
-    expect(text(card)).toContain("Cost at Grid Price");
+    expect(text(card)).toContain(LABELS.paid);
+    expect(text(card)).toContain(LABELS.would_have_paid);
+    expect(text(card)).toContain(LABELS.saved);
     expect(text(card)).not.toContain("Without Solar");
+    expect(text(card)).not.toContain("Actual Cost");
   });
 
   it("totals the whole house, the Untracked remainder included", async () => {
-    // Given — the remainder is part of what the household actually paid
+    // Given - the remainder is part of what the household actually paid
     const hass = aHass({
       devices: [
         aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
@@ -142,7 +149,7 @@ describe("the figures", () => {
   });
 
   it("counts only the devices a filter names", async () => {
-    // Given — "this device, or these devices, cost x"
+    // Given - "this device, or these devices, cost x"
     const hass = aHass({
       devices: [
         aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
@@ -154,7 +161,7 @@ describe("the figures", () => {
     const card = mount(hass, { devices: ["slow_poll_aircon"] });
     await settled(card);
 
-    // Then — the other device is never even asked about, and neither is the
+    // Then - the other device is never even asked about, and neither is the
     // whole home: a card filtered to one device is not bounded by the
     // household's range, and offering it would invite comparing a subset with
     // its whole (ADR-0016)
@@ -175,7 +182,7 @@ describe("the figures", () => {
   });
 
   it("marks a saving that is really a loss", async () => {
-    // Given — battery arbitrage cost more than the grid would have (HEA-39)
+    // Given - battery arbitrage cost more than the grid would have (HEA-39)
     const hass = aHass({
       response: bucketsFor("slow_poll_aircon", 10, 5, 3),
     });
@@ -184,7 +191,7 @@ describe("the figures", () => {
     const card = mount(hass);
     await settled(card);
 
-    // Then — signed, and marked so it can be styled as the loss it is
+    // Then - signed, and marked so it can be styled as the loss it is
     expect(figure(card, "costSavings").textContent).toMatch(/-/);
     expect(figure(card, "costSavings").classList.contains("loss")).toBe(true);
   });
@@ -202,28 +209,28 @@ describe("the period", () => {
   });
 
   it("follows the picker to a new range", async () => {
-    // Given — a card already showing May to July
+    // Given - a card already showing May to July
     const collection = anEnergyCollection();
     const hass = aHass({ collection });
     const card = mount(hass);
     await settled(card);
 
-    // When — the user picks a different range
+    // When - the user picks a different range
     collection.announce(new Date(2026, 7, 1), new Date(2026, 7, 9));
 
-    // Then — the figures are fetched again for it
+    // Then - the figures are fetched again for it
     await vi.waitFor(() => expect(text(card)).toMatch(/9 Aug 2026/));
     expect(hass.callWS).toHaveBeenCalledTimes(2);
   });
 
   it("says so when it is showing a default range", async () => {
-    // Given — a dashboard with no energy-date-selection card on it
+    // Given - a dashboard with no energy-date-selection card on it
     const card = mount(aHass({ collection: null }));
 
     // When
     await settled(card);
 
-    // Then — the user is told why the range is not the one they expected
+    // Then - the user is told why the range is not the one they expected
     expect(text(card)).toMatch(/date picker/i);
   });
 
@@ -239,20 +246,20 @@ describe("the period", () => {
 
 describe("when there is nothing to show", () => {
   it("says so when no devices are tracked yet", async () => {
-    // Given — HEA installed but no devices added
+    // Given - HEA installed but no devices added
     const hass = aHass({ devices: [] });
 
     // When
     const card = mount(hass);
     await settled(card, "empty");
 
-    // Then — and the recorder is never asked for every statistic in the house
+    // Then - and the recorder is never asked for every statistic in the house
     expect(text(card)).toMatch(/no devices/i);
     expect(hass.callWS).not.toHaveBeenCalled();
   });
 
   it("says so when the integration is not loaded at all", async () => {
-    // Given — a dashboard placed before HEA is set up
+    // Given - a dashboard placed before HEA is set up
     const hass = aHass({ devices: null });
 
     // When
@@ -263,32 +270,32 @@ describe("when there is nothing to show", () => {
   });
 
   it("reports a failure rather than showing a house that cost nothing", async () => {
-    // Given — the recorder is unavailable
+    // Given - the recorder is unavailable
     const hass = aHass({ callWS: vi.fn().mockRejectedValue(new Error("no recorder")) });
 
     // When
     const card = mount(hass);
     await settled(card, "error");
 
-    // Then — zeroes would read as a free week, which is worse than an error
+    // Then - zeroes would read as a free week, which is worse than an error
     expect(text(card)).toMatch(/could not/i);
   });
 });
 
 describe("lifecycle", () => {
   it("waits for the picker when the card renders first", async () => {
-    // Given — card order within a view is not guaranteed, so the collection
+    // Given - card order within a view is not guaranteed, so the collection
     // may not exist on the first hass update
     const hass = aHass({ collection: null });
     const card = mount(hass);
     await settled(card);
     expect(text(card)).toMatch(/date picker/i);
 
-    // When — the picker appears and a later hass update carries it
+    // When - the picker appears and a later hass update carries it
     const collection = anEnergyCollection();
     card.hass = { ...hass, connection: { "_energy_hea-costs": collection } };
 
-    // Then — the card switches to the picker's range
+    // Then - the card switches to the picker's range
     await vi.waitFor(() => expect(text(card)).not.toMatch(/date picker/i));
   });
 
@@ -307,7 +314,7 @@ describe("lifecycle", () => {
   });
 
   it("subscribes again when the dashboard moves it", async () => {
-    // Given — Home Assistant re-appends cards when a view is edited, and a card
+    // Given - Home Assistant re-appends cards when a view is edited, and a card
     // that does not re-subscribe silently freezes on the range it last saw
     const collection = anEnergyCollection();
     const card = mount(aHass({ collection }));
@@ -322,7 +329,7 @@ describe("lifecycle", () => {
   });
 
   it("ignores a failure from a request that has been overtaken", async () => {
-    // Given — the first fetch fails, but only after a later one has succeeded;
+    // Given - the first fetch fails, but only after a later one has succeeded;
     // letting it through would replace good figures with an error
     const collection = anEnergyCollection();
     const pending = [];
@@ -346,7 +353,7 @@ describe("lifecycle", () => {
   });
 
   it("ignores a stale response that lands after a newer one", async () => {
-    // Given — a slow first fetch and a fast second; without a guard the slow
+    // Given - a slow first fetch and a fast second; without a guard the slow
     // one lands last and the card shows the range the user already left
     const collection = anEnergyCollection();
     const resolvers = [];
@@ -356,7 +363,7 @@ describe("lifecycle", () => {
     const card = mount(aHass({ collection, callWS }));
     await vi.waitFor(() => expect(callWS).toHaveBeenCalledTimes(1));
 
-    // When — the user picks another range before the first answer arrives,
+    // When - the user picks another range before the first answer arrives,
     // and the answers come back out of order
     collection.announce(new Date(2026, 3, 1), new Date(2026, 7, 9));
     await vi.waitFor(() => expect(callWS).toHaveBeenCalledTimes(2));
@@ -364,7 +371,7 @@ describe("lifecycle", () => {
     await settled(card);
     resolvers[0](bucketsFor("slow_poll_aircon", 9, 9, 9));
 
-    // Then — the newer figures stand
+    // Then - the newer figures stand
     await vi.waitFor(() => expect(figure(card, "actualCost").textContent).toMatch(/2[.,]00/));
     expect(figure(card, "actualCost").textContent).toMatch(/2[.,]00/);
   });

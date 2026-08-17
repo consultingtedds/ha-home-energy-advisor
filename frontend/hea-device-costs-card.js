@@ -6,7 +6,7 @@
  *
  * Each device is one bar in its own colour. The bar runs to Cost at Grid Price
  * and the stronger fill stops at what was actually paid, so the paler band
- * above it is the saving — the same three figures the other cards carry, read
+ * above it is the saving - the same three figures the other cards carry, read
  * off a single shape.
  *
  * Only the upper band carries a border. Two stacked segments each with one
@@ -23,7 +23,7 @@
  * That legend has an exact contract, and failing it is silent. The component
  * looks for an option that is both `show` and `type: "custom"`, draws nothing
  * at all when it finds neither, and hides a series by matching a legend entry's
- * `id` against a series `id` — so an entry names one of the device's two
+ * `id` against a series `id` - so an entry names one of the device's two
  * series and reaches the other through `secondaryIds`. A custom legend without
  * `show` renders nothing; ECharts does not step in, because the component
  * rewrites a custom legend to `{ show: false }` before handing the options on.
@@ -33,6 +33,7 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { formatMoney, formatMoneyRange, formatPeriod } from "./hea-format.js";
+import { fill } from "./hea-labels.js";
 
 export const TAG = "hea-device-costs-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -126,10 +127,10 @@ const tooltipRow = (label, amount) => {
  *
  * Built rather than written as markup: Home Assistant renders a tooltip
  * formatter's return value with lit, which takes a node as it is and escapes a
- * string — and a device name is whatever the household typed into their own
+ * string - and a device name is whatever the household typed into their own
  * registry.
  */
-const tooltipFor = (device, locale) => {
+const tooltipFor = (device, locale, labels) => {
   const box = document.createElement("div");
   const title = document.createElement("div");
   title.textContent = device.name;
@@ -137,15 +138,15 @@ const tooltipFor = (device, locale) => {
   title.style.marginBottom = "4px";
   box.append(
     title,
-    tooltipRow("Paid", formatMoney(device.actualCost, locale)),
+    tooltipRow(labels.paid, formatMoney(device.actualCost, locale)),
     // A negative saving is a loss, and calling it "Saved" would read as a gain.
     tooltipRow(
-      device.costSavings < 0 ? "Lost" : "Saved",
+      device.costSavings < 0 ? labels.lost : labels.saved,
       formatMoney(device.costSavings, locale),
     ),
-    tooltipRow("At grid price", formatMoney(device.costAtGridPrice, locale)),
+    tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
   );
-  const range = rangeNote(device, locale);
+  const range = rangeNote(device, locale, labels);
   if (range) box.append(range);
   return box;
 };
@@ -154,7 +155,7 @@ const tooltipFor = (device, locale) => {
  * What this device's figure could honestly have been (ADR-0016).
  *
  * A sentence rather than a row, because it qualifies the "Paid" line above it
- * rather than adding a fourth figure — and because the wording is doing work:
+ * rather than adding a fourth figure - and because the wording is doing work:
  * summing each delta's worst case assumes every kWh landed in that device's own
  * dearest 5-minute slice, which is an outer bound and not an error bar
  * (ADR-0016 decision 4).
@@ -162,22 +163,24 @@ const tooltipFor = (device, locale) => {
  * Absent where the household publishes no per-device range, which is the
  * default: silence beats a range of zero, which would claim exactness.
  */
-const rangeNote = ({ costFloor, costCeiling }, locale) => {
+const rangeNote = ({ costFloor, costCeiling }, locale, labels) => {
   if (![costFloor, costCeiling].every((value) => Number.isFinite(value))) {
     return undefined;
   }
   const note = document.createElement("div");
   note.style.marginTop = "4px";
   note.style.opacity = "0.75";
-  note.textContent = `Could be anywhere in ${formatMoneyRange(
-    [costFloor, costCeiling],
-    locale,
-  )}`;
+  // Names its subject. The bounds bracket what was paid and nothing else, so a
+  // bare "Could be between…" under three figures left the reader to guess
+  // which of them it qualified (HEA-88).
+  note.textContent = fill(labels.range_device, {
+    range: formatMoneyRange([costFloor, costCeiling], locale),
+  });
   return note;
 };
 
 class HeaDeviceCostsCard extends HeaChartCard {
-  static defaultTitle = "What each device cost";
+  static titleKey = "title_device_costs";
 
   static getConfigElement() {
     return document.createElement(EDITOR_TAG);
@@ -187,7 +190,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * Nothing to draw when no configured device recorded anything.
    *
    * A row exists for every device whether or not it reported, so an empty
-   * period still yields rows — all of them zero. Bars of nothing read as "it
+   * period still yields rows - all of them zero. Bars of nothing read as "it
    * cost nothing", which is a different claim from "there is nothing here".
    */
   _isEmpty() {
@@ -201,7 +204,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
    *
    * Ranked by actual cost rather than by bar height, so it answers the same
    * question the table does and in the same order. Bars therefore need not
-   * descend — a tall bar on a small fill is a device that ran mostly on
+   * descend - a tall bar on a small fill is a device that ran mostly on
    * generation, which is worth seeing rather than sorting away.
    */
   _ranked() {
@@ -221,7 +224,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
   /**
    * Two series per device sharing one stack: the spend, and the saving above.
    *
-   * A device's own stack, never a shared one — stacking every device together
+   * A device's own stack, never a shared one - stacking every device together
    * would pile the whole household into a single column.
    */
   _series() {
@@ -268,7 +271,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     const device = this._ranked().find((candidate) => candidate.key === key);
     // Undefined suppresses the tooltip, where a half-built one would render an
     // empty box against the cursor.
-    return device ? tooltipFor(device, locale) : undefined;
+    return device ? tooltipFor(device, locale, this._labels) : undefined;
   }
 
   _options(locale) {

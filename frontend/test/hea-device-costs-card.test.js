@@ -5,11 +5,11 @@
  *
  * One bar per device in that device's own colour, stacked: solid below is what
  * was paid, faded above is what was saved, and the whole bar is Cost at Grid
- * Price — the same meaning the over-time chart's bars carry, turned on its side
+ * Price - the same meaning the over-time chart's bars carry, turned on its side
  * so devices can be compared against each other rather than against yesterday.
  *
  * `ha-chart-base` is Home Assistant's (ADR-0013) and is stubbed here, so what
- * is asserted is the contract we hand it — series and options — not pixels.
+ * is asserted is the contract we hand it - series and options - not pixels.
  * That contract is exact rather than approximate: the component ignores a
  * legend it does not recognise and silently draws none, so the shape it
  * requires is asserted here field by field.
@@ -89,19 +89,19 @@ describe("registration", () => {
 
 describe("the bars", () => {
   it("fills to what was paid and outlines to what it would have cost", async () => {
-    // Given — the outline carries the counterfactual and the fill carries the
+    // Given - the outline carries the counterfactual and the fill carries the
     // spend, so the lighter space between them is the saving
     const card = mount(aHass({ devices: [PUMP], response: THREE }));
     await ready(card);
 
-    // Then — 3.00 paid of 4.00 at grid price, so 1.00 stands above it
+    // Then - 3.00 paid of 4.00 at grid price, so 1.00 stands above it
     const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
     expect(paid.data[0]).toBe(3.0);
     expect(saved.data[0]).toBe(1.0);
   });
 
   it("tints the saving rather than leaving it hollow", async () => {
-    // Given — an empty box reads as absence; the saving is a quantity, and a
+    // Given - an empty box reads as absence; the saving is a quantity, and a
     // wash of the device's own colour says so while still ranking below the
     // spend it sits on
     const card = mount(aHass({ devices: [PUMP], response: THREE }));
@@ -115,7 +115,7 @@ describe("the bars", () => {
   });
 
   it("outlines only the upper segment, so the boundary is a single line", async () => {
-    // Given — stacked segments each carrying a border meet at the shared edge
+    // Given - stacked segments each carrying a border meet at the shared edge
     // and draw it twice, and ECharts has no per-side border width. Bordering
     // the saving alone leaves one line, at the level that was paid.
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
@@ -132,7 +132,7 @@ describe("the bars", () => {
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then — the outline and the fill beneath it are one colour at two
+    // Then - the outline and the fill beneath it are one colour at two
     // strengths, and the next device does not borrow it
     const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
     expect(channelsOf(saved.itemStyle.color)).toBe(
@@ -152,7 +152,7 @@ describe("the bars", () => {
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then — a shared stack would pile every device into one column
+    // Then - a shared stack would pile every device into one column
     const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
     const [otherPaid] = deviceSeries(card, "slow_poll_aircon");
     expect(paid.stack).toBe(saved.stack);
@@ -160,7 +160,7 @@ describe("the bars", () => {
   });
 
   it("orders the dearest device first", async () => {
-    // Given — "which device costs most" is the question the bars answer
+    // Given - "which device costs most" is the question the bars answer
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
@@ -169,7 +169,7 @@ describe("the bars", () => {
   });
 
   it("gives the Untracked remainder a colour of its own", async () => {
-    // Given — it is not a device, and colouring it like one invites the reader
+    // Given - it is not a device, and colouring it like one invites the reader
     // to hunt for an appliance that does not exist
     const card = mount(aHass({ devices: [AIRCON, UNTRACKED], response: THREE }));
     await ready(card);
@@ -181,7 +181,7 @@ describe("the bars", () => {
   });
 
   it("keeps a loss below the axis and marks it apart from the device", async () => {
-    // Given — battery arbitrage cost more than the grid would have (HEA-39)
+    // Given - battery arbitrage cost more than the grid would have (HEA-39)
     const saving = mount(
       aHass({
         devices: [AIRCON],
@@ -192,7 +192,7 @@ describe("the bars", () => {
     const [, gained] = deviceSeries(saving, "slow_poll_aircon");
     const gainedOutline = gained.itemStyle.borderColor;
 
-    // When — the same device, having lost rather than saved
+    // When - the same device, having lost rather than saved
     document.body.replaceChildren();
     const losing = mount(
       aHass({
@@ -202,7 +202,7 @@ describe("the bars", () => {
     );
     await ready(losing);
 
-    // Then — negative is how Home Assistant renders exported energy, and the
+    // Then - negative is how Home Assistant renders exported energy, and the
     // loss takes the error colour rather than the device's, so it is not read
     // as a gain
     const [, lost] = deviceSeries(losing, "slow_poll_aircon");
@@ -216,13 +216,13 @@ describe("the bars", () => {
 
 describe("the legend", () => {
   it("puts the devices in the legend, not on the axis", async () => {
-    // Given — fourteen device names along an axis is what made the first
+    // Given - fourteen device names along an axis is what made the first
     // attempt unreadable; Home Assistant's own charts name series in a legend
     // and leave the axis to the period
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then — one category for the whole period, and the names in the legend
+    // Then - one category for the whole period, and the names in the legend
     expect(chartOf(card).options.xAxis.type).toBe("category");
     expect(chartOf(card).options.xAxis.data).toHaveLength(1);
     expect(legendOf(card).data.map((entry) => entry.name)).toEqual([
@@ -232,7 +232,7 @@ describe("the legend", () => {
   });
 
   it("asks for the legend in the only shape that renders one", async () => {
-    // Given — `ha-chart-base` builds its legend from the first option that is
+    // Given - `ha-chart-base` builds its legend from the first option that is
     // both `show` and `type: "custom"`, and silently draws none otherwise. A
     // custom legend omitting `show` is the defect this card shipped with.
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
@@ -244,7 +244,7 @@ describe("the legend", () => {
   });
 
   it("gives every device one legend entry, not one per segment", async () => {
-    // Given — each device is drawn as two stacked series, which would
+    // Given - each device is drawn as two stacked series, which would
     // otherwise put its name in the legend twice
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
@@ -255,7 +255,7 @@ describe("the legend", () => {
   });
 
   it("names series that exist, so clicking an entry hides the device", async () => {
-    // Given — the component hides by matching a legend entry's `id` against a
+    // Given - the component hides by matching a legend entry's `id` against a
     // series `id`, and toggles the rest of the device through `secondaryIds`.
     // An entry naming neither would render and then do nothing when clicked.
     const card = mount(aHass({ devices: [PUMP], response: THREE }));
@@ -270,7 +270,7 @@ describe("the legend", () => {
   });
 
   it("swatches the device in its solid colour, not the faded fill", async () => {
-    // Given — the swatch is the key to the bar, and a wash of a colour is
+    // Given - the swatch is the key to the bar, and a wash of a colour is
     // harder to tell from its neighbour than the colour itself
     const card = mount(aHass({ devices: [PUMP], response: THREE }));
     await ready(card);
@@ -287,25 +287,25 @@ describe("the tooltip", () => {
     chartOf(card).options.tooltip.formatter({ seriesId }).textContent;
 
   it("answers for the whole device, whichever segment is hovered", async () => {
-    // Given — an axis tooltip lists every series at the category, which for a
+    // Given - an axis tooltip lists every series at the category, which for a
     // dozen devices is two dozen rows, each device named twice with nothing
     // to say which row is the spend and which the saving
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then — one device, its three figures, and the same answer from either
+    // Then - one device, its three figures, and the same answer from either
     // half of its bar
     const shown = hover(card, "cloud_polled_pump:paid");
     expect(shown).toContain("Cloud Polled Pump");
     expect(shown).not.toContain("Slow Poll Aircon");
     expect(shown).toMatch(/Paid.*€3[.,]00/);
     expect(shown).toMatch(/Saved.*€1[.,]00/);
-    expect(shown).toMatch(/At grid price.*€4[.,]00/);
+    expect(shown).toMatch(/Would have paid.*€4[.,]00/);
     expect(hover(card, "cloud_polled_pump:saved")).toBe(shown);
   });
 
   it("formats the figures as money", async () => {
-    // Given — an allocated share divides into a long recurring decimal, and a
+    // Given - an allocated share divides into a long recurring decimal, and a
     // raw hover reads out fourteen places of a euro
     const card = mount(
       aHass({
@@ -322,7 +322,7 @@ describe("the tooltip", () => {
   });
 
   it("calls a loss a loss", async () => {
-    // Given — labelling a negative saving "Saved" would read as a gain (HEA-39)
+    // Given - labelling a negative saving "Saved" would read as a gain (HEA-39)
     const card = mount(
       aHass({
         devices: [AIRCON],
@@ -338,7 +338,7 @@ describe("the tooltip", () => {
   });
 
   it("says what the figure could honestly have been", async () => {
-    // Given — a household that opted into per-device ranges
+    // Given - a household that opted into per-device ranges
     const card = mount(
       aHass({
         devices: [AIRCON],
@@ -350,26 +350,31 @@ describe("the tooltip", () => {
     );
     await ready(card);
 
-    // Then — a sentence, not a fourth figure: it qualifies what was paid rather
+    // Then - a sentence, not a fourth figure: it qualifies what was paid rather
     // than adding to it, and the wording keeps an outer bound from reading as an
-    // error bar (ADR-0016 decision 4)
+    // error bar (ADR-0016 decision 4).
+    //
+    // It names its subject. The bounds bracket what was *paid* and nothing else
+    // - `floor = kwh × min(blends)` over the actual blended price - so a bare
+    // "Could be between…" beneath three figures left the reader to guess
+    // which one it qualified (HEA-88)
     const shown = hover(card, "slow_poll_aircon:paid");
-    expect(shown).toMatch(/Could be anywhere in/);
+    expect(shown).toMatch(/What you paid could be between/);
     expect(shown).toMatch(/0[.,]40/);
     expect(shown).toMatch(/2[.,]10/);
   });
 
   it("says nothing about a range the household does not publish", async () => {
-    // Given — per-device ranges are opt-in, and the default is off
+    // Given - per-device ranges are opt-in, and the default is off
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
     await ready(card);
 
-    // Then — silence, never "€0.00 – €0.00", which would claim exactness
-    expect(hover(card, "slow_poll_aircon:paid")).not.toMatch(/anywhere in/);
+    // Then - silence, never "€0.00 - €0.00", which would claim exactness
+    expect(hover(card, "slow_poll_aircon:paid")).not.toMatch(/between/);
   });
 
   it("says nothing for a series it cannot place", async () => {
-    // Given — returning undefined suppresses the tooltip, where a half-built
+    // Given - returning undefined suppresses the tooltip, where a half-built
     // one would render an empty box against the cursor
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
     await ready(card);
@@ -394,7 +399,7 @@ describe("the options handed to the chart", () => {
   });
 
   it("hovers a bar rather than the whole category", async () => {
-    // Given — the category holds every device, so an axis trigger answers for
+    // Given - the category holds every device, so an axis trigger answers for
     // all of them at once
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
     await ready(card);
@@ -404,7 +409,7 @@ describe("the options handed to the chart", () => {
   });
 
   it("says so when no device recorded anything in the period", async () => {
-    // Given — a range earlier than any recorded statistic. Bars of nothing read
+    // Given - a range earlier than any recorded statistic. Bars of nothing read
     // as "it cost nothing", which is a different claim from "there is nothing
     // here", and every configured device still yields a row.
     const card = mount(aHass({ devices: [AIRCON], response: {} }));
@@ -428,14 +433,14 @@ describe("tinting a colour", () => {
   });
 
   it("takes a colour a theme hands over already resolved", () => {
-    // Given — Untracked and a loss take their colour from a CSS variable, and
+    // Given - Untracked and a loss take their colour from a CSS variable, and
     // a theme is free to write that as `rgb()` rather than as hex
     expect(tint("rgb(20, 30, 40)", 0.25)).toBe("rgba(20, 30, 40, 0.25)");
     expect(tint("rgba(20, 30, 40, 0.8)", 0.25)).toBe("rgba(20, 30, 40, 0.25)");
   });
 
   it("leaves a colour it cannot read alone rather than inventing one", () => {
-    // Given — a named colour or a function we do not parse. Returning it
+    // Given - a named colour or a function we do not parse. Returning it
     // unchanged loses the fade; composing `rgba(NaN, NaN, NaN)` would lose
     // the bar.
     expect(tint("teal", 0.3)).toBe("teal");

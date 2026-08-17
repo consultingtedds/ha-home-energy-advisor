@@ -11,14 +11,14 @@ The integration has shipped `strings.json` plus `translations/en.json` and
 Repairs, services and exceptions. `CRITICAL_INSTRUCTIONS.md` requires it.
 
 The Lovelace cards were built later and never joined that discipline. An audit
-during HEA-88 found two faults with one cause — the cards treat English as the
+during HEA-88 found two faults with one cause - the cards treat English as the
 canonical language rather than as one translation of it.
 
 **Every user-facing word in the cards is hardcoded English.** Around forty-five
 strings across seven modules: column headers, card titles, tooltip rows, sort
 labels, the range disclosures, the editor's field labels. `hea-format.js`
-localises *formats* — money, energy, rates and dates all go through `Intl` with
-`hass.locale.language` — so the numbers are right in any locale and the words
+localises *formats* - money, energy, rates and dates all go through `Intl` with
+`hass.locale.language` - so the numbers are right in any locale and the words
 around them are not.
 
 **The cards construct entity ids in English.** `hea-statistics.js` builds every
@@ -31,7 +31,7 @@ instance the entities are `sensor.<device>_coste_real`, the cards ask for
 `sensor.<device>_actual_cost`, and the whole family renders empty.
 
 That second fault is the sharper one, because `hea-statistics.js` already
-carries a comment stating the rule it breaks — written after HEA-84 shipped
+carries a comment stating the rule it breaks - written after HEA-84 shipped
 `cost_floor` against a sensor named "Lowest Possible Cost". It fixed the
 key-versus-name half of the trap and missed the language half.
 
@@ -83,9 +83,39 @@ about being English. Accepted: the alternative is what this ADR exists to correc
 **A latent asymmetry is now recorded.** ADR-0003 calls entity naming effectively
 permanent and reasons throughout about the English ids. That reasoning holds
 within one instance, but the ids themselves are per-language, so "the" entity id
-for a concept does not exist. Anything reading ids — dashboards, templates,
-HEA-78's 202-id clear list — is instance-specific, not project-wide.
+for a concept does not exist. Anything reading ids - dashboards, templates,
+HEA-78's 202-id clear list - is instance-specific, not project-wide.
 
 **Revisit if** Home Assistant grows a sanctioned translation category for
 Lovelace resources, or if `NATIVE_ENTITY_IDS` stops governing `object_id`
 derivation.
+
+## Update (2026-08-16): the strings live under `common`, not in a section of their own
+
+Decision 1 above says a `cards` section joins the translation files. It cannot.
+**hassfest rejects it**, and hassfest runs in CI and in HACS validation:
+
+```
+[ERROR] [TRANSLATIONS] Invalid strings.json: extra keys not allowed @ data['cards']
+```
+
+`gen_strings_schema` is a plain `vol.Schema({...})`, and voluptuous defaults to
+`PREVENT_EXTRA` - so the schema is an allow-list of top-level keys, and anything
+it does not name fails. The reasoning that produced decision 1 was sound about
+the *category* mechanism and simply never asked whether the file was allowed to
+carry the key.
+
+The strings now live under **`common`**, which the schema does name, typed as
+`vol.Schema({cv.slug: translation_value_validator})` - a flat slug-to-string map,
+which is exactly the shape wanted. Each key carries a `card_` prefix, because the
+section is shared with the backend's own strings. Nothing else changes: a
+category is whatever a translation file's top-level keys happen to be, so
+`common` is fetchable over `frontend/get_translations` exactly as `cards` would
+have been, and the one translation workflow still holds.
+
+**Found by running hassfest, not by reading it.** The schema had already been
+read, and read correctly, at the point the wrong conclusion was drawn - the
+allow-list behaviour is a voluptuous default with nothing in the file to signal
+it. A local `python -m script.hassfest --integration-path …` against the core
+checkout catches this class of thing before CI does, and is worth running
+whenever `strings.json` gains a key.
