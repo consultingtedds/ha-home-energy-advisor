@@ -16,8 +16,12 @@ finalised bucket's context (its served sources, prices and draws) is retained in
 a bounded ring (24 h by default). Energy that arrives late for a retained bucket
 re-runs that bucket's allocation with its own retained prices and applies only the
 difference - the late device gains, the Untracked remainder gives back, and no
-already-published device figure is revised. This matters because the founding
-devices (cycle-resetting aircons) report in coarse steps every 15-90 min, so most deltas
+already-published device figure is revised. The giving back is *gradual*: the
+remainder is a published figure too, and taking it where the correction was
+discovered printed an hour that went backwards (ADR-0006, 2026-08-17 update).
+
+This matters because the founding devices (cycle-resetting aircons) report in
+coarse steps every 15-90 min, so most deltas
 span past the watermark; dropping them silently reattributed 30-50 % of their
 energy to Untracked (ADR-0006, HEA-48). Only portions older than the ring are
 dropped, and never silently - a ``DROPPED_LATE`` decision is logged.
@@ -186,6 +190,70 @@ class _PendingBound:
 
 
 @dataclass
+class _HeldCorrection:
+    """Value a late delta earned from a finalised bucket, waiting to be handed over.
+
+    The bucket's metered consumption is fixed, so a device reporting late claims
+    energy the Untracked remainder was already credited with. Moving it at the
+    moment of discovery takes it out of whichever hour the counter happened to
+    report in, and a cumulative sensor can only be corrected in its current
+    bucket - so the remainder publishes an hour that went backwards. That is the
+    wrong-hour retraction HEA-85 removed from the overdraw charge, reaching the
+    same figures by the other path.
+
+    So the transfer waits, and each finalisation hands over only as much as the
+    remainder has just earned. Both sides stay honest: no published total ever
+    falls, and because the money moves device-ward without the house total
+    changing, the split reconciles to the whole home at every instant rather than
+    only once the transfer completes.
+
+    Held in proportion, never field by field. Releasing energy faster than cost
+    would price a device wrongly in the meantime, and releasing the by-source
+    split out of step would stop a device's grid/generation/battery shares
+    summing to its energy (HEA-51).
+
+    It expires, on the same span a suspended charge does. A household whose
+    remainder never earns again would otherwise hold this for ever, and a device
+    that permanently under-reports is a worse answer than one dip in a figure -
+    which is the trade ADR-0015 already made when it gave the debt ledger an
+    expiry rather than letting a deficit outlive its meaning.
+    """
+
+    device: str
+    at: datetime
+    energy_kwh: Decimal
+    actual_cost: Decimal
+    naive_cost: Decimal
+    cost_savings: Decimal
+    by_source: dict[SourceKind, Decimal]
+
+    def scaled(self, fraction: Decimal) -> _HeldCorrection:
+        return _HeldCorrection(
+            device=self.device,
+            at=self.at,
+            energy_kwh=self.energy_kwh * fraction,
+            actual_cost=self.actual_cost * fraction,
+            naive_cost=self.naive_cost * fraction,
+            cost_savings=self.cost_savings * fraction,
+            by_source={kind: kwh * fraction for kind, kwh in self.by_source.items()},
+        )
+
+    def less(self, taken: _HeldCorrection) -> _HeldCorrection:
+        return _HeldCorrection(
+            device=self.device,
+            at=self.at,
+            energy_kwh=self.energy_kwh - taken.energy_kwh,
+            actual_cost=self.actual_cost - taken.actual_cost,
+            naive_cost=self.naive_cost - taken.naive_cost,
+            cost_savings=self.cost_savings - taken.cost_savings,
+            by_source={
+                kind: kwh - taken.by_source.get(kind, Decimal(0))
+                for kind, kwh in self.by_source.items()
+            },
+        )
+
+
+@dataclass
 class _WindowBucket:
     """One finalised interval's evidence for the plausibility guard (HEA-60).
 
@@ -289,6 +357,9 @@ class Accountant:
         # than late reporting (ADR-0015).
         self._debts = DebtLedger(expiry=self._max_quiet_span)
         self._pending_bounds: list[_PendingBound] = []
+        # Late corrections awaiting a remainder that can afford to hand them over,
+        # oldest first so a device that has waited longest is paid first.
+        self._held: list[_HeldCorrection] = []
         self._strategy = ProportionalAllocationStrategy()
         self._running = {device: _Running() for device in device_energy_entities}
         self._house = _Running()
@@ -356,6 +427,7 @@ class Accountant:
         # settled - but a household whose meters have gone quiet closes no
         # buckets at all, and a suspended charge must still fall due (HEA-85).
         self._release(self._debts.expire(cutoff))
+        self._expire_held(cutoff)
         self._evict_stale()
         self._prune_prices()
 
@@ -516,7 +588,10 @@ class Accountant:
         excess free, as this path first did, published device costs far below the
         tariff whenever a coarse counter overshot a bucket (HEA-74, ADR-0014).
         Untracked is derived, so it gives back exactly what the device gains from
-        the funded part - no other device moves (ADR-0006, HEA-48).
+        the funded part - no other device moves (ADR-0006, HEA-48). That giving
+        back is *held* rather than done here: taking it at the moment of discovery
+        published a remainder that went backwards in whichever hour the counter
+        reported. See `_HeldCorrection`.
 
         This is also the path a lying cloud-polled counter mostly arrives by - the
         utility plug reported every ~30 minutes, so most of each delta fell past the
@@ -535,16 +610,29 @@ class Accountant:
         # the path most of a coarse counter's energy takes, so charging it here
         # would leave the symptom untouched (HEA-85).
         cost = funded * retained.blended
-        run = self._running.setdefault(device, _Running())
-        run.energy_kwh += kwh
-        run.naive_cost += funded * retained.import_price
-        run.actual_cost += cost
-        run.cost_savings += funded * retained.import_price - cost
-        run.add_by_source(split_by_source(kwh, retained.sources, retained.consumption))
-
         grew = max(retained.consumption, retained.draw + kwh) - max(
             retained.consumption, retained.draw
         )
+        run = self._running.setdefault(device, _Running())
+        # The unfunded excess is the device's outright: no other figure holds it,
+        # so handing it over now takes nothing from anyone. Only the funded part
+        # comes out of the remainder, and only that part waits.
+        run.energy_kwh += grew
+        run.add_by_source(split_by_source(grew, retained.sources, retained.consumption))
+        self._hold(
+            _HeldCorrection(
+                device=device,
+                at=start,
+                energy_kwh=funded,
+                actual_cost=cost,
+                naive_cost=funded * retained.import_price,
+                cost_savings=funded * retained.import_price - cost,
+                by_source=split_by_source(
+                    funded, retained.sources, retained.consumption
+                ),
+            )
+        )
+
         # `grew` is exactly the unfunded excess (`kwh - funded`), owed on the one
         # ledger both paths share. Its energy is published so the period still
         # reconciles; its money waits there until the debt settles.
@@ -572,8 +660,82 @@ class Accountant:
         for share in allocation.devices.values():
             self._house.add(share)
         self._house.add(remainder)
+        # After the remainder has been banked, so the budget it funds is real.
+        self._release_held(remainder, start)
         self._retain(start, sources, prices, draws)
         self._resolve_bounds(start)
+
+    def _hold(self, correction: _HeldCorrection) -> None:
+        """Queue a correction until the remainder can afford to hand it over."""
+        if correction.energy_kwh > 0 or correction.actual_cost != 0:
+            self._held.append(correction)
+
+    def _release_held(self, remainder: DeviceAllocation, start: datetime) -> None:
+        """Hand over as much held correction as this bucket's remainder just earned.
+
+        The budget is the remainder itself, because that is precisely what has
+        been added to the household total and not yet claimed by any device.
+        Spending it moves value device-ward while the house total stands still,
+        so the split still sums to the whole home - exactly, at this instant and
+        every other. Spending more than it would push the remainder's published
+        figure below what it printed an hour ago, which is the whole point.
+
+        Oldest first: a device that has waited longest is paid first, so no
+        correction can be starved by a livelier one behind it.
+        """
+        budget = _HeldCorrection(
+            device="",
+            at=start,
+            energy_kwh=remainder.energy_kwh,
+            actual_cost=remainder.actual_cost,
+            naive_cost=remainder.naive_cost,
+            cost_savings=Decimal(0),
+            by_source={},
+        )
+        outstanding: list[_HeldCorrection] = []
+        for held in self._held:
+            fraction = _affordable(held, budget)
+            if fraction <= 0:
+                outstanding.append(held)
+                continue
+            paid = held.scaled(fraction)
+            run = self._running.setdefault(held.device, _Running())
+            run.energy_kwh += paid.energy_kwh
+            run.actual_cost += paid.actual_cost
+            run.naive_cost += paid.naive_cost
+            run.cost_savings += paid.cost_savings
+            run.add_by_source(paid.by_source)
+            budget = budget.less(paid)
+            if fraction < 1:
+                outstanding.append(held.less(paid))
+        self._held = outstanding
+
+    def _expire_held(self, cutoff: datetime) -> None:
+        """Hand over a correction the remainder never found the room for.
+
+        Expiry is a function of time, not of activity, so it lives here beside the
+        debt ledger's rather than in the bucket path: a household whose meters go
+        quiet closes no buckets, and a device left short would stay short for ever
+        (the same reasoning HEA-85 applied to a suspended charge).
+
+        Two other ways the budget never comes. A bucket's surplus repays debt
+        before any remainder is published, so a large outstanding overdraw
+        crowds this out for as long as it lasts. And a remainder that is
+        persistently zero - a house whose tracked devices account for everything -
+        has nothing to give. Both end here, at the one price the wait was ever
+        worth paying to avoid.
+        """
+        due = [held for held in self._held if cutoff - held.at >= self._max_quiet_span]
+        if not due:
+            return
+        self._held = [held for held in self._held if held not in due]
+        for held in due:
+            run = self._running.setdefault(held.device, _Running())
+            run.energy_kwh += held.energy_kwh
+            run.actual_cost += held.actual_cost
+            run.naive_cost += held.naive_cost
+            run.cost_savings += held.cost_savings
+            run.add_by_source(held.by_source)
 
     def _resolve_bounds(self, start: datetime) -> None:
         """Price every waiting delta whose last slice has now closed.
@@ -927,3 +1089,30 @@ def _withhold(
 
 def _sum(values: Iterable[Decimal]) -> Decimal:
     return sum(values, Decimal(0))
+
+
+def _affordable(held: _HeldCorrection, budget: _HeldCorrection) -> Decimal:
+    """What share of a held correction this budget can pay for, from 0 to 1.
+
+    The tightest field decides, and the whole correction moves at that one share.
+    Paying each field to its own limit would let a device's energy outrun its
+    cost, pricing it wrongly until the rest caught up, and would break the
+    identity that a device's grid, generation and battery shares sum to its
+    energy (HEA-51).
+
+    A field the correction does not want cannot constrain it; a field the budget
+    cannot cover at all stops the payment outright, which is how a bucket with no
+    remainder to spare hands over nothing rather than borrowing against itself.
+    """
+    fraction = Decimal(1)
+    for wanted, available in (
+        (held.energy_kwh, budget.energy_kwh),
+        (held.actual_cost, budget.actual_cost),
+        (held.naive_cost, budget.naive_cost),
+    ):
+        if wanted <= 0:
+            continue
+        if available <= 0:
+            return Decimal(0)
+        fraction = min(fraction, available / wanted)
+    return fraction

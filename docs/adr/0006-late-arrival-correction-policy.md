@@ -169,3 +169,52 @@ inflates them; in absolute terms the movement is about €0.02/day in either
 season. A 30-90 minute spread is simply short next to a 2-4 hour tariff band, so
 displacement rarely crosses a price boundary at all. HEA-75 is closed on this
 evidence rather than left open as a standing intention.
+
+## Update - the remainder gives back gradually, not at the moment of discovery (2026-08-17, HEA-85)
+
+Decision 3 says a late correction moves value from the Untracked remainder to the
+late device, and that no already-published device figure is revised. Both still
+hold. What was missed is that **the remainder is a published figure too.**
+
+The transfer happened where the correction was discovered, which is whichever
+hour the coarse counter happened to report in - not the hour the energy was used.
+A cumulative sensor can only be corrected in its current bucket, so the remainder
+printed an hour that went backwards. Measured on the reference instance over the
+66 hours after the HEA-85 deploy: **6 negative hours out of 66, largest
+-EUR 0.0344**, against a whole home and fourteen tracked devices that were all
+clean. On the worst of them the household total earned EUR 0.0022 while the
+remainder fell by fifteen times that.
+
+That is precisely the fault HEA-85 removed from the overdraw charge, arriving by
+the other path. The same reasoning applies unchanged: a household shown an hour
+that cost less than nothing stops believing the totals, and the remainder is
+where an unexplained figure is *least* defensible, because it is the one the
+product offers as its own reconciliation check.
+
+**The funded part of a correction is now held and released gradually**, each
+finalisation handing over only as much as that bucket's remainder has just
+earned. The unfunded excess is unaffected: no other figure holds it, so handing
+it over at once takes nothing from anyone, and its money continues to wait on the
+debt ledger exactly as HEA-85 left it.
+
+Two properties follow, and the second is why this shape was chosen over holding
+the remainder's total up while recording what it owed:
+
+- **No published figure falls.** The remainder only ever rises, and so does every
+  device.
+- **The split reconciles exactly at every instant**, not merely over a span.
+  Because the money moves device-ward while the household total stands still,
+  `Σ devices + Untracked ≡ whole_home` holds continuously - the identity in
+  `Totals`, the restart check, and the daily reconciliation of HEA-28 are all
+  untouched. The alternative would have made that identity true only once a debt
+  cleared, and it is the one property the product's honesty rests on.
+
+The cost is that a device's corrected figure now *climbs* to its value instead of
+jumping to it. That is a delayed credit, never a retraction, and it is bounded:
+a correction expires on the same span a suspended charge does and is handed over
+in full. Expiry is checked on the clock rather than on bucket closure, because
+three things can starve the budget indefinitely - a house whose meters go quiet
+closes no buckets, a large outstanding overdraw takes every surplus before any
+remainder is published, and a household whose tracked devices account for
+everything has no remainder to give. A device permanently short is a worse answer
+than one figure that dips once.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from itertools import pairwise
 
 from custom_components.home_energy_advisor.engine.accountant import (
     Accountant,
@@ -261,8 +262,10 @@ def test_a_late_delta_into_a_retained_bucket_is_reallocated_not_dropped() -> Non
     acc.finalize(at(30))  # bucket at(0) finalised; watermark = at(0)
 
     # When - the coarse device finally reports, its delta spanning the finalised
-    # (but still retained) bucket
+    # (but still retained) bucket, and the house consumes on so the remainder can
+    # afford to hand the value over without printing an hour that went backwards
     acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+    acc.observe("sensor.grid_import", at(10), Decimal("2.0"))
     acc.finalize(at(40))
 
     # Then - the energy is reclaimed by re-running that bucket's allocation with its
@@ -272,9 +275,9 @@ def test_a_late_delta_into_a_retained_bucket_is_reallocated_not_dropped() -> Non
     aircon = result.devices["coarse_step_aircon"]
     assert aircon.energy_kwh == Decimal("0.6")
     assert aircon.actual_cost == Decimal("0.18")
-    assert result.untracked.energy_kwh == Decimal("0.4")
-    assert result.whole_home.energy_kwh == Decimal("1.0")
-    assert _total_actual(result) == Decimal("0.30")
+    assert result.untracked.energy_kwh == Decimal("1.4")
+    assert result.whole_home.energy_kwh == Decimal("2.0")
+    assert _total_actual(result) == Decimal("0.60")
 
 
 def test_progressive_finalisation_loses_no_coarse_device_energy() -> None:
@@ -331,8 +334,10 @@ def test_a_late_correction_moves_value_only_from_untracked_to_that_device() -> N
 
     before_a = acc.totals().devices["device_a"]
 
-    # When - device B reports late, its delta spanning the finalised bucket
+    # When - device B reports late, its delta spanning the finalised bucket, and
+    # the house consumes on so the remainder can fund the handover
     acc.observe("sensor.b_energy", at(5), Decimal("0.3"))
+    acc.observe("sensor.grid_import", at(10), Decimal("2.0"))
     acc.finalize(at(40))
 
     # Then - B gains its share, exactly that value leaves Untracked, and device A's
@@ -341,10 +346,10 @@ def test_a_late_correction_moves_value_only_from_untracked_to_that_device() -> N
     assert result.devices["device_a"] == before_a
     assert result.devices["device_b"].energy_kwh == Decimal("0.3")
     assert result.devices["device_b"].actual_cost == Decimal("0.09")
-    assert result.untracked.energy_kwh == Decimal("0.5")
-    assert result.untracked.actual_cost == Decimal("0.15")
-    assert result.whole_home.energy_kwh == Decimal("1.0")
-    assert _total_actual(result) == Decimal("0.30")
+    assert result.untracked.energy_kwh == Decimal("1.5")
+    assert result.untracked.actual_cost == Decimal("0.45")
+    assert result.whole_home.energy_kwh == Decimal("2.0")
+    assert _total_actual(result) == Decimal("0.60")
 
 
 def test_an_overdrawing_late_device_pays_import_for_what_untracked_cannot_fund() -> (
@@ -372,26 +377,31 @@ def test_an_overdrawing_late_device_pays_import_for_what_untracked_cannot_fund()
     acc.observe("sensor.b_energy", at(5), Decimal("0.4"))
     acc.finalize(at(40))
 
-    # Then - B keeps all its real energy and takes the €0.03 of headroom Untracked
-    # held, at the bucket's blended rate. The remaining 0.3 kWh has no meter
-    # reading behind it, so its money waits rather than being charged at import
-    # and mostly handed back (HEA-85). A is untouched.
+    # Then - B keeps the 0.3 kWh no meter reading backs, which is its outright and
+    # takes nothing from anyone. The €0.03 of headroom Untracked holds is B's too,
+    # but it *comes out of* the remainder, so it waits for a bucket whose remainder
+    # can afford to hand it over - nothing has consumed since, so nothing moves
+    # yet. Neither published figure has gone backwards, and A is untouched.
     result = acc.totals()
     b = result.devices["device_b"]
     assert result.devices["device_a"] == before_a
-    assert b.energy_kwh == Decimal("0.4")
-    assert b.actual_cost == Decimal("0.03")
-    assert result.untracked.actual_cost == Decimal(0)
-    assert result.untracked.energy_kwh == Decimal(0)
+    assert b.energy_kwh == Decimal("0.3")
+    assert b.actual_cost == Decimal(0)
+    assert result.untracked.actual_cost == Decimal("0.03")
+    assert result.untracked.energy_kwh == Decimal("0.1")
     assert result.whole_home.actual_cost == Decimal("0.30")
     assert _total_actual(result) == Decimal("0.30")
 
-    # And it is deferred, not forgiven: with no surplus ever arriving to price it
-    # more cheaply, the quiet span ends and it costs the import rate after all
+    # And both waits are deferrals, not forgiveness. With no surplus ever arriving,
+    # the quiet span ends: the suspended overdraw costs the import rate after all,
+    # and the held headroom is handed over rather than stranding B short for good
     acc.finalize(at(200))
     settled = acc.totals()
+    assert settled.devices["device_b"].energy_kwh == Decimal("0.4")
     assert settled.devices["device_b"].actual_cost == Decimal("0.12")
+    assert settled.untracked.actual_cost == Decimal(0)
     assert settled.whole_home.actual_cost == Decimal("0.39")
+    assert _total_actual(settled) == settled.whole_home.actual_cost
 
 
 def test_a_late_correction_buys_its_excess_at_import_not_at_a_free_blend() -> None:
@@ -863,12 +873,19 @@ def test_a_late_correction_carries_the_retained_buckets_source_mix() -> None:
     acc.observe("sensor.grid_export", at(5), Decimal("0.2"))
     acc.finalize(at(30))  # bucket at(0) finalised; watermark = at(0)
 
-    # When - the device reports late into that finalised, still-retained bucket
+    # When - the device reports late into that finalised, still-retained bucket,
+    # and the house runs another identical interval so the remainder can afford to
+    # hand the reclaimed energy over
     acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.5"))
+    acc.observe("sensor.grid_import", at(10), Decimal("0.8"))
+    acc.observe("sensor.solar", at(10), Decimal("1.0"))
+    acc.observe("sensor.grid_export", at(10), Decimal("0.4"))
     acc.finalize(at(40))
 
     # Then - the reclaimed energy is attributed in that bucket's own source mix,
-    # not the current one, and still sums to the device's energy
+    # not the current one, and still sums to the device's energy. The mix is the
+    # first bucket's even though it was handed over during the second, which is
+    # the whole point of retaining the context
     result = acc.totals()
     aircon = result.devices["coarse_step_aircon"]
     assert aircon.energy_kwh == Decimal("0.5")
@@ -876,7 +893,7 @@ def test_a_late_correction_carries_the_retained_buckets_source_mix() -> None:
     assert aircon.energy_from_generation == Decimal("0.2142857142857142857142857143")
     assert _by_source_sum(aircon) == aircon.energy_kwh
     # And Untracked gives back exactly what the device gained, per source
-    assert result.untracked.energy_from_grid == Decimal("0.4") - (
+    assert result.untracked.energy_from_grid == Decimal("0.8") - (
         aircon.energy_from_grid
     )
 
@@ -1217,6 +1234,96 @@ def test_the_first_closed_interval_ends_the_wait() -> None:
     assert acc.has_finalised() is True
     acc.finalize(at(35))
     assert acc.has_finalised() is True
+
+
+def _home_with_a_late_reporting_device() -> Accountant:
+    """A house importing steadily, and one device whose counter reports late.
+
+    The house meter is fine-grained and the device silent through the bucket it
+    actually drew in, which is the coarse-counter shape the retention ring exists
+    for (ADR-0006).
+    """
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    acc.observe("sensor.coarse_step_energy", at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.finalize(at(30))
+    return acc
+
+
+def test_a_late_correction_never_pulls_the_remainder_down() -> None:
+    # Given - a finalised bucket whose whole 1 kWh went to Untracked, because the
+    # device that actually drew 0.6 of it had not reported yet
+    acc = _home_with_a_late_reporting_device()
+    before = acc.totals().untracked
+
+    # When - the device reports late, claiming energy Untracked was credited with
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(40))
+
+    # Then - the remainder does not go backwards. Taking the value out where it
+    # was discovered would land the correction in whichever hour the counter
+    # happened to report, and a cumulative sensor can only be corrected in its
+    # current bucket - the same wrong-hour retraction HEA-85 removed from the
+    # overdraw charge, arriving by the other path (ADR-0006, HEA-85)
+    after = acc.totals().untracked
+    assert after.actual_cost >= before.actual_cost
+    assert after.energy_kwh >= before.energy_kwh
+
+
+def test_a_late_correction_reaches_the_device_as_the_remainder_earns_it() -> None:
+    # Given - the same late correction, held rather than taken
+    acc = _home_with_a_late_reporting_device()
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(40))
+    assert acc.totals().devices["coarse_step_aircon"].actual_cost < Decimal("0.18")
+
+    # When - the house goes on consuming, so the remainder accrues afresh and can
+    # fund what it owes without any published figure falling
+    for minute in range(10, 60, 5):
+        acc.observe("sensor.grid_import", at(minute), Decimal(1) + Decimal(minute) / 10)
+        acc.finalize(at(minute + 25))
+
+    # Then - the device ends up with exactly what the retained bucket priced it at,
+    # having climbed to it rather than jumped. A device figure only ever rises
+    assert acc.totals().devices["coarse_step_aircon"].actual_cost == Decimal("0.18")
+    assert acc.totals().devices["coarse_step_aircon"].energy_kwh == Decimal("0.6")
+
+
+def test_no_published_figure_falls_while_a_correction_is_releasing() -> None:
+    # Given - the same home, and the correction outstanding
+    acc = _home_with_a_late_reporting_device()
+    acc.observe("sensor.coarse_step_energy", at(5), Decimal("0.6"))
+
+    # When - the house consumes on, tick by tick, while the release plays out
+    seen = [acc.totals()]
+    for minute in range(10, 60, 5):
+        acc.observe("sensor.grid_import", at(minute), Decimal(1) + Decimal(minute) / 10)
+        acc.finalize(at(minute + 25))
+        seen.append(acc.totals())
+
+    # Then - at no point does any published total step backwards, and the split
+    # reconciles to the whole home at *every* point, not merely once it settles.
+    # Releasing only what the remainder has just earned is what buys both: the
+    # money moves device-ward without ever exceeding what is there to move
+    for earlier, later in pairwise(seen):
+        assert later.untracked.actual_cost >= earlier.untracked.actual_cost
+        assert later.untracked.energy_kwh >= earlier.untracked.energy_kwh
+        assert (
+            later.devices["coarse_step_aircon"].actual_cost
+            >= earlier.devices["coarse_step_aircon"].actual_cost
+        )
+    for result in seen:
+        assert _total_actual(result) == result.whole_home.actual_cost
+        assert (
+            result.untracked.energy_kwh
+            + result.devices["coarse_step_aircon"].energy_kwh
+            == result.whole_home.energy_kwh
+        )
 
 
 def test_a_rebase_does_not_reopen_the_wait() -> None:
