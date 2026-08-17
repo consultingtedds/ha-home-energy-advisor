@@ -191,8 +191,22 @@ def test_a_late_arrival_suspends_its_overdraw_too() -> None:
     # Then - the late energy is published, but the part with no meter reading
     # behind it is not charged yet, so nothing has to be taken back later
     assert after["device_cost"] >= before["device_cost"]
-    assert acc.totals().devices[DEVICE].energy_kwh == Decimal("1.2")
     assert after["device_cost"] < Decimal("1.2") * TARIFF
+
+    # The 0.95 kWh no meter backs is the device's outright and lands at once. The
+    # rest was metered, so it belongs to the remainder until a bucket earns enough
+    # to hand it over - taking it here would print a remainder that went backwards
+    assert acc.totals().devices[DEVICE].energy_kwh == Decimal("0.95")
+
+    # When - time runs on. A bucket's surplus repays the suspended overdraw before
+    # it publishes any remainder, so with a debt this size there is nothing spare
+    # to hand the held part over with, however long the house consumes for
+    acc.finalize(at(400))
+
+    # Then - the wait expires and the device ends up with every kWh its counter
+    # revealed. A device short for good is the one outcome worse than a figure
+    # that dips once
+    assert acc.totals().devices[DEVICE].energy_kwh == Decimal("1.2")
 
 
 def test_the_household_total_is_still_the_sum_of_its_parts() -> None:
