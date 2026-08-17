@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Home Energy Advisor",
-        "description": "An import price and a grid import meter are all you need. Every other input is optional — add only the ones your home has, and the accounting adapts.",
+        "description": "An import price and a grid import meter are all you need. Every other input is optional - add only the ones your home has, and the accounting adapts.",
         "data": {
           "price_entity": "Import price",
           "currency": "Currency",
@@ -19,7 +19,7 @@
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
-          "generation_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
+          "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."
@@ -43,7 +43,7 @@
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
-          "generation_entity": "Cumulative local generation — solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
+          "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery.",
           "house_consumption_entity": "Total household consumption, if measured directly."
@@ -70,7 +70,7 @@
       },
       "cost_bounds": {
         "title": "Per-device cost range",
-        "description": "A device that reports its energy once an hour used that energy somewhere inside the hour, and nothing in the data says where — so its cost is only knowable to a range. Your whole-home range is always published. Turn this on to publish it for each tracked device too, which shows you which devices you can price confidently and which need better metering. It adds two recorded sensors per device.",
+        "description": "A device that reports its energy once an hour used that energy somewhere inside the hour, and nothing in the data says where - so its cost is only knowable to a range. Your whole-home range is always published. Turn this on to publish it for each tracked device too, which shows you which devices you can price confidently and which need better metering. It adds two recorded sensors per device.",
         "data": {
           "device_cost_bounds": "Publish a cost range for each device"
         }
@@ -86,7 +86,7 @@
       },
       "discover_devices": {
         "title": "Discover devices to track",
-        "description": "These energy and power sensors are not tracked yet. Select the ones to add as devices. Suggestions marked “may not be a device” often aren’t — a phone battery, a forecast — so add only what you recognise.",
+        "description": "These energy and power sensors are not tracked yet. Select the ones to add as devices. Suggestions marked “may not be a device” often aren’t - a phone battery, a forecast - so add only what you recognise.",
         "data": {
           "discovered_devices": "Devices to add"
         }
@@ -111,7 +111,7 @@
       "step": {
         "user": {
           "title": "Add a tracked device",
-          "description": "Name the device and choose the one sensor that measures it — an energy counter, or a power sensor.",
+          "description": "Name the device and choose the one sensor that measures it - an energy counter, or a power sensor.",
           "data": {
             "name": "Name",
             "energy_entity": "Energy sensor",
@@ -168,7 +168,7 @@
   "issues": {
     "source_removed": {
       "title": "An energy input is no longer available",
-      "description": "Home Energy Advisor can no longer find `{entity_id}`, which it needs for cost accounting — the entity may have been deleted or renamed. Edit the integration (or the device) to select the sensor again, so your figures stay accurate."
+      "description": "Home Energy Advisor can no longer find `{entity_id}`, which it needs for cost accounting - the entity may have been deleted or renamed. Edit the integration (or the device) to select the sensor again, so your figures stay accurate."
     },
     "source_unavailable": {
       "title": "An energy input has been unavailable for over an hour",
@@ -180,7 +180,7 @@
     },
     "source_never_reported": {
       "title": "{name} is tracked by a sensor that has never reported",
-      "description": "`{entity_id}` has not produced a single reading since Home Energy Advisor started watching it, and there is none in the recorded history either. This is not a device that is simply switched off — that would still show its last reading. Until it is fixed, {name}'s energy and cost stay at zero and its share of the bill is counted under Untracked instead. Choose a different sensor for {name}, or check the integration that provides `{entity_id}`."
+      "description": "`{entity_id}` has not produced a single reading since Home Energy Advisor started watching it, and there is none in the recorded history either. This is not a device that is simply switched off - that would still show its last reading. Until it is fixed, {name}'s energy and cost stay at zero and its share of the bill is counted under Untracked instead. Choose a different sensor for {name}, or check the integration that provides `{entity_id}`."
     },
     "helper_recreated": {
       "title": "A required helper was re-created",
@@ -192,11 +192,11 @@
     },
     "implausible_source": {
       "title": "“{name}” is reporting more energy than the whole house",
-      "description": "For over an hour, the sensor measuring “{name}” has reported using more energy than your entire home consumed — which no single device can do. Home Energy Advisor has stopped counting it, so it no longer distorts your other devices' figures, and will start again by itself once the readings make sense. This almost always means the sensor is faulty rather than the appliance: check whether the device offers another energy sensor and select that one instead. Figures recorded in the hour before this was detected are still affected; you can clear them with the “Reset totals” action."
+      "description": "For over an hour, the sensor measuring “{name}” has reported using more energy than your entire home consumed - which no single device can do. Home Energy Advisor has stopped counting it, so it no longer distorts your other devices' figures, and will start again by itself once the readings make sense. This almost always means the sensor is faulty rather than the appliance: check whether the device offers another energy sensor and select that one instead. Figures recorded in the hour before this was detected are still affected; you can clear them with the “Reset totals” action."
     },
     "unreconciled_energy": {
       "title": "These totals no longer add up to your meter",
-      "description": "Home Energy Advisor's totals are sitting about {share} above what your house meter recorded. Your tracked device sensors and your house meter always disagree moment to moment — they are read at very different rates — and that is reconciled automatically. This disagreement is not clearing, which means the device sensors are persistently reporting more energy than the house is metered as using. The usual cause is one device sensor already including another, so the same energy is counted twice; a house-level input measuring the wrong circuit will do it too. The Unreconciled Energy figure on the Home Energy Advisor device shows how much energy is involved."
+      "description": "Home Energy Advisor's totals are sitting about {share} above what your house meter recorded. Your tracked device sensors and your house meter always disagree moment to moment - they are read at very different rates - and that is reconciled automatically. This disagreement is not clearing, which means the device sensors are persistently reporting more energy than the house is metered as using. The usual cause is one device sensor already including another, so the same energy is counted twice; a house-level input measuring the wrong circuit will do it too. The Unreconciled Energy figure on the Home Energy Advisor device shows how much energy is involved."
     }
   },
   "services": {
@@ -221,6 +221,34 @@
   },
   "common": {
     "candidate_label": "{name} ({entity_id})",
-    "candidate_label_false_friend": "{name} ({entity_id}) — may not be a device"
+    "candidate_label_false_friend": "{name} ({entity_id}) - may not be a device",
+    "card_paid": "Paid",
+    "card_would_have_paid": "Would have paid",
+    "card_saved": "Saved",
+    "card_lost": "Lost",
+    "card_range_column": "Paid (min-max)",
+    "card_range_note": "Paid (min-max) is the widest range these readings allow, not a typical error: a meter that reports every 30-90 minutes leaves the exact moment of use unknown.",
+    "card_range_whole_home": "What you paid could honestly sit between {range} - the widest these readings allow, not a typical error.",
+    "card_range_device": "What you paid could be between {range}.",
+    "card_device": "Device",
+    "card_energy": "Energy",
+    "card_rate": "Rate",
+    "card_total": "Total",
+    "card_grid": "Grid",
+    "card_generation": "Generation",
+    "card_battery": "Battery",
+    "card_from_grid": "From the grid",
+    "card_from_generation": "From generation",
+    "card_from_battery": "From the battery",
+    "card_energy_used": "Energy used",
+    "card_title_totals": "Cost summary",
+    "card_title_devices": "Cost by device",
+    "card_title_device_costs": "What each device cost",
+    "card_title_cost_over_time": "Cost over time",
+    "card_title_sources": "Where the energy came from",
+    "card_editor_title": "Title",
+    "card_editor_collection_key": "Energy period (collection key)",
+    "card_editor_devices": "Devices (all, if none are chosen)",
+    "card_editor_sort_by": "Order by"
   }
 }

@@ -1,6 +1,6 @@
 /**
  * What the picked period cost, what it would have cost at grid price, and the
- * difference — the summary card of the family (HEA-50).
+ * difference - the summary card of the family (HEA-50).
  *
  * The lifecycle lives in `HeaCard`; this file is the three figures and nothing
  * else. Period selection is Home Assistant's own picker (ADR-0012).
@@ -15,17 +15,21 @@ const EDITOR_TAG = `${TAG}-editor`;
 
 /**
  * The three figures, in the order they answer the question: what it cost, what
- * it would have cost, and the difference. Names settled in ADR-0009 — "Cost at
- * Grid Price", never "Cost Without Solar".
+ * it would have cost, and the difference.
+ *
+ * Labelled from the shared vocabulary, so this card cannot drift from the others
+ * as it had (HEA-88). ADR-0009's rule is unchanged - the concept names a pricing
+ * rule, never absent hardware - and "would have paid" states the counterfactual
+ * outright where "at grid price" left it to be inferred.
  */
 const FIGURES = [
-  { key: "actualCost", label: "Actual Cost" },
-  { key: "costAtGridPrice", label: "Cost at Grid Price" },
-  { key: "costSavings", label: "Saved" },
+  { key: "actualCost", label: "paid" },
+  { key: "costAtGridPrice", label: "would_have_paid" },
+  { key: "costSavings", label: "saved" },
 ];
 
 class HeaTotalsCard extends HeaCard {
-  static defaultTitle = "Cost summary";
+  static titleKey = "title_totals";
 
   static cardStyle = `
     .figures { display: flex; flex-wrap: wrap; gap: 16px; }
@@ -63,7 +67,7 @@ class HeaTotalsCard extends HeaCard {
       const loss = key === "costSavings" && value < 0 ? " loss" : "";
       return `
         <div class="figure">
-          <span class="label">${label}</span>
+          <span class="label">${this._labels[label]}</span>
           <span class="value${loss}" data-figure="${key}">${formatMoney(value, locale)}</span>
         </div>`;
     }).join("");

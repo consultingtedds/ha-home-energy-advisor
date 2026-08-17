@@ -1,9 +1,9 @@
 /**
- * Where each device's energy came from — grid, generation or battery (HEA-51).
+ * Where each device's energy came from - grid, generation or battery (HEA-51).
  *
  * The table lives in `HeaTableCard`; this file is the columns. Every label
  * shares its bucket's source mix, so a device that ran while the sun was out
- * shows generation whether or not that particular appliance was "on solar" —
+ * shows generation whether or not that particular appliance was "on solar" -
  * the house is served by a blend, not by circuits (ADR-0002).
  *
  * The three sources are shown as recorded rather than normalised to a hundred
@@ -16,6 +16,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { formatEnergy, formatPercent } from "./hea-format.js";
+import { labelsFor } from "./hea-labels.js";
 import { HeaTableCard, sortSchemaFor } from "./hea-table-card.js";
 
 export const TAG = "hea-sources-card";
@@ -35,26 +36,26 @@ const gridShare = ({ energyFromGrid, energyUsed }) =>
   energyUsed > 0 ? energyFromGrid / energyUsed : undefined;
 
 const COLUMNS = [
-  { field: "name", label: "Device" },
-  { field: "energyUsed", label: "Energy", format: formatEnergy },
-  { field: "energyFromGrid", label: "Grid", format: formatEnergy },
-  { field: "energyFromGeneration", label: "Generation", format: formatEnergy },
-  { field: "energyFromBattery", label: "Battery", format: formatEnergy },
-  { derive: gridShare, label: "From Grid", format: formatPercent },
+  { field: "name", label: "device" },
+  { field: "energyUsed", label: "energy", format: formatEnergy },
+  { field: "energyFromGrid", label: "grid", format: formatEnergy },
+  { field: "energyFromGeneration", label: "generation", format: formatEnergy },
+  { field: "energyFromBattery", label: "battery", format: formatEnergy },
+  { derive: gridShare, label: "from_grid", format: formatPercent },
 ];
 
 const SORTS = {
-  energy_used: { field: "energyUsed", label: "Energy used" },
-  energy_from_grid: { field: "energyFromGrid", label: "From the grid" },
+  energy_used: { field: "energyUsed", label: "energy_used" },
+  energy_from_grid: { field: "energyFromGrid", label: "from_grid" },
   energy_from_generation: {
     field: "energyFromGeneration",
-    label: "From generation",
+    label: "from_generation",
   },
-  energy_from_battery: { field: "energyFromBattery", label: "From the battery" },
+  energy_from_battery: { field: "energyFromBattery", label: "from_battery" },
 };
 
 class HeaSourcesCard extends HeaTableCard {
-  static defaultTitle = "Where the energy came from";
+  static titleKey = "title_sources";
   static columns = COLUMNS;
   static sorts = SORTS;
   static defaultSort = "energy_used";
@@ -66,7 +67,7 @@ class HeaSourcesCard extends HeaTableCard {
 
 class HeaSourcesCardEditor extends HeaCardEditor {
   _extraSchema() {
-    return sortSchemaFor(SORTS);
+    return sortSchemaFor(SORTS, labelsFor(this._hass));
   }
 }
 

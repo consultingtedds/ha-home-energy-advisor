@@ -2,7 +2,7 @@
  * The visual editor behind every HEA card (HEA-73).
  *
  * Without one, Home Assistant tells the user the card "cannot be edited from
- * the UI" and hands them raw YAML — in which they are expected to know that a
+ * the UI" and hands them raw YAML - in which they are expected to know that a
  * device is called `fine_meter_aircon`, a slug that appears nowhere in the
  * interface. The device list is already published (HEA-55), so the editor shows
  * it: names to choose from, keys written for them.
@@ -15,12 +15,14 @@
  */
 
 import { readDevices } from "./hea-devices.js";
+import { labelsFor, loadLabels } from "./hea-labels.js";
 
-const LABELS = {
-  title: "Title",
-  collection_key: "Energy period (collection key)",
-  devices: "Devices (all, if none are chosen)",
-  sort_by: "Order by",
+/** Each editor field's key in the shared vocabulary (ADR-0018). */
+const FIELD_LABELS = {
+  title: "editor_title",
+  collection_key: "editor_collection_key",
+  devices: "editor_devices",
+  sort_by: "editor_sort_by",
 };
 
 export class HeaCardEditor extends HTMLElement {
@@ -37,6 +39,10 @@ export class HeaCardEditor extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._render();
+    // The editor is opened long after a card has painted, so the vocabulary is
+    // usually already loaded; fetch anyway, in case the editor is the first
+    // thing on the page. Re-render on arrival rather than block on it.
+    loadLabels(hass).then(() => this._render());
   }
 
   /** Fields the card being edited adds to the shared ones. */
@@ -49,7 +55,8 @@ export class HeaCardEditor extends HTMLElement {
     let form = this.shadowRoot.querySelector("ha-form");
     if (!form) {
       form = document.createElement("ha-form");
-      form.computeLabel = (field) => LABELS[field.name] ?? field.name;
+      form.computeLabel = (field) =>
+        labelsFor(this._hass)[FIELD_LABELS[field.name]] ?? field.name;
       form.addEventListener("value-changed", (event) =>
         this._report(event.detail.value),
       );
@@ -99,7 +106,7 @@ export class HeaCardEditor extends HTMLElement {
 /**
  * The configuration with nothing empty left in it.
  *
- * A cleared field means "not set", not "set to nothing" — and an empty device
+ * A cleared field means "not set", not "set to nothing" - and an empty device
  * list would filter the card down to no devices at all, where the user meant
  * the whole house.
  */

@@ -1,5 +1,5 @@
 /**
- * Every tracked device for the picked period, ordered by what it cost —
+ * Every tracked device for the picked period, ordered by what it cost -
  * the "which device costs most" answer, finally sortable (HEA-50).
  *
  * The table itself lives in `HeaTableCard`; this file is the columns. Nothing
@@ -16,6 +16,7 @@ import {
   formatRate,
   rateUnit,
 } from "./hea-format.js";
+import { fill, labelsFor } from "./hea-labels.js";
 import { HeaTableCard, sortSchemaFor } from "./hea-table-card.js";
 
 export const TAG = "hea-devices-card";
@@ -33,47 +34,46 @@ const effectiveRate = ({ actualCost, energyUsed }) =>
 /**
  * What the figure beside it could honestly have been (ADR-0016).
  *
- * A counter reporting every 30–90 minutes used that energy somewhere inside the
- * span, and nothing in the data says where — so a device's cost is knowable only
+ * A counter reporting every 30-90 minutes used that energy somewhere inside the
+ * span, and nothing in the data says where - so a device's cost is knowable only
  * to a range. Shown in money: the percentage form explodes on a device that cost
  * under a cent, which is most of them on any given day.
  */
 const RANGE = {
   fields: ["costFloor", "costCeiling"],
   derive: ({ costFloor, costCeiling }) => [costFloor, costCeiling],
-  label: "Range",
+  // Named for the figure it brackets. The bounds cover Actual Cost and nothing
+  // else, so a column headed "Range" between Paid and Would have paid could
+  // honestly be read as either, or as the saving (HEA-88).
+  label: "range_column",
   format: formatMoneyRange,
 };
 
 const COLUMNS = [
-  { field: "name", label: "Device" },
-  { field: "energyUsed", label: "Energy", format: formatEnergy },
-  { field: "actualCost", label: "Actual Cost", format: formatMoney },
+  { field: "name", label: "device" },
+  { field: "energyUsed", label: "energy", format: formatEnergy },
+  { field: "actualCost", label: "paid", format: formatMoney },
   RANGE,
-  { field: "costAtGridPrice", label: "At Grid Price", format: formatMoney },
-  { field: "costSavings", label: "Saved", format: formatMoney },
+  { field: "costAtGridPrice", label: "would_have_paid", format: formatMoney },
+  { field: "costSavings", label: "saved", format: formatMoney },
   {
     derive: effectiveRate,
     // The only column whose unit varies with the household's currency, so its
     // label is built at render time rather than fixed here.
-    label: (locale) => ({ text: "Rate", unit: rateUnit(locale) }),
+    label: (locale, labels) => ({ text: labels.rate, unit: rateUnit(locale) }),
     format: formatRate,
   },
 ];
 
-/** What the range means, wherever one is shown. */
-const RANGE_NOTE =
-  "Range: the widest these readings allow, not a typical error.";
-
 const SORTS = {
-  actual_cost: { field: "actualCost", label: "Actual cost" },
-  cost_at_grid_price: { field: "costAtGridPrice", label: "Cost at grid price" },
-  cost_savings: { field: "costSavings", label: "Saved" },
-  energy_used: { field: "energyUsed", label: "Energy used" },
+  actual_cost: { field: "actualCost", label: "paid" },
+  cost_at_grid_price: { field: "costAtGridPrice", label: "would_have_paid" },
+  cost_savings: { field: "costSavings", label: "saved" },
+  energy_used: { field: "energyUsed", label: "energy_used" },
 };
 
 class HeaDevicesCard extends HeaTableCard {
-  static defaultTitle = "Cost by device";
+  static titleKey = "title_devices";
   static columns = COLUMNS;
   static sorts = SORTS;
   static defaultSort = "actual_cost";
@@ -114,7 +114,7 @@ class HeaDevicesCard extends HeaTableCard {
    *
    * Shown whichever way the table went. With the column, the totals row already
    * carries the same range and this is the sentence that says what it means;
-   * without it, this is the whole disclosure — the whole-home range is published
+   * without it, this is the whole disclosure - the whole-home range is published
    * even when the per-device ones are not, so a household is never told nothing.
    */
   _body(locale) {
@@ -122,25 +122,28 @@ class HeaDevicesCard extends HeaTableCard {
   }
 
   _disclosure(locale) {
+    const labels = this._labels;
     if (this._hasEveryBound()) {
-      return `<div class="disclosure">${RANGE_NOTE}</div>`;
+      return `<div class="disclosure">${labels.range_note}</div>`;
     }
     const band = this._result?.wholeHome;
     if (!band) return "";
     const range = formatMoneyRange([band.costFloor, band.costCeiling], locale);
+    // Names what it qualifies. "These figures" sat under three of them and left
+    // the reader to work out which one had a range (HEA-88).
     return `<div class="disclosure">
-      These figures could honestly sit anywhere in ${range}. ${RANGE_NOTE}
+      ${fill(labels.range_whole_home, { range })}
     </div>`;
   }
 }
 
 /**
- * The shared fields plus the ordering — built from the same table the card
+ * The shared fields plus the ordering - built from the same table the card
  * validates against, so the editor cannot produce a config the card rejects.
  */
 class HeaDevicesCardEditor extends HeaCardEditor {
   _extraSchema() {
-    return sortSchemaFor(SORTS);
+    return sortSchemaFor(SORTS, labelsFor(this._hass));
   }
 }
 

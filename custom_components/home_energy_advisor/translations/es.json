@@ -19,7 +19,7 @@
           "currency": "Moneda para los sensores de coste, p. ej. EUR.",
           "grid_import_entity": "Energía acumulada importada de la red.",
           "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
-          "generation_entity": "Generación local acumulada — solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), súmalas primero con un ayudante de Grupo de tipo Suma y elige ese sensor. (Consulta el readme para más ayuda)",
+          "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), súmalas primero con un ayudante de Grupo de tipo Suma y elige ese sensor. (Consulta el readme para más ayuda)",
           "battery_charge_entity": "Energía acumulada cargada en la batería.",
           "battery_discharge_entity": "Energía acumulada descargada de la batería.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente."
@@ -43,7 +43,7 @@
           "currency": "Moneda para los sensores de coste, p. ej. EUR.",
           "grid_import_entity": "Energía acumulada importada de la red.",
           "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
-          "generation_entity": "Generación local acumulada — solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), súmalas primero con un ayudante de Grupo de tipo Suma y elige ese sensor. (Consulta el readme para más ayuda)",
+          "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), súmalas primero con un ayudante de Grupo de tipo Suma y elige ese sensor. (Consulta el readme para más ayuda)",
           "battery_charge_entity": "Energía acumulada cargada en la batería.",
           "battery_discharge_entity": "Energía acumulada descargada de la batería.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente."
@@ -86,7 +86,7 @@
       },
       "discover_devices": {
         "title": "Descubrir dispositivos para seguir",
-        "description": "Estos sensores de energía y potencia aún no se siguen. Selecciona los que quieras añadir como dispositivos. Las sugerencias marcadas con «puede que no sea un dispositivo» a menudo no lo son —la batería de un teléfono, una previsión—, así que añade solo lo que reconozcas.",
+        "description": "Estos sensores de energía y potencia aún no se siguen. Selecciona los que quieras añadir como dispositivos. Las sugerencias marcadas con «puede que no sea un dispositivo» a menudo no lo son -la batería de un teléfono, una previsión-, así que añade solo lo que reconozcas.",
         "data": {
           "discovered_devices": "Dispositivos a añadir"
         }
@@ -196,7 +196,7 @@
     },
     "unreconciled_energy": {
       "title": "Estos totales ya no cuadran con tu contador",
-      "description": "Los totales de Home Energy Advisor están alrededor de un {share} por encima de lo que registró el contador de tu casa. Los sensores de tus dispositivos y el contador de la casa siempre difieren momento a momento — se leen a ritmos muy distintos — y eso se concilia de forma automática. Esta diferencia no se está corrigiendo, lo que indica que los sensores de dispositivo informan de forma persistente más energía de la que el contador mide en la casa. La causa habitual es que un sensor de dispositivo ya incluya a otro, contando la misma energía dos veces; una entrada de nivel de casa que mide el circuito equivocado también lo provoca. La cifra Energía sin conciliar, en el dispositivo Home Energy Advisor, muestra cuánta energía supone."
+      "description": "Los totales de Home Energy Advisor están alrededor de un {share} por encima de lo que registró el contador de tu casa. Los sensores de tus dispositivos y el contador de la casa siempre difieren momento a momento - se leen a ritmos muy distintos - y eso se concilia de forma automática. Esta diferencia no se está corrigiendo, lo que indica que los sensores de dispositivo informan de forma persistente más energía de la que el contador mide en la casa. La causa habitual es que un sensor de dispositivo ya incluya a otro, contando la misma energía dos veces; una entrada de nivel de casa que mide el circuito equivocado también lo provoca. La cifra Energía sin conciliar, en el dispositivo Home Energy Advisor, muestra cuánta energía supone."
     }
   },
   "services": {
@@ -221,6 +221,34 @@
   },
   "common": {
     "candidate_label": "{name} ({entity_id})",
-    "candidate_label_false_friend": "{name} ({entity_id}) — puede que no sea un dispositivo"
+    "candidate_label_false_friend": "{name} ({entity_id}) - puede que no sea un dispositivo",
+    "card_paid": "Pagado",
+    "card_would_have_paid": "Habrías pagado",
+    "card_saved": "Ahorrado",
+    "card_lost": "Perdido",
+    "card_range_column": "Pagado (mín-máx)",
+    "card_range_note": "Pagado (mín-máx) es el rango más amplio que permiten estas lecturas, no un error típico: un contador que informa cada 30-90 minutos deja sin determinar el momento exacto del consumo.",
+    "card_range_whole_home": "Lo que pagaste podría estar entre {range} - el rango más amplio que permiten estas lecturas, no un error típico.",
+    "card_range_device": "Lo que pagaste podría estar entre {range}.",
+    "card_device": "Dispositivo",
+    "card_energy": "Energía",
+    "card_rate": "Tarifa",
+    "card_total": "Total",
+    "card_grid": "Red",
+    "card_generation": "Generación",
+    "card_battery": "Batería",
+    "card_from_grid": "De la red",
+    "card_from_generation": "De generación",
+    "card_from_battery": "De la batería",
+    "card_energy_used": "Energía usada",
+    "card_title_totals": "Resumen de costes",
+    "card_title_devices": "Coste por dispositivo",
+    "card_title_device_costs": "Cuánto costó cada dispositivo",
+    "card_title_cost_over_time": "Coste a lo largo del tiempo",
+    "card_title_sources": "De dónde vino la energía",
+    "card_editor_title": "Título",
+    "card_editor_collection_key": "Periodo de energía (clave de colección)",
+    "card_editor_devices": "Dispositivos (todos, si no eliges ninguno)",
+    "card_editor_sort_by": "Ordenar por"
   }
 }

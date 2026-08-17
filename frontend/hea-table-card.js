@@ -1,16 +1,16 @@
 /**
- * A table of devices, one row each, ranked — the shape more than one HEA card
+ * A table of devices, one row each, ranked - the shape more than one HEA card
  * turns out to want (HEA-50).
  *
  * Subclasses supply `columns` and `sorts` and nothing else: the rendering, the
  * ordering, the totals row and the sort validation live here. Extracted when a
- * second table card arrived, rather than copied — two near-identical tables is
+ * second table card arrived, rather than copied - two near-identical tables is
  * the kind of duplication that goes on to drift.
  *
  * A column either names a `field`, which the totals row sums, or `derive`s its
  * value, which the totals row derives again from the summed fields. A rate is a
  * ratio, and ratios do not add up. A derived column may name the `fields` it is
- * built from, so the totals row can sum those and derive from the sums — a cost
+ * built from, so the totals row can sum those and derive from the sums - a cost
  * range is two numbers that each add up, presented as one cell.
  *
  * A column's `label` may be a function of the locale, returning `{text, unit}`,
@@ -69,7 +69,7 @@ export class HeaTableCard extends HeaCard {
     return 3 + Math.ceil((this._result?.devices.length ?? 3) / 2);
   }
 
-  /** The columns to render now — every one, unless a card says otherwise. */
+  /** The columns to render now - every one, unless a card says otherwise. */
   _columns() {
     return this.constructor.columns;
   }
@@ -93,12 +93,15 @@ export class HeaTableCard extends HeaCard {
   /**
    * A column heading, with its unit kept out of the row's uppercasing.
    *
-   * `text-transform: uppercase` would render c/kWh as C/KWH — which is not
+   * `text-transform: uppercase` would render c/kWh as C/KWH - which is not
    * merely shouty, it is the wrong symbol.
    */
   _heading({ label }, locale) {
-    if (typeof label !== "function") return `<th>${label}</th>`;
-    const { text, unit } = label(locale);
+    const labels = this._labels;
+    // A plain label is a key into the household's own vocabulary (ADR-0018);
+    // only the rate column, whose unit follows the currency, builds its own.
+    if (typeof label !== "function") return `<th>${labels[label]}</th>`;
+    const { text, unit } = label(locale, labels);
     return `<th>${text} <span class="unit">${escapeText(unit)}</span></th>`;
   }
 
@@ -131,7 +134,7 @@ export class HeaTableCard extends HeaCard {
     const totals = this._sumOfShown();
     const cells = this._columns()
       .map(({ field, derive, format }) => {
-        if (!format) return `<th scope="row">Total</th>`;
+        if (!format) return `<th scope="row">${this._labels.total}</th>`;
         // Derived from the summed fields, never from the rows' own derived
         // values: a table's rate is what the period came to overall.
         const value = derive ? derive(totals) : totals[field];
@@ -144,8 +147,8 @@ export class HeaTableCard extends HeaCard {
   /**
    * The total of the rows on screen, not of the house.
    *
-   * With no filter these are the same thing — the allocations sum to the real
-   * cost (ADR-0002) — but a filtered card must add up to what it is showing.
+   * With no filter these are the same thing - the allocations sum to the real
+   * cost (ADR-0002) - but a filtered card must add up to what it is showing.
    */
   _sumOfShown() {
     const summed = this._columns().flatMap(({ field, fields, derive, format }) => {
@@ -166,7 +169,7 @@ export class HeaTableCard extends HeaCard {
 }
 
 /** The ordering dropdown, built from the same table the card validates against. */
-export const sortSchemaFor = (sorts) => [
+export const sortSchemaFor = (sorts, labels) => [
   {
     name: "sort_by",
     selector: {
@@ -174,7 +177,7 @@ export const sortSchemaFor = (sorts) => [
         mode: "dropdown",
         options: Object.entries(sorts).map(([value, { label }]) => ({
           value,
-          label,
+          label: labels[label],
         })),
       },
     },
