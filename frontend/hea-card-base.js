@@ -38,6 +38,14 @@ export class HeaCard extends HTMLElement {
   static titleKey = "";
 
   /**
+   * That key, for a card whose default name depends on what it is showing -
+   * a diagram of energy should not head itself "Where the cost went" (HEA-90).
+   */
+  _titleKey() {
+    return this.constructor.titleKey;
+  }
+
+  /**
    * This household's words, for the synchronous render path.
    *
    * English until `loadLabels` has answered, which is before any paint that
@@ -197,7 +205,7 @@ export class HeaCard extends HTMLElement {
     // nothing on its own. An *empty* title is a deliberate request for no
     // header, for a user stacking cards under a heading of their own - so the
     // two cases are distinguished rather than both treated as "unset".
-    const title = this._config?.title ?? this._labels[this.constructor.titleKey];
+    const title = this._config?.title ?? this._labels[this._titleKey()];
     if (title) this.shadowRoot.querySelector("ha-card").setAttribute("header", title);
     this._afterRender();
   }

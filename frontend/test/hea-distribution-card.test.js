@@ -22,6 +22,7 @@ import {
   mountCard,
   placed,
   settled,
+  sourcesFor,
 } from "./doubles.js";
 
 const LOUNGE = { areaId: "a-lounge", areaName: "Lounge", floorId: "f-up", floorName: "Upstairs" };
@@ -235,6 +236,64 @@ describe("periods with nothing to draw", () => {
   });
 });
 
+describe("measuring by energy instead of cost", () => {
+  it("draws energy, and opens with where it came from", async () => {
+    // Given - the pump ran hard on free solar, so a cost diagram reduces it to
+    // a hairline; energy is the view that shows it
+    const hass = aHass({
+      devices: [AIRCON, PUMP],
+      response: {
+        ...SPENT,
+        ...sourcesFor("slow_poll_aircon", 4, 6, 0),
+        ...sourcesFor("cloud_polled_pump", 0, 5, 0),
+      },
+    });
+
+    // When
+    const card = mount(hass, { metric: "energy" });
+    await ready(card);
+
+    // Then
+    expect(nodeOf(card, "device_cloud_polled_pump").value).toBe(5);
+    expect(nodeOf(card, "source_generation").value).toBe(11);
+    expect(nodeOf(card, "source_grid").value).toBe(4);
+    expect(nodeOf(card, "household").value).toBe(15);
+  });
+
+  it("has no source column on cost, where generation is priced at zero", async () => {
+    // Given / When
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then
+    expect(nodeOf(card, "source_grid")).toBeUndefined();
+  });
+
+  it("labels the figures in kWh rather than in money", async () => {
+    // Given
+    const card = mount(aHouse(), { metric: "energy" });
+    await ready(card);
+
+    // When
+    const formatted = chartOf(card).valueFormatter(5);
+
+    // Then - a diagram of energy that hovers euros is simply wrong
+    expect(formatted).toMatch(/kWh/i);
+    expect(formatted).not.toMatch(/€/);
+  });
+
+  it("falls back to cost when handed a measure it does not have", async () => {
+    // Given - a hand-edited YAML config should not blank the card
+    const card = mount(aHouse(), { metric: "bananas" });
+
+    // When
+    await ready(card);
+
+    // Then
+    expect(nodeOf(card, "household").value).toBe(4);
+  });
+});
+
 describe("the words around the diagram", () => {
   it("titles itself from the household's own vocabulary", async () => {
     // Given / When
@@ -244,6 +303,17 @@ describe("the words around the diagram", () => {
     // Then
     expect(card.shadowRoot.querySelector("ha-card").getAttribute("header")).toBe(
       DEFAULTS.title_distribution,
+    );
+  });
+
+  it("does not head a diagram of energy as though it showed cost", async () => {
+    // Given / When
+    const card = mount(aHouse(), { metric: "energy" });
+    await ready(card);
+
+    // Then
+    expect(card.shadowRoot.querySelector("ha-card").getAttribute("header")).toBe(
+      DEFAULTS.title_distribution_energy,
     );
   });
 

@@ -25,11 +25,30 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { formatMoney } from "./hea-format.js";
+import { formatEnergy, formatMoney } from "./hea-format.js";
 import { buildDistribution } from "./hea-sankey-layout.js";
 
 export const TAG = "hea-distribution-card";
 const EDITOR_TAG = `${TAG}-editor`;
+
+/**
+ * What the diagram measures, and how each half of that reads.
+ *
+ * Cost is the default: this is a cost integration, and "what did the house
+ * spend, and where" is the question the other cards cannot answer by room.
+ *
+ * Energy earns its place rather than duplicating Home Assistant's own Sankey.
+ * On a sunny day almost everything a household uses is free, so a cost diagram
+ * collapses to the untracked remainder and whatever ran overnight - a pump can
+ * be the second largest consumer in the house and draw as a hairline because it
+ * cost nothing. That is honest and it is the point of a cost view, but it is
+ * not the whole picture, and the energy view is where the source column lives
+ * (see `METRICS` in the layout for why cost cannot have one).
+ */
+const METRICS = {
+  cost: { titleKey: "title_distribution", format: formatMoney },
+  energy: { titleKey: "title_distribution_energy", format: formatEnergy },
+};
 
 /**
  * Where four columns stop fitting across a screen.
@@ -73,8 +92,19 @@ class HeaDistributionCard extends HeaChartCard {
     return this._layout().nodes.length === 0;
   }
 
+  /** Cost unless the household asked for energy; an unknown value is cost. */
+  _metric() {
+    return METRICS[this._config?.metric] ? this._config.metric : "cost";
+  }
+
+  _titleKey() {
+    return METRICS[this._metric()].titleKey;
+  }
+
   _layout() {
-    return buildDistribution(this._result?.devices ?? [], this._labels);
+    return buildDistribution(this._result?.devices ?? [], this._labels, {
+      metric: this._metric(),
+    });
   }
 
   _chartMarkup() {
@@ -88,7 +118,8 @@ class HeaDistributionCard extends HeaChartCard {
     // a long recurring decimal. Left raw, a hover reads out fourteen places of
     // a euro - unreadable, and claiming a precision money does not have.
     const locale = this._chartLocale();
-    chart.valueFormatter = (value) => formatMoney(value, locale);
+    const { format } = METRICS[this._metric()];
+    chart.valueFormatter = (value) => format(value, locale);
     // The taller layout needs the card to know, and CSS cannot ask the chart.
     this.toggleAttribute("data-vertical", chart.vertical);
   }
@@ -112,6 +143,10 @@ class HeaDistributionCard extends HeaChartCard {
 class HeaDistributionCardEditor extends HeaCardEditor {
   _extraSchema() {
     return [
+      {
+        name: "metric",
+        selector: { select: { mode: "dropdown", options: Object.keys(METRICS) } },
+      },
       {
         name: "layout",
         selector: { select: { mode: "dropdown", options: LAYOUTS } },

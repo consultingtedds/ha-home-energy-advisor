@@ -92,11 +92,13 @@ export const DEFAULTS = Object.freeze({
   title_cost_over_time: "Cost over time",
   title_sources: "Where the energy came from",
   title_distribution: "Where the cost went",
+  title_distribution_energy: "Where the energy went",
   editor_title: "Title",
   editor_collection_key: "Energy period (collection key)",
   editor_devices: "Devices (all, if none are chosen)",
   editor_sort_by: "Order by",
   editor_layout: "Layout",
+  editor_metric: "Measure by",
 });
 
 /**

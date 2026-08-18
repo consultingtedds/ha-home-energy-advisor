@@ -24,6 +24,7 @@ const FIELD_LABELS = {
   devices: "editor_devices",
   sort_by: "editor_sort_by",
   layout: "editor_layout",
+  metric: "editor_metric",
 };
 
 export class HeaCardEditor extends HTMLElement {
