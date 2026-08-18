@@ -116,6 +116,33 @@ export const statisticIdsFor = (devices, wholeHome) => {
 };
 
 /**
+ * Attach what each figure was over the comparison window (HEA-96).
+ *
+ * Done here rather than in each card so a card reads one result rather than
+ * juggling two, and so a row's earlier self travels with the row - a table
+ * column deriving a change gets it from the row it is already rendering.
+ *
+ * A device present now but absent then gets `undefined`, never a zero. Zero
+ * would render as "all of it more than before" and invent a window in which
+ * the device cost nothing, when the truth is it was not tracked at all.
+ *
+ * Returns the result untouched when there is nothing to compare, which is the
+ * default: comparison must cost the normal path nothing.
+ */
+export const withComparison = (result, comparison) => {
+  if (!comparison) return result;
+  const before = new Map(comparison.devices.map((device) => [device.key, device]));
+  return {
+    ...result,
+    totals: { ...result.totals, before: comparison.totals },
+    devices: result.devices.map((device) => ({
+      ...device,
+      before: before.get(device.key),
+    })),
+  };
+};
+
+/**
  * How finely to bucket a period.
  *
  * Home Assistant's own energy collection switches to month buckets for long

@@ -9,7 +9,7 @@
  * that a device name is the household's own text and must be escaped.
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 
@@ -18,6 +18,7 @@ import { TAG, register } from "../hea-devices-card.js";
 import {
   aDeviceRow,
   aHass,
+  anEnergyCollection,
   boundsFor,
   bucketsFor,
   mountCard,
@@ -355,6 +356,95 @@ describe("the table", () => {
       cell.textContent.trim(),
     );
     expect(headers).not.toContain(RANGE_COLUMN_LABEL);
+  });
+
+  it("adds a change column only when a comparison is asked for", async () => {
+    // Given - comparison is off by default, which is the normal case
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - the table is exactly as it was
+    const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+      cell.textContent.trim(),
+    );
+    expect(headers).not.toContain(LABELS.change);
+  });
+
+  it("shows each device's change against the earlier period", async () => {
+    // Given - the picker comparing against an earlier window. One bucket lands
+    // in each, so the data layer separates them by which period it asked for
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    const may = new Date(2026, 4, 20);
+    const april = new Date(2026, 3, 1);
+    hass.callWS = vi.fn().mockResolvedValue({
+      ...bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78, may),
+      ...bucketsFor("fine_meter_aircon", 12.0, 3.0, 4.0, may),
+      ...bucketsFor("untracked_energy_devices", 100, 1.5, 9.5, may),
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 0.11 },
+        { start: april.getTime(), change: 1.31 },
+      ],
+    });
+
+    // When
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+
+    // Then - the aircon cost EUR 1.20 less than it did before, signed so the
+    // direction needs no working out
+    await vi.waitFor(() => {
+      const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+        cell.textContent.trim(),
+      );
+      expect(headers).toContain(LABELS.change);
+    });
+    const byName = Object.fromEntries(rows(card).map((row) => [row[0], row]));
+    expect(byName["Slow Poll Aircon"].join(" ")).toMatch(/[-−]\D*1[.,]20/);
+  });
+
+  it("reports a device with nothing in the earlier window as all increase", async () => {
+    // Given - the comparison window holds no buckets at all for these devices,
+    // because every bucket in the response is dated inside the current period
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    const may = new Date(2026, 4, 20);
+    hass.callWS = vi.fn().mockResolvedValue(THREE_RESPONSE);
+
+    // When
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+
+    // Then - the whole of this period's figure, as an increase against zero.
+    //
+    // Statistics cannot tell "the device did not run" from "the device was not
+    // tracked yet", and the first is far the commoner - a seasonal heater, an
+    // aircon in a cool month. Reporting the increase is right for that case and
+    // overstates only for a device genuinely added since, which the household
+    // is in a position to know
+    await vi.waitFor(() => {
+      const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+        cell.textContent.trim(),
+      );
+      expect(headers).toContain(LABELS.change);
+    });
+    const byName = Object.fromEntries(rows(card).map((row) => [row[0], row]));
+    expect(byName["Slow Poll Aircon"].join(" ")).toMatch(/\+\D*0[.,]11/);
   });
 
   it("names the range column for the figure it brackets", async () => {

@@ -13,6 +13,7 @@ import {
   bucketPeriodFor,
   fetchDeviceStatistics,
   statisticIdsFor,
+  withComparison,
 } from "../hea-statistics.js";
 
 const MAY = new Date("2026-05-20T00:00:00Z");
@@ -158,6 +159,44 @@ describe("statisticIdsFor", () => {
       "sensor.slow_poll_aircon_energy_used",
       "sensor.slow_poll_aircon_actual_cost",
     ]);
+  });
+});
+
+describe("withComparison", () => {
+  const aResult = (devices, totals) => ({ period: aPeriod(), devices, totals });
+  const aRow = (key, actualCost) => ({ key, name: key, actualCost });
+
+  it("hands every row what it was, and the totals too", () => {
+    // Given - the same fetch run over two windows
+    const now = aResult([aRow("slow_poll_aircon", 3)], { actualCost: 3 });
+    const then = aResult([aRow("slow_poll_aircon", 5)], { actualCost: 5 });
+
+    // When
+    const merged = withComparison(now, then);
+
+    // Then - each row carries its earlier self, so a column can show the change
+    // without a card reaching into a second result set of its own
+    expect(merged.devices[0].before.actualCost).toBe(5);
+    expect(merged.totals.before.actualCost).toBe(5);
+    expect(merged.devices[0].actualCost).toBe(3);
+  });
+
+  it("leaves a device that did not exist in the earlier window unmatched", () => {
+    // Given - a device added since, so the comparison window has no row for it
+    const now = aResult([aRow("new_device", 3)], { actualCost: 3 });
+    const then = aResult([aRow("slow_poll_aircon", 5)], { actualCost: 5 });
+
+    // When / Then - `undefined`, never zero. Zero would render as "3 more than
+    // before" and invent a period in which the device cost nothing, when the
+    // truth is that it was not being tracked at all
+    expect(withComparison(now, then).devices[0].before).toBeUndefined();
+  });
+
+  it("changes nothing when there is no comparison", () => {
+    // Given / When / Then - the untouched result, not a copy carrying empty
+    // fields: comparison is off by default and must cost the normal path nothing
+    const now = aResult([aRow("slow_poll_aircon", 3)], { actualCost: 3 });
+    expect(withComparison(now, undefined)).toBe(now);
   });
 });
 

@@ -92,7 +92,7 @@ class HeaTotalsCard extends HeaCard {
    * decision 5, HEA-75).
    */
   _comparedTo(key, value, locale) {
-    const before = this._comparison?.totals?.[key];
+    const before = this._result?.totals?.before?.[key];
     if (!Number.isFinite(before) || !Number.isFinite(value)) return "";
     return `<span class="compare" data-compare="${key}">${fill(
       this._labels.compared,
