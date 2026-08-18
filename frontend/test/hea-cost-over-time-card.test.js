@@ -16,7 +16,13 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { TAG, register } from "../hea-cost-over-time-card.js";
 import { formatMoney } from "../hea-format.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
-import { aDeviceRow, aHass, mountCard, settled } from "./doubles.js";
+import {
+  aDeviceRow,
+  aHass,
+  anEnergyCollection,
+  mountCard,
+  settled,
+} from "./doubles.js";
 
 const EURO = { language: "en-GB", currency: "EUR" };
 
@@ -182,6 +188,89 @@ describe("the series handed to the chart", () => {
     // Then
     expect(seriesOf(card, "paid").name).toBe("Paid");
     expect(seriesOf(card, "saved").name).toBe("Saved");
+  });
+});
+
+describe("comparing against an earlier period", () => {
+  it("draws no earlier line when nobody asked to compare", async () => {
+    // Given / When - the normal case
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then - the two stacked bars and nothing else
+    expect(chartOf(card).data).toHaveLength(2);
+    expect(chartOf(card).data.every((s) => s.type === "bar")).toBe(true);
+  });
+
+  /** A week earlier, so the response carries buckets in both windows. */
+  const WEEK_BEFORE = new Date(DAY_ONE.getTime() - 7 * 86400000);
+
+  const comparing = async () => {
+    const collection = anEnergyCollection();
+    const response = {
+      "sensor.slow_poll_aircon_energy_used": [
+        { start: DAY_ONE.getTime(), change: 10 },
+        { start: WEEK_BEFORE.getTime(), change: 14 },
+      ],
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: DAY_ONE.getTime(), change: 1 },
+        { start: WEEK_BEFORE.getTime(), change: 4 },
+      ],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: DAY_ONE.getTime(), change: 3 },
+        { start: WEEK_BEFORE.getTime(), change: 6 },
+      ],
+    };
+    const hass = aHass({ devices: AIRCON, response, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    collection.announce(DAY_ONE, new Date(DAY_ONE.getTime() + 2 * 86400000), {
+      startCompare: WEEK_BEFORE,
+      endCompare: new Date(WEEK_BEFORE.getTime() + 2 * 86400000),
+      compareMode: "previous",
+    });
+    await vi.waitFor(() =>
+      expect(chartOf(card).data.some((s) => s.id === "before")).toBe(true),
+    );
+    return card;
+  };
+
+  it("draws the earlier period as a line over the bars, not more stack", async () => {
+    // Given - the bars already stack Paid and Saved to make Would have paid.
+    // A third bar in that stack would stop the total meaning anything, so the
+    // comparison is drawn over them instead of inside them.
+    // When
+    const card = await comparing();
+
+    // Then
+    const before = chartOf(card).data.find((s) => s.id === "before");
+    expect(before.type).toBe("line");
+    expect(before.stack).toBeUndefined();
+  });
+
+  it("plots the earlier period over the current axis, not off to its left", async () => {
+    // Given / When - a chart against time would put a week-old bucket a week
+    // to the left of everything drawn, where nobody would ever see it
+    const card = await comparing();
+
+    // Then - the earlier bucket lands on the current period's first day
+    const before = chartOf(card).data.find((s) => s.id === "before");
+    expect(before.data).toEqual([[DAY_ONE.getTime(), 4]]);
+  });
+
+  it("gives the earlier line a legend entry that can hide it", async () => {
+    // Given - every series in this chart is nameable and hideable; one that
+    // was not would be the only thing on the card a user could not turn off
+    // When
+    const card = await comparing();
+
+    // Then
+    expect(chartOf(card).options.legend.data).toHaveLength(3);
+    const ids = new Set(chartOf(card).data.map((s) => s.id));
+    expect(
+      chartOf(card).options.legend.data.every((entry) => ids.has(entry.id)),
+    ).toBe(true);
   });
 });
 

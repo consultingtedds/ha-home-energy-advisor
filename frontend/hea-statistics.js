@@ -139,7 +139,31 @@ export const withComparison = (result, comparison) => {
       ...device,
       before: before.get(device.key),
     })),
+    seriesBefore: alignedTo(comparison.series, result.period, comparison.period),
   };
+};
+
+/**
+ * The earlier period's buckets, moved onto the current period's axis.
+ *
+ * A chart plots against time, so an unshifted earlier series would draw off to
+ * the left of everything else - two months ago is simply not on the axis. The
+ * offset is between the two windows' starts, which is what makes "last month"
+ * lie over "this month" the way a reader expects.
+ *
+ * The shift is presentational and nothing downstream should treat these as real
+ * instants. Where the two windows differ in length the line runs short or long,
+ * which is visible and honest: a comparison against a shorter month should look
+ * like one.
+ */
+const alignedTo = (series, period, comparisonPeriod) => {
+  if (!series?.length) return undefined;
+  const offset = period.start.getTime() - comparisonPeriod.start.getTime();
+  return series.map((row) => ({
+    ...row,
+    start: new Date(row.start.getTime() + offset),
+    actualStart: row.start,
+  }));
 };
 
 /**
