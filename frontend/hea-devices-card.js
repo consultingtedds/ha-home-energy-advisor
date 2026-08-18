@@ -12,6 +12,7 @@ import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import {
   formatEnergy,
   formatMoney,
+  formatMoneyChange,
   formatMoneyRange,
   formatRate,
   rateUnit,
@@ -49,10 +50,37 @@ const RANGE = {
   format: formatMoneyRange,
 };
 
+/**
+ * How much more or less this device cost than over the comparison window.
+ *
+ * Present only when the household has turned comparison on in Home Assistant's
+ * own picker, so the table is untouched for anyone who has not (HEA-96).
+ *
+ * A device with nothing in the earlier window compares against zero, so its
+ * whole figure reads as an increase. That is deliberate rather than ideal:
+ * statistics cannot tell "the device did not run" from "the device was not
+ * tracked yet", and the first is far the commoner - a seasonal heater, an
+ * aircon in a cool month - where the increase is exactly right. It overstates
+ * only for a device genuinely added since, which the household knows about.
+ *
+ * The `undefined` guard below is for a row carrying no earlier self at all,
+ * which the card path does not currently produce (both windows are fetched for
+ * the same device list) but `withComparison` is written to allow.
+ */
+const CHANGE = {
+  derive: ({ actualCost, before }) =>
+    before && Number.isFinite(actualCost) && Number.isFinite(before.actualCost)
+      ? actualCost - before.actualCost
+      : undefined,
+  label: "change",
+  format: formatMoneyChange,
+};
+
 const COLUMNS = [
   { field: "name", label: "device" },
   { field: "energyUsed", label: "energy", format: formatEnergy },
   { field: "actualCost", label: "paid", format: formatMoney },
+  CHANGE,
   RANGE,
   { field: "costAtGridPrice", label: "would_have_paid", format: formatMoney },
   { field: "costSavings", label: "saved", format: formatMoney },
@@ -97,8 +125,32 @@ class HeaDevicesCard extends HeaTableCard {
    * partly-filled one would invite comparing a bounded device with an unbounded
    * one, which is exactly the misranking the ADR rejects.
    */
+  /**
+   * The columns this table can honestly fill.
+   *
+   * Range goes when any row lacks a bound (see below). Change goes when the
+   * household has not asked to compare, which is the normal case - a column of
+   * dashes on every row would read as a fault rather than as a question nobody
+   * put.
+   */
   _columns() {
-    return this._hasEveryBound() ? COLUMNS : COLUMNS.filter((c) => c !== RANGE);
+    const dropped = new Set();
+    if (!this._hasEveryBound()) dropped.add(RANGE);
+    if (!this._hasComparison()) dropped.add(CHANGE);
+    return COLUMNS.filter((column) => !dropped.has(column));
+  }
+
+  /**
+   * True once any row carries an earlier self.
+   *
+   * Any, not every: unlike the range, a partly-filled Change column is honest.
+   * A device the earlier window never saw genuinely has no change to show, and
+   * a dash beside its neighbours says exactly that - where a partly-filled
+   * *range* would invite comparing a bounded device against an unbounded one,
+   * which is the misranking ADR-0016 rejects.
+   */
+  _hasComparison() {
+    return (this._result?.devices ?? []).some((row) => row.before);
   }
 
   _hasEveryBound() {

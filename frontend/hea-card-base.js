@@ -16,7 +16,7 @@ import { subscribeToPeriod } from "./ha-energy-collection.js";
 import { readDevices, readWholeHome } from "./hea-devices.js";
 import { formatPeriod, localeFrom } from "./hea-format.js";
 import { labelsFor, loadLabels } from "./hea-labels.js";
-import { fetchDeviceStatistics } from "./hea-statistics.js";
+import { fetchDeviceStatistics, withComparison } from "./hea-statistics.js";
 
 const BASE_STYLE = `
   .body { padding: 16px; }
@@ -169,8 +169,7 @@ export class HeaCard extends HTMLElement {
           : undefined,
       ]);
       if (request !== this._request) return; // a newer period has overtaken this
-      this._result = result;
-      this._comparison = comparison;
+      this._result = withComparison(result, comparison);
       this._state = "ready";
     } catch (error) {
       if (request !== this._request) return;
