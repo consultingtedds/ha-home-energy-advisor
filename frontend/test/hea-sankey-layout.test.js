@@ -41,6 +41,21 @@ const aRow = (key, name, actualCost, filing = {}) => ({
   ...filing,
 });
 
+/**
+ * A row carrying energy and its source split, for the energy metric.
+ *
+ * The three sources sum to the energy used - the invariant the engine
+ * guarantees and the sources card checks - so a diagram built from them
+ * balances for the same reason the cost one does.
+ */
+const anEnergyRow = (key, name, { grid = 0, generation = 0, battery = 0 }, filing = {}) => ({
+  ...aRow(key, name, 0, filing),
+  energyUsed: grid + generation + battery,
+  energyFromGrid: grid,
+  energyFromGeneration: generation,
+  energyFromBattery: battery,
+});
+
 /** Upstairs, in a room. The ordinary case: every level present. */
 const inLounge = {
   areaId: "a-lounge",
@@ -353,6 +368,158 @@ describe("the shape Home Assistant's chart expects", () => {
     expect(nodes["floor_f-up"].color).toBeUndefined();
   });
 
+  it("measures by cost when asked for a metric that does not exist", () => {
+    // Given - the card guards its own config, but this is exported and a
+    // caller with a typo should get the default view rather than an empty one
+    const rows = [aRow("lamp", "Lamp", 1, inLounge)];
+
+    // When
+    const result = buildDistribution(rows, DEFAULTS, { metric: "bananas" });
+
+    // Then
+    expect(byId(result)[HOUSEHOLD_ID].value).toBe(1);
+  });
+
+  it("draws no source column on the cost metric", () => {
+    // Given - generation is priced at zero (ADR-0009), so a solar ribbon on a
+    // cost diagram would be zero width. An invisible band that is really the
+    // whole point of the view is worse than no column at all.
+    const nodes = byId(build([aRow("lamp", "Lamp", 1, inLounge)]));
+
+    // Then
+    expect(Object.keys(nodes).some((id) => id.startsWith("source_"))).toBe(false);
+  });
+});
+
+describe("the energy metric", () => {
+  const energy = (rows, labels = DEFAULTS) =>
+    buildDistribution(rows, labels, { metric: "energy" });
+
+  it("measures each device by energy rather than by what it cost", () => {
+    // Given - the cloud-polled pump ran hard and cost nothing, which is exactly the
+    // device a cost diagram draws as a hairline
+    const rows = [anEnergyRow("pump", "Pump", { generation: 6.6 }, inLounge)];
+
+    // When
+    const nodes = byId(energy(rows));
+
+    // Then
+    expect(nodes.device_pump.value).toBe(6.6);
+    expect(nodes[HOUSEHOLD_ID].value).toBe(6.6);
+  });
+
+  it("opens with where the energy came from", () => {
+    // Given
+    const rows = [
+      anEnergyRow("pump", "Pump", { grid: 1, generation: 4 }, inLounge),
+      anEnergyRow("lamp", "Lamp", { grid: 2, battery: 3 }, inKitchen),
+    ];
+
+    // When
+    const result = energy(rows);
+    const nodes = byId(result);
+
+    // Then - one column before the household, as Home Assistant's own does
+    expect(nodes.source_grid).toMatchObject({ value: 3, index: COLUMN.source });
+    expect(nodes.source_generation).toMatchObject({ value: 4, index: COLUMN.source });
+    expect(nodes.source_battery).toMatchObject({ value: 3, index: COLUMN.source });
+    expect(COLUMN.source).toBeLessThan(COLUMN.household);
+  });
+
+  it("feeds the household exactly what the sources carry", () => {
+    // Given
+    const rows = [
+      anEnergyRow("pump", "Pump", { grid: 1, generation: 4 }, inLounge),
+      anEnergyRow("lamp", "Lamp", { grid: 2, battery: 3 }, inKitchen),
+    ];
+
+    // When
+    const result = energy(rows);
+
+    // Then - the sources reconcile with the devices, so the diagram balances
+    // end to end rather than only from the household rightwards
+    expect(flowInto(result, HOUSEHOLD_ID)).toBe(10);
+    expect(byId(result)[HOUSEHOLD_ID].value).toBe(10);
+    expect(flowOutOf(result, HOUSEHOLD_ID)).toBe(10);
+  });
+
+  it("leaves out a source the household did not draw on", () => {
+    // Given - a house with no battery, which is most houses
+    const rows = [anEnergyRow("lamp", "Lamp", { grid: 2, generation: 1 }, inLounge)];
+
+    // When
+    const nodes = byId(energy(rows));
+
+    // Then - a zero-width band labelled "Battery" invites a hunt for a
+    // battery that is not there
+    expect(nodes.source_battery).toBeUndefined();
+    expect(nodes.source_grid.value).toBe(2);
+  });
+
+  it("counts sources only for the devices it draws", () => {
+    // Given - a device with no energy is dropped, so its sources must go too
+    // or the first column would outweigh everything right of it
+    const rows = [
+      anEnergyRow("lamp", "Lamp", { grid: 2 }, inLounge),
+      anEnergyRow("idle", "Idle", { grid: 0 }, inLounge),
+    ];
+
+    // When
+    const result = energy(rows);
+
+    // Then
+    expect(byId(result).device_idle).toBeUndefined();
+    expect(flowInto(result, HOUSEHOLD_ID)).toBe(2);
+  });
+
+  it("names the sources from the household's own vocabulary", () => {
+    // Given
+    const labels = { ...DEFAULTS, grid: "Red", generation: "Generación", battery: "Batería" };
+
+    // When
+    const nodes = byId(energy([anEnergyRow("lamp", "Lamp", { grid: 1, generation: 1, battery: 1 })], labels));
+
+    // Then
+    expect(nodes.source_grid.label).toBe("Red");
+    expect(nodes.source_generation.label).toBe("Generación");
+    expect(nodes.source_battery.label).toBe("Batería");
+  });
+
+  it("gives each source its own colour, apart from the devices'", () => {
+    // When
+    const nodes = byId(energy([anEnergyRow("lamp", "Lamp", { grid: 1, generation: 1 }, inLounge)]));
+
+    // Then
+    expect(nodes.source_grid.color).toBeDefined();
+    expect(nodes.source_generation.color).not.toBe(nodes.source_grid.color);
+    expect(nodes.source_grid.color).not.toBe(nodes.device_lamp.color);
+  });
+
+  it("treats a source the row does not carry as none of it", () => {
+    // Given - a row from an integration too old to publish one of the three.
+    // Absent must read as zero rather than poison the sum with NaN, which
+    // would take the whole diagram down rather than one band.
+    const row = anEnergyRow("lamp", "Lamp", { grid: 2 }, inLounge);
+    delete row.energyFromBattery;
+
+    // When
+    const result = energy([row]);
+
+    // Then
+    expect(byId(result).source_battery).toBeUndefined();
+    expect(flowInto(result, HOUSEHOLD_ID)).toBe(2);
+  });
+
+  it("gives an empty diagram when no energy was used at all", () => {
+    // Given / When
+    const result = energy([anEnergyRow("lamp", "Lamp", { grid: 0 }, inLounge)]);
+
+    // Then
+    expect(result).toEqual({ nodes: [], links: [] });
+  });
+});
+
+describe("more of the shape Home Assistant's chart expects", () => {
   it("names two rooms that share a name apart, because ids differ", () => {
     // Given - two households' worth of "Bathroom" is ordinary
     const upstairs = { areaId: "a-bath-1", areaName: "Bathroom", ...{} };

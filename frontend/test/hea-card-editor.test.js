@@ -194,6 +194,18 @@ describe("the distribution card's own options", () => {
     // Given / When / Then
     expect(fieldOf(anEditorFor(TOTALS_TAG), "layout")).toBeUndefined();
   });
+
+  it("offers both measures, and labels the field in words", () => {
+    // Given / When
+    const editor = anEditorFor(DISTRIBUTION_TAG);
+
+    // Then
+    expect(fieldOf(editor, "metric").selector.select.options).toEqual([
+      "cost",
+      "energy",
+    ]);
+    expect(formOf(editor).computeLabel({ name: "metric" })).toBe("Measure by");
+  });
 });
 
 describe("reporting a change", () => {

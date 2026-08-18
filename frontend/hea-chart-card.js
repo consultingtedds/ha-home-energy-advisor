@@ -47,22 +47,34 @@ export class HeaChartCard extends HeaCard {
   }
 
   /**
-   * Nudge Home Assistant into loading its chart component.
+   * Nudge Home Assistant into loading its chart component, and draw whenever
+   * it arrives.
    *
    * Creating any built-in card that draws a chart imports it as a side effect.
-   * If that still leaves it unregistered the card says so, rather than leaving
-   * an empty box the user cannot interpret.
+   * If it never arrives the card says so, rather than leaving an empty box the
+   * user cannot interpret.
+   *
+   * The waiting is `whenDefined` rather than a check, because registration is a
+   * race this card does not control and need not win. Our nudge is not
+   * necessarily what causes it - another card on the dashboard can pull the
+   * same component in a moment later, and a dashboard still loading its cards
+   * routinely registers it after the nudge has returned. Asking once, at that
+   * instant, is how HEA-90 first shipped: on the live dashboard the card sat on
+   * "not loaded" beside a working chart of the very same kind, with the element
+   * already defined and nothing left to re-check it.
    */
   async _loadChartComponent() {
     const { chartTag, bearingCard } = this.constructor;
+    customElements.whenDefined(chartTag).then(() => {
+      this._chartReady = true;
+      this._render();
+    });
     try {
       const helpers = await globalThis.loadCardHelpers?.();
       await helpers?.createCardElement(bearingCard);
     } catch (error) {
       console.warn(`${chartTag}: could not be loaded`, error);
     }
-    this._chartReady = Boolean(customElements.get(chartTag));
-    this._render();
   }
 
   /** Whether the period holds anything worth drawing. */

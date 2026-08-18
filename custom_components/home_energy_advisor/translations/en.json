@@ -251,10 +251,12 @@
     "card_title_cost_over_time": "Cost over time",
     "card_title_sources": "Where the energy came from",
     "card_title_distribution": "Where the cost went",
+    "card_title_distribution_energy": "Where the energy went",
     "card_editor_title": "Title",
     "card_editor_collection_key": "Energy period (collection key)",
     "card_editor_devices": "Devices (all, if none are chosen)",
     "card_editor_sort_by": "Order by",
-    "card_editor_layout": "Layout"
+    "card_editor_layout": "Layout",
+    "card_editor_metric": "Measure by"
   }
 }

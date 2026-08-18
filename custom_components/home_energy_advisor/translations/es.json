@@ -251,10 +251,12 @@
     "card_title_cost_over_time": "Coste a lo largo del tiempo",
     "card_title_sources": "De dónde vino la energía",
     "card_title_distribution": "A dónde fue el coste",
+    "card_title_distribution_energy": "A dónde fue la energía",
     "card_editor_title": "Título",
     "card_editor_collection_key": "Periodo de energía (clave de colección)",
     "card_editor_devices": "Dispositivos (todos, si no eliges ninguno)",
     "card_editor_sort_by": "Ordenar por",
-    "card_editor_layout": "Disposición"
+    "card_editor_layout": "Disposición",
+    "card_editor_metric": "Medir por"
   }
 }

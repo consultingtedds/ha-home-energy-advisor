@@ -31,15 +31,47 @@
  * two diagrams numbered alike should a source column ever be wanted.
  */
 
-/** The root: everything the household spent in the period. */
+/** The root: everything the household spent, or used, in the period. */
 export const HOUSEHOLD_ID = "household";
 
 /** Which column each level is drawn in. Ordered, so the diagram reads across. */
 export const COLUMN = Object.freeze({
+  source: 0,
   household: 1,
   floor: 2,
   area: 3,
   device: 4,
+});
+
+/**
+ * What a device is measured by, and whether that has sources worth drawing.
+ *
+ * **Cost has no source column, and cannot have one.** Generation is priced at
+ * zero (ADR-0009), so a solar band on a cost diagram is zero width - and the
+ * solar band is the most interesting thing on Home Assistant's own. Worse, the
+ * integration publishes energy by source but no *cost* by source, and the two
+ * cannot be recovered from each other: `actual_cost` is grid plus battery, and
+ * splitting them needs the prices each interval was charged at, which only the
+ * engine holds. Approximating it from a period-average price would put a made-up
+ * number on screen, and this file does not do arithmetic the engine has not
+ * already done.
+ *
+ * Energy has all three, they reconcile with the device totals, and the story a
+ * cost diagram cannot tell - a device that ran hard and cost nothing - is
+ * exactly the one it tells best.
+ */
+const METRICS = Object.freeze({
+  cost: { field: "actualCost", sources: null },
+  energy: {
+    field: "energyUsed",
+    sources: [
+      // Named for the vocabulary key each takes, so the words stay the
+      // household's own (ADR-0018) and match the sources card beside it.
+      { id: "grid", field: "energyFromGrid", colour: "#488fc2" },
+      { id: "generation", field: "energyFromGeneration", colour: "#ff9800" },
+      { id: "battery", field: "energyFromBattery", colour: "#a48be0" },
+    ],
+  },
 });
 
 /**
@@ -63,7 +95,7 @@ const PALETTE = [
 const UNTRACKED_COLOUR = "#8a8a8a";
 
 /**
- * Arrange the period's costs as nodes and links for `ha-sankey-chart`.
+ * Arrange the period as nodes and links for `ha-sankey-chart`.
  *
  * Parent values are accumulated from their children and never computed
  * independently, so each level sums to the one above it by construction. The
@@ -72,14 +104,17 @@ const UNTRACKED_COLOUR = "#8a8a8a";
  *
  * @param devices rows as a card holds them - the HEA-55 row and its totals
  * @param labels this household's vocabulary (ADR-0018)
+ * @param options `{metric}` - `"cost"` (the default) or `"energy"`
  * @returns {{nodes: Array<object>, links: Array<object>}}
  */
-export const buildDistribution = (devices, labels) => {
-  // A flow diagram cannot draw a cost of nothing and cannot draw one backwards.
-  // A correction can leave a device net negative over a period (ADR-0006), and
-  // a device that simply did not run is the ordinary case.
-  const spending = devices.filter((device) => device.actualCost > 0);
-  if (spending.length === 0) return { nodes: [], links: [] };
+export const buildDistribution = (devices, labels, { metric = "cost" } = {}) => {
+  const { field, sources } = METRICS[metric] ?? METRICS.cost;
+
+  // A flow diagram cannot draw a quantity of nothing and cannot draw one
+  // backwards. A correction can leave a device net negative over a period
+  // (ADR-0006), and a device that simply did not run is the ordinary case.
+  const drawn = devices.filter((device) => device[field] > 0);
+  if (drawn.length === 0) return { nodes: [], links: [] };
 
   const floors = new Map();
   const areas = new Map();
@@ -87,17 +122,17 @@ export const buildDistribution = (devices, labels) => {
   const links = [];
   let household = 0;
 
-  spending.forEach((device, position) => {
-    const cost = device.actualCost;
-    household += cost;
+  drawn.forEach((device, position) => {
+    const value = device[field];
+    household += value;
 
     // The nearest container that exists, which is what decides the link's
     // source as well as which intermediate nodes are worth creating at all.
     const floor = device.floorId ? track(floors, device.floorId, device.floorName) : null;
     const area = device.areaId ? track(areas, device.areaId, device.areaName) : null;
-    if (floor) floor.value += cost;
+    if (floor) floor.value += value;
     if (area) {
-      area.value += cost;
+      area.value += value;
       // Recorded on the area rather than per device: a room belongs to one
       // floor, and the first device filed there settles which.
       area.floorId ??= device.floorId ?? null;
@@ -107,7 +142,7 @@ export const buildDistribution = (devices, labels) => {
     deviceNodes.push({
       id,
       label: device.name,
-      value: cost,
+      value,
       index: COLUMN.device,
       color: device.untracked ? UNTRACKED_COLOUR : PALETTE[position % PALETTE.length],
       // The id the devices sensor published, so a click opens that device's cost
@@ -115,19 +150,51 @@ export const buildDistribution = (devices, labels) => {
       // the household's own language (HEA-89, ADR-0018).
       ...entityIdOf(device),
     });
-    links.push({ source: parentOf(device), target: id, value: cost });
+    links.push({ source: parentOf(device), target: id, value });
   });
+
+  // Summed over the devices actually drawn, never over every row: a source
+  // counting energy for a device the diagram dropped would make the first
+  // column heavier than everything to the right of it.
+  const inflow = sourceNodes(sources, drawn, labels);
 
   return {
     nodes: [
+      ...inflow,
       { id: HOUSEHOLD_ID, label: labels.household, value: household, index: COLUMN.household },
       ...nodesFrom(floors, "floor_", COLUMN.floor),
       ...nodesFrom(areas, "area_", COLUMN.area),
       ...deviceNodes,
     ],
-    links: [...containerLinks(floors, areas), ...links],
+    links: [
+      ...inflow.map((node) => ({
+        source: node.id,
+        target: HOUSEHOLD_ID,
+        value: node.value,
+      })),
+      ...containerLinks(floors, areas),
+      ...links,
+    ],
   };
 };
+
+/**
+ * Where the household's energy came from, as the column feeding it.
+ *
+ * A source the household did not draw on is left out rather than drawn at
+ * zero: a band labelled "Battery" on a house with no battery invites a hunt
+ * for hardware that is not there.
+ */
+const sourceNodes = (sources, drawn, labels) =>
+  (sources ?? [])
+    .map(({ id, field, colour }) => ({
+      id: `source_${id}`,
+      label: labels[id],
+      value: drawn.reduce((total, device) => total + (device[field] ?? 0), 0),
+      index: COLUMN.source,
+      color: colour,
+    }))
+    .filter((node) => node.value > 0);
 
 /** The running total for a container, created on first sight of it. */
 const track = (containers, id, name) => {
