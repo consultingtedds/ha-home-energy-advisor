@@ -15,12 +15,13 @@
  * requires is asserted here field by field.
  */
 
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG, register, tint } from "../hea-device-costs-card.js";
 import {
   aDeviceRow,
   aHass,
+  anEnergyCollection,
   boundsFor,
   bucketsFor,
   mountCard,
@@ -211,6 +212,92 @@ describe("the bars", () => {
     expect(channelsOf(lost.itemStyle.color)).toBe(
       channelsOf(tint(lost.itemStyle.borderColor, 1)),
     );
+  });
+});
+
+describe("comparing against an earlier period", () => {
+  const comparing = async () => {
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: [AIRCON, PUMP], response: THREE, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    // One bucket in each window, so the data layer separates them by which
+    // period it was asked for: the aircon cost EUR 0.50 now and EUR 1.70 then.
+    const may = new Date(2026, 4, 20);
+    const april = new Date(2026, 3, 1);
+    hass.callWS = vi.fn().mockResolvedValue({
+      ...THREE,
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 0.5 },
+        { start: april.getTime(), change: 1.7 },
+      ],
+    });
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+    await vi.waitFor(() =>
+      expect(chartOf(card).data.some((s) => s.id.endsWith(":before"))).toBe(true),
+    );
+    return card;
+  };
+
+  it("draws no earlier bar when nobody asked to compare", async () => {
+    // Given / When - the normal case
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then - two series per device and no more
+    expect(chartOf(card).data).toHaveLength(4);
+    expect(chartOf(card).data.some((s) => s.id.endsWith(":before"))).toBe(false);
+  });
+
+  it("puts the earlier period beside each device, not on top of it", async () => {
+    // Given / When
+    const card = await comparing();
+
+    // Then - a third series in a stack of its own. Its own stack is what makes
+    // ECharts place it beside the device rather than piling it on: the two
+    // segments that share `stack: device.key` are the parts of one bar, and an
+    // earlier period is not a part of this one
+    const before = chartOf(card).data.find(
+      (s) => s.id === "slow_poll_aircon:before",
+    );
+    expect(before.data).toEqual([1.7]);
+    expect(before.stack).not.toBe("slow_poll_aircon");
+  });
+
+  it("keeps one legend entry per device, covering its earlier bar too", async () => {
+    // Given / When
+    const card = await comparing();
+
+    // Then - still one entry per device, and clicking it hides every series
+    // the device owns. An entry that missed the new one would leave a stray
+    // bar behind when the user hid the device
+    const entries = legendOf(card).data;
+    expect(entries).toHaveLength(2);
+    const ids = new Set(chartOf(card).data.map((s) => s.id));
+    for (const entry of entries) {
+      expect([entry.id, ...entry.secondaryIds].every((id) => ids.has(id))).toBe(true);
+    }
+    expect(
+      entries.flatMap((e) => [e.id, ...e.secondaryIds]).length,
+    ).toBe(ids.size);
+  });
+
+  it("answers for the device from its earlier bar as well", async () => {
+    // Given / When - the tooltip resolves a device from the hovered series id,
+    // and a new suffix it did not know would render nothing at all
+    const card = await comparing();
+
+    // Then
+    const shown = chartOf(card).options.tooltip.formatter({
+      seriesId: "slow_poll_aircon:before",
+    }).textContent;
+    expect(shown).toContain("Slow Poll Aircon");
+    expect(shown).toMatch(/[-−]\D*1[.,]20/);
   });
 });
 

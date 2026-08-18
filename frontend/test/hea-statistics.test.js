@@ -192,6 +192,32 @@ describe("withComparison", () => {
     expect(withComparison(now, then).devices[0].before).toBeUndefined();
   });
 
+  it("moves the earlier buckets onto the current period's axis", () => {
+    // Given - a chart plots against time, so the earlier period's own instants
+    // sit off to the left of everything drawn and would never be seen
+    const now = {
+      period: { start: new Date("2026-05-01T00:00:00Z"), end: new Date("2026-06-01T00:00:00Z") },
+      devices: [],
+      totals: {},
+    };
+    const then = {
+      period: { start: new Date("2026-04-01T00:00:00Z"), end: new Date("2026-05-01T00:00:00Z") },
+      devices: [],
+      totals: {},
+      series: [{ start: new Date("2026-04-03T00:00:00Z"), actualCost: 2 }],
+    };
+
+    // When
+    const [row] = withComparison(now, then).seriesBefore;
+
+    // Then - shifted by the gap between the two starts, so the third of April
+    // lies over the third of May. Its real instant is kept, because a shifted
+    // date is for drawing and nothing else should mistake it for a fact
+    expect(row.start.toISOString()).toBe("2026-05-03T00:00:00.000Z");
+    expect(row.actualStart.toISOString()).toBe("2026-04-03T00:00:00.000Z");
+    expect(row.actualCost).toBe(2);
+  });
+
   it("changes nothing when there is no comparison", () => {
     // Given / When / Then - the untouched result, not a copy carrying empty
     // fields: comparison is off by default and must cost the normal path nothing

@@ -30,6 +30,19 @@ const SERIES = {
   },
 };
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
+/**
+ * The earlier period, drawn over the bars rather than inside them.
+ *
+ * The stack already means something exact - Paid plus Saved is Would have paid
+ * - so a third bar in it would stop the total being anything. A line sits above
+ * the stack and compares shape without joining the arithmetic (HEA-96).
+ */
+const BEFORE = {
+  id: "before",
+  name: "compared_series",
+  variable: "--secondary-text-color",
+  fallback: "#727272",
+};
 
 class HeaCostOverTimeCard extends HeaChartCard {
   static titleKey = "title_cost_over_time";
@@ -49,6 +62,7 @@ class HeaCostOverTimeCard extends HeaChartCard {
     const rows = this._result?.series ?? [];
     const loss = this._colour(LOSS);
     const labels = this._labels;
+    const earlier = this._result?.seriesBefore;
     return [
       {
         ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
@@ -63,6 +77,21 @@ class HeaCostOverTimeCard extends HeaChartCard {
             : point;
         }),
       },
+      ...(earlier?.length
+        ? [
+            {
+              id: BEFORE.id,
+              name: labels[BEFORE.name],
+              type: "line",
+              // No `stack`: the bars' stack sums to Would have paid, and this
+              // is a different period rather than a part of that total.
+              symbol: "none",
+              lineStyle: { type: "dashed", width: 2 },
+              itemStyle: { color: this._colour(BEFORE) },
+              data: earlier.map((row) => [row.start.getTime(), row.actualCost]),
+            },
+          ]
+        : []),
     ];
   }
 
@@ -96,7 +125,11 @@ class HeaCostOverTimeCard extends HeaChartCard {
       legend: {
         show: true,
         type: "custom",
-        data: [SERIES.paid, SERIES.saved].map((series) => ({
+        data: [
+          SERIES.paid,
+          SERIES.saved,
+          ...(this._result?.seriesBefore?.length ? [BEFORE] : []),
+        ].map((series) => ({
           id: series.id,
           name: labels[series.name],
           // The series colour, not whatever the last point drew: the saving

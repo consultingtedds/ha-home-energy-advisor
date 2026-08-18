@@ -73,6 +73,7 @@ export const DEFAULTS = Object.freeze({
   range_device: "What you paid could be between {range}.",
   compared: "{change} vs {before}",
   change: "Change",
+  compared_series: "Earlier period",
   device: "Device",
   energy: "Energy",
   rate: "Rate",

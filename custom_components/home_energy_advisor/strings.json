@@ -232,6 +232,7 @@
     "card_range_device": "What you paid could be between {range}.",
     "card_compared": "{change} vs {before}",
     "card_change": "Change",
+    "card_compared_series": "Earlier period",
     "card_device": "Device",
     "card_energy": "Energy",
     "card_rate": "Rate",

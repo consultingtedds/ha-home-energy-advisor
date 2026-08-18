@@ -32,7 +32,12 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { formatMoney, formatMoneyRange, formatPeriod } from "./hea-format.js";
+import {
+  formatMoney,
+  formatMoneyChange,
+  formatMoneyRange,
+  formatPeriod,
+} from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 
 export const TAG = "hea-device-costs-card";
@@ -65,6 +70,14 @@ const LOSS = { variable: "--error-color", fallback: "#db4437" };
 const BORDER_WIDTH = 1.5;
 /** How strongly the spend is filled, and how faintly the saving above it. */
 const PAID_ALPHA = 0.8;
+/**
+ * The earlier period's bar, fainter than the spend it is measured against.
+ *
+ * Weaker than `PAID_ALPHA` so this period reads as the subject and the earlier
+ * one as the reference, and stronger than `SAVED_ALPHA` so it is not mistaken
+ * for part of the stack beside it (HEA-96).
+ */
+const BEFORE_ALPHA = 0.45;
 const SAVED_ALPHA = 0.22;
 
 const HEX = /^#([\da-f]{3}|[\da-f]{6})$/i;
@@ -105,7 +118,7 @@ export const tint = (colour, alpha) => {
 };
 
 /** Which of a device's two segments a series id belongs to. */
-const SEGMENT = /:(?:paid|saved)$/;
+const SEGMENT = /:(?:paid|saved|before)$/;
 
 /** One line of the tooltip: what it is, and how much of it. */
 const tooltipRow = (label, amount) => {
@@ -146,9 +159,36 @@ const tooltipFor = (device, locale, labels) => {
     ),
     tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
   );
+  const change = changeRow(device, locale, labels);
+  if (change) box.append(change);
   const range = rangeNote(device, locale, labels);
   if (range) box.append(range);
   return box;
+};
+
+/**
+ * What this device's spend did against the earlier period (HEA-96).
+ *
+ * A row rather than a sentence, because unlike the range it is a figure in its
+ * own right rather than a qualification of the one above it. Signed, and beside
+ * what it is measured against, for the reason the totals card gives: a bare
+ * amount leaves the direction to be worked out, and a bare "was" makes the
+ * reader do the subtraction.
+ *
+ * Absent unless the household asked to compare, which is the default.
+ */
+const changeRow = (device, locale, labels) => {
+  const before = device.before?.actualCost;
+  if (!Number.isFinite(before) || !Number.isFinite(device.actualCost)) {
+    return undefined;
+  }
+  return tooltipRow(
+    labels.change,
+    fill(labels.compared, {
+      change: formatMoneyChange(device.actualCost - before, locale),
+      before: formatMoney(before, locale),
+    }),
+  );
 };
 
 /**
@@ -255,6 +295,21 @@ class HeaDeviceCostsCard extends HeaChartCard {
           },
           data: [device.costSavings],
         },
+        // A stack of its own, so ECharts sets it beside the device rather than
+        // piling it on. The two segments sharing `stack: device.key` are parts
+        // of one bar; an earlier period is not a part of this one (HEA-96).
+        ...(device.before
+          ? [
+              {
+                id: `${device.key}:before`,
+                name: device.name,
+                type: "bar",
+                stack: `${device.key}:before`,
+                itemStyle: { color: tint(colour, BEFORE_ALPHA) },
+                data: [device.before.actualCost],
+              },
+            ]
+          : []),
       ];
     });
   }
@@ -298,7 +353,11 @@ class HeaDeviceCostsCard extends HeaChartCard {
         type: "custom",
         data: this._ranked().map((device, index) => ({
           id: `${device.key}:paid`,
-          secondaryIds: [`${device.key}:saved`],
+          // Every series the device owns, or hiding it would strand one behind.
+          secondaryIds: [
+            `${device.key}:saved`,
+            ...(device.before ? [`${device.key}:before`] : []),
+          ],
           name: device.name,
           // The solid colour, not the fill: a wash of a hue is harder to tell
           // from its neighbour than the hue itself.
