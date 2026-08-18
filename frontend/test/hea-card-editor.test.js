@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG as DEVICES_TAG } from "../hea-devices-card.js";
+import { TAG as DISTRIBUTION_TAG } from "../hea-distribution-card.js";
 import { TAG as TOTALS_TAG } from "../hea-totals-card.js";
 import { aDeviceRow, aHass } from "./doubles.js";
 
@@ -161,6 +162,37 @@ describe("the devices card's own options", () => {
   it("is not offered on the totals card, which has nothing to sort", () => {
     // Given / When / Then
     expect(fieldOf(anEditorFor(TOTALS_TAG), "sort_by")).toBeUndefined();
+  });
+});
+
+describe("the distribution card's own options", () => {
+  it("offers the layouts the card supports, named as Home Assistant names them", () => {
+    // Given / When
+    const layout = fieldOf(anEditorFor(DISTRIBUTION_TAG), "layout");
+
+    // Then - the same three the Energy Dashboard's own Sankey card offers, so a
+    // household meets one vocabulary rather than two (HEA-90)
+    expect(layout.selector.select.options).toEqual([
+      "auto",
+      "horizontal",
+      "vertical",
+    ]);
+  });
+
+  it("labels it in words rather than as a config key", () => {
+    // Given / When
+    const label = formOf(anEditorFor(DISTRIBUTION_TAG)).computeLabel({
+      name: "layout",
+    });
+
+    // Then - a field added without its entry in the vocabulary falls through to
+    // the raw key, which is the defect this catches
+    expect(label).toBe("Layout");
+  });
+
+  it("is not offered on a card with only one way to draw itself", () => {
+    // Given / When / Then
+    expect(fieldOf(anEditorFor(TOTALS_TAG), "layout")).toBeUndefined();
   });
 });
 
