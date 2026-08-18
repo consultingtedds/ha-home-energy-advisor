@@ -28,10 +28,16 @@ const anEnergyCollection = (start, end) => {
     },
     refresh() {},
     // Test-only: let a test act as the picker announcing a new period.
-    announce(newStart, newEnd) {
+    //
+    // The callback receives Home Assistant's `EnergyData`, which is where the
+    // comparison window lives - the collection object carries the compare mode
+    // but not its dates. A double calling back with nothing could never tell
+    // reading the payload apart from reading the collection (HEA-96).
+    announce(newStart, newEnd, compare = undefined) {
       this.start = newStart;
       this.end = newEnd;
-      for (const callback of listeners) callback();
+      const data = { start: newStart, end: newEnd, ...compare };
+      for (const callback of listeners) callback(data);
     },
     get listenerCount() {
       return listeners.size;
@@ -288,6 +294,75 @@ describe("subscribeToPeriod", () => {
     expect(onPeriod).toHaveBeenLastCalledWith({
       start: august,
       end: now,
+      fallback: false,
+    });
+  });
+
+  it("surfaces the comparison window the picker announces", () => {
+    // Given - a card following the picker, and a household that has turned on
+    // "Compare data" from Home Assistant's own picker menu
+    const energy = anEnergyCollection(MAY, JULY);
+    const onPeriod = vi.fn();
+    subscribeToPeriod(aHass({ "_energy_hea-costs": energy }), "hea-costs", onPeriod);
+
+    // When - the collection announces a period with a comparison window. The
+    // window arrives on the emitted `EnergyData` and nowhere else: the
+    // collection object itself carries `compare` (the mode) but neither
+    // `startCompare` nor `endCompare`, so reading the collection cannot see it
+    const march = new Date(2026, 2, 1);
+    const may = new Date(2026, 4, 1);
+    energy.announce(MAY, JULY, {
+      startCompare: march,
+      endCompare: may,
+      compareMode: "previous",
+    });
+
+    // Then - the card is handed both windows and the mode
+    expect(onPeriod).toHaveBeenLastCalledWith({
+      start: MAY,
+      end: JULY,
+      fallback: false,
+      compare: { start: march, end: may, mode: "previous" },
+    });
+  });
+
+  it("offers no comparison when the household has not asked for one", () => {
+    // Given - comparison is off by default, which is the normal case
+    const energy = anEnergyCollection(MAY, JULY);
+    const onPeriod = vi.fn();
+    subscribeToPeriod(aHass({ "_energy_hea-costs": energy }), "hea-costs", onPeriod);
+
+    // When
+    energy.announce(MAY, JULY);
+
+    // Then - absent, not an empty object: a card checks whether to compare at
+    // all, and something truthy carrying no dates would be worse than nothing
+    expect(onPeriod).toHaveBeenLastCalledWith({
+      start: MAY,
+      end: JULY,
+      fallback: false,
+    });
+  });
+
+  it("carries no comparison on the first emit, before any payload exists", () => {
+    // Given - `subscribe` fires only on change, so the adapter emits once
+    // itself to save the card sitting on the fallback period. That synchronous
+    // emit has no `EnergyData` to read, so it cannot know about a comparison
+    // even if one is already active.
+    const energy = anEnergyCollection(MAY, JULY);
+    const onPeriod = vi.fn();
+
+    // When
+    subscribeToPeriod(aHass({ "_energy_hea-costs": energy }), "hea-costs", onPeriod);
+
+    // Then - the period is right and the comparison is simply absent until the
+    // collection next emits, which it does on its own initial load. Deriving
+    // the window from the mode was rejected: guessing what Home Assistant means
+    // by "previous period" risks disagreeing with it, and briefly showing no
+    // comparison is far better than confidently showing the wrong one
+    expect(onPeriod).toHaveBeenLastCalledWith({
+      start: MAY,
+      end: JULY,
       fallback: false,
     });
   });

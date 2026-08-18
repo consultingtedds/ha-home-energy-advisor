@@ -148,18 +148,29 @@ export class HeaCard extends HTMLElement {
     // so this can never be what stops a card rendering (ADR-0018).
     await loadLabels(this._hass);
 
+    // Only meaningful for the whole house: a card filtered to three devices is
+    // not bounded by the household's range, and offering it there would invite
+    // a comparison between a subset and its whole.
+    const wholeHome = this._config?.devices ? undefined : readWholeHome(this._hass);
+
     try {
-      const result = await fetchDeviceStatistics(
-        this._hass,
-        devices,
-        this._period,
-        // Only meaningful for the whole house: a card filtered to three devices
-        // is not bounded by the household's range, and offering it there would
-        // invite a comparison between a subset and its whole.
-        this._config?.devices ? undefined : readWholeHome(this._hass),
-      );
+      // Both windows at once. The comparison is a second call rather than a new
+      // mechanism, and asking for them together means one render rather than a
+      // card that shows this period and then shifts when the other lands.
+      const [result, comparison] = await Promise.all([
+        fetchDeviceStatistics(this._hass, devices, this._period, wholeHome),
+        this._period.compare
+          ? fetchDeviceStatistics(
+              this._hass,
+              devices,
+              this._period.compare,
+              wholeHome,
+            )
+          : undefined,
+      ]);
       if (request !== this._request) return; // a newer period has overtaken this
       this._result = result;
+      this._comparison = comparison;
       this._state = "ready";
     } catch (error) {
       if (request !== this._request) return;

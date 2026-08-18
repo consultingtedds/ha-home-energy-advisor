@@ -181,6 +181,69 @@ describe("the figures", () => {
     );
   });
 
+  it("shows nothing about comparison when the household has not asked", async () => {
+    // Given - comparison is off by default, which is the normal case
+    const hass = aHass();
+    const card = mount(hass);
+
+    // When
+    await settled(card);
+
+    // Then - the card looks exactly as it always has, and asks the recorder
+    // once rather than speculatively fetching a window nobody wanted
+    expect(card.shadowRoot.querySelector(".compare")).toBeNull();
+    expect(hass.callWS).toHaveBeenCalledTimes(1);
+  });
+
+  it("compares against the period Home Assistant announces", async () => {
+    // Given - a household that turned on "Compare data" in the picker menu.
+    // Both windows are fetched, so the card renders once rather than showing
+    // this period and then shifting when the other lands.
+    const collection = anEnergyCollection();
+    const hass = aHass({ collection });
+    const card = mount(hass);
+    await settled(card);
+
+    // When - the picker announces the same period with a comparison window.
+    // The recorder answers both fetches, so the response carries a bucket in
+    // each window: EUR 0.11 in May for the period shown, EUR 1.31 in April for
+    // the one before it. The data layer keeps only the buckets that start
+    // inside the period it asked for, which is what separates them.
+    const may = new Date(2026, 4, 20);
+    const april = new Date(2026, 3, 1);
+    hass.callWS = vi.fn().mockResolvedValue({
+      "sensor.slow_poll_aircon_energy_used": [
+        { start: may.getTime(), change: 38.6 },
+        { start: april.getTime(), change: 40 },
+      ],
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 0.11 },
+        { start: april.getTime(), change: 1.31 },
+      ],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: may.getTime(), change: 5.78 },
+        { start: april.getTime(), change: 6.0 },
+      ],
+    });
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+
+    // Then - the figure carries what changed and what it is measured against.
+    // Signed, because the direction is the whole question: "1.20" leaves the
+    // reader to work out whether they did better or worse
+    await vi.waitFor(() =>
+      expect(card.shadowRoot.querySelector(".compare")).not.toBeNull(),
+    );
+    const compared = card.shadowRoot.querySelector(
+      '[data-compare="actualCost"]',
+    ).textContent;
+    expect(compared).toMatch(/[-−]/);
+    expect(compared).toMatch(/1[.,]20/);
+  });
+
   it("marks a saving that is really a loss", async () => {
     // Given - battery arbitrage cost more than the grid would have (HEA-39)
     const hass = aHass({

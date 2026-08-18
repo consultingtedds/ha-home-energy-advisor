@@ -24,10 +24,19 @@ export const anEnergyCollection = (start = MAY, end = JULY) => {
       listeners.add(callback);
       return () => listeners.delete(callback);
     },
-    announce(newStart, newEnd) {
+    /**
+     * Announce a new period, optionally with a comparison window.
+     *
+     * Home Assistant hands subscribers an `EnergyData` object, and the compare
+     * window lives *only* there - the collection itself carries the compare
+     * mode but not its dates. So the payload is passed through, and a double
+     * that called back with nothing could never tell the two apart (HEA-96).
+     */
+    announce(newStart, newEnd, compare = undefined) {
       this.start = newStart;
       this.end = newEnd;
-      for (const callback of listeners) callback();
+      const data = { start: newStart, end: newEnd, ...compare };
+      for (const callback of listeners) callback(data);
     },
     get listenerCount() {
       return listeners.size;

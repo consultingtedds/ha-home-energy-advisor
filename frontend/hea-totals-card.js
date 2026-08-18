@@ -8,7 +8,8 @@
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { formatMoney } from "./hea-format.js";
+import { formatMoney, formatMoneyChange } from "./hea-format.js";
+import { fill } from "./hea-labels.js";
 
 export const TAG = "hea-totals-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -34,6 +35,7 @@ class HeaTotalsCard extends HeaCard {
   static cardStyle = `
     .figures { display: flex; flex-wrap: wrap; gap: 16px; }
     .figure { flex: 1 1 8em; display: flex; flex-direction: column; gap: 4px; }
+    .compare { color: var(--secondary-text-color); font-size: 0.8em; }
     .label {
       color: var(--secondary-text-color);
       font-size: 0.85em;
@@ -69,9 +71,36 @@ class HeaTotalsCard extends HeaCard {
         <div class="figure">
           <span class="label">${this._labels[label]}</span>
           <span class="value${loss}" data-figure="${key}">${formatMoney(value, locale)}</span>
+          ${this._comparedTo(key, value, locale)}
         </div>`;
     }).join("");
     return `<div class="figures">${figures}</div>`;
+  }
+
+  /**
+   * What this figure was last time, and by how much it moved (HEA-96).
+   *
+   * Absent unless the household turned comparison on in Home Assistant's own
+   * picker, which is the normal case - so the card is unchanged for anyone who
+   * has not asked.
+   *
+   * The change is signed and the earlier figure is shown beside it. Either
+   * alone is weaker: a bare "EUR 1.20" leaves the direction to be worked out,
+   * and a bare "was EUR 13.54" makes the reader do the subtraction. A
+   * percentage is deliberately not offered - the base is a device-shaped
+   * number that is often pennies, and dividing by it explodes (ADR-0016
+   * decision 5, HEA-75).
+   */
+  _comparedTo(key, value, locale) {
+    const before = this._comparison?.totals?.[key];
+    if (!Number.isFinite(before) || !Number.isFinite(value)) return "";
+    return `<span class="compare" data-compare="${key}">${fill(
+      this._labels.compared,
+      {
+        change: formatMoneyChange(value - before, locale),
+        before: formatMoney(before, locale),
+      },
+    )}</span>`;
   }
 }
 

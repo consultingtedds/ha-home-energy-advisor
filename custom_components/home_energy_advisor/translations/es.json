@@ -230,6 +230,7 @@
     "card_range_note": "Pagado (mín-máx) es el rango más amplio que permiten estas lecturas, no un error típico: un contador que informa cada 30-90 minutos deja sin determinar el momento exacto del consumo.",
     "card_range_whole_home": "Lo que pagaste podría estar entre {range} - el rango más amplio que permiten estas lecturas, no un error típico.",
     "card_range_device": "Lo que pagaste podría estar entre {range}.",
+    "card_compared": "{change} frente a {before}",
     "card_device": "Dispositivo",
     "card_energy": "Energía",
     "card_rate": "Tarifa",

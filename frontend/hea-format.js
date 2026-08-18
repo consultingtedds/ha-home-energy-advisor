@@ -35,6 +35,31 @@ export const formatMoney = (value, { language, currency }) => {
 };
 
 /**
+ * A change in money, always signed - "+€1.20", "-€0.80" (HEA-96).
+ *
+ * `signDisplay: "exceptZero"` because the direction *is* the information: a
+ * comparison that renders "€1.20" leaves the reader to work out whether the
+ * household did better or worse, which is the entire question they asked.
+ * Zero stays unsigned, since "+€0.00" claims a change that did not happen.
+ *
+ * Deliberately not a percentage. `(now - then) / then` explodes as the base
+ * approaches zero, which is most devices on most days - the same near-zero
+ * denominator that sank run-signal weighting (HEA-75) and that ADR-0016
+ * decision 5 forbids for the cost bounds.
+ */
+export const formatMoneyChange = (value, { language, currency }) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
+  const options = currency
+    ? { style: "currency", currency, signDisplay: "exceptZero" }
+    : {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        signDisplay: "exceptZero",
+      };
+  return new Intl.NumberFormat(language, options).format(value);
+};
+
+/**
  * The range a cost could honestly sit in - "€3.61 - €4.72" (ADR-0016).
  *
  * In money, never as a percentage. `(ceiling − floor) / actual` explodes as the
