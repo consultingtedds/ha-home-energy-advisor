@@ -112,3 +112,47 @@ ADR-0012 decision 5's, deliberately.
 
 This would be worth revisiting if the option shapes proved unstable release to
 release, at which point the fallback is the SVG this ADR rejected.
+
+## Update (2026-08-18): there is a second reusable component, `ha-sankey-chart`
+
+Decision 1 names `ha-chart-base` as the component HEA's charts render through,
+because at the time it was the only one anyone had looked for. HEA-90's cost
+distribution view needed a Sankey, and found another.
+
+**Home Assistant draws its energy Sankey with `ha-sankey-chart`, not with a
+`sankey` series on `ha-chart-base`.** That distinction matters, because it is a
+separate element with its own contract, and that contract is generic:
+
+```ts
+@property({ attribute: false }) public data: SankeyChartData = { nodes: [], links: [] };
+@property({ type: Boolean }) public vertical = false;
+@property({ attribute: false }) public valueFormatter?: (value: number) => string;
+```
+
+Nothing in it touches the energy preferences - unlike `hui-energy-sankey-card`
+above it, which subscribes to `getEnergyDataCollection` and is unreusable for
+exactly the reason decision 4 already gives. The card is bound to energy; the
+component it draws with is not.
+
+Internally `ha-sankey-chart` imports `ha-chart-base` and installs ECharts' own
+`SankeyChart` through `.extraComponents`. So this is decision 1 applied rather
+than amended - the drawing is still ECharts, still bundled, still Home
+Assistant's. What changes is that "the chart component" is a family, and the
+cheapest rung on ADR-0017's ladder may be a wrapper nobody had looked for.
+Hand-rolling the `sankey` series on `ha-chart-base` would have worked, and would
+have re-derived label width measurement, a resize observer, orientation,
+tooltips and click-to-more-info, all of which come free.
+
+**Decision 3 generalises with it.** The bearing card that coaxes the component
+into existence is per component, not one for every chart: `statistics-graph`
+loads `ha-chart-base` and does *not* load `ha-sankey-chart`, which needs an
+`energy-sankey`. Creating one is safe with no configuration - its `setConfig`
+merges defaults when no collection key is given, and it subscribes to the energy
+collection on connect, which `createCardElement` never does - so the nudge
+imports the module without subscribing to anything.
+
+The lesson is the one this ADR already opens with, one level further in. The
+first reading found the component behind the *card* we could not reuse and
+stopped there; it did not ask whether the component we wanted was itself sitting
+behind another card. Before hand-rolling a chart type, look for the element that
+draws it, not only for the card that uses it.

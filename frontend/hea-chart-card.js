@@ -13,22 +13,27 @@
  *
  * Subclasses implement `_series()` and `_options(locale)`, and may override
  * `_isEmpty()` where "nothing to draw" means something other than no buckets.
+ *
+ * `ha-chart-base` is not the only component worth reusing: the Sankey view
+ * draws with `ha-sankey-chart`, which is a different element loaded by a
+ * different card (HEA-90). So which component to wait for, and what to create
+ * to get it, are the subclass's to name - the waiting itself is the same.
  */
 
 import { HeaCard } from "./hea-card-base.js";
 
-/** Home Assistant's chart component, and a card that is known to pull it in. */
-const CHART_TAG = "ha-chart-base";
-const CHART_BEARING_CARD = { type: "statistics-graph", entities: [] };
-
 export class HeaChartCard extends HeaCard {
+  /** Home Assistant's chart component, and a card known to pull it in. */
+  static chartTag = "ha-chart-base";
+  static bearingCard = { type: "statistics-graph", entities: [] };
+
   static cardStyle = `
     ha-chart-base { display: block; }
   `;
 
   constructor() {
     super();
-    this._chartReady = Boolean(customElements.get(CHART_TAG));
+    this._chartReady = Boolean(customElements.get(this.constructor.chartTag));
   }
 
   /** A chart needs real height, unlike a row of figures. */
@@ -49,13 +54,14 @@ export class HeaChartCard extends HeaCard {
    * an empty box the user cannot interpret.
    */
   async _loadChartComponent() {
+    const { chartTag, bearingCard } = this.constructor;
     try {
       const helpers = await globalThis.loadCardHelpers?.();
-      await helpers?.createCardElement(CHART_BEARING_CARD);
+      await helpers?.createCardElement(bearingCard);
     } catch (error) {
-      console.warn(`${CHART_TAG}: could not be loaded`, error);
+      console.warn(`${chartTag}: could not be loaded`, error);
     }
-    this._chartReady = Boolean(customElements.get(CHART_TAG));
+    this._chartReady = Boolean(customElements.get(chartTag));
     this._render();
   }
 
@@ -72,14 +78,24 @@ export class HeaChartCard extends HeaCard {
     if (this._isEmpty()) {
       return `<p class="message">No cost recorded in this period.</p>`;
     }
-    return `<${CHART_TAG} chart-type="bar"></${CHART_TAG}>`;
+    return this._chartMarkup();
+  }
+
+  /** The element itself, for a card drawing with something other than ECharts axes. */
+  _chartMarkup() {
+    return `<ha-chart-base chart-type="bar"></ha-chart-base>`;
   }
 
   /** The chart takes its data and options as properties, not as markup. */
   _afterRender() {
-    const chart = this.shadowRoot.querySelector(CHART_TAG);
+    const chart = this.shadowRoot.querySelector(this.constructor.chartTag);
     if (!chart) return;
     chart.hass = this._hass;
+    this._draw(chart);
+  }
+
+  /** What to set on the component once it is in the tree. */
+  _draw(chart) {
     chart.data = this._series();
     chart.options = this._options(this._chartLocale());
   }

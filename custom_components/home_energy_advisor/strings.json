@@ -244,14 +244,17 @@
     "card_from_generation": "From generation",
     "card_from_battery": "From the battery",
     "card_energy_used": "Energy used",
+    "card_household": "Household",
     "card_title_totals": "Cost summary",
     "card_title_devices": "Cost by device",
     "card_title_device_costs": "What each device cost",
     "card_title_cost_over_time": "Cost over time",
     "card_title_sources": "Where the energy came from",
+    "card_title_distribution": "Where the cost went",
     "card_editor_title": "Title",
     "card_editor_collection_key": "Energy period (collection key)",
     "card_editor_devices": "Devices (all, if none are chosen)",
-    "card_editor_sort_by": "Order by"
+    "card_editor_sort_by": "Order by",
+    "card_editor_layout": "Layout"
   }
 }

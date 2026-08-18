@@ -85,15 +85,18 @@ export const DEFAULTS = Object.freeze({
   from_generation: "From generation",
   from_battery: "From the battery",
   energy_used: "Energy used",
+  household: "Household",
   title_totals: "Cost summary",
   title_devices: "Cost by device",
   title_device_costs: "What each device cost",
   title_cost_over_time: "Cost over time",
   title_sources: "Where the energy came from",
+  title_distribution: "Where the cost went",
   editor_title: "Title",
   editor_collection_key: "Energy period (collection key)",
   editor_devices: "Devices (all, if none are chosen)",
   editor_sort_by: "Order by",
+  editor_layout: "Layout",
 });
 
 /**

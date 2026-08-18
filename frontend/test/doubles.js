@@ -79,6 +79,29 @@ export const aDeviceRow = (key, name, untracked = false, statistics = undefined)
     ),
 });
 
+/**
+ * A device row filed into an area, a floor, both or neither (HEA-58).
+ *
+ * Ids are deliberately nothing like their names. A double that derived
+ * `area_id` from `area_name` could not tell code reading the id apart from code
+ * reading the name, and would agree with either - the fixture has to be able to
+ * disagree.
+ *
+ * Both halves are optional because both are really absent on the reference
+ * instance: one tracked device sits in no area at all, and four sit in areas
+ * belonging to no floor.
+ */
+export const placed = (
+  row,
+  { areaId = null, areaName = null, floorId = null, floorName = null } = {},
+) => ({
+  ...row,
+  area_id: areaId,
+  area_name: areaName,
+  floor_id: floorId,
+  floor_name: floorName,
+});
+
 /** One day's worth of buckets for a device, dated inside the picked period. */
 export const bucketsFor = (
   key,
