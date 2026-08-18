@@ -71,6 +71,7 @@ export const DEFAULTS = Object.freeze({
     "What you paid could honestly sit between {range} - the widest these " +
     "readings allow, not a typical error.",
   range_device: "What you paid could be between {range}.",
+  compared: "{change} vs {before}",
   device: "Device",
   energy: "Energy",
   rate: "Rate",

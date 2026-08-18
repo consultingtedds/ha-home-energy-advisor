@@ -115,7 +115,38 @@ export const resolveCollection = (hass, collectionKey) => {
 };
 
 /**
+ * The comparison window, from the payload the collection hands its subscribers.
+ *
+ * Read from `EnergyData` and nowhere else. The collection object carries
+ * `compare` - the *mode* - but neither `startCompare` nor `endCompare`, so the
+ * dates exist only in what `subscribe` delivers. An adapter reading the
+ * collection, as this one does for the period itself, cannot see them (HEA-96).
+ *
+ * Absent rather than empty when the household has not asked to compare, which
+ * is the default: a card decides whether to compare at all, and something
+ * truthy carrying no dates is worse than nothing.
+ *
+ * Nothing is derived. The mode alone would let us compute what "the previous
+ * period" means, and computing it risks disagreeing with Home Assistant's own
+ * answer - so a card briefly shows no comparison rather than confidently
+ * showing the wrong one.
+ */
+const comparisonIn = (data) =>
+  data?.startCompare && data?.endCompare
+    ? {
+        compare: {
+          start: data.startCompare,
+          end: data.endCompare,
+          mode: data.compareMode,
+        },
+      }
+    : {};
+
+/**
  * Follow the picker's period, calling `onPeriod({start, end, fallback})`.
+ *
+ * A `compare: {start, end, mode}` rides alongside when the household has turned
+ * comparison on in Home Assistant's own picker menu, and is absent otherwise.
  *
  * The collection is created lazily by whichever card asks first, and card order
  * within a view is not guaranteed, so it may not exist when a card is
@@ -134,15 +165,18 @@ export const subscribeToPeriod = (hass, collectionKey, onPeriod) => {
     const collection = resolveCollection(currentHass, collectionKey);
     if (!collection) return false;
 
-    const emit = () =>
+    const emit = (data) =>
       onPeriod({
         start: collection.start,
         end: collection.end,
         fallback: false,
+        ...comparisonIn(data),
       });
 
     // `subscribe` fires on change, so emit once now: otherwise a card sits on
-    // the fallback period until the user happens to touch the picker.
+    // the fallback period until the user happens to touch the picker. This one
+    // has no `EnergyData` to read, so it never carries a comparison - see
+    // `comparisonIn`.
     unsubscribe = collection.subscribe(emit);
     emit();
     return true;
