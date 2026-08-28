@@ -36,6 +36,15 @@ const LOSS = { variable: "--error-color", fallback: "#db4437" };
  * The stack already means something exact - Paid plus Saved is Would have paid
  * - so a third bar in it would stop the total being anything. A line sits above
  * the stack and compares shape without joining the arithmetic (HEA-96).
+ *
+ * It plots that period's Would have paid, not its Paid, because a bar's *height*
+ * is what an eye measures a line against - nobody reads a line against a segment
+ * boundary in the middle of a stack. HEA-96 shipped Paid here, and on a solar
+ * afternoon the line sat flat on EUR 0.00 beside a EUR 1.14 bar and read as
+ * "yesterday cost nothing, today cost EUR 1.14": wrong twice, since today's paid
+ * was also nothing and the EUR 1.14 is a counterfactual nobody was billed. The
+ * two quantities nearly coincide overnight, which is why it looked right at all
+ * (HEA-99).
  */
 const BEFORE = {
   id: "before",
@@ -88,7 +97,10 @@ class HeaCostOverTimeCard extends HeaChartCard {
               symbol: "none",
               lineStyle: { type: "dashed", width: 2 },
               itemStyle: { color: this._colour(BEFORE) },
-              data: earlier.map((row) => [row.start.getTime(), row.actualCost]),
+              data: earlier.map((row) => [
+                row.start.getTime(),
+                row.costAtGridPrice,
+              ]),
             },
           ]
         : []),

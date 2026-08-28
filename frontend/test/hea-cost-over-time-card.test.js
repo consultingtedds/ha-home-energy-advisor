@@ -205,22 +205,50 @@ describe("comparing against an earlier period", () => {
   /** A week earlier, so the response carries buckets in both windows. */
   const WEEK_BEFORE = new Date(DAY_ONE.getTime() - 7 * 86400000);
 
-  const comparing = async () => {
+  /**
+   * Both windows in one response, with Paid and Would have paid far enough
+   * apart in the earlier one that a line drawn from either is distinguishable.
+   * A fixture where the two agreed could not fail whichever the card plotted.
+   */
+  const bothWindows = {
+    "sensor.slow_poll_aircon_energy_used": [
+      { start: DAY_ONE.getTime(), change: 10 },
+      { start: WEEK_BEFORE.getTime(), change: 14 },
+    ],
+    "sensor.slow_poll_aircon_actual_cost": [
+      { start: DAY_ONE.getTime(), change: 1 },
+      { start: WEEK_BEFORE.getTime(), change: 4 },
+    ],
+    "sensor.slow_poll_aircon_cost_at_grid_price": [
+      { start: DAY_ONE.getTime(), change: 3 },
+      { start: WEEK_BEFORE.getTime(), change: 6 },
+    ],
+  };
+
+  /**
+   * A sunny earlier day, which is where the two quantities part company: the
+   * generation covered the draw, so nothing was paid for it, while at grid
+   * price the same energy would have cost EUR 1.14 (HEA-99, measured on the
+   * reference instance). Overnight the two nearly coincide and nothing is
+   * visibly wrong; from mid-morning on they diverge completely.
+   */
+  const solarEarlierDay = {
+    "sensor.slow_poll_aircon_energy_used": [
+      { start: DAY_ONE.getTime(), change: 10 },
+      { start: WEEK_BEFORE.getTime(), change: 4.9 },
+    ],
+    "sensor.slow_poll_aircon_actual_cost": [
+      { start: DAY_ONE.getTime(), change: 1 },
+      { start: WEEK_BEFORE.getTime(), change: 0 },
+    ],
+    "sensor.slow_poll_aircon_cost_at_grid_price": [
+      { start: DAY_ONE.getTime(), change: 3 },
+      { start: WEEK_BEFORE.getTime(), change: 1.14 },
+    ],
+  };
+
+  const comparing = async (response = bothWindows) => {
     const collection = anEnergyCollection();
-    const response = {
-      "sensor.slow_poll_aircon_energy_used": [
-        { start: DAY_ONE.getTime(), change: 10 },
-        { start: WEEK_BEFORE.getTime(), change: 14 },
-      ],
-      "sensor.slow_poll_aircon_actual_cost": [
-        { start: DAY_ONE.getTime(), change: 1 },
-        { start: WEEK_BEFORE.getTime(), change: 4 },
-      ],
-      "sensor.slow_poll_aircon_cost_at_grid_price": [
-        { start: DAY_ONE.getTime(), change: 3 },
-        { start: WEEK_BEFORE.getTime(), change: 6 },
-      ],
-    };
     const hass = aHass({ devices: AIRCON, response, collection });
     const card = mount(hass);
     await ready(card);
@@ -256,7 +284,50 @@ describe("comparing against an earlier period", () => {
 
     // Then - the earlier bucket lands on the current period's first day
     const before = chartOf(card).data.find((s) => s.id === "before");
-    expect(before.data).toEqual([[DAY_ONE.getTime(), 4]]);
+    expect(before.data).toEqual([[DAY_ONE.getTime(), 6]]);
+  });
+
+  it("traces the earlier period's Would have paid, which is what a bar's height means", async () => {
+    // Given - the eye reads a line against the top of a bar, not against a
+    // segment boundary inside it, and the top of these bars is Would have paid.
+    // A line drawn from the earlier period's Paid compares a different quantity
+    // from the one the reader is measuring it against (HEA-99).
+    // When
+    const card = await comparing(solarEarlierDay);
+
+    // Then - EUR 1.14, the outline the bars mean, not the EUR 0.00 that was
+    // paid on a day the sun covered the draw
+    expect(seriesOf(card, "before").data).toEqual([[DAY_ONE.getTime(), 1.14]]);
+  });
+
+  it("lands the line on the top of the bars when the two periods match", async () => {
+    // Given - a week that repeated itself exactly. Two identical periods are
+    // the case where "compares like with like" is checkable without naming a
+    // field: the line has to sit on the bars' full height, and a line drawn
+    // from Paid would sit at the segment boundary two thirds of the way down.
+    const repeatedWeek = {
+      "sensor.slow_poll_aircon_energy_used": [
+        { start: DAY_ONE.getTime(), change: 10 },
+        { start: WEEK_BEFORE.getTime(), change: 10 },
+      ],
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: DAY_ONE.getTime(), change: 1 },
+        { start: WEEK_BEFORE.getTime(), change: 1 },
+      ],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: DAY_ONE.getTime(), change: 3 },
+        { start: WEEK_BEFORE.getTime(), change: 3 },
+      ],
+    };
+
+    // When
+    const card = await comparing(repeatedWeek);
+
+    // Then - the bars' height is Paid plus Saved, and the line is on it
+    const [[, paid]] = seriesOf(card, "paid").data;
+    const [[, saved]] = seriesOf(card, "saved").data;
+    const [[, line]] = seriesOf(card, "before").data;
+    expect(line).toBe(paid + saved);
   });
 
   it("gives the earlier line a legend entry that can hide it", async () => {
