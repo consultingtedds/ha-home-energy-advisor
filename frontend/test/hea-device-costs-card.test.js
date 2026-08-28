@@ -17,7 +17,8 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TAG, register, tint } from "../hea-device-costs-card.js";
+import { EARLIER_ID, TAG, register, tint } from "../hea-device-costs-card.js";
+import { DEFAULTS as LABELS } from "../hea-labels.js";
 import {
   aDeviceRow,
   aHass,
@@ -269,6 +270,10 @@ describe("comparing against an earlier period", () => {
     expect(before.stack).not.toBe("slow_poll_aircon");
   });
 
+  /** The legend entries that name a device, as against the period key. */
+  const deviceEntries = (card) =>
+    legendOf(card).data.filter((entry) => entry.id !== EARLIER_ID);
+
   it("keeps one legend entry per device, covering its earlier bar too", async () => {
     // Given / When
     const card = await comparing();
@@ -276,7 +281,7 @@ describe("comparing against an earlier period", () => {
     // Then - still one entry per device, and clicking it hides every series
     // the device owns. An entry that missed the new one would leave a stray
     // bar behind when the user hid the device
-    const entries = legendOf(card).data;
+    const entries = deviceEntries(card);
     expect(entries).toHaveLength(2);
     const ids = new Set(chartOf(card).data.map((s) => s.id));
     for (const entry of entries) {
@@ -285,6 +290,63 @@ describe("comparing against an earlier period", () => {
     expect(
       entries.flatMap((e) => [e.id, ...e.secondaryIds]).length,
     ).toBe(ids.size);
+  });
+
+  it("says which bar is the earlier period", async () => {
+    // Given - two adjacent bars in near-identical strengths of one hue read as
+    // two devices long before they read as two periods, and the legend named
+    // only the devices. The sibling over-time chart carries an "Earlier period"
+    // entry on the same screen; this one carried nothing (HEA-99).
+    // When
+    const card = await comparing();
+
+    // Then - the same words that card uses, from the same string
+    const entry = legendOf(card).data.find((item) => item.id === EARLIER_ID);
+    expect(entry.name).toBe(LABELS.compared_series);
+  });
+
+  it("hides every device's earlier bar together from that one entry", async () => {
+    // Given / When - the component hides a legend entry's `id` plus its
+    // `secondaryIds` as one set, so the entry has to name all of them
+    const card = await comparing();
+
+    // Then
+    const entry = legendOf(card).data.find((item) => item.id === EARLIER_ID);
+    const ghosts = chartOf(card)
+      .data.filter((series) => series.id.endsWith(":before"))
+      .map((series) => series.id);
+    expect(ghosts).toHaveLength(2);
+    expect(new Set(entry.secondaryIds)).toEqual(new Set(ghosts));
+  });
+
+  it("does not grey itself out when a single device is hidden", async () => {
+    // Given - `ha-chart-base` marks an entry hidden by testing its *own* id
+    // against the hidden set, not its secondaryIds. Every `:before` series is
+    // already owned by its device's entry, so an "Earlier period" entry whose
+    // id was one of them would grey out the moment that one device was hidden,
+    // while the other devices' ghost bars stayed on the chart.
+    const card = await comparing();
+
+    // When - the ids hiding one device puts into the hidden set
+    const aircon = deviceEntries(card).find((entry) =>
+      entry.id.startsWith("slow_poll_aircon:"),
+    );
+    const hiddenByDevice = new Set([aircon.id, ...aircon.secondaryIds]);
+
+    // Then - the period entry's own id is not among them, so it stays lit
+    const entry = legendOf(card).data.find((item) => item.id === EARLIER_ID);
+    expect(hiddenByDevice.has(entry.id)).toBe(false);
+    expect(chartOf(card).data.some((series) => series.id === entry.id)).toBe(false);
+  });
+
+  it("offers no period entry when nobody asked to compare", async () => {
+    // Given / When - the default, where there is only one period on the chart
+    // and a key distinguishing it from nothing would be noise
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(legendOf(card).data.some((item) => item.id === EARLIER_ID)).toBe(false);
   });
 
   it("answers for the device from its earlier bar as well", async () => {

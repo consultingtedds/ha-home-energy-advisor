@@ -67,6 +67,34 @@ const UNTRACKED_COLOUR = { variable: "--secondary-text-color", fallback: "#8a8a8
 /** A loss must not read as a gain, whatever the device's own colour is. */
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
 
+/**
+ * Neutral, like the over-time chart's earlier line: a period, not a device.
+ *
+ * The same grey the Untracked remainder wears, which is a real collision in a
+ * legend they share - and accepted. The swatch is approximate here whatever it
+ * is: the ghost bars are each drawn in their own device's hue, so no single
+ * colour represents them, and the words are what carry this entry.
+ */
+const EARLIER_COLOUR = { variable: "--secondary-text-color", fallback: "#727272" };
+
+/**
+ * The legend key for the earlier period, and why its id names no series.
+ *
+ * `ha-chart-base` marks an entry hidden by testing that entry's *own* id
+ * against the hidden set, while a click hides that id together with its
+ * `secondaryIds`. Every `:before` series is already owned by its device's
+ * entry - it has to be, or hiding a device would strand its ghost bar - so an
+ * entry whose id was one of them would grey itself out the moment that one
+ * device was hidden, with every other device's ghost still on the chart.
+ *
+ * A sentinel belongs to no series and so is never swept in by a device. The
+ * component adds a clicked id to the hidden set whether or not it resolves,
+ * which is all this needs: the ghosts hide through `secondaryIds`, and the key
+ * greys out with them. The hyphen keeps it clear of the `key:segment`
+ * namespace the series use.
+ */
+export const EARLIER_ID = "earlier-period";
+
 const BORDER_WIDTH = 1.5;
 /** How strongly the spend is filled, and how faintly the saving above it. */
 const PAID_ALPHA = 0.8;
@@ -329,6 +357,29 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return device ? tooltipFor(device, locale, this._labels) : undefined;
   }
 
+  /**
+   * One key saying the fainter bar is the earlier period, or nothing.
+   *
+   * The devices are named; which of a device's two bars is which period was
+   * not, so two adjacent strengths of one hue read as two devices before they
+   * read as two periods. The same words and the same neutral as the over-time
+   * chart's line, so two charts on one screen say it the same way (HEA-99).
+   */
+  _earlierKey() {
+    const ghosts = this._ranked()
+      .filter((device) => device.before)
+      .map((device) => `${device.key}:before`);
+    if (!ghosts.length) return [];
+    return [
+      {
+        id: EARLIER_ID,
+        secondaryIds: ghosts,
+        name: this._labels.compared_series,
+        itemStyle: { color: this._colour(EARLIER_COLOUR) },
+      },
+    ];
+  }
+
   _options(locale) {
     return {
       xAxis: {
@@ -351,18 +402,24 @@ class HeaDeviceCostsCard extends HeaChartCard {
       legend: {
         show: true,
         type: "custom",
-        data: this._ranked().map((device, index) => ({
-          id: `${device.key}:paid`,
-          // Every series the device owns, or hiding it would strand one behind.
-          secondaryIds: [
-            `${device.key}:saved`,
-            ...(device.before ? [`${device.key}:before`] : []),
-          ],
-          name: device.name,
-          // The solid colour, not the fill: a wash of a hue is harder to tell
-          // from its neighbour than the hue itself.
-          itemStyle: { color: this._colourFor(device, index) },
-        })),
+        data: [
+          ...this._ranked().map((device, index) => ({
+            id: `${device.key}:paid`,
+            // Every series the device owns, or hiding it would strand one
+            // behind. The earlier bar is owned here as well as by the period
+            // key below - two entries may name one series, and only an entry's
+            // own id decides how it draws itself.
+            secondaryIds: [
+              `${device.key}:saved`,
+              ...(device.before ? [`${device.key}:before`] : []),
+            ],
+            name: device.name,
+            // The solid colour, not the fill: a wash of a hue is harder to tell
+            // from its neighbour than the hue itself.
+            itemStyle: { color: this._colourFor(device, index) },
+          })),
+          ...this._earlierKey(),
+        ],
       },
     };
   }
