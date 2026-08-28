@@ -15,7 +15,7 @@
 import { subscribeToPeriod } from "./ha-energy-collection.js";
 import { readDevices, readWholeHome } from "./hea-devices.js";
 import { formatPeriod, localeFrom } from "./hea-format.js";
-import { labelsFor, loadLabels } from "./hea-labels.js";
+import { fill, labelsFor, loadLabels } from "./hea-labels.js";
 import { fetchDeviceStatistics, withComparison } from "./hea-statistics.js";
 
 const BASE_STYLE = `
@@ -233,7 +233,34 @@ export class HeaCard extends HTMLElement {
     const hint = this._period?.fallback
       ? `<div class="hint">Add an Energy date picker card to choose the range.</div>`
       : "";
-    return `<div class="period">${formatPeriod(this._period, locale)}</div>${hint}`;
+    return `<div class="period">${this._periodLabel(locale)}</div>${hint}`;
+  }
+
+  /**
+   * The range the figures cover, and the one they are measured against.
+   *
+   * Comparison shipped in HEA-96 rendering "-EUR 0.77 vs EUR 1.87" under a
+   * caption that said only "18 Aug 2026" - so the reader was given a baseline
+   * figure and never told which window it came from. The picker knows, and it
+   * arrives on `period.compare` already; it simply was not drawn (HEA-99).
+   *
+   * Joined with the same "vs" the figures themselves use, so the caption reads
+   * as their baseline rather than as a second unrelated date. The dates are
+   * Home Assistant's own, never derived from `compare.mode`: computing what
+   * "the previous period" means risks disagreeing with the window actually
+   * fetched, and a caption naming the wrong baseline is worse than none.
+   *
+   * Done here rather than in each card because all four wear this caption, and
+   * building it four times is how the comparison came to read four ways.
+   */
+  _periodLabel(locale) {
+    const period = formatPeriod(this._period, locale);
+    const compare = this._period?.compare;
+    if (!compare) return period;
+    return fill(this._labels.compared_period, {
+      period,
+      compared: formatPeriod(compare, locale),
+    });
   }
 }
 

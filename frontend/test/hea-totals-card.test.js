@@ -12,10 +12,13 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatPeriod } from "../hea-format.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 import { TAG, register } from "../hea-totals-card.js";
 import {
   AIRCON_BUCKETS,
+  JULY,
+  MAY,
   aDeviceRow,
   aHass,
   anEnergyCollection,
@@ -25,6 +28,9 @@ import {
   stateOf,
   text,
 } from "./doubles.js";
+
+/** The locale the doubles hand every card. */
+const EN_GB = { language: "en-GB", currency: "EUR" };
 
 const figure = (card, name) =>
   card.shadowRoot.querySelector(`[data-figure="${name}"]`);
@@ -304,6 +310,78 @@ describe("the period", () => {
 
     // Then
     expect(text(card)).not.toMatch(/date picker/i);
+  });
+
+  /** The caption, which is the base's and so is every card's (HEA-99). */
+  const captionOf = (card) =>
+    card.shadowRoot.querySelector(".period").textContent;
+
+  /**
+   * A single day each side, as the picker's "today" and "yesterday" arrive -
+   * ending part-way through the day, which is what lets `formatRange` collapse
+   * each to one date rather than a range against itself.
+   */
+  const AUG_18 = new Date(2026, 7, 18);
+  const AUG_18_END = new Date(2026, 7, 18, 23, 59);
+  const AUG_17 = new Date(2026, 7, 17);
+  const AUG_17_END = new Date(2026, 7, 17, 23, 59);
+
+  it("names the range it is comparing against", async () => {
+    // Given - a comparing card reads "-EUR 0.77 vs EUR 1.87" over a caption
+    // saying only "18 Aug 2026". Against which day? The picker knows and the
+    // card never said, so the one figure whose whole job is to be read at a
+    // glance had no baseline on screen (HEA-99).
+    const collection = anEnergyCollection();
+    const card = mount(aHass({ collection }));
+    await settled(card);
+
+    // When - the household turns comparison on in the picker's own menu
+    collection.announce(AUG_18, AUG_18_END, {
+      startCompare: AUG_17,
+      endCompare: AUG_17_END,
+      compareMode: "previous",
+    });
+
+    // Then - the same "vs" the figures above it use, so the caption reads as
+    // the baseline for them rather than as a second unrelated date
+    await vi.waitFor(() =>
+      expect(captionOf(card)).toBe("18 Aug 2026 vs 17 Aug 2026"),
+    );
+  });
+
+  it("names only the picked range when nobody asked to compare", async () => {
+    // Given / When - the default, and much the commoner case: a "vs" with
+    // nothing after it would be worse than the bare date
+    const card = mount(aHass());
+    await settled(card);
+
+    // Then - the caption is the range and nothing appended. Built through
+    // `formatPeriod` rather than written out, because `Intl` joins a range with
+    // thin spaces around an en dash and the exact code points move with ICU -
+    // what is asserted here is the composition, which is ours, not the
+    // formatting, which is the platform's and has its own tests.
+    expect(captionOf(card)).toBe(formatPeriod({ start: MAY, end: JULY }, EN_GB));
+  });
+
+  it("drops the compared range when the household turns comparison off", async () => {
+    // Given - a card already naming both windows
+    const collection = anEnergyCollection();
+    const card = mount(aHass({ collection }));
+    await settled(card);
+    collection.announce(AUG_18, AUG_18_END, {
+      startCompare: AUG_17,
+      endCompare: AUG_17_END,
+      compareMode: "previous",
+    });
+    await vi.waitFor(() => expect(captionOf(card)).toMatch(/vs/));
+
+    // When - comparison is turned back off, which the picker announces as a
+    // period carrying no compare window at all
+    collection.announce(AUG_18, AUG_18_END);
+
+    // Then - a caption still naming a baseline no figure is measured against
+    // would be the same bug pointing the other way
+    await vi.waitFor(() => expect(captionOf(card)).toBe("18 Aug 2026"));
   });
 });
 

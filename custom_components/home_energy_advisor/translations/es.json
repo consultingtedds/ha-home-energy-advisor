@@ -231,6 +231,7 @@
     "card_range_whole_home": "Lo que pagaste podría estar entre {range} - el rango más amplio que permiten estas lecturas, no un error típico.",
     "card_range_device": "Lo que pagaste podría estar entre {range}.",
     "card_compared": "{change} frente a {before}",
+    "card_compared_period": "{period} frente a {compared}",
     "card_change": "Cambio",
     "card_compared_series": "Periodo anterior",
     "card_device": "Dispositivo",

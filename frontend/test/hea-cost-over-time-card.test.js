@@ -14,7 +14,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG, register } from "../hea-cost-over-time-card.js";
-import { formatMoney } from "../hea-format.js";
+import { formatMoney, formatPeriod } from "../hea-format.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 import {
   aDeviceRow,
@@ -328,6 +328,26 @@ describe("comparing against an earlier period", () => {
     const [[, saved]] = seriesOf(card, "saved").data;
     const [[, line]] = seriesOf(card, "before").data;
     expect(line).toBe(paid + saved);
+  });
+
+  it("wears the same caption naming both windows as every other card", async () => {
+    // Given - the comparison read four different ways on one screen because it
+    // was built card by card. The caption is the shared base's, so this asserts
+    // a chart card really is served by it rather than that the base works
+    // (HEA-99).
+    const card = await comparing();
+
+    // When
+    const period = { start: DAY_ONE, end: new Date(DAY_ONE.getTime() + 2 * 86400000) };
+    const compared = {
+      start: WEEK_BEFORE,
+      end: new Date(WEEK_BEFORE.getTime() + 2 * 86400000),
+    };
+
+    // Then
+    expect(card.shadowRoot.querySelector(".period").textContent).toBe(
+      `${formatPeriod(period, EURO)} vs ${formatPeriod(compared, EURO)}`,
+    );
   });
 
   it("gives the earlier line a legend entry that can hide it", async () => {
