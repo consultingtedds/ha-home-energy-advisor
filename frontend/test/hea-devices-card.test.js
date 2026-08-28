@@ -21,6 +21,8 @@ import {
   anEnergyCollection,
   boundsFor,
   bucketsFor,
+  JULY,
+  MAY,
   mountCard,
   settled,
   text,
@@ -40,6 +42,39 @@ const THREE_RESPONSE = {
   ...bucketsFor("untracked_energy_devices", 100, 1.5, 9.5), // saved 8.00
 };
 
+/** The window the picker announces as the one to compare against. */
+const COMPARE_WINDOW = {
+  startCompare: new Date(2026, 2, 20),
+  endCompare: new Date(2026, 4, 15),
+  compareMode: "previous",
+};
+
+/** A date inside that window, so a bucket dated here lands in the earlier one. */
+const EARLIER = new Date(2026, 3, 1);
+
+/**
+ * The same three devices with an earlier self apiece.
+ *
+ * The three changes deliberately disagree in sign - -1.20, +2.00, +1.00 - so a
+ * total of +1.80 cannot be produced by summing magnitudes, by taking any one
+ * row, or by comparing the totals against each other in the wrong order.
+ */
+const COMPARED_RESPONSE = {
+  ...THREE_RESPONSE,
+  "sensor.slow_poll_aircon_actual_cost": [
+    { start: MAY.getTime(), change: 0.11 },
+    { start: EARLIER.getTime(), change: 1.31 },
+  ],
+  "sensor.fine_meter_aircon_actual_cost": [
+    { start: MAY.getTime(), change: 3.0 },
+    { start: EARLIER.getTime(), change: 1.0 },
+  ],
+  "sensor.untracked_energy_devices_actual_cost": [
+    { start: MAY.getTime(), change: 1.5 },
+    { start: EARLIER.getTime(), change: 0.5 },
+  ],
+};
+
 const mount = (hass, config) => mountCard(TAG, hass, config);
 const ready = (card) => settled(expect, card);
 
@@ -49,6 +84,11 @@ const rows = (card) =>
   );
 
 const deviceOrder = (card) => rows(card).map(([name]) => name);
+
+/** The totals row's cells as elements, since some of them carry a verdict. */
+const totalCells = (card) => [
+  ...card.shadowRoot.querySelectorAll("tfoot th, tfoot td"),
+];
 
 beforeEach(() => {
   document.body.replaceChildren();
@@ -459,6 +499,77 @@ describe("the table", () => {
     };
     expect(toneOf("Slow Poll Aircon")).toContain("gain");
     expect(toneOf("Fine Meter Aircon")).toContain("loss");
+  });
+
+  it("totals the change column instead of leaving it blank", async () => {
+    // Given - the picker comparing against an earlier window, every device
+    // carrying an earlier self
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    hass.callWS = vi.fn().mockResolvedValue(COMPARED_RESPONSE);
+
+    // When
+    collection.announce(MAY, JULY, COMPARE_WINDOW);
+
+    // Then - 4.61 paid now against 2.81 then, so +1.80, which is exactly the
+    // sum of the column above it. The totals card eight centimetres away has
+    // always shown this figure; the table said "-", so one of the two was
+    // wrong about whether a total change means anything (HEA-99)
+    await vi.waitFor(() => {
+      const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+        cell.textContent.trim(),
+      );
+      expect(headers).toContain(LABELS.change);
+    });
+    expect(totalCells(card)[3].textContent.trim()).toMatch(/\+\D*1[.,]80/);
+  });
+
+  it("colours the total change by whether it is good news", async () => {
+    // Given - the same three devices, whose changes sum to more spent
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    hass.callWS = vi.fn().mockResolvedValue(COMPARED_RESPONSE);
+
+    // When
+    collection.announce(MAY, JULY, COMPARE_WINDOW);
+
+    // Then - the totals row reads like the column above it rather than being
+    // the one uncoloured figure in it. Spending more is bad news, whatever the
+    // individual rows did
+    await vi.waitFor(() =>
+      expect(card.shadowRoot.querySelector("tfoot td.loss")).not.toBeNull(),
+    );
+    expect(totalCells(card)[3].className).toContain("loss");
+  });
+
+  it("colours a total saving below zero as the loss it is", async () => {
+    // Given - a period the battery lost money on, so every device paid more
+    // than the grid alone would have cost (HEA-39). The rule already reached
+    // each row; the totals row was rendered with no class at all
+    const hass = aHass({
+      devices: THREE_DEVICES,
+      response: {
+        ...bucketsFor("slow_poll_aircon", 38.6, 5.78, 0.11),
+        ...bucketsFor("fine_meter_aircon", 12.0, 4.0, 3.0),
+        ...bucketsFor("untracked_energy_devices", 100, 9.5, 1.5),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - 19.28 paid against 4.61 at grid price is a saving of -14.67, and
+    // a negative saving must never read as a gain
+    const saved = totalCells(card)[4];
+    expect(saved.textContent.trim()).toMatch(/[-−]\D*14[.,]67/);
+    expect(saved.className).toContain("loss");
   });
 
   it("reports a device with nothing in the earlier window as all increase", async () => {

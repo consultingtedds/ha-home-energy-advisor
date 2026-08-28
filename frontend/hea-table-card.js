@@ -13,6 +13,10 @@
  * built from, so the totals row can sum those and derive from the sums - a cost
  * range is two numbers that each add up, presented as one cell.
  *
+ * Where every row carries an earlier self, those same fields are summed again
+ * into a `before` sub-total, so a column comparing two periods totals like any
+ * other instead of reporting a dash under a column of real figures.
+ *
  * A column's `label` may be a function of the locale, returning `{text, unit}`,
  * for the one case where the unit depends on the household's currency.
  *
@@ -148,12 +152,14 @@ export class HeaTableCard extends HeaCard {
   _total(locale) {
     const totals = this._sumOfShown();
     const cells = this._columns()
-      .map(({ field, derive, format }) => {
+      .map(({ field, derive, format, tone }) => {
         if (!format) return `<th scope="row">${this._labels.total}</th>`;
         // Derived from the summed fields, never from the rows' own derived
         // values: a table's rate is what the period came to overall.
         const value = derive ? derive(totals) : totals[field];
-        return `<td>${format(value, locale)}</td>`;
+        // Through the same verdict as every row above it. Rendered plain, the
+        // total was the one uncoloured figure in a coloured column (HEA-99).
+        return `<td${classFor(field, tone, value)}>${format(value, locale)}</td>`;
       })
       .join("");
     return `<tr>${cells}</tr>`;
@@ -166,20 +172,41 @@ export class HeaTableCard extends HeaCard {
    * cost (ADR-0002) - but a filtered card must add up to what it is showing.
    */
   _sumOfShown() {
-    const summed = this._columns().flatMap(({ field, fields, derive, format }) => {
-      if (!format) return [];
-      // A derived column sums the fields it names, if it names any; otherwise it
-      // is a ratio and is derived again from the sums.
-      if (derive) return fields ?? [];
-      return field ? [field] : [];
-    });
-    return (this._result?.devices ?? []).reduce(
-      (totals, device) => {
-        for (const field of summed) totals[field] += device[field];
-        return totals;
-      },
-      Object.fromEntries(summed.map((field) => [field, 0])),
-    );
+    // A Set because two columns may want the same field - a change column and
+    // the column it is a change in - and a field summed twice is doubled.
+    const summed = [
+      ...new Set(
+        this._columns().flatMap(({ field, fields, derive, format }) => {
+          if (!format) return [];
+          // A derived column sums the fields it names, if it names any;
+          // otherwise it is a ratio and is derived again from the sums.
+          if (derive) return fields ?? [];
+          return field ? [field] : [];
+        }),
+      ),
+    ];
+    const rows = this._result?.devices ?? [];
+    const sum = (of) =>
+      rows.reduce(
+        (totals, device) => {
+          for (const field of summed) totals[field] += of(device)[field];
+          return totals;
+        },
+        Object.fromEntries(summed.map((field) => [field, 0])),
+      );
+
+    const totals = sum((device) => device);
+    // The earlier period's sub-total, on the same fields, so a change column
+    // derives its total from sums the way the rate column does - the table used
+    // to leave it blank because nothing here could reach a nested field.
+    //
+    // Only when every row has an earlier self. Summing just the rows that do
+    // would leave a Total that disagrees with the column above it, and a change
+    // that does not reconcile is worse than no change at all (HEA-99).
+    if (rows.length > 0 && rows.every((row) => row.before)) {
+      totals.before = sum((device) => device.before);
+    }
+    return totals;
   }
 }
 

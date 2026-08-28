@@ -68,6 +68,10 @@ const RANGE = {
  * the same device list) but `withComparison` is written to allow.
  */
 const CHANGE = {
+  // Declared so the totals row sums it on both sides of the comparison, the way
+  // the range column declares its two bounds. Paid already names it, but a
+  // column that depends on a field says so rather than relying on a neighbour.
+  fields: ["actualCost"],
   derive: ({ actualCost, before }) =>
     before && Number.isFinite(actualCost) && Number.isFinite(before.actualCost)
       ? actualCost - before.actualCost
