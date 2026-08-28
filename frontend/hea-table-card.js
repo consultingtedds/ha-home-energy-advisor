@@ -21,7 +21,7 @@
  */
 
 import { HeaCard } from "./hea-card-base.js";
-import { escapeText } from "./hea-format.js";
+import { changeTone, escapeText } from "./hea-format.js";
 
 export const TABLE_STYLE = `
   .scroll { overflow-x: auto; }
@@ -44,6 +44,22 @@ export const TABLE_STYLE = `
     border-top: 2px solid var(--divider-color, #e0e0e0);
   }
 `;
+
+/**
+ * A cell's tone class, from either of the two things that carry one.
+ *
+ * They are different claims and both belong. An *absolute* Saved below zero is
+ * a battery-arbitrage loss and must never read as a gain (HEA-39). A *change*
+ * column carries a verdict on a direction instead, and which direction is good
+ * depends on the concept it derives from - so a column declares that concept
+ * in `tone` rather than the table guessing from a field it does not have
+ * (HEA-99).
+ */
+const classFor = (field, tone, value) => {
+  if (field === "costSavings" && value < 0) return ` class="loss"`;
+  const verdict = tone ? changeTone(tone, value) : "";
+  return verdict ? ` class="${verdict}"` : "";
+};
 
 export class HeaTableCard extends HeaCard {
   /** @type {Array<object>} set by the subclass. */
@@ -121,13 +137,12 @@ export class HeaTableCard extends HeaCard {
       .join("")}</tr>`;
   }
 
-  _cell({ field, derive, format }, device, locale) {
+  _cell({ field, derive, format, tone }, device, locale) {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) return `<th scope="row">${escapeText(device[field])}</th>`;
     const value = derive ? derive(device) : device[field];
-    const loss = field === "costSavings" && value < 0 ? ` class="loss"` : "";
-    return `<td${loss}>${format(value, locale)}</td>`;
+    return `<td${classFor(field, tone, value)}>${format(value, locale)}</td>`;
   }
 
   _total(locale) {

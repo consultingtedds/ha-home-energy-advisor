@@ -33,6 +33,7 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import {
+  changeTone,
   formatMoney,
   formatMoneyChange,
   formatMoneyRange,
@@ -148,8 +149,21 @@ export const tint = (colour, alpha) => {
 /** Which of a device's two segments a series id belongs to. */
 const SEGMENT = /:(?:paid|saved|before)$/;
 
+/**
+ * Good news and bad news, as inline colours.
+ *
+ * The cards wear `.gain` / `.loss` from the shared stylesheet; a tooltip
+ * cannot. It is rendered into the chart component's own container, outside
+ * this card's shadow root, so no rule of ours reaches it and the colour has to
+ * travel on the element (HEA-99).
+ */
+const TONE_COLOUR = {
+  gain: { variable: "--success-color", fallback: "#4caf50" },
+  loss: { variable: "--error-color", fallback: "#db4437" },
+};
+
 /** One line of the tooltip: what it is, and how much of it. */
-const tooltipRow = (label, amount) => {
+const tooltipRow = (label, amount, colour) => {
   const row = document.createElement("div");
   row.style.display = "flex";
   row.style.justifyContent = "space-between";
@@ -159,6 +173,7 @@ const tooltipRow = (label, amount) => {
   const value = document.createElement("span");
   value.textContent = amount;
   value.style.fontVariantNumeric = "tabular-nums";
+  if (colour) value.style.color = colour;
   row.append(name, value);
   return row;
 };
@@ -171,7 +186,7 @@ const tooltipRow = (label, amount) => {
  * string - and a device name is whatever the household typed into their own
  * registry.
  */
-const tooltipFor = (device, locale, labels) => {
+const tooltipFor = (device, locale, labels, toneColour) => {
   const box = document.createElement("div");
   const title = document.createElement("div");
   title.textContent = device.name;
@@ -187,7 +202,7 @@ const tooltipFor = (device, locale, labels) => {
     ),
     tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
   );
-  const change = changeRow(device, locale, labels);
+  const change = changeRow(device, locale, labels, toneColour);
   if (change) box.append(change);
   const range = rangeNote(device, locale, labels);
   if (range) box.append(range);
@@ -205,17 +220,22 @@ const tooltipFor = (device, locale, labels) => {
  *
  * Absent unless the household asked to compare, which is the default.
  */
-const changeRow = (device, locale, labels) => {
+const changeRow = (device, locale, labels, toneColour) => {
   const before = device.before?.actualCost;
   if (!Number.isFinite(before) || !Number.isFinite(device.actualCost)) {
     return undefined;
   }
+  const change = device.actualCost - before;
+  // A change in spend, so spend's polarity: down is good. Named rather than
+  // assumed, because the same fall in Saved would be the opposite verdict.
+  const tone = changeTone("actualCost", change);
   return tooltipRow(
     labels.change,
     fill(labels.compared, {
-      change: formatMoneyChange(device.actualCost - before, locale),
+      change: formatMoneyChange(change, locale),
       before: formatMoney(before, locale),
     }),
+    tone ? toneColour(tone) : undefined,
   );
 };
 
@@ -354,7 +374,11 @@ class HeaDeviceCostsCard extends HeaChartCard {
     const device = this._ranked().find((candidate) => candidate.key === key);
     // Undefined suppresses the tooltip, where a half-built one would render an
     // empty box against the cursor.
-    return device ? tooltipFor(device, locale, this._labels) : undefined;
+    return device
+      ? tooltipFor(device, locale, this._labels, (tone) =>
+          this._colour(TONE_COLOUR[tone]),
+        )
+      : undefined;
   }
 
   /**

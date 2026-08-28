@@ -9,6 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  changeTone,
   escapeText,
   formatEnergy,
   formatMoney,
@@ -243,5 +244,54 @@ describe("rateUnit", () => {
     // Given / When / Then - the same rule formatMoney follows: no symbol beats
     // a wrong one
     expect(rateUnit({ language: "en-GB" })).toBe("/kWh");
+  });
+});
+
+describe("changeTone", () => {
+  it("reads a fall in what was paid as good news", () => {
+    // Given / When / Then - the household spent less than the period before
+    expect(changeTone("actualCost", -0.77)).toBe("gain");
+    expect(changeTone("actualCost", 0.31)).toBe("loss");
+  });
+
+  it("reads a fall in what was saved as bad news", () => {
+    // Given - the direction that makes this per concept rather than blanket.
+    // "Down is good" is true of every cost and false of the saving, and one
+    // rule applied to all four would have said the opposite of the truth on
+    // whichever it got wrong (HEA-99).
+    // When / Then
+    expect(changeTone("costSavings", -1.46)).toBe("loss");
+    expect(changeTone("costSavings", 1.46)).toBe("gain");
+  });
+
+  it("treats the counterfactual like the bill it stands in for", () => {
+    // Given / When / Then - Would have paid is a cost, so it falls the good way
+    expect(changeTone("costAtGridPrice", -2)).toBe("gain");
+    expect(changeTone("costAtGridPrice", 2)).toBe("loss");
+  });
+
+  it("reads using less energy as good news", () => {
+    // Given / When / Then - not compared on any card today, but the polarity
+    // belongs with its siblings rather than being invented at the call site
+    // the day a card does compare it
+    expect(changeTone("energyUsed", -3)).toBe("gain");
+    expect(changeTone("energyUsed", 3)).toBe("loss");
+  });
+
+  it("colours nothing where the period did not move", () => {
+    // Given / When / Then - "+EUR 0.00" claims a change that did not happen,
+    // and a colour on it would claim a verdict on one
+    expect(changeTone("actualCost", 0)).toBe("");
+    expect(changeTone("costSavings", 0)).toBe("");
+  });
+
+  it("colours nothing it has no opinion about", () => {
+    // Given - a concept carrying no polarity, and a figure that is not one.
+    // Silence is the only honest answer: guessing a direction here would paint
+    // a verdict the project never decided
+    // When / Then
+    expect(changeTone("effectiveRate", -1)).toBe("");
+    expect(changeTone("actualCost", undefined)).toBe("");
+    expect(changeTone("actualCost", Number.NaN)).toBe("");
   });
 });

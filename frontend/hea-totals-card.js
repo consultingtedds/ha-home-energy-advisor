@@ -8,7 +8,7 @@
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { formatMoney, formatMoneyChange } from "./hea-format.js";
+import { changeTone, formatMoney, formatMoneyChange } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 
 export const TAG = "hea-totals-card";
@@ -94,7 +94,12 @@ class HeaTotalsCard extends HeaCard {
   _comparedTo(key, value, locale) {
     const before = this._result?.totals?.before?.[key];
     if (!Number.isFinite(before) || !Number.isFinite(value)) return "";
-    return `<span class="compare" data-compare="${key}">${fill(
+    // Which way is good news depends on the concept: a fall in what was paid
+    // and a fall in what was saved are opposite verdicts, and rendering both
+    // the same grey left the sign meaning nothing (HEA-99).
+    const tone = changeTone(key, value - before);
+    const classes = tone ? `compare ${tone}` : "compare";
+    return `<span class="${classes}" data-compare="${key}">${fill(
       this._labels.compared,
       {
         change: formatMoneyChange(value - before, locale),

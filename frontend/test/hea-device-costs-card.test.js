@@ -349,6 +349,24 @@ describe("comparing against an earlier period", () => {
     expect(legendOf(card).data.some((item) => item.id === EARLIER_ID)).toBe(false);
   });
 
+  it("colours the tooltip's change by whether it is good news", async () => {
+    // Given - the tooltip renders outside this card's shadow root, in the
+    // chart component's own container, so the `.gain` / `.loss` rules cannot
+    // reach it and the colour has to travel as an inline style (HEA-99).
+    // When - the aircon cost EUR 1.20 less than the period before
+    const card = await comparing();
+    const shown = chartOf(card).options.tooltip.formatter({
+      seriesId: "slow_poll_aircon:before",
+    });
+
+    // Then - a fall in what was paid is good news, and says so
+    const change = [...shown.querySelectorAll("div")].find((row) =>
+      row.textContent.startsWith(LABELS.change),
+    );
+    expect(change.textContent).toMatch(/[-−]\D*1[.,]20/);
+    expect(change.querySelector("span:last-child").style.color).toBe("#4caf50");
+  });
+
   it("answers for the device from its earlier bar as well", async () => {
     // Given / When - the tooltip resolves a device from the hovered series id,
     // and a new suffix it did not know would render nothing at all

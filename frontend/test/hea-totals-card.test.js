@@ -42,6 +42,9 @@ const settled = (card, state = "ready") => settledOn(expect, card, state);
 
 beforeEach(() => {
   document.body.replaceChildren();
+  // A theme variable set by one test would otherwise leak into the next, and
+  // these rules turn on whether it resolves.
+  document.documentElement.style.removeProperty("--primary-text-color");
 });
 
 describe("registration", () => {
@@ -250,8 +253,62 @@ describe("the figures", () => {
     expect(compared).toMatch(/1[.,]20/);
   });
 
+  it("colours a change by whether it is good news for that concept", async () => {
+    // Given - a period where the household paid EUR 1.00 against EUR 2.00
+    // before, on generation worth less than it was: Paid falls by EUR 1.00 and
+    // Saved falls by EUR 2.00. Down is good news on the first and bad news on
+    // the second, and both rendered in the same grey - so the sign carried no
+    // meaning at a glance, which is the whole complaint (HEA-99).
+    const collection = anEnergyCollection();
+    const hass = aHass({ collection });
+    const card = mount(hass);
+    await settled(card);
+
+    const may = new Date(2026, 4, 20);
+    const april = new Date(2026, 3, 1);
+    hass.callWS = vi.fn().mockResolvedValue({
+      "sensor.slow_poll_aircon_energy_used": [
+        { start: may.getTime(), change: 10 },
+        { start: april.getTime(), change: 20 },
+      ],
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 1 },
+        { start: april.getTime(), change: 2 },
+      ],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: may.getTime(), change: 2 },
+        { start: april.getTime(), change: 5 },
+      ],
+    });
+
+    // When
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+    await vi.waitFor(() =>
+      expect(card.shadowRoot.querySelector(".compare")).not.toBeNull(),
+    );
+
+    // Then - one card, one direction, two opposite verdicts
+    const compared = (key) =>
+      card.shadowRoot.querySelector(`[data-compare="${key}"]`).classList;
+    expect(compared("actualCost").contains("gain")).toBe(true);
+    expect(compared("costAtGridPrice").contains("gain")).toBe(true);
+    expect(compared("costSavings").contains("loss")).toBe(true);
+  });
+
   it("marks a saving that is really a loss", async () => {
-    // Given - battery arbitrage cost more than the grid would have (HEA-39)
+    // Given - battery arbitrage cost more than the grid would have (HEA-39),
+    // on a dashboard whose theme defines the text colour. That variable is the
+    // whole test: `.loss` sits in the shared base style and `.value` in this
+    // card's own, which is concatenated after it, so the two are equal
+    // specificity and the later one wins. With no theme `var(--primary-text-
+    // color)` resolves to nothing, `.value`'s declaration collapses and `.loss`
+    // paints - which is why a suite with no theme could not see this at all
+    // and HEA-39's colour shipped applied-then-overridden (HEA-99).
+    document.documentElement.style.setProperty("--primary-text-color", "#111111");
     const hass = aHass({
       response: bucketsFor("slow_poll_aircon", 10, 5, 3),
     });
@@ -260,9 +317,10 @@ describe("the figures", () => {
     const card = mount(hass);
     await settled(card);
 
-    // Then - signed, and marked so it can be styled as the loss it is
+    // Then - signed, marked, and actually painted the error colour
     expect(figure(card, "costSavings").textContent).toMatch(/-/);
     expect(figure(card, "costSavings").classList.contains("loss")).toBe(true);
+    expect(getComputedStyle(figure(card, "costSavings")).color).toBe("#db4437");
   });
 });
 

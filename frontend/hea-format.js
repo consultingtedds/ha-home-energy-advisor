@@ -60,6 +60,43 @@ export const formatMoneyChange = (value, { language, currency }) => {
 };
 
 /**
+ * Which way each concept is good news, keyed by the row field it lands on.
+ *
+ * The whole point is that it is per concept. "Down is good" holds for every
+ * cost and is false of the saving, so one rule applied to all of them would
+ * say the opposite of the truth on whichever it got wrong: a household that
+ * saved EUR 1.46 less than the week before has done worse, not better, and a
+ * green figure would tell them otherwise (HEA-99).
+ *
+ * A concept absent from both sets has no polarity and is left alone. That is a
+ * decision, not an oversight - the effective rate is a blended price, and
+ * whether a fall in it is good depends on why it fell.
+ */
+const BETTER_WHEN_LOWER = new Set(["actualCost", "costAtGridPrice", "energyUsed"]);
+const BETTER_WHEN_HIGHER = new Set(["costSavings"]);
+
+/**
+ * How a change should read: good news, bad news, or neither.
+ *
+ * Returns the class a card puts on the figure, and an empty string where there
+ * is nothing to say - an unmoved period, a figure that is not a number, or a
+ * concept the project has taken no view on. Colour is a claim, so silence is
+ * the honest default.
+ *
+ * Note this is reinforcement, never the only cue: `formatMoneyChange` already
+ * signs every figure, so a reader who cannot separate the two colours still
+ * has the direction. What the colour adds is whether that direction is welcome.
+ */
+export const changeTone = (concept, change) => {
+  if (typeof change !== "number" || !Number.isFinite(change) || change === 0) {
+    return "";
+  }
+  if (BETTER_WHEN_LOWER.has(concept)) return change < 0 ? "gain" : "loss";
+  if (BETTER_WHEN_HIGHER.has(concept)) return change > 0 ? "gain" : "loss";
+  return "";
+};
+
+/**
  * The range a cost could honestly sit in - "€3.61 - €4.72" (ADR-0016).
  *
  * In money, never as a percentage. `(ceiling − floor) / actual` explodes as the

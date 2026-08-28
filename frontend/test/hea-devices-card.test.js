@@ -412,6 +412,55 @@ describe("the table", () => {
     expect(byName["Slow Poll Aircon"].join(" ")).toMatch(/[-−]\D*1[.,]20/);
   });
 
+  it("colours a device's change by whether it is good news", async () => {
+    // Given - the Change column derives from Paid, where down is good. The
+    // column carries no `field`, so the table's existing loss rule - which
+    // tests one - could never have reached it (HEA-99).
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE, collection });
+    const card = mount(hass);
+    await ready(card);
+
+    const may = new Date(2026, 4, 20);
+    const april = new Date(2026, 3, 1);
+    hass.callWS = vi.fn().mockResolvedValue({
+      ...bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78, may),
+      ...bucketsFor("fine_meter_aircon", 12.0, 3.0, 4.0, may),
+      ...bucketsFor("untracked_energy_devices", 100, 1.5, 9.5, may),
+      // The aircon spent less than before; the pump spent more.
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 0.11 },
+        { start: april.getTime(), change: 1.31 },
+      ],
+      "sensor.fine_meter_aircon_actual_cost": [
+        { start: may.getTime(), change: 3.0 },
+        { start: april.getTime(), change: 1.0 },
+      ],
+    });
+
+    // When
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+    await vi.waitFor(() =>
+      expect(card.shadowRoot.querySelector("td.gain")).not.toBeNull(),
+    );
+
+    // Then - the two rows disagree, in one column, on the same day
+    const toneOf = (name) => {
+      const row = [...card.shadowRoot.querySelectorAll("tbody tr")].find((tr) =>
+        tr.textContent.includes(name),
+      );
+      return [...row.querySelectorAll("td")].find(
+        (cell) => cell.classList.contains("gain") || cell.classList.contains("loss"),
+      )?.className;
+    };
+    expect(toneOf("Slow Poll Aircon")).toContain("gain");
+    expect(toneOf("Fine Meter Aircon")).toContain("loss");
+  });
+
   it("reports a device with nothing in the earlier window as all increase", async () => {
     // Given - the comparison window holds no buckets at all for these devices,
     // because every bucket in the response is dated inside the current period

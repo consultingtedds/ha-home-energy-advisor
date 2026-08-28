@@ -27,7 +27,26 @@ const BASE_STYLE = `
   }
   .hint { margin-top: 4px; color: var(--secondary-text-color); font-size: 0.8em; }
   .message { margin: 0; color: var(--secondary-text-color); }
+`;
+
+/**
+ * Good news and bad news, and why these are the last rules in the sheet.
+ *
+ * A tone is a verdict on a figure, so it has to beat whatever colour the card
+ * gives that figure ordinarily. `.loss` used to sit in `BASE_STYLE`, which is
+ * concatenated *before* a card's own styles - equal specificity, later wins -
+ * so the totals card's `.value { color: var(--primary-text-color) }` quietly
+ * overrode it and HEA-39's colour was applied as a class and never painted.
+ * The suite could not see it either: with no theme loaded that variable
+ * resolves to nothing, the declaration collapses and the tone comes through,
+ * so only a test that stands up a theme can tell the two apart (HEA-99).
+ *
+ * Appending them last is the whole fix, and it holds for any card added later
+ * without that card having to know about it.
+ */
+const TONE_STYLE = `
   .loss { color: var(--error-color, #db4437); }
+  .gain { color: var(--success-color, #4caf50); }
 `;
 
 export class HeaCard extends HTMLElement {
@@ -192,7 +211,7 @@ export class HeaCard extends HTMLElement {
   _render() {
     const locale = localeFrom(this._hass);
     this.shadowRoot.innerHTML = `
-      <style>${BASE_STYLE}${this.constructor.cardStyle}</style>
+      <style>${BASE_STYLE}${this.constructor.cardStyle}${TONE_STYLE}</style>
       <ha-card>
         <div class="body" data-state="${this._state}">${this._content(locale)}</div>
       </ha-card>

@@ -74,6 +74,10 @@ const CHANGE = {
       : undefined,
   label: "change",
   format: formatMoneyChange,
+  // The concept this column is a change *in*, which is what says which
+  // direction is good news. Spend falling is good; the same fall in Saved
+  // would not be (HEA-99).
+  tone: "actualCost",
 };
 
 const COLUMNS = [
