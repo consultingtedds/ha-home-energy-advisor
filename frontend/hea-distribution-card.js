@@ -104,6 +104,9 @@ class HeaDistributionCard extends HeaChartCard {
   _layout() {
     return buildDistribution(this._result?.devices ?? [], this._labels, {
       metric: this._metric(),
+      // The layout knows which token each source wants; only the card can read
+      // one, so it resolves them against the household's theme (HEA-93).
+      colour: (source) => this._colour(source),
     });
   }
 

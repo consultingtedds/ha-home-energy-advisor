@@ -67,9 +67,31 @@ const METRICS = Object.freeze({
     sources: [
       // Named for the vocabulary key each takes, so the words stay the
       // household's own (ADR-0018) and match the sources card beside it.
-      { id: "grid", field: "energyFromGrid", colour: "#488fc2" },
-      { id: "generation", field: "energyFromGeneration", colour: "#ff9800" },
-      { id: "battery", field: "energyFromBattery", colour: "#a48be0" },
+      //
+      // Coloured from Home Assistant's own energy tokens rather than from
+      // literals, so a household that themes its Energy Dashboard gets a
+      // diagram that agrees with it. Two of these were already HA's default
+      // hexes copied by hand, which is how a themed instance came to be shown
+      // the wrong colours while looking right on a default one (HEA-93). The
+      // fallbacks are those defaults, for a context that defines no theme.
+      {
+        id: "grid",
+        field: "energyFromGrid",
+        variable: "--energy-grid-consumption-color",
+        fallback: "#488fc2",
+      },
+      {
+        id: "generation",
+        field: "energyFromGeneration",
+        variable: "--energy-solar-color",
+        fallback: "#ff9800",
+      },
+      {
+        id: "battery",
+        field: "energyFromBattery",
+        variable: "--energy-battery-out-color",
+        fallback: "#4db6ac",
+      },
     ],
   },
 });
@@ -95,6 +117,16 @@ const PALETTE = [
 const UNTRACKED_COLOUR = "#8a8a8a";
 
 /**
+ * What a source is coloured when nothing can resolve a theme.
+ *
+ * This file is deliberately free of the DOM - the arrangement is arithmetic and
+ * is tested without one - so it cannot read a CSS variable itself. The card
+ * passes a resolver; without one every source takes Home Assistant's own
+ * default for its token, which is what an unthemed instance renders anyway.
+ */
+const fallbackColour = ({ fallback }) => fallback;
+
+/**
  * Arrange the period as nodes and links for `ha-sankey-chart`.
  *
  * Parent values are accumulated from their children and never computed
@@ -107,7 +139,11 @@ const UNTRACKED_COLOUR = "#8a8a8a";
  * @param options `{metric}` - `"cost"` (the default) or `"energy"`
  * @returns {{nodes: Array<object>, links: Array<object>}}
  */
-export const buildDistribution = (devices, labels, { metric = "cost" } = {}) => {
+export const buildDistribution = (
+  devices,
+  labels,
+  { metric = "cost", colour = fallbackColour } = {},
+) => {
   const { field, sources } = METRICS[metric] ?? METRICS.cost;
 
   // A flow diagram cannot draw a quantity of nothing and cannot draw one
@@ -156,7 +192,7 @@ export const buildDistribution = (devices, labels, { metric = "cost" } = {}) => 
   // Summed over the devices actually drawn, never over every row: a source
   // counting energy for a device the diagram dropped would make the first
   // column heavier than everything to the right of it.
-  const inflow = sourceNodes(sources, drawn, labels);
+  const inflow = sourceNodes(sources, drawn, labels, colour);
 
   return {
     nodes: [
@@ -185,14 +221,17 @@ export const buildDistribution = (devices, labels, { metric = "cost" } = {}) => 
  * zero: a band labelled "Battery" on a house with no battery invites a hunt
  * for hardware that is not there.
  */
-const sourceNodes = (sources, drawn, labels) =>
+const sourceNodes = (sources, drawn, labels, colour) =>
   (sources ?? [])
-    .map(({ id, field, colour }) => ({
-      id: `source_${id}`,
-      label: labels[id],
-      value: drawn.reduce((total, device) => total + (device[field] ?? 0), 0),
+    .map((source) => ({
+      id: `source_${source.id}`,
+      label: labels[source.id],
+      value: drawn.reduce(
+        (total, device) => total + (device[source.field] ?? 0),
+        0,
+      ),
       index: COLUMN.source,
-      color: colour,
+      color: colour(source),
     }))
     .filter((node) => node.value > 0);
 

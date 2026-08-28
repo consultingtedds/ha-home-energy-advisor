@@ -15,9 +15,45 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { formatMoney } from "./hea-format.js";
+import { bucketPeriodFor } from "./hea-statistics.js";
 
 export const TAG = "hea-cost-over-time-card";
 const EDITOR_TAG = `${TAG}-editor`;
+
+/** How long a bucket nominally is, for each period the statistics layer asks for. */
+const PERIOD_MS = { hour: 60 * 60 * 1000, day: 24 * 60 * 60 * 1000 };
+
+/**
+ * How widely a bar may spread when a period holds only a handful of buckets.
+ *
+ * The cap Home Assistant puts on its own energy bars. Without it two buckets
+ * across a wide card draw as two enormous blocks, which reads as a different
+ * kind of chart rather than as a sparse one.
+ */
+const BAR_MAX_WIDTH = 50;
+
+/**
+ * Half a bucket, because ECharts centres a bar on its x value.
+ *
+ * A bucket plotted at the instant it begins is therefore drawn half a bucket
+ * early - Monday's spending straddling Sunday midday to Monday midday - so
+ * every bar disagrees with the axis beneath it. Named as a suspect when this
+ * chart was built (HEA-50, 2026-08-10) and confirmed against Home Assistant's
+ * own `getPeriodMidpointOffset`, which is this calculation (HEA-93).
+ *
+ * The measured gap is preferred and the nominal length is the cap, exactly as
+ * HA does it: a missing bucket at the start of a period would otherwise
+ * measure a gap of two and push every bar a whole bucket out, while a real
+ * gap shorter than nominal - a day that lost an hour to a Madrid clock change
+ * - is the truth about these particular buckets and beats the constant.
+ */
+const midpointOffset = (rows, period) => {
+  if (!rows.length || !period) return 0;
+  const nominal = PERIOD_MS[bucketPeriodFor(period)] ?? 0;
+  const measured =
+    rows.length >= 2 ? rows[1].start.getTime() - rows[0].start.getTime() : undefined;
+  return (measured ? Math.min(measured, nominal) : nominal) / 2;
+};
 
 /** `name` is a key into the household's vocabulary, resolved at render. */
 const SERIES = {
@@ -72,15 +108,20 @@ class HeaCostOverTimeCard extends HeaChartCard {
     const loss = this._colour(LOSS);
     const labels = this._labels;
     const earlier = this._result?.seriesBefore;
+    // One offset for every series on the chart, the bars' own: the earlier
+    // line is already aligned onto this period's axis, so shifting it by a
+    // different amount would slide the comparison off the bars it is read
+    // against.
+    const offset = midpointOffset(rows, this._result?.period);
     return [
       {
         ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
-        data: rows.map((row) => [row.start.getTime(), row.actualCost]),
+        data: rows.map((row) => [row.start.getTime() + offset, row.actualCost]),
       },
       {
         ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
         data: rows.map((row) => {
-          const point = [row.start.getTime(), row.costSavings];
+          const point = [row.start.getTime() + offset, row.costSavings];
           return row.costSavings < 0
             ? { value: point, itemStyle: { color: loss } }
             : point;
@@ -98,7 +139,7 @@ class HeaCostOverTimeCard extends HeaChartCard {
               lineStyle: { type: "dashed", width: 2 },
               itemStyle: { color: this._colour(BEFORE) },
               data: earlier.map((row) => [
-                row.start.getTime(),
+                row.start.getTime() + offset,
                 row.costAtGridPrice,
               ]),
             },
@@ -160,6 +201,7 @@ const seriesShape = ({ id, name }, colour, labels) => ({
   type: "bar",
   // One stack, so the segments sit on each other and sum to the whole bar.
   stack: "cost",
+  barMaxWidth: BAR_MAX_WIDTH,
   itemStyle: { color: colour },
 });
 

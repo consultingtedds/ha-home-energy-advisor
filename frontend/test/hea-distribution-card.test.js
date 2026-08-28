@@ -260,6 +260,41 @@ describe("measuring by energy instead of cost", () => {
     expect(nodeOf(card, "household").value).toBe(15);
   });
 
+  it("colours the sources from the household's own theme", async () => {
+    // Given - a dashboard that has themed its Energy Dashboard. The layout
+    // names Home Assistant's tokens and only the card can read one, so this is
+    // the half that would silently keep painting a literal (HEA-93).
+    //
+    // Set on the card rather than on the document: happy-dom does not resolve
+    // an *inherited* custom property through `getComputedStyle`, which is how a
+    // real theme would reach it. What is under test is that the card reads the
+    // token at all; the inheriting is the browser's job, not ours.
+    const hass = aHass({
+      devices: [AIRCON, PUMP],
+      response: {
+        ...SPENT,
+        ...sourcesFor("slow_poll_aircon", 4, 6, 2),
+        ...sourcesFor("cloud_polled_pump", 0, 5, 0),
+      },
+    });
+
+    // When
+    const card = document.createElement(TAG);
+    card.style.setProperty("--energy-battery-out-color", "#123456");
+    card.setConfig({
+      type: `custom:${TAG}`,
+      collection_key: "energy_hea-costs",
+      metric: "energy",
+    });
+    document.body.append(card);
+    card.hass = hass;
+    await ready(card);
+
+    // Then - the theme's colour, not the fallback it would otherwise take
+    expect(nodeOf(card, "source_battery").color).toBe("#123456");
+    expect(nodeOf(card, "source_battery").color).not.toBe("#4db6ac");
+  });
+
   it("has no source column on cost, where generation is priced at zero", async () => {
     // Given / When
     const card = mount(aHouse());

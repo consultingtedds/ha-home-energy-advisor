@@ -29,6 +29,17 @@ const EURO = { language: "en-GB", currency: "EUR" };
 const DAY_ONE = new Date(2026, 4, 20);
 const DAY_TWO = new Date(2026, 4, 21);
 
+/**
+ * Where a day's bar is plotted, which is its middle rather than its start.
+ *
+ * ECharts centres a bar on its x value, so a bucket plotted at the instant it
+ * begins is drawn half a bucket to the left of the span it represents - the
+ * "bars sit offset from their bucket" suspect carried over from HEA-50 and
+ * confirmed against HA's own `getPeriodMidpointOffset` (HEA-93).
+ */
+const HALF_DAY = 12 * 60 * 60 * 1000;
+const middleOf = (day) => day.getTime() + HALF_DAY;
+
 const AIRCON = [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")];
 
 /** Two days: paid 1 of 3, then paid 2 of 3. */
@@ -145,15 +156,43 @@ describe("the series handed to the chart", () => {
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then - day one paid 1 of 3, day two paid 2 of 3
+    // Then - day one paid 1 of 3, day two paid 2 of 3, each plotted at the
+    // middle of the day it covers
     expect(seriesOf(card, "paid").data).toEqual([
-      [DAY_ONE.getTime(), 1],
-      [DAY_TWO.getTime(), 2],
+      [middleOf(DAY_ONE), 1],
+      [middleOf(DAY_TWO), 2],
     ]);
     expect(seriesOf(card, "saved").data).toEqual([
-      [DAY_ONE.getTime(), 2],
-      [DAY_TWO.getTime(), 1],
+      [middleOf(DAY_ONE), 2],
+      [middleOf(DAY_TWO), 1],
     ]);
+  });
+
+  it("centres each bar on the span it covers, not on the instant it began", async () => {
+    // Given - ECharts centres a bar on its x value. Plotting a bucket at its
+    // start therefore draws it half a bucket early: a Monday's spending
+    // straddles Sunday midday to Monday midday, and every bar in the chart
+    // disagrees with the axis beneath it. Home Assistant offsets by
+    // `min(measuredGap, nominalPeriod) / 2` for exactly this reason
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+
+    // When
+    await ready(card);
+
+    // Then - half a day on, so the bar spans the day it is about
+    const [[first], [second]] = seriesOf(card, "paid").data;
+    expect(first).toBe(DAY_ONE.getTime() + HALF_DAY);
+    expect(second - first).toBe(DAY_TWO.getTime() - DAY_ONE.getTime());
+  });
+
+  it("caps how wide a bar can get, so a short period is not one huge block", async () => {
+    // Given / When - a range with two buckets in it has enormous room per bar
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then - the same cap Home Assistant puts on its own energy bars
+    expect(seriesOf(card, "paid").barMaxWidth).toBe(50);
+    expect(seriesOf(card, "saved").barMaxWidth).toBe(50);
   });
 
   it("keeps a loss negative, so it stacks below the axis", async () => {
@@ -166,7 +205,7 @@ describe("the series handed to the chart", () => {
 
     // Then - negative is how Home Assistant renders exported energy, and
     // ECharts stacks it downwards (ADR-0012 decision 3)
-    expect(point.value).toEqual([DAY_ONE.getTime(), -2]);
+    expect(point.value).toEqual([middleOf(DAY_ONE), -2]);
   });
 
   it("colours a loss differently from a saving", async () => {
@@ -204,6 +243,14 @@ describe("comparing against an earlier period", () => {
 
   /** A week earlier, so the response carries buckets in both windows. */
   const WEEK_BEFORE = new Date(DAY_ONE.getTime() - 7 * 86400000);
+
+  /**
+   * These windows are exactly two days, and `bucketPeriodFor` switches to daily
+   * only *above* two - so the buckets here are hourly and a bar is centred half
+   * an hour on, not half a day. The offset follows the bucket, which is the
+   * point of deriving it rather than fixing it.
+   */
+  const HALF_HOUR = 30 * 60 * 1000;
 
   /**
    * Both windows in one response, with Paid and Would have paid far enough
@@ -284,7 +331,7 @@ describe("comparing against an earlier period", () => {
 
     // Then - the earlier bucket lands on the current period's first day
     const before = chartOf(card).data.find((s) => s.id === "before");
-    expect(before.data).toEqual([[DAY_ONE.getTime(), 6]]);
+    expect(before.data).toEqual([[DAY_ONE.getTime() + HALF_HOUR, 6]]);
   });
 
   it("traces the earlier period's Would have paid, which is what a bar's height means", async () => {
@@ -297,7 +344,9 @@ describe("comparing against an earlier period", () => {
 
     // Then - EUR 1.14, the outline the bars mean, not the EUR 0.00 that was
     // paid on a day the sun covered the draw
-    expect(seriesOf(card, "before").data).toEqual([[DAY_ONE.getTime(), 1.14]]);
+    expect(seriesOf(card, "before").data).toEqual([
+      [DAY_ONE.getTime() + HALF_HOUR, 1.14],
+    ]);
   });
 
   it("lands the line on the top of the bars when the two periods match", async () => {

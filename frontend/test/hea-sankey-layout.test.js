@@ -426,6 +426,49 @@ describe("the energy metric", () => {
     expect(COLUMN.source).toBeLessThan(COLUMN.household);
   });
 
+  it("names a Home Assistant energy token for each source", () => {
+    // Given - two of these were HA's default hexes copied by hand, so a
+    // household that themed its Energy Dashboard got a diagram disagreeing
+    // with it while a default instance looked perfectly right (HEA-93)
+    const rows = [
+      anEnergyRow("pump", "Pump", { grid: 1, generation: 4, battery: 2 }, inLounge),
+    ];
+    const asked = [];
+
+    // When - the caller resolves each token, as the card does against the theme
+    const nodes = byId(
+      buildDistribution(rows, DEFAULTS, {
+        metric: "energy",
+        colour: (source) => {
+          asked.push(source.variable);
+          return `resolved(${source.variable})`;
+        },
+      }),
+    );
+
+    // Then - the token names are HA's own, and the layout asks rather than
+    // deciding: it is free of the DOM and cannot read a variable itself
+    expect(asked).toEqual([
+      "--energy-grid-consumption-color",
+      "--energy-solar-color",
+      "--energy-battery-out-color",
+    ]);
+    expect(nodes.source_battery.color).toBe("resolved(--energy-battery-out-color)");
+  });
+
+  it("falls back to Home Assistant's own defaults with no theme to read", () => {
+    // Given / When - no resolver, which is what a caller outside a document has
+    const rows = [
+      anEnergyRow("pump", "Pump", { grid: 1, generation: 4, battery: 2 }, inLounge),
+    ];
+    const nodes = byId(energy(rows));
+
+    // Then - what an unthemed instance renders anyway
+    expect(nodes.source_grid.color).toBe("#488fc2");
+    expect(nodes.source_generation.color).toBe("#ff9800");
+    expect(nodes.source_battery.color).toBe("#4db6ac");
+  });
+
   it("feeds the household exactly what the sources carry", () => {
     // Given
     const rows = [
