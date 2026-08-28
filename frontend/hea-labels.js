@@ -86,12 +86,17 @@ export const DEFAULTS = Object.freeze({
   from_generation: "From generation",
   from_battery: "From the battery",
   energy_used: "Energy used",
+  unaccounted: "Unaccounted",
+  self_sufficiency_note:
+    "Battery energy is counted on its own: it was charged from generation or " +
+    "from the grid, and these readings cannot say which.",
   household: "Household",
   title_totals: "Cost summary",
   title_devices: "Cost by device",
   title_device_costs: "What each device cost",
   title_cost_over_time: "Cost over time",
   title_sources: "Where the energy came from",
+  title_self_sufficiency: "Self-sufficiency",
   title_distribution: "Where the cost went",
   title_distribution_energy: "Where the energy went",
   editor_title: "Title",
