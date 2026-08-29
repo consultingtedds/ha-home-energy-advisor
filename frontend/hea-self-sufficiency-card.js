@@ -91,15 +91,25 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
   static cardStyle = `
     ha-gauge { display: block; margin: 0 auto; --gauge-color: var(--primary-color); }
     .headline {
-      margin-top: 8px;
+      margin-top: var(--hea-space-s);
       text-align: center;
       color: var(--secondary-text-color);
       font-size: 0.85em;
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .shares { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; }
-    .share { flex: 1 1 6em; display: flex; flex-direction: column; gap: 4px; }
+    .shares {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--hea-space-l);
+      margin-top: var(--hea-space-l);
+    }
+    .share {
+      flex: 1 1 6em;
+      display: flex;
+      flex-direction: column;
+      gap: var(--hea-space-xs);
+    }
     .label {
       color: var(--secondary-text-color);
       font-size: 0.85em;
@@ -108,7 +118,7 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
     }
     .value { color: var(--primary-text-color); font-size: 1.2em; font-weight: 500; }
     .note {
-      margin-top: 12px;
+      margin-top: var(--hea-space-m);
       color: var(--secondary-text-color);
       font-size: 0.8em;
     }

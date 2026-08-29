@@ -18,14 +18,38 @@ import { formatPeriod, localeFrom } from "./hea-format.js";
 import { fill, labelsFor, loadLabels } from "./hea-labels.js";
 import { fetchDeviceStatistics, withComparison } from "./hea-statistics.js";
 
+/**
+ * The vertical rhythm every card keeps to.
+ *
+ * Named once here rather than chosen again per card. The numbers were already
+ * close to a four-pixel scale, because each was picked to look right beside the
+ * last - but picked in isolation, which is how a sixth card comes to sit a few
+ * pixels out from the five beside it and a view stops reading as one thing
+ * (HEA-93). Defined on the host, so a card's own styles can use them: every
+ * card's sheet is concatenated into this same shadow root.
+ *
+ * Table cell padding is deliberately not on this scale. That is density within
+ * a grid, not rhythm between blocks, and tying the two together would mean a
+ * table could not be tightened without moving every card's spacing with it.
+ */
 const BASE_STYLE = `
-  .body { padding: 16px; }
+  :host {
+    --hea-space-xs: 4px;
+    --hea-space-s: 8px;
+    --hea-space-m: 12px;
+    --hea-space-l: 16px;
+  }
+  .body { padding: var(--hea-space-l); }
   .period {
-    margin-top: 16px;
+    margin-top: var(--hea-space-l);
     color: var(--secondary-text-color);
     font-size: 0.9em;
   }
-  .hint { margin-top: 4px; color: var(--secondary-text-color); font-size: 0.8em; }
+  .hint {
+    margin-top: var(--hea-space-xs);
+    color: var(--secondary-text-color);
+    font-size: 0.8em;
+  }
   .message { margin: 0; color: var(--secondary-text-color); }
 `;
 

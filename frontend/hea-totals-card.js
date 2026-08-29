@@ -33,8 +33,13 @@ class HeaTotalsCard extends HeaCard {
   static titleKey = "title_totals";
 
   static cardStyle = `
-    .figures { display: flex; flex-wrap: wrap; gap: 16px; }
-    .figure { flex: 1 1 8em; display: flex; flex-direction: column; gap: 4px; }
+    .figures { display: flex; flex-wrap: wrap; gap: var(--hea-space-l); }
+    .figure {
+      flex: 1 1 8em;
+      display: flex;
+      flex-direction: column;
+      gap: var(--hea-space-xs);
+    }
     .compare { color: var(--secondary-text-color); font-size: 0.8em; }
     .label {
       color: var(--secondary-text-color);

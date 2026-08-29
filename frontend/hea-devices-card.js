@@ -115,7 +115,7 @@ class HeaDevicesCard extends HeaTableCard {
   static defaultSort = "actual_cost";
   static cardStyle = `${HeaTableCard.cardStyle}
     .disclosure {
-      margin-top: 12px;
+      margin-top: var(--hea-space-m);
       color: var(--secondary-text-color);
       font-size: 0.8em;
     }

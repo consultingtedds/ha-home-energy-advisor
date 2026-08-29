@@ -30,6 +30,21 @@ export class HeaChartCard extends HeaCard {
   /** The vocabulary key for an empty period; money, unless a card says otherwise. */
   static emptyKey = "no_cost_in_period";
 
+  /**
+   * How tall the chart stands, because left alone it is half its own width.
+   *
+   * `ha-chart-base` sizes itself `max(clientWidth / 2, 200)` when no height is
+   * given, so the same chart is 350px on a desktop and 200px across a phone in
+   * portrait - which is where "what each device cost" was reported as having
+   * almost no vertical scale (HEA-93).
+   *
+   * The clamp only ever raises that floor: any card wide enough to reach 350px
+   * still does, since the component caps at `--chart-max-height` (350px) too.
+   * Set as a property rather than as CSS on the host, which would size the
+   * element without reaching the inner container that actually draws.
+   */
+  static chartHeight = "clamp(300px, 50vw, 350px)";
+
   static cardStyle = `
     ha-chart-base { display: block; }
   `;
@@ -122,6 +137,7 @@ export class HeaChartCard extends HeaCard {
 
   /** What to set on the component once it is in the tree. */
   _draw(chart) {
+    chart.height = this.constructor.chartHeight;
     chart.data = this._series();
     chart.options = this._options(this._chartLocale());
   }

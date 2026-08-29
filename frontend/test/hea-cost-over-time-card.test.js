@@ -484,6 +484,24 @@ describe("the options handed to the chart", () => {
     expect(chartOf(card).options.xAxis.type).toBe("time");
   });
 
+  it("gives the chart a height, so a phone in portrait is not a sliver", async () => {
+    // Given - with no height set, `ha-chart-base` sizes itself
+    // `max(clientWidth / 2, 200)`, so a card about 360px wide across a phone in
+    // portrait floors at 200px while the same chart reaches its 350px cap on a
+    // desktop. Reported on a real phone against "what each device cost", which
+    // shares this base (HEA-93)
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+
+    // When
+    await ready(card);
+
+    // Then - set as the property the component reads. CSS height on the host
+    // does not reach the inner container that does the sizing, so styling it
+    // would look like a fix and change nothing. The clamp only ever raises the
+    // portrait floor: anything wide enough already lands on the same 350px
+    expect(chartOf(card).height).toBe("clamp(300px, 50vw, 350px)");
+  });
+
   it("labels the value axis in the household's currency", async () => {
     // Given / When
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
