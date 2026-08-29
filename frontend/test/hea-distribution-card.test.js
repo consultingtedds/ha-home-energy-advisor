@@ -295,6 +295,24 @@ describe("measuring by energy instead of cost", () => {
     expect(nodeOf(card, "source_battery").color).not.toBe("#4db6ac");
   });
 
+  it("says no energy was recorded, where the cost view says no cost", async () => {
+    // Given - the same card, the same empty period, two different claims. One
+    // diagram measuring money and one measuring energy cannot honestly share a
+    // sentence about what was missing (HEA-93)
+    const empty = {
+      ...bucketsFor("slow_poll_aircon", 0, 0, 0),
+      ...bucketsFor("cloud_polled_pump", 0, 0, 0),
+    };
+
+    // When
+    const card = mount(aHouse({ response: empty }), { metric: "energy" });
+    await ready(card);
+
+    // Then
+    expect(card.shadowRoot.textContent).toMatch(/no energy recorded/i);
+    expect(card.shadowRoot.textContent).not.toMatch(/no cost recorded/i);
+  });
+
   it("has no source column on cost, where generation is priced at zero", async () => {
     // Given / When
     const card = mount(aHouse());

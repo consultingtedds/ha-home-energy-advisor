@@ -99,6 +99,14 @@ export const DEFAULTS = Object.freeze({
   title_self_sufficiency: "Self-sufficiency",
   title_distribution: "Where the cost went",
   title_distribution_energy: "Where the energy went",
+  no_devices: "No devices are being tracked yet.",
+  statistics_failed: "Statistics could not be loaded.",
+  no_picker: "Add an Energy date picker card to choose the range.",
+  chart_not_loaded:
+    "Home Assistant's chart component is not loaded. Adding any energy or " +
+    "statistics card to this dashboard will load it.",
+  no_cost_in_period: "No cost recorded in this period.",
+  no_energy_in_period: "No energy recorded in this period.",
   editor_title: "Title",
   editor_collection_key: "Energy period (collection key)",
   editor_devices: "Devices (all, if none are chosen)",

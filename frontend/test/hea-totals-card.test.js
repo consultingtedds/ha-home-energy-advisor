@@ -13,7 +13,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { formatPeriod } from "../hea-format.js";
-import { DEFAULTS as LABELS } from "../hea-labels.js";
+import { DEFAULTS as LABELS, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-totals-card.js";
 import {
   AIRCON_BUCKETS,
@@ -452,9 +452,38 @@ describe("when there is nothing to show", () => {
     const card = mount(hass);
     await settled(card, "empty");
 
-    // Then - and the recorder is never asked for every statistic in the house
+    // Then - and the recorder is never asked for every statistic in the house.
+    //
+    // Named by request type rather than "never called at all": the card now
+    // fetches its vocabulary before it says anything, so that it can say it in
+    // the household's own language, and `callWS` carries both conversations.
+    // The blanket assertion passed only while some earlier test had already
+    // warmed the label cache, and failed when run on its own (HEA-93).
     expect(text(card)).toMatch(/no devices/i);
-    expect(hass.callWS).not.toHaveBeenCalled();
+    expect(hass.callWS).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "recorder/statistics_during_period" }),
+    );
+  });
+
+  it("says so in the household's own words, not in fallback English", async () => {
+    // Given - a Spanish instance with nothing tracked yet. This branch renders
+    // and returns, so there is no later paint to correct the words: if the
+    // vocabulary is not in hand by then, English is what the household keeps
+    // (ADR-0018, HEA-93)
+    resetLabels();
+    const spanish = "Todavía no se sigue ningún dispositivo.";
+    const hass = aHass({ devices: [] });
+    hass.locale = { language: "es" };
+    hass.callWS = vi.fn().mockResolvedValue({
+      resources: { "component.home_energy_advisor.common.card_no_devices": spanish },
+    });
+
+    // When
+    const card = mount(hass);
+    await settled(card, "empty");
+
+    // Then
+    await vi.waitFor(() => expect(text(card)).toContain(spanish));
   });
 
   it("says so when the integration is not loaded at all", async () => {

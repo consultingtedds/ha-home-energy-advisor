@@ -212,6 +212,27 @@ describe("no energy at all", () => {
     expect(gaugeOf(card)).toBe(null);
     expect(text(card)).not.toMatch(/0\s*%/);
   });
+
+  it("says no energy was recorded, not no cost", async () => {
+    // Given - this card never shows money, so the shared "no cost recorded"
+    // message made a claim about a quantity it was not measuring (HEA-93)
+    const card = mount(
+      aHass({
+        devices: [AIRCON],
+        response: {
+          ...bucketsFor("slow_poll_aircon", 0, 0, 0),
+          ...sourcesFor("slow_poll_aircon", 0, 0, 0),
+        },
+      }),
+    );
+
+    // When
+    await ready(card);
+
+    // Then
+    expect(text(card)).toContain(LABELS.no_energy_in_period);
+    expect(text(card)).not.toContain(LABELS.no_cost_in_period);
+  });
 });
 
 describe("the gauge itself", () => {

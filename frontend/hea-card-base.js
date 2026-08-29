@@ -161,6 +161,17 @@ export class HeaCard extends HTMLElement {
     const devices = this._devices();
     const request = ++this._request;
 
+    // Before the empty check rather than after it: that branch renders and
+    // returns, so a household with nothing tracked yet would be shown the
+    // fallback English for good, with no later paint to correct it. A failed
+    // fetch resolves to English rather than rejecting, so this can never be
+    // what stops a card rendering (ADR-0018).
+    //
+    // Still alongside the figures rather than before them for every other
+    // card: the words and the numbers are wanted at the same moment, and the
+    // statistics request below is not held up by it.
+    await loadLabels(this._hass);
+
     if (devices.length === 0) {
       // An empty statistic_ids list would ask the recorder for every statistic
       // in the database, so stop here and say why the card is blank.
@@ -168,12 +179,6 @@ export class HeaCard extends HTMLElement {
       this._render();
       return;
     }
-
-    // Alongside the figures, not before them: the words and the numbers are
-    // wanted at the same moment, and a household should not wait for one to
-    // start the other. A failed fetch resolves to English rather than rejecting,
-    // so this can never be what stops a card rendering (ADR-0018).
-    await loadLabels(this._hass);
 
     // Only meaningful for the whole house: a card filtered to three devices is
     // not bounded by the household's range, and offering it there would invite
@@ -240,17 +245,17 @@ export class HeaCard extends HTMLElement {
 
   _content(locale) {
     if (this._state === "empty") {
-      return `<p class="message">No devices are being tracked yet.</p>`;
+      return `<p class="message">${this._labels.no_devices}</p>`;
     }
     if (this._state === "error") {
-      return `<p class="message">Statistics could not be loaded.</p>`;
+      return `<p class="message">${this._labels.statistics_failed}</p>`;
     }
     return `${this._body(locale)}${this._caption(locale)}`;
   }
 
   _caption(locale) {
     const hint = this._period?.fallback
-      ? `<div class="hint">Add an Energy date picker card to choose the range.</div>`
+      ? `<div class="hint">${this._labels.no_picker}</div>`
       : "";
     return `<div class="period">${this._periodLabel(locale)}</div>${hint}`;
   }

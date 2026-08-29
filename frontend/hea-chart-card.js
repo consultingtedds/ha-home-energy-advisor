@@ -27,6 +27,9 @@ export class HeaChartCard extends HeaCard {
   static chartTag = "ha-chart-base";
   static bearingCard = { type: "statistics-graph", entities: [] };
 
+  /** The vocabulary key for an empty period; money, unless a card says otherwise. */
+  static emptyKey = "no_cost_in_period";
+
   static cardStyle = `
     ha-chart-base { display: block; }
   `;
@@ -84,13 +87,24 @@ export class HeaChartCard extends HeaCard {
 
   _body() {
     if (!this._chartReady) {
-      return `<p class="message">Home Assistant's chart component is not loaded.
-        Adding any energy or statistics card to this dashboard will load it.</p>`;
+      return `<p class="message">${this._labels.chart_not_loaded}</p>`;
     }
     if (this._isEmpty()) {
-      return `<p class="message">No cost recorded in this period.</p>`;
+      return `<p class="message">${this._labels[this._emptyKey()]}</p>`;
     }
     return this._chartMarkup();
+  }
+
+  /**
+   * What "nothing to draw" says, since not every chart draws money.
+   *
+   * A card measuring energy told a household no *cost* was recorded, which is
+   * a claim about a different quantity from the one it was showing (HEA-93).
+   * Static like `titleKey`, with the same override for a card whose answer
+   * depends on how it has been configured.
+   */
+  _emptyKey() {
+    return this.constructor.emptyKey;
   }
 
   /** The element itself, for a card drawing with something other than ECharts axes. */

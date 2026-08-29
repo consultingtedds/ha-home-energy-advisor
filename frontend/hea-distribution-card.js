@@ -46,8 +46,16 @@ const EDITOR_TAG = `${TAG}-editor`;
  * (see `METRICS` in the layout for why cost cannot have one).
  */
 const METRICS = {
-  cost: { titleKey: "title_distribution", format: formatMoney },
-  energy: { titleKey: "title_distribution_energy", format: formatEnergy },
+  cost: {
+    titleKey: "title_distribution",
+    emptyKey: "no_cost_in_period",
+    format: formatMoney,
+  },
+  energy: {
+    titleKey: "title_distribution_energy",
+    emptyKey: "no_energy_in_period",
+    format: formatEnergy,
+  },
 };
 
 /**
@@ -99,6 +107,11 @@ class HeaDistributionCard extends HeaChartCard {
 
   _titleKey() {
     return METRICS[this._metric()].titleKey;
+  }
+
+  /** An empty energy diagram is short of energy, not of money (HEA-93). */
+  _emptyKey() {
+    return METRICS[this._metric()].emptyKey;
   }
 
   _layout() {

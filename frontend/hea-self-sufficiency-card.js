@@ -85,6 +85,9 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
   static chartTag = "ha-gauge";
   static bearingCard = { type: "energy-self-sufficiency-gauge" };
 
+  /** This card never shows money, so an empty period is one with no energy. */
+  static emptyKey = "no_energy_in_period";
+
   static cardStyle = `
     ha-gauge { display: block; margin: 0 auto; --gauge-color: var(--primary-color); }
     .headline {
