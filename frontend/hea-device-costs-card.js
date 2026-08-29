@@ -14,30 +14,19 @@
  * bordering the saving alone leaves a single line, sitting at the level that
  * was paid.
  *
- * **The bars run sideways, and the device names sit on the axis.** They used to
- * stand up, with the names in the legend, on the reasoning that fourteen names
- * on a category axis overlap into illegibility. That is true of a *vertical*
- * axis; turning the chart on its side removes the premise rather than
- * contradicting it, because a name is then a row label with a whole row to
- * itself.
+ * Devices are named in the legend rather than along the axis. Fourteen device
+ * names on a category axis overlap into illegibility, and Home Assistant's own
+ * charts solve it the same way: `ha-chart-base` builds an HTML legend and
+ * collapses the overflow behind a "more" chip, so the axis is left to the
+ * period.
  *
- * The legend was costing more than it gave. Measured at a 610px viewport with
- * fifteen devices: 164px of legend against 141px of actual plot, because
- * fifteen entries wrap to about seven rows on a narrow card. Landscape looked
- * fine only because the same entries fitted in three. Giving the card more
- * height did not help - the legend simply grew to absorb it (HEA-100).
- *
- * Colour still means device. It is carried per **data point** rather than per
- * series, which is what lets two series hold every device and keep the palette
- * and its link to the Sankey's device colours. Colouring by series would have
- * cost exactly that, and nearly did.
- *
- * What remains of the legend is at most one entry, and only while comparing:
- * the neutral "Earlier period" key. Its id names the ghost series directly now
- * that there is one rather than one per device, so the `secondaryIds` fan-out
- * and the sentinel id it needed are both gone. The component's contract still
- * holds: it looks for an option that is both `show` and `type: "custom"` and
- * draws nothing at all when it finds neither.
+ * That legend has an exact contract, and failing it is silent. The component
+ * looks for an option that is both `show` and `type: "custom"`, draws nothing
+ * at all when it finds neither, and hides a series by matching a legend entry's
+ * `id` against a series `id` - so an entry names one of the device's two
+ * series and reaches the other through `secondaryIds`. A custom legend without
+ * `show` renders nothing; ECharts does not step in, because the component
+ * rewrites a custom legend to `{ show: false }` before handing the options on.
  */
 
 import { registerCard } from "./hea-card-base.js";
@@ -48,6 +37,7 @@ import {
   formatMoney,
   formatMoneyChange,
   formatMoneyRange,
+  formatPeriod,
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 
@@ -88,24 +78,23 @@ const LOSS = { variable: "--error-color", fallback: "#db4437" };
  */
 const EARLIER_COLOUR = { variable: "--secondary-text-color", fallback: "#727272" };
 
-/** The three series the chart draws, whatever the household's device count. */
-const PAID_ID = "paid";
-const SAVED_ID = "saved";
-export const EARLIER_ID = "before";
-
 /**
- * How much height one device's row needs, and what the axes take on top.
+ * The legend key for the earlier period, and why its id names no series.
  *
- * A chart of categories cannot take its height from the viewport: fifteen
- * devices need fifteen rows' worth whatever the screen is, and squeezing them
- * into a viewport-sized box is what made the old chart unreadable. Comparing
- * puts a second bar beside each device, so a row needs more of them.
+ * `ha-chart-base` marks an entry hidden by testing that entry's *own* id
+ * against the hidden set, while a click hides that id together with its
+ * `secondaryIds`. Every `:before` series is already owned by its device's
+ * entry - it has to be, or hiding a device would strand its ghost bar - so an
+ * entry whose id was one of them would grey itself out the moment that one
+ * device was hidden, with every other device's ghost still on the chart.
+ *
+ * A sentinel belongs to no series and so is never swept in by a device. The
+ * component adds a clicked id to the hidden set whether or not it resolves,
+ * which is all this needs: the ghosts hide through `secondaryIds`, and the key
+ * greys out with them. The hyphen keeps it clear of the `key:segment`
+ * namespace the series use.
  */
-const ROW_HEIGHT = 30;
-const COMPARING_ROW_HEIGHT = 46;
-const AXIS_HEADROOM = 64;
-/** Below this a two-device household would draw as a sliver of a card. */
-const MIN_HEIGHT = 240;
+export const EARLIER_ID = "earlier-period";
 
 const BORDER_WIDTH = 1.5;
 /** How strongly the spend is filled, and how faintly the saving above it. */
@@ -156,6 +145,9 @@ export const tint = (colour, alpha) => {
   const channels = channelsOf(String(colour).trim());
   return channels ? `rgba(${channels.join(", ")}, ${alpha})` : colour;
 };
+
+/** Which of a device's two segments a series id belongs to. */
+const SEGMENT = /:(?:paid|saved|before)$/;
 
 /**
  * Good news and bad news, as inline colours.
@@ -317,90 +309,69 @@ class HeaDeviceCostsCard extends HeaChartCard {
       : PALETTE[index % PALETTE.length];
   }
 
-  /** True once any device carries an earlier self, which adds a second bar. */
-  _comparing() {
-    return this._ranked().some((device) => device.before);
-  }
-
   /**
-   * Three series across every device: the spend, the saving above it, and the
-   * earlier period beside them.
+   * Two series per device sharing one stack: the spend, and the saving above.
    *
-   * Two series holding every device rather than two series per device, which is
-   * what lets the names go on the axis. Colour is carried on each **point**, so
-   * a device keeps its own hue - this is the whole reason the palette survives
-   * the change (HEA-100).
-   *
-   * Paid and Saved share one stack, so a device's bar runs to Would have paid.
-   * The earlier period takes a stack of its own, so ECharts sets it beside that
-   * bar rather than piling it on: the two segments are parts of one bar, and an
-   * earlier period is not a part of this one (HEA-96).
+   * A device's own stack, never a shared one - stacking every device together
+   * would pile the whole household into a single column.
    */
   _series() {
-    const rows = this._ranked();
     const loss = this._colour(LOSS);
-    const labels = this._labels;
-    const hue = (device, index) => this._colourFor(device, index);
-    return [
-      {
-        id: PAID_ID,
-        name: labels.paid,
-        type: "bar",
-        stack: "cost",
-        // Unbordered: the outline above it would otherwise be drawn twice
-        // where the two segments meet.
-        data: rows.map((device, index) => ({
-          value: device.actualCost,
-          itemStyle: { color: tint(hue(device, index), PAID_ALPHA) },
-        })),
-      },
-      {
-        id: SAVED_ID,
-        name: labels.saved,
-        type: "bar",
-        stack: "cost",
-        data: rows.map((device, index) => {
-          const outline = device.costSavings < 0 ? loss : hue(device, index);
-          return {
-            value: device.costSavings,
-            itemStyle: {
-              color: tint(outline, SAVED_ALPHA),
-              borderColor: outline,
-              borderWidth: BORDER_WIDTH,
-            },
-          };
-        }),
-      },
-      ...(this._comparing()
-        ? [
-            {
-              id: EARLIER_ID,
-              name: labels.compared_series,
-              type: "bar",
-              stack: "earlier",
-              data: rows.map((device, index) => ({
-                // Null rather than zero for a device the earlier window never
-                // saw: ECharts draws no bar, where a zero would draw a device
-                // that spent nothing then, which is a different claim.
-                value: device.before ? device.before.actualCost : null,
-                itemStyle: { color: tint(hue(device, index), BEFORE_ALPHA) },
-              })),
-            },
-          ]
-        : []),
-    ];
+    return this._ranked().flatMap((device, index) => {
+      const colour = this._colourFor(device, index);
+      const outline = device.costSavings < 0 ? loss : colour;
+      return [
+        {
+          id: `${device.key}:paid`,
+          name: device.name,
+          type: "bar",
+          stack: device.key,
+          // Unbordered: the outline above it would otherwise be drawn twice
+          // where the two segments meet.
+          itemStyle: { color: tint(colour, PAID_ALPHA) },
+          data: [device.actualCost],
+        },
+        {
+          id: `${device.key}:saved`,
+          name: device.name,
+          type: "bar",
+          stack: device.key,
+          itemStyle: {
+            color: tint(outline, SAVED_ALPHA),
+            borderColor: outline,
+            borderWidth: BORDER_WIDTH,
+          },
+          data: [device.costSavings],
+        },
+        // A stack of its own, so ECharts sets it beside the device rather than
+        // piling it on. The two segments sharing `stack: device.key` are parts
+        // of one bar; an earlier period is not a part of this one (HEA-96).
+        ...(device.before
+          ? [
+              {
+                id: `${device.key}:before`,
+                name: device.name,
+                type: "bar",
+                stack: `${device.key}:before`,
+                itemStyle: { color: tint(colour, BEFORE_ALPHA) },
+                data: [device.before.actualCost],
+              },
+            ]
+          : []),
+      ];
+    });
   }
 
   /**
    * The device a hovered segment belongs to, and its three figures.
    *
-   * By row rather than by series: every series now holds every device, so which
-   * device was hovered is the data index and nothing else. This used to parse a
-   * device key back out of a series id, which is a step that only existed
-   * because a device owned its own series (HEA-100).
+   * By device rather than by segment: an axis tooltip lists every series at the
+   * category, which for a dozen devices is two dozen rows, each device named
+   * twice with nothing to say which row is the spend and which the saving.
    */
-  _tooltipFor({ dataIndex }, locale) {
-    const device = this._ranked()[dataIndex];
+  _tooltipFor({ seriesId }, locale) {
+    const key = String(seriesId ?? "").replace(SEGMENT, "");
+    const device = this._ranked().find((candidate) => candidate.key === key);
     // Undefined suppresses the tooltip, where a half-built one would render an
     // empty box against the cursor.
     return device
@@ -411,36 +382,22 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 
   /**
-   * A row per device, not a share of the viewport.
-   *
-   * Fifteen devices need fifteen rows whatever the screen is. The base class's
-   * viewport clamp is right for a chart against time and wrong for one against
-   * categories, which is why the height is overridable at all.
-   */
-  _chartHeight() {
-    const rows = this._ranked().length;
-    const each = this._comparing() ? COMPARING_ROW_HEIGHT : ROW_HEIGHT;
-    return `${Math.max(MIN_HEIGHT, AXIS_HEADROOM + rows * each)}px`;
-  }
-
-  /**
    * One key saying the fainter bar is the earlier period, or nothing.
    *
-   * The devices are named on the axis; which of a device's two bars is which
-   * period is not, so two adjacent strengths of one hue read as two devices
-   * before they read as two periods. The same words and the same neutral as the
-   * over-time chart's line, so two charts on one screen say it the same way
-   * (HEA-99).
-   *
-   * The id names the ghost series outright. With one ghost series rather than
-   * one per device there is nothing left to fan out to, so the `secondaryIds`
-   * list and the sentinel id that avoided greying this key out are both gone.
+   * The devices are named; which of a device's two bars is which period was
+   * not, so two adjacent strengths of one hue read as two devices before they
+   * read as two periods. The same words and the same neutral as the over-time
+   * chart's line, so two charts on one screen say it the same way (HEA-99).
    */
   _earlierKey() {
-    if (!this._comparing()) return [];
+    const ghosts = this._ranked()
+      .filter((device) => device.before)
+      .map((device) => `${device.key}:before`);
+    if (!ghosts.length) return [];
     return [
       {
         id: EARLIER_ID,
+        secondaryIds: ghosts,
         name: this._labels.compared_series,
         itemStyle: { color: this._colour(EARLIER_COLOUR) },
       },
@@ -448,34 +405,46 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 
   _options(locale) {
-    const earlier = this._earlierKey();
     return {
-      // Sideways. The value runs along the bottom and the devices down the
-      // side, one row each, which is what makes their names readable.
       xAxis: {
+        type: "category",
+        // One column for the whole period: the comparison is device against
+        // device, not against time.
+        data: [formatPeriod(this._period, locale)],
+      },
+      yAxis: {
         type: "value",
         axisLabel: { formatter: (value) => formatMoney(value, locale) },
       },
-      yAxis: {
-        type: "category",
-        data: this._ranked().map((device) => device.name),
-        // Dearest at the top. A category axis counts up from the bottom, which
-        // would stand the ranking on its head.
-        inverse: true,
-      },
-      // Long names need room, and how much is not knowable here: the household
-      // wrote them. Left to the chart to measure rather than guessed at.
-      grid: { containLabel: true },
       tooltip: {
         trigger: "item",
         formatter: (params) => this._tooltipFor(params, locale),
       },
-      // Only while comparing. A legend of one entry is worth its 24px; a legend
-      // naming series a reader can already see labelled is not, and naming
-      // fifteen devices cost more of the card than the chart got (HEA-100).
-      ...(earlier.length
-        ? { legend: { show: true, type: "custom", data: earlier } }
-        : {}),
+      // Named explicitly: each device is two series, and the legend should name
+      // the device once rather than list both of its segments. `show` is what
+      // the component filters on, and the ids are what it hides by.
+      legend: {
+        show: true,
+        type: "custom",
+        data: [
+          ...this._ranked().map((device, index) => ({
+            id: `${device.key}:paid`,
+            // Every series the device owns, or hiding it would strand one
+            // behind. The earlier bar is owned here as well as by the period
+            // key below - two entries may name one series, and only an entry's
+            // own id decides how it draws itself.
+            secondaryIds: [
+              `${device.key}:saved`,
+              ...(device.before ? [`${device.key}:before`] : []),
+            ],
+            name: device.name,
+            // The solid colour, not the fill: a wash of a hue is harder to tell
+            // from its neighbour than the hue itself.
+            itemStyle: { color: this._colourFor(device, index) },
+          })),
+          ...this._earlierKey(),
+        ],
+      },
     };
   }
 }
