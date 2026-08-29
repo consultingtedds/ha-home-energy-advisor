@@ -45,9 +45,21 @@ const ready = (card) => settled(expect, card);
 const chartOf = (card) => card.shadowRoot.querySelector("ha-chart-base");
 const legendOf = (card) => chartOf(card).options.legend;
 
-/** A device's two segments, paid first, in the order the card emits them. */
-const deviceSeries = (card, key) =>
-  chartOf(card).data.filter((series) => series.id.startsWith(`${key}:`));
+const seriesOf = (card, id) => chartOf(card).data.find((series) => series.id === id);
+
+/** The device names down the axis, dearest first. */
+const rowsOf = (card) => chartOf(card).options.yAxis.data;
+
+/**
+ * One device's point in one series.
+ *
+ * Every series now holds every device, so a device is a position rather than a
+ * series of its own - which is the whole shape of the change (HEA-100). Found
+ * by name through the axis, never by a fixed index, so a test cannot pass by
+ * agreeing with the card about an ordering neither of them checked.
+ */
+const pointFor = (card, id, name) =>
+  seriesOf(card, id).data[rowsOf(card).indexOf(name)];
 
 /** The `r, g, b` of a colour, so two strengths of one hue compare equal. */
 const channelsOf = (colour) =>
@@ -77,6 +89,12 @@ describe("registration", () => {
     expect(() => register()).not.toThrow();
   });
 
+  it("offers an editor, so Home Assistant stops showing raw yaml", () => {
+    // Given / When / Then - HEA-73; without one the user is asked to know that
+    // a device is called `cloud_polled_pump`
+    expect(customElements.get(TAG).getConfigElement()).toBeInstanceOf(HTMLElement);
+  });
+
   it("names itself when no title is configured", async () => {
     // Given / When
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
@@ -96,10 +114,9 @@ describe("the bars", () => {
     const card = mount(aHass({ devices: [PUMP], response: THREE }));
     await ready(card);
 
-    // Then - 3.00 paid of 4.00 at grid price, so 1.00 stands above it
-    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
-    expect(paid.data[0]).toBe(3.0);
-    expect(saved.data[0]).toBe(1.0);
+    // Then - 3.00 paid of 4.00 at grid price, so 1.00 stands beyond it
+    expect(pointFor(card, "paid", "Cloud Polled Pump").value).toBe(3.0);
+    expect(pointFor(card, "saved", "Cloud Polled Pump").value).toBe(1.0);
   });
 
   it("tints the saving rather than leaving it hollow", async () => {
@@ -110,7 +127,8 @@ describe("the bars", () => {
     await ready(card);
 
     // Then
-    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
+    const paid = pointFor(card, "paid", "Cloud Polled Pump");
+    const saved = pointFor(card, "saved", "Cloud Polled Pump");
     expect(saved.itemStyle.color).not.toBe("transparent");
     expect(saved.itemStyle.color).not.toBe(paid.itemStyle.color);
     expect(saved.itemStyle.color).toMatch(/^rgba\(/);
@@ -124,50 +142,58 @@ describe("the bars", () => {
     await ready(card);
 
     // Then
-    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
-    expect(paid.itemStyle.borderWidth).toBeFalsy();
-    expect(saved.itemStyle.borderWidth).toBeGreaterThan(0);
+    expect(
+      pointFor(card, "paid", "Cloud Polled Pump").itemStyle.borderWidth,
+    ).toBeFalsy();
+    expect(
+      pointFor(card, "saved", "Cloud Polled Pump").itemStyle.borderWidth,
+    ).toBeGreaterThan(0);
   });
 
   it("draws each device in a hue of its own", async () => {
-    // Given / When
+    // Given - two series now hold every device, so the colour has to travel on
+    // each point. Carried on the series instead it would encode Paid and Saved,
+    // and every device on the chart would share one colour - which is what the
+    // palette exists to prevent (HEA-100)
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
     // Then - the outline and the fill beneath it are one colour at two
     // strengths, and the next device does not borrow it
-    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
+    const paid = pointFor(card, "paid", "Cloud Polled Pump");
+    const saved = pointFor(card, "saved", "Cloud Polled Pump");
     expect(channelsOf(saved.itemStyle.color)).toBe(
       channelsOf(tint(saved.itemStyle.borderColor, 1)),
     );
     expect(channelsOf(paid.itemStyle.color)).toBe(
       channelsOf(saved.itemStyle.color),
     );
-    const [otherPaid] = deviceSeries(card, "slow_poll_aircon");
+    const otherPaid = pointFor(card, "paid", "Slow Poll Aircon");
     expect(channelsOf(otherPaid.itemStyle.color)).not.toBe(
       channelsOf(paid.itemStyle.color),
     );
   });
 
-  it("stacks each device on its own, so devices sit side by side", async () => {
+  it("stacks the spend and the saving into one bar per device", async () => {
     // Given / When
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then - a shared stack would pile every device into one column
-    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
-    const [otherPaid] = deviceSeries(card, "slow_poll_aircon");
-    expect(paid.stack).toBe(saved.stack);
-    expect(paid.stack).not.toBe(otherPaid.stack);
+    // Then - one stack, so a device's bar runs to Would have paid. Devices are
+    // separated by their row on the axis now, not by a stack of their own
+    expect(seriesOf(card, "paid").stack).toBe(seriesOf(card, "saved").stack);
   });
 
-  it("orders the dearest device first", async () => {
+  it("puts the dearest device at the top", async () => {
     // Given - "which device costs most" is the question the bars answer
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then
-    expect(chartOf(card).options.legend.data[0].name).toBe("Cloud Polled Pump");
+    // Then - first in the axis data, and the axis inverted so first reads as
+    // topmost: a category axis counts up from the bottom and would otherwise
+    // stand the ranking on its head
+    expect(rowsOf(card)[0]).toBe("Cloud Polled Pump");
+    expect(chartOf(card).options.yAxis.inverse).toBe(true);
   });
 
   it("gives the Untracked remainder a colour of its own", async () => {
@@ -177,9 +203,9 @@ describe("the bars", () => {
     await ready(card);
 
     // Then
-    const [, untracked] = deviceSeries(card, "untracked_energy_devices");
-    const [, aircon] = deviceSeries(card, "slow_poll_aircon");
-    expect(untracked.itemStyle.borderColor).not.toBe(aircon.itemStyle.borderColor);
+    expect(pointFor(card, "saved", "Untracked").itemStyle.borderColor).not.toBe(
+      pointFor(card, "saved", "Slow Poll Aircon").itemStyle.borderColor,
+    );
   });
 
   it("keeps a loss below the axis and marks it apart from the device", async () => {
@@ -191,8 +217,8 @@ describe("the bars", () => {
       }),
     );
     await ready(saving);
-    const [, gained] = deviceSeries(saving, "slow_poll_aircon");
-    const gainedOutline = gained.itemStyle.borderColor;
+    const gainedOutline = pointFor(saving, "saved", "Slow Poll Aircon").itemStyle
+      .borderColor;
 
     // When - the same device, having lost rather than saved
     document.body.replaceChildren();
@@ -207,8 +233,8 @@ describe("the bars", () => {
     // Then - negative is how Home Assistant renders exported energy, and the
     // loss takes the error colour rather than the device's, so it is not read
     // as a gain
-    const [, lost] = deviceSeries(losing, "slow_poll_aircon");
-    expect(lost.data[0]).toBe(-2);
+    const lost = pointFor(losing, "saved", "Slow Poll Aircon");
+    expect(lost.value).toBe(-2);
     expect(lost.itemStyle.borderColor).not.toBe(gainedOutline);
     expect(channelsOf(lost.itemStyle.color)).toBe(
       channelsOf(tint(lost.itemStyle.borderColor, 1)),
@@ -240,7 +266,7 @@ describe("comparing against an earlier period", () => {
       compareMode: "previous",
     });
     await vi.waitFor(() =>
-      expect(chartOf(card).data.some((s) => s.id.endsWith(":before"))).toBe(true),
+      expect(chartOf(card).data.some((s) => s.id === EARLIER_ID)).toBe(true),
     );
     return card;
   };
@@ -250,53 +276,40 @@ describe("comparing against an earlier period", () => {
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then - two series per device and no more
-    expect(chartOf(card).data).toHaveLength(4);
-    expect(chartOf(card).data.some((s) => s.id.endsWith(":before"))).toBe(false);
+    // Then - the spend and the saving, whatever the device count, and no more
+    expect(chartOf(card).data).toHaveLength(2);
+    expect(chartOf(card).data.some((s) => s.id === EARLIER_ID)).toBe(false);
   });
 
   it("puts the earlier period beside each device, not on top of it", async () => {
     // Given / When
     const card = await comparing();
 
-    // Then - a third series in a stack of its own. Its own stack is what makes
-    // ECharts place it beside the device rather than piling it on: the two
-    // segments that share `stack: device.key` are the parts of one bar, and an
-    // earlier period is not a part of this one
-    const before = chartOf(card).data.find(
-      (s) => s.id === "slow_poll_aircon:before",
-    );
-    expect(before.data).toEqual([1.7]);
-    expect(before.stack).not.toBe("slow_poll_aircon");
+    // Then - a third series in a stack of its own, which is what makes ECharts
+    // set it beside the device's bar rather than piling it on: the two
+    // segments sharing the cost stack are parts of one bar, and an earlier
+    // period is not a part of this one
+    expect(pointFor(card, EARLIER_ID, "Slow Poll Aircon").value).toBe(1.7);
+    expect(seriesOf(card, EARLIER_ID).stack).not.toBe(seriesOf(card, "paid").stack);
   });
 
-  /** The legend entries that name a device, as against the period key. */
-  const deviceEntries = (card) =>
-    legendOf(card).data.filter((entry) => entry.id !== EARLIER_ID);
-
-  it("keeps one legend entry per device, covering its earlier bar too", async () => {
-    // Given / When
+  it("reports a device with no earlier bucket as having spent nothing then", async () => {
+    // Given / When - the pump has no bucket in the earlier window, only the
+    // aircon does
     const card = await comparing();
 
-    // Then - still one entry per device, and clicking it hides every series
-    // the device owns. An entry that missed the new one would leave a stray
-    // bar behind when the user hid the device
-    const entries = deviceEntries(card);
-    expect(entries).toHaveLength(2);
-    const ids = new Set(chartOf(card).data.map((s) => s.id));
-    for (const entry of entries) {
-      expect([entry.id, ...entry.secondaryIds].every((id) => ids.has(id))).toBe(true);
-    }
-    expect(
-      entries.flatMap((e) => [e.id, ...e.secondaryIds]).length,
-    ).toBe(ids.size);
+    // Then - zero, not absent. Both windows are fetched for the same device
+    // list, so every row comes back with an earlier self and a device that did
+    // not run reads as zero - the same deliberate choice the devices table
+    // makes, where statistics cannot tell "did not run" from "was not tracked
+    // yet" and the first is far the commoner
+    expect(pointFor(card, EARLIER_ID, "Cloud Polled Pump").value).toBe(0);
   });
 
   it("says which bar is the earlier period", async () => {
     // Given - two adjacent bars in near-identical strengths of one hue read as
-    // two devices long before they read as two periods, and the legend named
-    // only the devices. The sibling over-time chart carries an "Earlier period"
-    // entry on the same screen; this one carried nothing (HEA-99).
+    // two devices long before they read as two periods. The sibling over-time
+    // chart carries an "Earlier period" entry on the same screen (HEA-99).
     // When
     const card = await comparing();
 
@@ -305,48 +318,40 @@ describe("comparing against an earlier period", () => {
     expect(entry.name).toBe(LABELS.compared_series);
   });
 
-  it("hides every device's earlier bar together from that one entry", async () => {
-    // Given / When - the component hides a legend entry's `id` plus its
-    // `secondaryIds` as one set, so the entry has to name all of them
+  it("names the ghost series outright, with nothing to fan out to", async () => {
+    // Given - there is one ghost series now rather than one per device, so the
+    // entry's id can simply be it. The `secondaryIds` fan-out existed only to
+    // gather a device's several series, and the sentinel id existed only so
+    // this key would not grey itself out when one device was hidden - both are
+    // gone with the thing that needed them (HEA-100)
     const card = await comparing();
 
-    // Then
+    // When
     const entry = legendOf(card).data.find((item) => item.id === EARLIER_ID);
-    const ghosts = chartOf(card)
-      .data.filter((series) => series.id.endsWith(":before"))
-      .map((series) => series.id);
-    expect(ghosts).toHaveLength(2);
-    expect(new Set(entry.secondaryIds)).toEqual(new Set(ghosts));
+
+    // Then - the id resolves to a real series, which is what the component
+    // hides by
+    expect(entry.secondaryIds).toBeUndefined();
+    expect(chartOf(card).data.some((series) => series.id === entry.id)).toBe(true);
   });
 
-  it("does not grey itself out when a single device is hidden", async () => {
-    // Given - `ha-chart-base` marks an entry hidden by testing its *own* id
-    // against the hidden set, not its secondaryIds. Every `:before` series is
-    // already owned by its device's entry, so an "Earlier period" entry whose
-    // id was one of them would grey out the moment that one device was hidden,
-    // while the other devices' ghost bars stayed on the chart.
-    const card = await comparing();
-
-    // When - the ids hiding one device puts into the hidden set
-    const aircon = deviceEntries(card).find((entry) =>
-      entry.id.startsWith("slow_poll_aircon:"),
-    );
-    const hiddenByDevice = new Set([aircon.id, ...aircon.secondaryIds]);
-
-    // Then - the period entry's own id is not among them, so it stays lit
-    const entry = legendOf(card).data.find((item) => item.id === EARLIER_ID);
-    expect(hiddenByDevice.has(entry.id)).toBe(false);
-    expect(chartOf(card).data.some((series) => series.id === entry.id)).toBe(false);
-  });
-
-  it("offers no period entry when nobody asked to compare", async () => {
-    // Given / When - the default, where there is only one period on the chart
-    // and a key distinguishing it from nothing would be noise
+  it("offers no legend at all when nobody asked to compare", async () => {
+    // Given / When - the default. One entry per device cost 164px of a 305px
+    // card and left 141px of chart; with the names on the axis there is
+    // nothing left for a legend to say (HEA-100)
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
     // Then
-    expect(legendOf(card).data.some((item) => item.id === EARLIER_ID)).toBe(false);
+    expect(chartOf(card).options.legend).toBeUndefined();
+  });
+
+  it("carries exactly one entry while comparing", async () => {
+    // Given / When
+    const card = await comparing();
+
+    // Then - a legend of one is worth its 24px; a legend of fifteen was not
+    expect(legendOf(card).data).toHaveLength(1);
   });
 
   it("colours the tooltip's change by whether it is good news", async () => {
@@ -356,7 +361,7 @@ describe("comparing against an earlier period", () => {
     // When - the aircon cost EUR 1.20 less than the period before
     const card = await comparing();
     const shown = chartOf(card).options.tooltip.formatter({
-      seriesId: "slow_poll_aircon:before",
+      dataIndex: rowsOf(card).indexOf("Slow Poll Aircon"),
     });
 
     // Then - a fall in what was paid is good news, and says so
@@ -367,91 +372,134 @@ describe("comparing against an earlier period", () => {
     expect(change.querySelector("span:last-child").style.color).toBe("#4caf50");
   });
 
-  it("answers for the device from its earlier bar as well", async () => {
-    // Given / When - the tooltip resolves a device from the hovered series id,
-    // and a new suffix it did not know would render nothing at all
+  it("answers for the device whichever of its bars is hovered", async () => {
+    // Given / When - every series holds every device now, so the row is what
+    // identifies the device and the series hovered does not matter
     const card = await comparing();
+    const row = rowsOf(card).indexOf("Slow Poll Aircon");
 
     // Then
-    const shown = chartOf(card).options.tooltip.formatter({
-      seriesId: "slow_poll_aircon:before",
-    }).textContent;
+    const shown = chartOf(card).options.tooltip.formatter({ dataIndex: row })
+      .textContent;
     expect(shown).toContain("Slow Poll Aircon");
     expect(shown).toMatch(/[-−]\D*1[.,]20/);
   });
 });
 
-describe("the legend", () => {
-  it("puts the devices in the legend, not on the axis", async () => {
-    // Given - fourteen device names along an axis is what made the first
-    // attempt unreadable; Home Assistant's own charts name series in a legend
-    // and leave the axis to the period
+describe("naming the devices", () => {
+  it("puts the devices on the axis, not in a legend", async () => {
+    // Given - the reverse of what this card first did, and for a reason that
+    // only holds one way round. Names along a *vertical* axis overlap into
+    // illegibility, which is why they went to the legend; turned on its side
+    // each name is a row label with a whole row to itself (HEA-100)
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then - one category for the whole period, and the names in the legend
-    expect(chartOf(card).options.xAxis.type).toBe("category");
-    expect(chartOf(card).options.xAxis.data).toHaveLength(1);
-    expect(legendOf(card).data.map((entry) => entry.name)).toEqual([
-      "Cloud Polled Pump",
-      "Slow Poll Aircon",
-    ]);
+    // Then - dearest first, down the side
+    expect(chartOf(card).options.yAxis.type).toBe("category");
+    expect(rowsOf(card)).toEqual(["Cloud Polled Pump", "Slow Poll Aircon"]);
+  });
+
+  it("runs the value along the bottom", async () => {
+    // Given / When - the axes swap with the bars
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(chartOf(card).options.xAxis.type).toBe("value");
+  });
+
+  it("leaves room for names the household wrote", async () => {
+    // Given - how wide a name is cannot be known here: it is whatever was
+    // typed into the device registry. Measuring it is the chart's job, and
+    // without being told to, it will crop them
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(chartOf(card).options.grid.containLabel).toBe(true);
   });
 
   it("asks for the legend in the only shape that renders one", async () => {
     // Given - `ha-chart-base` builds its legend from the first option that is
     // both `show` and `type: "custom"`, and silently draws none otherwise. A
-    // custom legend omitting `show` is the defect this card shipped with.
-    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    // custom legend omitting `show` is a defect this card has shipped before,
+    // and the one remaining entry still has to satisfy it.
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: [AIRCON, PUMP], response: THREE, collection });
+    const card = mount(hass);
     await ready(card);
 
+    // When - the only case that draws a legend at all
+    const may = new Date(2026, 4, 20);
+    hass.callWS = vi.fn().mockResolvedValue({
+      ...THREE,
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 0.5 },
+        { start: new Date(2026, 3, 1).getTime(), change: 1.7 },
+      ],
+    });
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+
     // Then
+    await vi.waitFor(() => expect(legendOf(card)).toBeDefined());
     expect(legendOf(card).show).toBe(true);
     expect(legendOf(card).type).toBe("custom");
   });
+});
 
-  it("gives every device one legend entry, not one per segment", async () => {
-    // Given - each device is drawn as two stacked series, which would
-    // otherwise put its name in the legend twice
+describe("how tall the card stands", () => {
+  /** Ten devices, which is nearer the fourteen the reference instance tracks. */
+  const TEN = Array.from({ length: 10 }, (_, index) =>
+    aDeviceRow(`tracked_device_${index}`, `Tracked Device ${index}`),
+  );
+  const TEN_RESPONSE = Object.assign(
+    {},
+    ...TEN.map((device, index) =>
+      bucketsFor(device.key, 10, index + 1, index + 2),
+    ),
+  );
+
+  it("takes a row per device rather than a share of the screen", async () => {
+    // Given - fifteen devices need fifteen rows whatever the screen is. The
+    // base class's viewport clamp is right for a chart against time and wrong
+    // for one against categories, which is why it is overridable (HEA-100)
+    const few = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(few);
+    const shortest = Number.parseInt(chartOf(few).height, 10);
+
+    // When - the same card carrying ten devices instead of two
+    document.body.replaceChildren();
+    const many = mount(aHass({ devices: TEN, response: TEN_RESPONSE }));
+    await ready(many);
+
+    // Then - taller, because it has more rows to draw. A height that ignored
+    // the count is what let fifteen devices squeeze into a 141px plot
+    expect(Number.parseInt(chartOf(many).height, 10)).toBeGreaterThan(shortest);
+    expect(chartOf(many).height).toMatch(/^\d+px$/);
+  });
+
+  it("keeps a small household off a sliver of a card", async () => {
+    // Given / When - two devices would otherwise ask for two rows and little
+    // else, which reads as a broken card rather than a short list
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
     // Then
-    expect(chartOf(card).data).toHaveLength(4);
-    expect(legendOf(card).data).toHaveLength(2);
-  });
-
-  it("names series that exist, so clicking an entry hides the device", async () => {
-    // Given - the component hides by matching a legend entry's `id` against a
-    // series `id`, and toggles the rest of the device through `secondaryIds`.
-    // An entry naming neither would render and then do nothing when clicked.
-    const card = mount(aHass({ devices: [PUMP], response: THREE }));
-    await ready(card);
-
-    // Then
-    const ids = new Set(chartOf(card).data.map((series) => series.id));
-    const [entry] = legendOf(card).data;
-    expect(ids.has(entry.id)).toBe(true);
-    expect(entry.secondaryIds.every((id) => ids.has(id))).toBe(true);
-    expect([entry.id, ...entry.secondaryIds]).toHaveLength(ids.size);
-  });
-
-  it("swatches the device in its solid colour, not the faded fill", async () => {
-    // Given - the swatch is the key to the bar, and a wash of a colour is
-    // harder to tell from its neighbour than the colour itself
-    const card = mount(aHass({ devices: [PUMP], response: THREE }));
-    await ready(card);
-
-    // Then
-    const [entry] = legendOf(card).data;
-    const [, saved] = deviceSeries(card, "cloud_polled_pump");
-    expect(entry.itemStyle.color).toBe(saved.itemStyle.borderColor);
+    expect(Number.parseInt(chartOf(card).height, 10)).toBeGreaterThanOrEqual(240);
   });
 });
 
 describe("the tooltip", () => {
-  const hover = (card, seriesId) =>
-    chartOf(card).options.tooltip.formatter({ seriesId }).textContent;
+  /** Hover a device's row, which is what identifies it now. */
+  const hover = (card, name) =>
+    chartOf(card).options.tooltip.formatter({
+      dataIndex: rowsOf(card).indexOf(name),
+    }).textContent;
 
   it("answers for the whole device, whichever segment is hovered", async () => {
     // Given - an axis tooltip lists every series at the category, which for a
@@ -460,15 +508,15 @@ describe("the tooltip", () => {
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
     await ready(card);
 
-    // Then - one device, its three figures, and the same answer from either
-    // half of its bar
-    const shown = hover(card, "cloud_polled_pump:paid");
+    // Then - one device and its three figures. Both halves of a bar share a
+    // row, so both resolve to the same device without the tooltip having to
+    // know which series was under the cursor
+    const shown = hover(card, "Cloud Polled Pump");
     expect(shown).toContain("Cloud Polled Pump");
     expect(shown).not.toContain("Slow Poll Aircon");
     expect(shown).toMatch(/Paid.*€3[.,]00/);
     expect(shown).toMatch(/Saved.*€1[.,]00/);
     expect(shown).toMatch(/Would have paid.*€4[.,]00/);
-    expect(hover(card, "cloud_polled_pump:saved")).toBe(shown);
   });
 
   it("formats the figures as money", async () => {
@@ -483,7 +531,7 @@ describe("the tooltip", () => {
     await ready(card);
 
     // Then
-    const shown = hover(card, "slow_poll_aircon:paid");
+    const shown = hover(card, "Slow Poll Aircon");
     expect(shown).toMatch(/€/);
     expect(shown).not.toMatch(/\d[.,]\d{3}/);
   });
@@ -499,7 +547,7 @@ describe("the tooltip", () => {
     await ready(card);
 
     // Then
-    const shown = hover(card, "slow_poll_aircon:saved");
+    const shown = hover(card, "Slow Poll Aircon");
     expect(shown).not.toMatch(/Saved/);
     expect(shown).toMatch(/Lost.*€-?2[.,]00/);
   });
@@ -525,7 +573,7 @@ describe("the tooltip", () => {
     // - `floor = kwh × min(blends)` over the actual blended price - so a bare
     // "Could be between…" beneath three figures left the reader to guess
     // which one it qualified (HEA-88)
-    const shown = hover(card, "slow_poll_aircon:paid");
+    const shown = hover(card, "Slow Poll Aircon");
     expect(shown).toMatch(/What you paid could be between/);
     expect(shown).toMatch(/0[.,]40/);
     expect(shown).toMatch(/2[.,]10/);
@@ -537,17 +585,17 @@ describe("the tooltip", () => {
     await ready(card);
 
     // Then - silence, never "€0.00 - €0.00", which would claim exactness
-    expect(hover(card, "slow_poll_aircon:paid")).not.toMatch(/between/);
+    expect(hover(card, "Slow Poll Aircon")).not.toMatch(/between/);
   });
 
-  it("says nothing for a series it cannot place", async () => {
+  it("says nothing for a row it cannot place", async () => {
     // Given - returning undefined suppresses the tooltip, where a half-built
     // one would render an empty box against the cursor
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
     await ready(card);
 
-    // Then
-    expect(chartOf(card).options.tooltip.formatter({ seriesId: "gone:paid" })).toBe(
+    // Then - one device on the chart, so there is no second row to hover
+    expect(chartOf(card).options.tooltip.formatter({ dataIndex: 7 })).toBe(
       undefined,
     );
   });
@@ -560,7 +608,7 @@ describe("the options handed to the chart", () => {
     await ready(card);
 
     // Then
-    const label = chartOf(card).options.yAxis.axisLabel.formatter(3);
+    const label = chartOf(card).options.xAxis.axisLabel.formatter(3);
     expect(label).toMatch(/€/);
     expect(label).toMatch(/3[.,]00/);
   });
