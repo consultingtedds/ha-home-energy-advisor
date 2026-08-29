@@ -34,19 +34,30 @@ export class HeaChartCard extends HeaCard {
    * How tall the chart stands, because left alone it is half its own width.
    *
    * `ha-chart-base` sizes itself `max(clientWidth / 2, 200)` when no height is
-   * given, so the same chart is 350px on a desktop and 200px across a phone in
-   * portrait - which is where "what each device cost" was reported as having
-   * almost no vertical scale (HEA-93).
+   * given, so the same chart falls to 200px across a phone in portrait while
+   * standing at 418px on a desktop - measured live (HEA-93).
    *
-   * The clamp only ever raises that floor: any card wide enough to reach 350px
-   * still does, since the component caps at `--chart-max-height` (350px) too.
-   * Set as a property rather than as CSS on the host, which would size the
-   * element without reaching the inner container that actually draws.
+   * A viewport clamp rather than a fixed height, since the card's own width is
+   * not knowable before it renders and `vw` is the closest honest proxy. Set as
+   * a property rather than as CSS on the host, which would size the element
+   * without reaching the inner container that actually draws.
    */
-  static chartHeight = "clamp(300px, 50vw, 350px)";
+  static chartHeight = "clamp(320px, 40vw, 480px)";
 
+  /**
+   * The cap comes with the height, so lifting it is part of asking.
+   *
+   * `ha-chart-base` puts `max-height: var(--chart-max-height, 350px)` on its
+   * container, but only once a height is set - the class is `has-height`. So a
+   * chart left alone grows past 350px and one that asks for a height cannot,
+   * which made a first attempt at this *shorten* the desktop chart from 418px
+   * to 350px while fixing the phone (measured live, HEA-93).
+   *
+   * A custom property because it has to cross into that component's shadow
+   * root, where an ordinary rule of ours could never reach.
+   */
   static cardStyle = `
-    ha-chart-base { display: block; }
+    ha-chart-base { display: block; --chart-max-height: none; }
   `;
 
   constructor() {
@@ -135,9 +146,20 @@ export class HeaChartCard extends HeaCard {
     this._draw(chart);
   }
 
+  /**
+   * How tall to stand now, for a card whose answer depends on its data.
+   *
+   * A chart of categories needs a row's worth of height each, which the
+   * viewport cannot tell it - so this is overridable the way `titleKey` and
+   * `emptyKey` are.
+   */
+  _chartHeight() {
+    return this.constructor.chartHeight;
+  }
+
   /** What to set on the component once it is in the tree. */
   _draw(chart) {
-    chart.height = this.constructor.chartHeight;
+    chart.height = this._chartHeight();
     chart.data = this._series();
     chart.options = this._options(this._chartLocale());
   }

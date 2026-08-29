@@ -497,9 +497,26 @@ describe("the options handed to the chart", () => {
 
     // Then - set as the property the component reads. CSS height on the host
     // does not reach the inner container that does the sizing, so styling it
-    // would look like a fix and change nothing. The clamp only ever raises the
-    // portrait floor: anything wide enough already lands on the same 350px
-    expect(chartOf(card).height).toBe("clamp(300px, 50vw, 350px)");
+    // would look like a fix and change nothing
+    expect(chartOf(card).height).toBe("clamp(320px, 40vw, 480px)");
+  });
+
+  it("lifts the height cap that asking for a height turns on", async () => {
+    // Given - measured on the reference instance: with no height set the chart
+    // stood at 418px on a desktop, and asking for one *shortened* it to 350,
+    // because `.container.has-height` carries `max-height:
+    // var(--chart-max-height, 350px)`. The cap is inert until the moment you
+    // ask, so a height request silently costs height on any card wide enough
+    // to want it - which is how this shipped as a regression (HEA-93)
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+
+    // When
+    await ready(card);
+
+    // Then - a custom property, because it has to cross into the component's
+    // own shadow root where an ordinary rule of ours could never reach
+    const styles = card.shadowRoot.querySelector("style").textContent;
+    expect(styles).toContain("--chart-max-height");
   });
 
   it("labels the value axis in the household's currency", async () => {
