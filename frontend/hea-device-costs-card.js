@@ -17,7 +17,7 @@
  * **The household picks which way the bars run** (`layout`, HEA-100), because
  * the two readings trade against each other and neither wins outright.
  *
- * Standing up, the default: devices are named in the legend rather than along
+ * Standing up: devices are named in the legend rather than along
  * the axis, because fourteen names on a *vertical* category axis overlap into
  * illegibility, and Home Assistant's own charts solve it the same way -
  * `ha-chart-base` builds an HTML legend and collapses the overflow behind a
@@ -111,7 +111,7 @@ export const EARLIER_ID = "earlier-period";
 /**
  * Which way the bars run, and why the household picks rather than the card.
  *
- * **Vertical** is the default and the original: a bar per device standing up,
+ * **Vertical** is the original: a bar per device standing up,
  * named in the legend. The legend is the point - clicking an entry hides that
  * device, which is the only way to take a dominant device out and see the rest
  * against each other. Nothing on a chart axis can do that.
@@ -126,8 +126,26 @@ export const EARLIER_ID = "earlier-period";
  * Neither is right for everyone, so both ship (HEA-100). A household with four
  * devices wants the toggles; one with fifteen on a phone wants the room. The
  * card can be placed twice with a different layout each if both are wanted.
+ *
+ * **`auto` is the default**, and asks the screen. Measured at 500px card width
+ * with fifteen devices, the standing chart is not merely cramped: its 156px of
+ * plot has to carry a value axis too, so the bars compress to about 20px and
+ * the axis labels collapse on top of each other into an illegible smudge.
+ * There is no trade-off left to weigh at that width - the toggles are worth
+ * nothing on a chart that cannot be read - so the choice only really exists on
+ * a wide screen, and a household should not have to know the option is there
+ * to avoid the smudge.
  */
-const LAYOUTS = ["vertical", "horizontal"];
+const LAYOUTS = ["auto", "vertical", "horizontal"];
+
+/**
+ * Where the standing bars stop fitting.
+ *
+ * Home Assistant's own `_isMobileSize` breakpoint, which the distribution card
+ * already turns at - so the two cards on one screen turn together rather than
+ * one going sideways beside another that has not.
+ */
+const NARROW = "(max-width: 767px)";
 
 /** The series ids the horizontal layout uses, one per concept rather than per device. */
 const PAID_ID = "paid";
@@ -376,9 +394,21 @@ class HeaDeviceCostsCard extends HeaChartCard {
       : PALETTE[index % PALETTE.length];
   }
 
-  /** Which way the bars run; anything the card does not offer is the default. */
-  _layout() {
-    return LAYOUTS.includes(this._config?.layout) ? this._config.layout : "vertical";
+  /**
+   * Whether the bars lie down, which a household may settle or leave to the
+   * screen.
+   *
+   * A configured choice is honoured either way; anything else - including a
+   * layout this card does not offer, from a hand-edited dashboard - asks the
+   * screen. Where the browser cannot answer, because `matchMedia` is not
+   * universally present, the bars stand up: the legend and its toggles are the
+   * richer reading, and an unknown screen size is not a reason to give them up.
+   */
+  _sideways() {
+    const layout = this._config?.layout;
+    if (layout === "horizontal") return true;
+    if (layout === "vertical") return false;
+    return Boolean(globalThis.matchMedia?.(NARROW)?.matches);
   }
 
   /** True once any device carries an earlier self, which adds a second bar. */
@@ -387,7 +417,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 
   _series() {
-    return this._layout() === "horizontal"
+    return this._sideways()
       ? this._sidewaysSeries()
       : this._standingSeries();
   }
@@ -517,7 +547,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     // Sideways, every series holds every device, so the row is what identifies
     // one. Standing up, a device owns its series and the id carries its key.
     const device =
-      this._layout() === "horizontal"
+      this._sideways()
         ? rows[dataIndex]
         : rows.find(
             (candidate) =>
@@ -547,7 +577,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     // Sideways there is one ghost series rather than one per device, so the
     // entry's id can simply be it - nothing to fan out to, and no sentinel
     // needed to keep this key from greying itself out with a single device.
-    if (this._layout() === "horizontal") {
+    if (this._sideways()) {
       return [{ id: BEFORE_ID, name, itemStyle }];
     }
     return [
@@ -570,14 +600,14 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * against categories, which is why the height is overridable at all.
    */
   _chartHeight() {
-    if (this._layout() !== "horizontal") return super._chartHeight();
+    if (!this._sideways()) return super._chartHeight();
     const rows = this._ranked().length;
     const each = this._comparing() ? COMPARING_ROW_HEIGHT : ROW_HEIGHT;
     return `${Math.max(MIN_HEIGHT, AXIS_HEADROOM + rows * each)}px`;
   }
 
   _options(locale) {
-    return this._layout() === "horizontal"
+    return this._sideways()
       ? this._sidewaysOptions(locale)
       : this._standingOptions(locale);
   }

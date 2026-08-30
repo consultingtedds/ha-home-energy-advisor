@@ -15,7 +15,7 @@
  * requires is asserted here field by field.
  */
 
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EARLIER_ID, TAG, register, tint } from "../hea-device-costs-card.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
@@ -61,6 +61,12 @@ beforeAll(() => {
 
 beforeEach(() => {
   document.body.replaceChildren();
+});
+
+afterEach(() => {
+  // The layout tests stand up a screen size; left in place it would decide
+  // which way every later test's bars ran.
+  vi.unstubAllGlobals();
 });
 
 describe("registration", () => {
@@ -763,26 +769,103 @@ describe("laid out sideways", () => {
     expect(shown).toMatch(/Paid.*€3[.,]00/);
   });
 
-  it("stands the bars up when nothing asks otherwise", async () => {
-    // Given / When - the default keeps the legend, and with it the only way to
+  it("stands the bars up when a household asks for it", async () => {
+    // Given / When - vertical keeps the legend, and with it the only way to
     // hide a device and see the rest against each other
-    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
+      layout: "vertical",
+    });
     await ready(card);
 
     // Then
     expect(chartOf(card).options.xAxis.type).toBe("category");
     expect(legendOf(card).data).toHaveLength(2);
   });
+});
 
-  it("stands them up for a layout it does not offer", async () => {
-    // Given / When - a hand-edited dashboard yaml
+describe("choosing a layout by the screen", () => {
+  const withScreen = (matches) =>
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn().mockReturnValue({
+        matches,
+        addEventListener() {},
+        removeEventListener() {},
+      }),
+    );
+  const axisOf = (card) => chartOf(card).options.xAxis.type;
+
+  it("lays the bars down on a phone, unasked", async () => {
+    // Given - measured at 500px card width with fifteen devices, the standing
+    // chart is not merely cramped: 156px of plot has to carry a value axis too,
+    // so the bars compress to about 20px and the axis labels collapse into an
+    // illegible smudge. A household should not have to know the option exists
+    // to avoid that (HEA-100)
+    withScreen(true);
+
+    // When - no layout configured at all
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then - sideways, where the same fifteen devices read cleanly
+    expect(axisOf(card)).toBe("value");
+    expect(chartOf(card).options.legend).toBeUndefined();
+  });
+
+  it("stands them up on a wide screen, where the toggles are free", async () => {
+    // Given - the trade-off only exists where both are readable, and there the
+    // legend's click-to-hide is worth having
+    withScreen(false);
+
+    // When
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(axisOf(card)).toBe("category");
+    expect(legendOf(card).data).toHaveLength(2);
+  });
+
+  it("honours a household that has chosen, whatever the screen", async () => {
+    // Given - a choice is a choice; `auto` is only what happens absent one
+    withScreen(true);
+
+    // When
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
+      layout: "vertical",
+    });
+    await ready(card);
+
+    // Then - standing up on a phone, because that is what was asked for
+    expect(axisOf(card)).toBe("category");
+  });
+
+  it("stands them up where the browser cannot answer", async () => {
+    // Given - `matchMedia` is not universally present, and an unknown screen
+    // size is not a reason to give up the legend and its toggles
+    vi.stubGlobal("matchMedia", undefined);
+
+    // When
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(axisOf(card)).toBe("category");
+  });
+
+  it("asks the screen for a layout it does not offer", async () => {
+    // Given - a hand-edited dashboard yaml. Anything unrecognised is no choice
+    // at all, so it falls to the same question as no choice
+    withScreen(true);
+
+    // When
     const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
       layout: "diagonal",
     });
     await ready(card);
 
-    // Then - the default rather than an empty chart
-    expect(chartOf(card).options.xAxis.type).toBe("category");
+    // Then
+    expect(axisOf(card)).toBe("value");
   });
 });
 

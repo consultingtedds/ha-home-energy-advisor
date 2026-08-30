@@ -55,15 +55,16 @@ describe("a card's editor", () => {
   });
 
   it("lets the household pick which way the device-cost bars run", () => {
-    // Given - neither layout wins outright: standing up keeps the legend and
-    // with it the only way to hide a device, while sideways spends that height
-    // on the plot and puts the names on the axis. So the choice is offered
-    // rather than made for them, and the editor is where it is made (HEA-100)
+    // Given - neither layout wins outright on a wide screen: standing up keeps
+    // the legend and with it the only way to hide a device, while sideways
+    // spends that height on the plot and puts the names on the axis. So the
+    // choice is offered rather than made for them (HEA-100)
     const editor = anEditorFor(DEVICE_COSTS_TAG);
 
-    // When / Then
+    // When / Then - `auto` first, because it is the default: on a phone the
+    // standing chart is unreadable and there is no trade-off left to weigh
     const field = fieldOf(editor, "layout");
-    expect(field.selector.select.options).toEqual(["vertical", "horizontal"]);
+    expect(field.selector.select.options).toEqual(["auto", "vertical", "horizontal"]);
   });
 
   it("shows the configuration the card actually has", () => {
