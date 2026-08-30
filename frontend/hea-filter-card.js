@@ -24,7 +24,7 @@
 
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { readDevices } from "./hea-devices.js";
+import { readDevices, readLabelNames } from "./hea-devices.js";
 import { filterFor, setFilter, subscribeToFilter } from "./hea-filter.js";
 import { escapeText } from "./hea-format.js";
 import { labelsFor, loadLabels } from "./hea-labels.js";
@@ -171,10 +171,18 @@ class HeaFilterCard extends HTMLElement {
    * and a bucket would invite a household to read it as a group.
    */
   _labelOptions(devices) {
+    const names = readLabelNames(this._hass);
     const used = new Set(devices.flatMap((device) => device.labels ?? []));
     return [...used]
-      .sort((left, right) => left.localeCompare(right))
-      .map((label) => ({ value: encode({ kind: "label", id: label }), text: label }));
+      .map((label) => ({
+        value: encode({ kind: "label", id: label }),
+        // The id is what a filter matches on and what survives a rename; the
+        // name is what a household reads. A label called "high draw" has
+        // the id `lifetime_counter_plug`, and showing that would put an underscore in
+        // front of them.
+        text: names[label] ?? label,
+      }))
+      .sort((left, right) => left.text.localeCompare(right.text));
   }
 
   _groups() {

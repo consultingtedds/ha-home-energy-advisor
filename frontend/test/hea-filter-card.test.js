@@ -158,16 +158,48 @@ describe("the options it offers", () => {
     // Given - one label on two devices, none on the third
     const labelled = [
       { ...AIRCON, labels: ["aircon"] },
-      { ...KETTLE, labels: ["aircon", "kitchen-gear"] },
+      { ...KETTLE, labels: ["aircon", "kitchen_gear"] },
       PUMP,
     ];
 
     // When
-    const card = mount(aHass({ devices: labelled }));
+    const card = mount(
+      aHass({
+        devices: labelled,
+        labels: { aircon: "aircon", kitchen_gear: "kitchen gear" },
+      }),
+    );
 
     // Then - each named once, and no unfiled bucket: a device without labels
     // is not "unlabelled", it simply is not in any of them
-    expect(namesIn(card, LABELS.filter_labels)).toEqual(["aircon", "kitchen-gear"]);
+    expect(namesIn(card, LABELS.filter_labels)).toEqual(["aircon", "kitchen gear"]);
+  });
+
+  it("shows what a label is called, not its id", async () => {
+    // Given - a label whose id is not its name, which the reference instance
+    // has: `lifetime_counter_plug` is called "high draw". Showing the id would put
+    // an underscore in front of the household (HEA-95)
+    const card = mount(
+      aHass({
+        devices: [{ ...AIRCON, labels: ["lifetime_counter_plug"] }, PUMP],
+        labels: { lifetime_counter_plug: "high draw" },
+      }),
+    );
+
+    // Then - the name is shown, and the id is what gets selected
+    expect(namesIn(card, LABELS.filter_labels)).toEqual(["high draw"]);
+    choose(card, "label:lifetime_counter_plug");
+    expect(filterFor(KEY)).toEqual({ kind: "label", id: "lifetime_counter_plug" });
+  });
+
+  it("falls back to the id where the integration names no labels", async () => {
+    // Given - a card newer than the instance it runs against, publishing rows
+    // with labels but no names beside them. A blank option would be worse than
+    // a slug
+    const card = mount(aHass({ devices: [{ ...AIRCON, labels: ["aircon"] }, PUMP] }));
+
+    // Then
+    expect(namesIn(card, LABELS.filter_labels)).toEqual(["aircon"]);
   });
 });
 

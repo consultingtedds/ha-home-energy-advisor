@@ -51,6 +51,24 @@ export const readWholeHome = (hass, entityId = DEVICES_SENSOR) => {
   return row?.key ? toDevice(row) : null;
 };
 
+/**
+ * What each label a device carries is called, keyed by its id.
+ *
+ * The rows carry ids, which is what a filter matches on and what survives a
+ * rename; an id is not presentable, though - a label called "high draw" has
+ * the id `lifetime_counter_plug` - so the names travel beside the list and are resolved
+ * once rather than repeated on every row.
+ *
+ * Empty where the integration is older than labels, which is the case a card
+ * must survive: it simply offers no labels to filter by (HEA-95).
+ *
+ * @returns {Record<string, string>}
+ */
+export const readLabelNames = (hass, entityId = DEVICES_SENSOR) => {
+  const names = hass?.states?.[entityId]?.attributes?.labels;
+  return names && typeof names === "object" ? names : {};
+};
+
 const toDevice = (row) => ({
   key: row.key,
   // A device whose name has not resolved yet still has to label its row.

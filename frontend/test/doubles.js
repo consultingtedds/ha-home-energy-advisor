@@ -162,6 +162,9 @@ export const aHass = ({
   // rather than in it: cards sum that list, so a row there would double every
   // figure. Present on any current integration.
   wholeHome = aDeviceRow("whole_home", "Whole Home"),
+  // What each label is called, keyed by id - published beside the rows because
+  // a name belongs to the label rather than to each device wearing it.
+  labels,
   callWS,
 } = {}) => ({
   connection: collection ? { "_energy_hea-costs": collection } : {},
@@ -169,7 +172,11 @@ export const aHass = ({
     ? {
         [DEVICES_SENSOR]: {
           state: String(devices.length),
-          attributes: { devices, whole_home: wholeHome ?? undefined },
+          attributes: {
+            devices,
+            whole_home: wholeHome ?? undefined,
+            labels: labels ?? undefined,
+          },
         },
       }
     : {},

@@ -22,6 +22,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import floor_registry as fr
+from homeassistant.helpers import label_registry as lr
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -824,9 +825,17 @@ def _place_source_in_an_area(
     )
 
 
-async def _devices_payload(
+def _source_device_id(hass: HomeAssistant, source: str) -> str:
+    """The device behind a registered source entity, which is where labels sit."""
+    registered = er.async_get(hass).async_get(source)
+    assert registered is not None
+    assert registered.device_id is not None
+    return registered.device_id
+
+
+async def _devices_state(
     hass: HomeAssistant, entry: MockConfigEntry, freezer: FrozenDateTimeFactory
-) -> dict[str, Any]:
+) -> State:
     await _tick(hass, freezer)
     entity_id = er.async_get(hass).async_get_entity_id(
         "sensor", DOMAIN, f"{entry.entry_id}_devices"
@@ -834,6 +843,13 @@ async def _devices_payload(
     assert entity_id is not None
     state = hass.states.get(entity_id)
     assert state is not None
+    return state
+
+
+async def _devices_payload(
+    hass: HomeAssistant, entry: MockConfigEntry, freezer: FrozenDateTimeFactory
+) -> dict[str, Any]:
+    state = await _devices_state(hass, entry, freezer)
     return {device["key"]: device for device in state.attributes["devices"]}
 
 
@@ -953,6 +969,104 @@ async def test_devices_sensor_leaves_the_hierarchy_null_when_there_is_none(
     untracked = by_key["untracked_energy_devices"]
     assert untracked["area_id"] is None
     assert untracked["floor_name"] is None
+
+
+async def test_devices_sensor_publishes_the_source_devices_labels(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household that has labelled its aircon units. Measured on the
+    # reference instance, the `aircon` label sits on nine devices and zero
+    # entities, so a device's labels are where this actually lives (HEA-95)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
+    _seed_states(hass)
+    label = lr.async_get(hass).async_create("aircon")
+    source = er.async_get(hass).async_get_entity_id(
+        "sensor", "aircon_integration", "unique_sensor.coarse_step_energy"
+    )
+    assert source is not None
+    dr.async_get(hass).async_update_device(
+        _source_device_id(hass, source), labels={label.label_id}
+    )
+
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When
+    by_key = await _devices_payload(hass, entry, freezer)
+
+    # Then - resolved through the source, exactly as the area is. Reading the
+    # labels off HEA's own devices would ask a household to label ours instead
+    # of their own hardware
+    assert by_key["coarse_step_aircon"]["labels"] == ["aircon"]
+    assert by_key["untracked_energy_devices"]["labels"] == []
+
+
+async def test_labels_on_the_source_entity_join_its_devices(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a label on the device and a different one on its entity. Unlike an
+    # area, which is a place a thing is in and so has one answer, a label is a
+    # tag: both are true at once, so both belong (HEA-95)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
+    _seed_states(hass)
+    labels = lr.async_get(hass)
+    on_device = labels.async_create("aircon")
+    on_entity = labels.async_create("upstairs")
+    registry = er.async_get(hass)
+    source = registry.async_get_entity_id(
+        "sensor", "aircon_integration", "unique_sensor.coarse_step_energy"
+    )
+    assert source is not None
+    dr.async_get(hass).async_update_device(
+        _source_device_id(hass, source), labels={on_device.label_id}
+    )
+    registry.async_update_entity(source, labels={on_entity.label_id})
+
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When / Then - both, sorted, so the published order does not wander
+    # between restarts and a card's option list is stable
+    by_key = await _devices_payload(hass, entry, freezer)
+    assert by_key["coarse_step_aircon"]["labels"] == ["aircon", "upstairs"]
+
+
+async def test_devices_sensor_names_the_labels_it_publishes(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a label whose id is not its name. On the reference instance the
+    # `lifetime_counter_plug` label is called "high draw", so a card showing the id
+    # would put an underscore in front of the household (HEA-95)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
+    _seed_states(hass)
+    label = lr.async_get(hass).async_create("high draw")
+    source = er.async_get(hass).async_get_entity_id(
+        "sensor", "aircon_integration", "unique_sensor.coarse_step_energy"
+    )
+    assert source is not None
+    dr.async_get(hass).async_update_device(
+        _source_device_id(hass, source), labels={label.label_id}
+    )
+
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When
+    state = await _devices_state(hass, entry, freezer)
+
+    # Then - the rows carry ids, which is what a filter matches on, and the
+    # names sit beside them once rather than repeated on every row
+    assert state.attributes["labels"] == {label.label_id: "high draw"}
+    assert label.label_id != "high draw"
 
 
 async def test_an_area_on_the_source_entity_wins_over_its_devices(

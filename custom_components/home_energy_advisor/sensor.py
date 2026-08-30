@@ -37,6 +37,7 @@ from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import floor_registry as fr
+from homeassistant.helpers import label_registry as lr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -563,7 +564,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     _attr_translation_key = "devices"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     # The list can be long and rarely changes - keep it out of the recorder.
-    _unrecorded_attributes = frozenset({"devices", "whole_home"})
+    _unrecorded_attributes = frozenset({"devices", "labels", "whole_home"})
 
     def __init__(self, coordinator: HeaCoordinator, *, device_info: DeviceInfo) -> None:
         super().__init__(coordinator)
@@ -589,8 +590,13 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         ranges are (ADR-0016), and a card must resolve its slug rather than guess
         ``sensor.whole_home_…``, which a rename would break.
         """
+        rows = self._devices()
         return {
-            "devices": self._devices(),
+            "devices": rows,
+            # Beside the rows rather than on them: a name is a property of the
+            # label, not of each device wearing it, and repeating it per row
+            # would grow with the household rather than with its labels.
+            "labels": self._label_names(rows),
             "whole_home": self._row(
                 _WHOLE_HOME_KEY, None, source=None, untracked=False
             ),
@@ -646,6 +652,56 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             floor_name=self._floor_name(area.floor_id),
         )
 
+    def _labels_of(self, source: str | None) -> list[str]:
+        """Every label on the sensor measuring a device, and on its device (HEA-95).
+
+        Read from the *source* for the same reason the area is: that is where
+        the household's own organisation lives, and HEA's devices are
+        deliberately left unassigned. Reading labels off ours would ask a
+        household to label our devices instead of their own hardware.
+
+        The two sets are **combined**, where an area takes the entity's and falls
+        back to the device's. An area is a place a thing is in, so it has one
+        answer; a label is a tag, and a household may put one on a device and
+        another on one of its entities with both true at once. Measured on the
+        reference instance the ``aircon`` label sits on nine devices and zero
+        entities, so reading only the entity's would return nothing and the
+        filter would look broken rather than unconfigured.
+
+        Sorted, so the published order does not wander between restarts and a
+        card's option list is stable.
+        """
+        if source is None:
+            return []
+        entity = er.async_get(self.hass).async_get(source)
+        if entity is None:
+            return []
+        labels = set(entity.labels)
+        if entity.device_id is not None:
+            device = dr.async_get(self.hass).async_get(entity.device_id)
+            if device is not None:
+                labels |= set(device.labels)
+        return sorted(labels)
+
+    def _label_names(self, rows: list[dict[str, Any]]) -> dict[str, str]:
+        """What each published label is called, resolved once rather than per row.
+
+        The rows carry label *ids*, which is what a filter matches on and what
+        survives a rename. An id is not presentable, though - the reference
+        instance has one whose id is ``lifetime_counter_plug`` and whose name is "water
+        heater" - so the names travel beside the list, keyed by id.
+
+        Only the labels actually in use: a household's whole label registry may
+        cover things this integration knows nothing about.
+        """
+        registry = lr.async_get(self.hass)
+        used = {label for row in rows for label in row["labels"]}
+        names = {}
+        for label_id in sorted(used):
+            label = registry.async_get_label(label_id)
+            names[label_id] = label.name if label is not None else label_id
+        return names
+
     def _device_area(self, device_id: str | None) -> str | None:
         if device_id is None:
             return None
@@ -695,6 +751,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             "area_name": location.area_name,
             "floor_id": location.floor_id,
             "floor_name": location.floor_name,
+            "labels": self._labels_of(source),
         }
 
     def _statistic_ids(self, device_key: str) -> dict[str, str]:
