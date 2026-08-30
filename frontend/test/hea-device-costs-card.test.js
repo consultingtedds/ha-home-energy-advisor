@@ -608,6 +608,14 @@ describe("laid out sideways", () => {
   };
   const seriesOf = (card, id) => chartOf(card).data.find((s) => s.id === id);
   const rowsOf = (card) => chartOf(card).options.yAxis.data;
+  /**
+   * The smallest height the card will accept.
+   *
+   * Sideways this is the whole answer, a plain `NNNpx`. Standing up it is a
+   * `clamp()`, whose first length is the floor - which is the number this card
+   * has to get right, since it is what a narrow screen resolves to.
+   */
+  const floorOf = (card) => Number(chartOf(card).height.match(/\d+/)[0]);
   const pointFor = (card, id, name) =>
     seriesOf(card, id).data[rowsOf(card).indexOf(name)];
 
@@ -684,6 +692,55 @@ describe("laid out sideways", () => {
 
     // Then
     expect(Number.parseInt(chartOf(card).height, 10)).toBeGreaterThanOrEqual(240);
+  });
+
+  it("budgets for the legend when the bars stand up", async () => {
+    // Given - the legend is content-sized, so it takes what it needs and the
+    // plot gets whatever is left. At 768px the card resolved to its 320px
+    // floor, the legend took 164px of it and the plot got 156px - the same
+    // squeeze, in the band where `auto` has just decided to stand them up
+    // (HEA-100)
+    const twoDevices = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
+      layout: "vertical",
+    });
+    await ready(twoDevices);
+    const small = floorOf(twoDevices);
+
+    // When - ten devices, whose legend wraps to about five rows on a narrow card
+    document.body.replaceChildren();
+    const many = Array.from({ length: 10 }, (_, index) =>
+      aDeviceRow(`tracked_device_${index}`, `Tracked Device ${index}`),
+    );
+    const card = mount(
+      aHass({
+        devices: many,
+        response: Object.assign(
+          {},
+          ...many.map((device, index) =>
+            bucketsFor(device.key, 10, index + 1, index + 2),
+          ),
+        ),
+      }),
+      { layout: "vertical" },
+    );
+    await ready(card);
+
+    // Then - taller by roughly the legend it will have to carry, so the plot
+    // keeps a usable height rather than surrendering it
+    expect(floorOf(card)).toBeGreaterThan(small + 80);
+  });
+
+  it("does not make a short list pay for a legend it will not have", async () => {
+    // Given / When - two devices wrap to one legend row, so the card should
+    // not stand as tall as one carrying ten
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
+      layout: "vertical",
+    });
+    await ready(card);
+
+    // Then - room for a plot and a row, and not much more
+    expect(floorOf(card)).toBeGreaterThanOrEqual(300);
+    expect(floorOf(card)).toBeLessThan(400);
   });
 
   it("pulls the plot out to the edges of the card", async () => {

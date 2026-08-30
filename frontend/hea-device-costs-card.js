@@ -166,6 +166,35 @@ const AXIS_HEADROOM = 64;
 const MIN_HEIGHT = 240;
 
 /**
+ * What the standing layout's legend will take, so the card can budget for it.
+ *
+ * The legend is content-sized and sits below the chart, so it takes what it
+ * needs and the plot gets the remainder. A card sized without it in mind hands
+ * the legend its height: at 768px this card resolved to its 320px floor, the
+ * legend took 164px and the plot was left 156px - the same squeeze that drove
+ * the sideways layout, in the band where `auto` has just decided to stand the
+ * bars up (HEA-100).
+ *
+ * The numbers mirror `ha-chart-base`'s own, which are hardcoded there and
+ * cannot be read or configured: 24px an entry, 12px of padding above, and no
+ * more than ten entries before the rest collapse behind a "more" chip. Two per
+ * row is what a narrow card fits, measured at 467px - deliberately the
+ * pessimistic assumption, because this sets a *floor* and the floor is what
+ * matters at the width where the legend hurts. A wide card wraps the same
+ * entries into fewer rows and simply has room to spare.
+ */
+const LEGEND_ROW_HEIGHT = 24;
+const LEGEND_PADDING = 12;
+const LEGEND_PER_ROW = 2;
+const LEGEND_ENTRY_LIMIT = 10;
+/** What the plot itself is worth keeping, once the legend has taken its share. */
+const STANDING_PLOT = 300;
+/** How much taller than its floor the standing card may grow on a big screen. */
+const STANDING_HEADROOM = 120;
+/** The base class's middle term, kept in step with `HeaChartCard.chartHeight`. */
+const PREFERRED_HEIGHT = "40vw";
+
+/**
  * What the sideways chart leaves around its plot.
  *
  * ECharts' defaults leave roughly 80px above and 90px below, which on a card
@@ -603,10 +632,22 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * against categories, which is why the height is overridable at all.
    */
   _chartHeight() {
-    if (!this._sideways()) return super._chartHeight();
-    const rows = this._ranked().length;
-    const each = this._comparing() ? COMPARING_ROW_HEIGHT : ROW_HEIGHT;
-    return `${Math.max(MIN_HEIGHT, AXIS_HEADROOM + rows * each)}px`;
+    if (this._sideways()) {
+      const rows = this._ranked().length;
+      const each = this._comparing() ? COMPARING_ROW_HEIGHT : ROW_HEIGHT;
+      return `${Math.max(MIN_HEIGHT, AXIS_HEADROOM + rows * each)}px`;
+    }
+    // Standing up, the floor has to cover the legend as well as the plot, or
+    // the legend takes the plot's height instead of the card's.
+    const floor = STANDING_PLOT + this._legendHeight();
+    return `clamp(${floor}px, ${PREFERRED_HEIGHT}, ${floor + STANDING_HEADROOM}px)`;
+  }
+
+  /** What the standing layout's legend will take, at its widest wrap. */
+  _legendHeight() {
+    const entries =
+      Math.min(this._ranked().length, LEGEND_ENTRY_LIMIT) + this._earlierKey().length;
+    return Math.ceil(entries / LEGEND_PER_ROW) * LEGEND_ROW_HEIGHT + LEGEND_PADDING;
   }
 
   _options(locale) {
