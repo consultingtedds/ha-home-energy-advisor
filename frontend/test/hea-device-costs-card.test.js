@@ -840,6 +840,50 @@ describe("choosing a layout by the screen", () => {
     expect(axisOf(card)).toBe("category");
   });
 
+  it("turns itself over when the window crosses the breakpoint", async () => {
+    // Given - `auto` is answered when the card renders, and a resize is not a
+    // render. Asked once and never again, the card picks a layout on load and
+    // then holds it however the window changes, which reads as `auto` doing
+    // nothing at all (HEA-100)
+    const listeners = [];
+    const screen = {
+      matches: false,
+      addEventListener: (_, handler) => listeners.push(handler),
+      removeEventListener: () => {},
+    };
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(screen));
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+    expect(axisOf(card)).toBe("category");
+
+    // When - the window narrows past the breakpoint
+    screen.matches = true;
+    for (const handler of listeners) handler();
+
+    // Then - sideways, without waiting for a period change to redraw it
+    await vi.waitFor(() => expect(axisOf(card)).toBe("value"));
+  });
+
+  it("stops listening once it leaves the page", async () => {
+    // Given - a card removed from a view that went on answering resize events
+    // would redraw a detached element for as long as the tab lived
+    const removed = [];
+    const screen = {
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: (_, handler) => removed.push(handler),
+    };
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(screen));
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // When
+    card.remove();
+
+    // Then
+    expect(removed).toHaveLength(1);
+  });
+
   it("stands them up where the browser cannot answer", async () => {
     // Given - `matchMedia` is not universally present, and an unknown screen
     // size is not a reason to give up the legend and its toggles

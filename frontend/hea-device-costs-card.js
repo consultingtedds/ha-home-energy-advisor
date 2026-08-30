@@ -355,6 +355,9 @@ const rangeNote = ({ costFloor, costCeiling }, locale, labels) => {
 class HeaDeviceCostsCard extends HeaChartCard {
   static titleKey = "title_device_costs";
 
+  /** `auto` reads this, so the card must redraw when its answer changes. */
+  static narrowQuery = NARROW;
+
   static getConfigElement() {
     return document.createElement(EDITOR_TAG);
   }

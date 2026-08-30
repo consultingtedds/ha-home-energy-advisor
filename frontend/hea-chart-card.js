@@ -70,9 +70,44 @@ export class HeaChartCard extends HeaCard {
     return 6;
   }
 
+  /**
+   * A media query whose answer changes what this card draws, or nothing.
+   *
+   * Set it and the card redraws when that query starts or stops matching. A
+   * card that only reads the screen at render time answers `auto` once, on
+   * load, and then holds that answer however the window changes - which reads
+   * as the setting doing nothing at all, and is how it was reported (HEA-100).
+   */
+  static narrowQuery = "";
+
   connectedCallback() {
     super.connectedCallback();
     if (!this._chartReady) this._loadChartComponent();
+    this._watchScreen();
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    // A detached card still subscribed would redraw for as long as the tab
+    // lived, and the listener would hold the card in memory with it.
+    this._screen?.removeEventListener?.("change", this._onScreenChange);
+    this._screen = null;
+  }
+
+  /**
+   * Redraw when the screen crosses the breakpoint this card cares about.
+   *
+   * `addEventListener` rather than the older `addListener`: the deprecated form
+   * is what a very old browser offers, and Home Assistant's own minimum is well
+   * past it. Optional throughout, because a test double and an unusual
+   * environment may both hand back something simpler than a MediaQueryList.
+   */
+  _watchScreen() {
+    const { narrowQuery } = this.constructor;
+    if (!narrowQuery || this._screen) return;
+    this._screen = globalThis.matchMedia?.(narrowQuery);
+    this._onScreenChange ??= () => this._render();
+    this._screen?.addEventListener?.("change", this._onScreenChange);
   }
 
   /**

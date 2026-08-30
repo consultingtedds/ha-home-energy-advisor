@@ -83,6 +83,9 @@ class HeaDistributionCard extends HeaChartCard {
   static chartTag = "ha-sankey-chart";
   static bearingCard = { type: "energy-sankey" };
 
+  /** `auto` reads this, so the card must redraw when its answer changes. */
+  static narrowQuery = NARROW;
+
   static cardStyle = `
     ha-sankey-chart { display: block; height: 400px; }
     :host([data-vertical]) ha-sankey-chart { height: 600px; }
