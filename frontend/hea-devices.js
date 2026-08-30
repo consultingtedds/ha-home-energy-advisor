@@ -65,4 +65,8 @@ const toDevice = (row) => ({
   areaName: row.area_name ?? null,
   floorId: row.floor_id ?? null,
   floorName: row.floor_name ?? null,
+  // Empty rather than absent on an integration published before labels
+  // existed: a card may be newer than the instance it is running against, and
+  // every reader wants a set to test membership against either way (HEA-95).
+  labels: Array.isArray(row.labels) ? row.labels : [],
 });

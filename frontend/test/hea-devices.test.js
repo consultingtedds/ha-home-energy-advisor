@@ -59,6 +59,10 @@ describe("readDevices", () => {
         areaName: "Utility Room",
         floorId: "ground_floor",
         floorName: "Ground Floor",
+        // Empty rather than absent: this row was published before the
+        // integration carried labels, and every reader wants a set to test
+        // membership against either way (HEA-95).
+        labels: [],
       },
     ]);
   });

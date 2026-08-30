@@ -14,6 +14,7 @@
 
 import { subscribeToPeriod } from "./ha-energy-collection.js";
 import { readDevices, readWholeHome } from "./hea-devices.js";
+import { filterFor, matchesFilter, subscribeToFilter } from "./hea-filter.js";
 import { formatPeriod, localeFrom } from "./hea-format.js";
 import { fill, labelsFor, loadLabels } from "./hea-labels.js";
 import { fetchDeviceStatistics, withComparison } from "./hea-statistics.js";
@@ -135,6 +136,8 @@ export class HeaCard extends HTMLElement {
   disconnectedCallback() {
     this._subscription?.unsubscribe();
     this._subscription = null;
+    this._unfilter?.();
+    this._unfilter = null;
   }
 
   _subscribe() {
@@ -145,6 +148,15 @@ export class HeaCard extends HTMLElement {
         this._period = period;
         this._scheduleFetch();
       },
+    );
+    // A refetch rather than a redraw. The filter narrows the device list the
+    // statistics are asked for, so the totals card and the over-time chart -
+    // which read summed figures rather than the device rows - are answered by
+    // the recorder for the subset rather than filtered afterwards. One round
+    // trip, the same as changing the period, and no card can be left showing a
+    // whole-house figure under a filtered heading (HEA-95).
+    this._unfilter = subscribeToFilter(this._config?.collection_key, () =>
+      this._scheduleFetch(),
     );
   }
 
@@ -173,11 +185,41 @@ export class HeaCard extends HTMLElement {
     if (this._period) this._scheduleFetch();
   }
 
-  /** The devices this card covers: the whole house unless a filter names some. */
+  /**
+   * The devices this card covers: the whole house unless something narrows it.
+   *
+   * Two filters, and they compose. The configured one is the household saying
+   * what this card is *for* and is fixed at edit time; the page one is a
+   * question being asked now, from a control card the whole view follows
+   * (HEA-95). A card configured to the pumps and a page filtered to upstairs
+   * shows the upstairs pumps, which is the only reading of both that is true.
+   */
   _devices() {
     const devices = readDevices(this._hass);
     const wanted = this._config?.devices;
-    return wanted ? devices.filter((device) => wanted.includes(device.key)) : devices;
+    const configured = wanted
+      ? devices.filter((device) => wanted.includes(device.key))
+      : devices;
+    const filter = this._filter();
+    return configured.filter((device) => matchesFilter(device, filter));
+  }
+
+  /** What the page has been narrowed to, which no card sets for itself. */
+  _filter() {
+    return filterFor(this._config?.collection_key);
+  }
+
+  /**
+   * True once anything has narrowed this card to less than the household.
+   *
+   * The whole-home range turns on this. HEA-84 settled that a subset is not
+   * bounded by the household's range and offering it there invites exactly the
+   * comparison the bound cannot support - and that check keyed off the
+   * *configured* filter alone, so a card narrowed on the page would have gone
+   * on offering a range it was no longer entitled to (HEA-95).
+   */
+  _isFiltered() {
+    return Boolean(this._config?.devices) || this._filter().kind !== "all";
   }
 
   async _fetch() {
@@ -204,10 +246,11 @@ export class HeaCard extends HTMLElement {
       return;
     }
 
-    // Only meaningful for the whole house: a card filtered to three devices is
+    // Only meaningful for the whole house: a card narrowed to three devices is
     // not bounded by the household's range, and offering it there would invite
-    // a comparison between a subset and its whole.
-    const wholeHome = this._config?.devices ? undefined : readWholeHome(this._hass);
+    // a comparison between a subset and its whole. Narrowed on the page counts
+    // just as much as narrowed in the config (HEA-95).
+    const wholeHome = this._isFiltered() ? undefined : readWholeHome(this._hass);
 
     try {
       // Both windows at once. The comparison is a second call rather than a new

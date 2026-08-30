@@ -100,6 +100,13 @@ export const DEFAULTS = Object.freeze({
   title_distribution: "Where the cost went",
   title_distribution_energy: "Where the energy went",
   no_devices: "No devices are being tracked yet.",
+  no_devices_in_filter: "No tracked device matches what the page is showing.",
+  title_filter: "Show",
+  filter_everything: "Everything",
+  filter_rooms: "Rooms",
+  filter_floors: "Floors",
+  filter_labels: "Labels",
+  filter_unfiled: "Not in one",
   statistics_failed: "Statistics could not be loaded.",
   no_picker: "Add an Energy date picker card to choose the range.",
   chart_not_loaded:
