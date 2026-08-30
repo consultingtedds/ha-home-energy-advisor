@@ -67,8 +67,8 @@ class HeaFilterCard extends HTMLElement {
     this._hass = hass;
     // The words and the rooms arrive together; neither blocks the other, and a
     // failed vocabulary fetch resolves to English rather than rejecting.
-    loadLabels(hass).then(() => this._render());
-    this._render();
+    loadLabels(hass).then(() => this._renderIfChanged());
+    this._renderIfChanged();
   }
 
   /** One row: a label and a control. */
@@ -83,8 +83,40 @@ class HeaFilterCard extends HTMLElement {
   connectedCallback() {
     this._render();
     this._unfilter ??= subscribeToFilter(this._config?.collection_key, () =>
-      this._render(),
+      this._renderIfChanged(),
     );
+  }
+
+  /**
+   * Everything this card draws, as one string.
+   *
+   * Home Assistant sets `hass` on every state change - many times a second on
+   * a busy instance - and this card's markup is a `<select>`. Rewriting it on
+   * each one destroys the dropdown underneath the household while they are
+   * choosing from it, which is what made the first version unusable (HEA-95).
+   *
+   * So the card redraws only when what it *shows* has moved: the rooms, floors
+   * and labels in use, their names, the current selection, and the vocabulary
+   * once it arrives. A device's cost changes constantly and is not in here,
+   * because this card never draws one.
+   */
+  _signature() {
+    return JSON.stringify([
+      this._devices().map((device) => [
+        device.areaId,
+        device.areaName,
+        device.floorId,
+        device.floorName,
+        device.labels,
+      ]),
+      encode(filterFor(this._config?.collection_key)),
+      this._labels.filter_rooms,
+    ]);
+  }
+
+  _renderIfChanged() {
+    if (this._signature() === this._drawn) return;
+    this._render();
   }
 
   disconnectedCallback() {
@@ -161,11 +193,24 @@ class HeaFilterCard extends HTMLElement {
   _render() {
     const labels = this._labels;
     const devices = this._devices();
+    this._drawn = this._signature();
     const body = devices.length
       ? this._control(labels)
       : `<p class="message">${labels.no_devices}</p>`;
     this.shadowRoot.innerHTML = `
       <style>
+        /*
+         * Matching Home Assistant's own energy-date-selection card, which this
+         * is meant to stand beside: it fills its grid cell and centres its one
+         * row, so a card of a different height next to it leaves the two
+         * controls sitting on different lines (HEA-95).
+         */
+        ha-card {
+          height: 100%;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
         .body { padding: 16px; display: flex; align-items: center; gap: 12px; }
         .label {
           color: var(--secondary-text-color);

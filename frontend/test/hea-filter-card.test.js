@@ -171,6 +171,53 @@ describe("the options it offers", () => {
   });
 });
 
+describe("leaving the control alone", () => {
+  it("survives Home Assistant setting hass over and over", async () => {
+    // Given - `hass` is set on every state change, many times a second on a
+    // busy instance. Rebuilding the markup each time destroys the dropdown
+    // underneath the household mid-selection, which made the card unusable
+    // (HEA-95)
+    const card = mount(aHass({ devices: HOUSE }));
+    const select = selectOf(card);
+
+    // When - nothing it shows has changed
+    card.hass = aHass({ devices: HOUSE });
+    card.hass = aHass({ devices: HOUSE });
+
+    // Then - the very same element, so an open dropdown is still open
+    expect(selectOf(card)).toBe(select);
+  });
+
+  it("rebuilds when a device arrives", async () => {
+    // Given - a household that adds a device should see its room appear
+    const card = mount(aHass({ devices: [AIRCON, PUMP] }));
+    const select = selectOf(card);
+
+    // When
+    card.hass = aHass({ devices: HOUSE });
+
+    // Then
+    expect(selectOf(card)).not.toBe(select);
+    expect(namesIn(card, LABELS.filter_rooms)).toContain("Kitchen");
+  });
+
+  it("rebuilds when a room is renamed", async () => {
+    // Given - the name is the household's own text and may change without any
+    // device arriving or leaving
+    const card = mount(aHass({ devices: HOUSE }));
+
+    // When
+    const renamed = placed(aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"), {
+      ...LOUNGE,
+      areaName: "Snug",
+    });
+    card.hass = aHass({ devices: [renamed, KETTLE, PUMP, UNTRACKED] });
+
+    // Then
+    expect(namesIn(card, LABELS.filter_rooms)).toContain("Snug");
+  });
+});
+
 describe("choosing one", () => {
   it("narrows the page, not just itself", async () => {
     // Given
