@@ -14,11 +14,23 @@
  * bordering the saving alone leaves a single line, sitting at the level that
  * was paid.
  *
- * Devices are named in the legend rather than along the axis. Fourteen device
- * names on a category axis overlap into illegibility, and Home Assistant's own
- * charts solve it the same way: `ha-chart-base` builds an HTML legend and
- * collapses the overflow behind a "more" chip, so the axis is left to the
- * period.
+ * **The household picks which way the bars run** (`layout`, HEA-100), because
+ * the two readings trade against each other and neither wins outright.
+ *
+ * Standing up, the default: devices are named in the legend rather than along
+ * the axis, because fourteen names on a *vertical* category axis overlap into
+ * illegibility, and Home Assistant's own charts solve it the same way -
+ * `ha-chart-base` builds an HTML legend and collapses the overflow behind a
+ * "more" chip, so the axis is left to the period. The legend is not only an
+ * index: clicking an entry hides that device, which is the only way to take a
+ * dominant one out and see the rest against each other.
+ *
+ * Sideways, the alternative: the names move to the axis, where each has a row
+ * to itself and reads perfectly, and the legend goes with them. That buys back
+ * real estate a narrow card cannot spare - measured at 610px with fifteen
+ * devices, 164px of legend against 141px of plot, against 514px of plot and no
+ * legend once turned. What it costs is the toggling, since an axis label cannot
+ * be clicked to hide its device.
  *
  * That legend has an exact contract, and failing it is silent. The component
  * looks for an option that is both `show` and `type: "custom"`, draws nothing
@@ -95,6 +107,61 @@ const EARLIER_COLOUR = { variable: "--secondary-text-color", fallback: "#727272"
  * namespace the series use.
  */
 export const EARLIER_ID = "earlier-period";
+
+/**
+ * Which way the bars run, and why the household picks rather than the card.
+ *
+ * **Vertical** is the default and the original: a bar per device standing up,
+ * named in the legend. The legend is the point - clicking an entry hides that
+ * device, which is the only way to take a dominant device out and see the rest
+ * against each other. Nothing on a chart axis can do that.
+ *
+ * **Horizontal** lays the same bars on their side with the names down the axis.
+ * It exists because the legend costs real height on a narrow card: measured at
+ * 610px with fifteen devices, 164px of legend against 141px of plot, because
+ * fifteen entries wrap to about seven rows. Horizontal spends that height on
+ * the chart instead - the same measurement came back 514px of plot and no
+ * legend at all.
+ *
+ * Neither is right for everyone, so both ship (HEA-100). A household with four
+ * devices wants the toggles; one with fifteen on a phone wants the room. The
+ * card can be placed twice with a different layout each if both are wanted.
+ */
+const LAYOUTS = ["vertical", "horizontal"];
+
+/** The series ids the horizontal layout uses, one per concept rather than per device. */
+const PAID_ID = "paid";
+const SAVED_ID = "saved";
+const BEFORE_ID = "before";
+
+/**
+ * How much height one device's row needs when the bars run sideways.
+ *
+ * A chart of categories cannot take its height from the viewport: fifteen
+ * devices need fifteen rows whatever the screen is. Comparing puts a second bar
+ * beside each device, so a row needs more of them.
+ */
+const ROW_HEIGHT = 30;
+const COMPARING_ROW_HEIGHT = 46;
+const AXIS_HEADROOM = 64;
+/** Below this a two-device household would draw as a sliver of a card. */
+const MIN_HEIGHT = 240;
+
+/**
+ * What the sideways chart leaves around its plot.
+ *
+ * ECharts' defaults leave roughly 80px above and 90px below, which on a card
+ * sized to its rows is dead space rather than breathing room - it was the one
+ * complaint left after the layout was first tried. `containLabel` keeps the
+ * device names inside these bounds however long the household made them.
+ */
+const HORIZONTAL_GRID = {
+  left: 8,
+  right: 16,
+  top: 8,
+  bottom: 28,
+  containLabel: true,
+};
 
 const BORDER_WIDTH = 1.5;
 /** How strongly the spend is filled, and how faintly the saving above it. */
@@ -309,13 +376,89 @@ class HeaDeviceCostsCard extends HeaChartCard {
       : PALETTE[index % PALETTE.length];
   }
 
+  /** Which way the bars run; anything the card does not offer is the default. */
+  _layout() {
+    return LAYOUTS.includes(this._config?.layout) ? this._config.layout : "vertical";
+  }
+
+  /** True once any device carries an earlier self, which adds a second bar. */
+  _comparing() {
+    return this._ranked().some((device) => device.before);
+  }
+
+  _series() {
+    return this._layout() === "horizontal"
+      ? this._sidewaysSeries()
+      : this._standingSeries();
+  }
+
+  /**
+   * Three series across every device: the spend, the saving beyond it, and the
+   * earlier period beside them.
+   *
+   * Two series holding every device rather than two per device, which is what
+   * frees the legend and lets the names go on the axis. Colour is carried on
+   * each **point**, so a device keeps its own hue - carried on the series it
+   * would encode Paid and Saved instead, and every device on the chart would
+   * share one colour.
+   */
+  _sidewaysSeries() {
+    const rows = this._ranked();
+    const loss = this._colour(LOSS);
+    const labels = this._labels;
+    const hue = (device, index) => this._colourFor(device, index);
+    return [
+      {
+        id: PAID_ID,
+        name: labels.paid,
+        type: "bar",
+        stack: "cost",
+        data: rows.map((device, index) => ({
+          value: device.actualCost,
+          itemStyle: { color: tint(hue(device, index), PAID_ALPHA) },
+        })),
+      },
+      {
+        id: SAVED_ID,
+        name: labels.saved,
+        type: "bar",
+        stack: "cost",
+        data: rows.map((device, index) => {
+          const outline = device.costSavings < 0 ? loss : hue(device, index);
+          return {
+            value: device.costSavings,
+            itemStyle: {
+              color: tint(outline, SAVED_ALPHA),
+              borderColor: outline,
+              borderWidth: BORDER_WIDTH,
+            },
+          };
+        }),
+      },
+      ...(this._comparing()
+        ? [
+            {
+              id: BEFORE_ID,
+              name: labels.compared_series,
+              type: "bar",
+              stack: "earlier",
+              data: rows.map((device, index) => ({
+                value: device.before ? device.before.actualCost : null,
+                itemStyle: { color: tint(hue(device, index), BEFORE_ALPHA) },
+              })),
+            },
+          ]
+        : []),
+    ];
+  }
+
   /**
    * Two series per device sharing one stack: the spend, and the saving above.
    *
    * A device's own stack, never a shared one - stacking every device together
    * would pile the whole household into a single column.
    */
-  _series() {
+  _standingSeries() {
     const loss = this._colour(LOSS);
     return this._ranked().flatMap((device, index) => {
       const colour = this._colourFor(device, index);
@@ -369,9 +512,17 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * category, which for a dozen devices is two dozen rows, each device named
    * twice with nothing to say which row is the spend and which the saving.
    */
-  _tooltipFor({ seriesId }, locale) {
-    const key = String(seriesId ?? "").replace(SEGMENT, "");
-    const device = this._ranked().find((candidate) => candidate.key === key);
+  _tooltipFor({ seriesId, dataIndex }, locale) {
+    const rows = this._ranked();
+    // Sideways, every series holds every device, so the row is what identifies
+    // one. Standing up, a device owns its series and the id carries its key.
+    const device =
+      this._layout() === "horizontal"
+        ? rows[dataIndex]
+        : rows.find(
+            (candidate) =>
+              candidate.key === String(seriesId ?? "").replace(SEGMENT, ""),
+          );
     // Undefined suppresses the tooltip, where a half-built one would render an
     // empty box against the cursor.
     return device
@@ -390,21 +541,81 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * chart's line, so two charts on one screen say it the same way (HEA-99).
    */
   _earlierKey() {
-    const ghosts = this._ranked()
-      .filter((device) => device.before)
-      .map((device) => `${device.key}:before`);
-    if (!ghosts.length) return [];
+    if (!this._comparing()) return [];
+    const name = this._labels.compared_series;
+    const itemStyle = { color: this._colour(EARLIER_COLOUR) };
+    // Sideways there is one ghost series rather than one per device, so the
+    // entry's id can simply be it - nothing to fan out to, and no sentinel
+    // needed to keep this key from greying itself out with a single device.
+    if (this._layout() === "horizontal") {
+      return [{ id: BEFORE_ID, name, itemStyle }];
+    }
     return [
       {
         id: EARLIER_ID,
-        secondaryIds: ghosts,
-        name: this._labels.compared_series,
-        itemStyle: { color: this._colour(EARLIER_COLOUR) },
+        secondaryIds: this._ranked()
+          .filter((device) => device.before)
+          .map((device) => `${device.key}:before`),
+        name,
+        itemStyle,
       },
     ];
   }
 
+  /**
+   * A row per device when the bars run sideways, not a share of the screen.
+   *
+   * Fifteen devices need fifteen rows whatever the size of the window. The base
+   * class's viewport clamp is right for a chart against time and wrong for one
+   * against categories, which is why the height is overridable at all.
+   */
+  _chartHeight() {
+    if (this._layout() !== "horizontal") return super._chartHeight();
+    const rows = this._ranked().length;
+    const each = this._comparing() ? COMPARING_ROW_HEIGHT : ROW_HEIGHT;
+    return `${Math.max(MIN_HEIGHT, AXIS_HEADROOM + rows * each)}px`;
+  }
+
   _options(locale) {
+    return this._layout() === "horizontal"
+      ? this._sidewaysOptions(locale)
+      : this._standingOptions(locale);
+  }
+
+  /**
+   * Sideways: value along the bottom, devices down the side, one row each.
+   *
+   * The legend is at most one entry here - the neutral "Earlier period" key -
+   * because the names are on the axis and there is nothing left for a legend to
+   * index. What that costs is the toggling: an axis label cannot be clicked to
+   * hide its device, which is why the standing layout is still the default.
+   */
+  _sidewaysOptions(locale) {
+    const earlier = this._earlierKey();
+    return {
+      xAxis: {
+        type: "value",
+        axisLabel: { formatter: (value) => formatMoney(value, locale) },
+      },
+      yAxis: {
+        type: "category",
+        data: this._ranked().map((device) => device.name),
+        // Dearest at the top. A category axis counts up from the bottom, which
+        // would stand the ranking on its head.
+        inverse: true,
+      },
+      grid: HORIZONTAL_GRID,
+      tooltip: {
+        trigger: "item",
+        formatter: (params) => this._tooltipFor(params, locale),
+      },
+      ...(earlier.length
+        ? { legend: { show: true, type: "custom", data: earlier } }
+        : {}),
+    };
+  }
+
+  _standingOptions(locale) {
     return {
       xAxis: {
         type: "category",
@@ -449,8 +660,17 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 }
 
-/** Nothing beyond the shared fields; the ordering is the question it answers. */
-class HeaDeviceCostsCardEditor extends HeaCardEditor {}
+/** The layout choice, named the way the distribution card names its own. */
+class HeaDeviceCostsCardEditor extends HeaCardEditor {
+  _extraSchema() {
+    return [
+      {
+        name: "layout",
+        selector: { select: { mode: "dropdown", options: LAYOUTS } },
+      },
+    ];
+  }
+}
 
 export const register = () => {
   registerEditor(EDITOR_TAG, HeaDeviceCostsCardEditor);

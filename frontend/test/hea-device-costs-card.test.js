@@ -77,6 +77,12 @@ describe("registration", () => {
     expect(() => register()).not.toThrow();
   });
 
+  it("offers an editor, so Home Assistant stops showing raw yaml", () => {
+    // Given / When / Then - HEA-73; without one the user is asked to know that
+    // a device is called `cloud_polled_pump`
+    expect(customElements.get(TAG).getConfigElement()).toBeInstanceOf(HTMLElement);
+  });
+
   it("names itself when no title is configured", async () => {
     // Given / When
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
@@ -585,6 +591,198 @@ describe("the options handed to the chart", () => {
     // Then
     expect(card.shadowRoot.textContent).toMatch(/no cost recorded/i);
     expect(chartOf(card)).toBe(null);
+  });
+});
+
+describe("laid out sideways", () => {
+  const sideways = async (devices = [AIRCON, PUMP], response = THREE) => {
+    const card = mount(aHass({ devices, response }), { layout: "horizontal" });
+    await ready(card);
+    return card;
+  };
+  const seriesOf = (card, id) => chartOf(card).data.find((s) => s.id === id);
+  const rowsOf = (card) => chartOf(card).options.yAxis.data;
+  const pointFor = (card, id, name) =>
+    seriesOf(card, id).data[rowsOf(card).indexOf(name)];
+
+  it("puts the devices on the axis and the value along the bottom", async () => {
+    // Given / When - names overlap on a *vertical* category axis, which is why
+    // they sit in the legend by default. Turned on its side each name is a row
+    // label with a row to itself, and the premise is gone (HEA-100)
+    const card = await sideways();
+
+    // Then - dearest at the top, and the axis inverted to make first topmost:
+    // a category axis counts up from the bottom and would otherwise stand the
+    // ranking on its head
+    expect(chartOf(card).options.yAxis.type).toBe("category");
+    expect(rowsOf(card)).toEqual(["Cloud Polled Pump", "Slow Poll Aircon"]);
+    expect(chartOf(card).options.yAxis.inverse).toBe(true);
+    expect(chartOf(card).options.xAxis.type).toBe("value");
+  });
+
+  it("keeps each device's own colour, carried on the point", async () => {
+    // Given - two series hold every device here, so a colour on the series
+    // would encode Paid and Saved and every device would share one hue. That
+    // would cost the palette and its link to the Sankey's device colours
+    const card = await sideways();
+
+    // Then
+    const pump = pointFor(card, "paid", "Cloud Polled Pump");
+    const aircon = pointFor(card, "paid", "Slow Poll Aircon");
+    expect(channelsOf(pump.itemStyle.color)).not.toBe(
+      channelsOf(aircon.itemStyle.color),
+    );
+    expect(seriesOf(card, "paid").itemStyle).toBeUndefined();
+  });
+
+  it("stacks the spend and the saving, and sets the earlier period beside them", async () => {
+    // Given / When
+    const card = await sideways();
+
+    // Then - one stack, so a device's bar runs to Would have paid
+    expect(seriesOf(card, "paid").stack).toBe(seriesOf(card, "saved").stack);
+    expect(pointFor(card, "paid", "Cloud Polled Pump").value).toBe(3.0);
+    expect(pointFor(card, "saved", "Cloud Polled Pump").value).toBe(1.0);
+  });
+
+  it("takes its height from the device count, not the viewport", async () => {
+    // Given - fifteen devices need fifteen rows whatever the screen is, which
+    // is what no clamp can know
+    const few = await sideways();
+    const shortest = Number.parseInt(chartOf(few).height, 10);
+
+    // When - ten devices instead of two
+    document.body.replaceChildren();
+    const many = Array.from({ length: 10 }, (_, index) =>
+      aDeviceRow(`tracked_device_${index}`, `Tracked Device ${index}`),
+    );
+    const card = await sideways(
+      many,
+      Object.assign(
+        {},
+        ...many.map((device, index) =>
+          bucketsFor(device.key, 10, index + 1, index + 2),
+        ),
+      ),
+    );
+
+    // Then
+    expect(Number.parseInt(chartOf(card).height, 10)).toBeGreaterThan(shortest);
+    expect(chartOf(card).height).toMatch(/^\d+px$/);
+  });
+
+  it("keeps a small household off a sliver of a card", async () => {
+    // Given / When - two devices would otherwise ask for two rows and little
+    // else, which reads as a broken card rather than a short list
+    const card = await sideways();
+
+    // Then
+    expect(Number.parseInt(chartOf(card).height, 10)).toBeGreaterThanOrEqual(240);
+  });
+
+  it("pulls the plot out to the edges of the card", async () => {
+    // Given - ECharts' default margins leave roughly 80px above and 90px below,
+    // which on a card sized to its own rows is dead space rather than breathing
+    // room. `containLabel` still keeps names of any length inside
+    const card = await sideways();
+
+    // Then
+    expect(chartOf(card).options.grid).toMatchObject({
+      top: 8,
+      containLabel: true,
+    });
+    expect(chartOf(card).options.grid.bottom).toBeLessThan(40);
+  });
+
+  it("offers no legend at all when nobody asked to compare", async () => {
+    // Given / When - the names are on the axis, so there is nothing left for a
+    // legend to index
+    const card = await sideways();
+
+    // Then
+    expect(chartOf(card).options.legend).toBeUndefined();
+  });
+
+  it("labels the money axis in the household's currency", async () => {
+    // Given / When - the value axis swaps sides with the layout, and a bare
+    // number on it would say nothing about what was being counted
+    const card = await sideways();
+
+    // Then
+    const label = chartOf(card).options.xAxis.axisLabel.formatter(3);
+    expect(label).toMatch(/^€\s?3([.,]00)?$/);
+  });
+
+  it("names the ghost series outright when comparing", async () => {
+    // Given - one ghost series rather than one per device, so the entry's id
+    // can simply be it: nothing to fan out to through `secondaryIds`, and no
+    // sentinel needed to stop the key greying itself out with one device
+    const collection = anEnergyCollection();
+    const hass = aHass({ devices: [AIRCON, PUMP], response: THREE, collection });
+    const card = mount(hass, { layout: "horizontal" });
+    await ready(card);
+
+    // When
+    const may = new Date(2026, 4, 20);
+    hass.callWS = vi.fn().mockResolvedValue({
+      ...THREE,
+      "sensor.slow_poll_aircon_actual_cost": [
+        { start: may.getTime(), change: 0.5 },
+        { start: new Date(2026, 3, 1).getTime(), change: 1.7 },
+      ],
+    });
+    collection.announce(may, new Date(2026, 6, 15), {
+      startCompare: new Date(2026, 2, 20),
+      endCompare: new Date(2026, 4, 15),
+      compareMode: "previous",
+    });
+
+    // Then - one entry, and its id resolves to a real series, which is what
+    // the component hides by
+    await vi.waitFor(() => expect(chartOf(card).options.legend).toBeDefined());
+    const [entry] = chartOf(card).options.legend.data;
+    expect(chartOf(card).options.legend.data).toHaveLength(1);
+    expect(entry.name).toBe(LABELS.compared_series);
+    expect(entry.secondaryIds).toBeUndefined();
+    expect(chartOf(card).data.some((s) => s.id === entry.id)).toBe(true);
+  });
+
+  it("answers the tooltip from the row rather than the series", async () => {
+    // Given - every series holds every device, so which device was hovered is
+    // the data index and nothing else
+    const card = await sideways();
+
+    // When
+    const shown = chartOf(card).options.tooltip.formatter({
+      dataIndex: rowsOf(card).indexOf("Cloud Polled Pump"),
+    }).textContent;
+
+    // Then
+    expect(shown).toContain("Cloud Polled Pump");
+    expect(shown).not.toContain("Slow Poll Aircon");
+    expect(shown).toMatch(/Paid.*€3[.,]00/);
+  });
+
+  it("stands the bars up when nothing asks otherwise", async () => {
+    // Given / When - the default keeps the legend, and with it the only way to
+    // hide a device and see the rest against each other
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+    await ready(card);
+
+    // Then
+    expect(chartOf(card).options.xAxis.type).toBe("category");
+    expect(legendOf(card).data).toHaveLength(2);
+  });
+
+  it("stands them up for a layout it does not offer", async () => {
+    // Given / When - a hand-edited dashboard yaml
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
+      layout: "diagonal",
+    });
+    await ready(card);
+
+    // Then - the default rather than an empty chart
+    expect(chartOf(card).options.xAxis.type).toBe("category");
   });
 });
 

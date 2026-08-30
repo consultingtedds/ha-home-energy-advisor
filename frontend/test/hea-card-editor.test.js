@@ -12,6 +12,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TAG as DEVICE_COSTS_TAG } from "../hea-device-costs-card.js";
 import { TAG as DEVICES_TAG } from "../hea-devices-card.js";
 import { TAG as DISTRIBUTION_TAG } from "../hea-distribution-card.js";
 import { TAG as TOTALS_TAG } from "../hea-totals-card.js";
@@ -51,6 +52,18 @@ describe("a card's editor", () => {
     for (const tag of [TOTALS_TAG, DEVICES_TAG]) {
       expect(customElements.get(tag).getConfigElement()).toBeInstanceOf(HTMLElement);
     }
+  });
+
+  it("lets the household pick which way the device-cost bars run", () => {
+    // Given - neither layout wins outright: standing up keeps the legend and
+    // with it the only way to hide a device, while sideways spends that height
+    // on the plot and puts the names on the axis. So the choice is offered
+    // rather than made for them, and the editor is where it is made (HEA-100)
+    const editor = anEditorFor(DEVICE_COSTS_TAG);
+
+    // When / Then
+    const field = fieldOf(editor, "layout");
+    expect(field.selector.select.options).toEqual(["vertical", "horizontal"]);
   });
 
   it("shows the configuration the card actually has", () => {
