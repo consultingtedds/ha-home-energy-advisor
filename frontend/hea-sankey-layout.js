@@ -31,6 +31,8 @@
  * two diagrams numbered alike should a source column ever be wanted.
  */
 
+import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
+
 /** The root: everything the household spent, or used, in the period. */
 export const HOUSEHOLD_ID = "household";
 
@@ -97,24 +99,27 @@ const METRICS = Object.freeze({
 });
 
 /**
- * Hues that stay apart from each other, and apart on either theme.
+ * What a device is coloured when the caller names no scheme.
  *
- * The same palette the device-costs chart uses, so a household reading both
- * sees one vocabulary of colour rather than two. Cycled rather than exhausted.
+ * The palette is shared with the device-costs chart so a household reading both
+ * sees one vocabulary of colour - but it used to be *copied* here, and each card
+ * indexed it by a device's position in its own list. The two lists are ordered
+ * differently, so the same device came out blue on one card and yellow on the
+ * other (HEA-101). A colour is keyed on the device now, and the card resolves it
+ * from the household's whole device set, which is knowledge this file does not
+ * have.
+ *
+ * The fallback keys on whatever it was given, which is right for a caller
+ * holding every device and wrong for one holding a filtered subset - so a card
+ * passes its own resolver rather than relying on this.
  */
-const PALETTE = [
-  "#0072b2",
-  "#e69f00",
-  "#009e73",
-  "#cc79a7",
-  "#56b4e9",
-  "#d55e00",
-  "#8c6bb1",
-  "#3d9970",
-];
-
-/** The remainder is not a device; colouring it like one invites a hunt for it. */
-const UNTRACKED_COLOUR = "#8a8a8a";
+const fallbackDeviceColour = (devices) => {
+  const colours = coloursFor(devices);
+  return (device) =>
+    device.untracked
+      ? UNTRACKED_COLOUR.fallback
+      : (colours.get(device.key) ?? PALETTE[0]);
+};
 
 /**
  * What a source is coloured when nothing can resolve a theme.
@@ -142,7 +147,11 @@ const fallbackColour = ({ fallback }) => fallback;
 export const buildDistribution = (
   devices,
   labels,
-  { metric = "cost", colour = fallbackColour } = {},
+  {
+    metric = "cost",
+    colour = fallbackColour,
+    deviceColour = fallbackDeviceColour(devices),
+  } = {},
 ) => {
   const { field, sources } = METRICS[metric] ?? METRICS.cost;
 
@@ -158,7 +167,7 @@ export const buildDistribution = (
   const links = [];
   let household = 0;
 
-  drawn.forEach((device, position) => {
+  drawn.forEach((device) => {
     const value = device[field];
     household += value;
 
@@ -180,7 +189,7 @@ export const buildDistribution = (
       label: device.name,
       value,
       index: COLUMN.device,
-      color: device.untracked ? UNTRACKED_COLOUR : PALETTE[position % PALETTE.length],
+      color: deviceColour(device),
       // The id the devices sensor published, so a click opens that device's cost
       // sensor. Never composed from the key: Home Assistant names entities in
       // the household's own language (HEA-89, ADR-0018).

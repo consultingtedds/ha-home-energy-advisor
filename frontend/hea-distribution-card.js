@@ -26,6 +26,8 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { formatEnergy, formatMoney } from "./hea-format.js";
+import { readDevices } from "./hea-devices.js";
+import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
 import { buildDistribution } from "./hea-sankey-layout.js";
 
 export const TAG = "hea-distribution-card";
@@ -118,11 +120,22 @@ class HeaDistributionCard extends HeaChartCard {
   }
 
   _layout() {
+    // Keyed on the device and taken from the household's *whole* set, not the
+    // rows this diagram happens to draw. The Sankey cannot draw a zero-width
+    // flow, so it drops devices the cost chart still lists - and colouring by
+    // position meant that dropping one recoloured every device after it, which
+    // is how the same aircon came out blue on one card and yellow here
+    // (HEA-101).
+    const colours = coloursFor(readDevices(this._hass));
     return buildDistribution(this._result?.devices ?? [], this._labels, {
       metric: this._metric(),
       // The layout knows which token each source wants; only the card can read
       // one, so it resolves them against the household's theme (HEA-93).
       colour: (source) => this._colour(source),
+      deviceColour: (device) =>
+        device.untracked
+          ? this._colour(UNTRACKED_COLOUR)
+          : (colours.get(device.key) ?? PALETTE[0]),
     });
   }
 

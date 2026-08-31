@@ -44,6 +44,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
+import { readDevices } from "./hea-devices.js";
 import {
   changeTone,
   formatMoney,
@@ -52,30 +53,10 @@ import {
   formatPeriod,
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
+import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
 
 export const TAG = "hea-device-costs-card";
 const EDITOR_TAG = `${TAG}-editor`;
-
-/**
- * Hues that stay apart from each other, and apart on either theme.
- *
- * Chosen for distinguishability rather than brand: a household may track a
- * dozen devices, and the palette cycles rather than running out. Adapted from
- * Okabe-Ito, dropping the yellow, which disappears against a light card.
- */
-const PALETTE = [
-  "#0072b2",
-  "#e69f00",
-  "#009e73",
-  "#cc79a7",
-  "#56b4e9",
-  "#d55e00",
-  "#8c6bb1",
-  "#3d9970",
-];
-
-/** The remainder is not a device; colouring it like one invites a hunt for it. */
-const UNTRACKED_COLOUR = { variable: "--secondary-text-color", fallback: "#8a8a8a" };
 
 /** A loss must not read as a gain, whatever the device's own colour is. */
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
@@ -419,11 +400,23 @@ class HeaDeviceCostsCard extends HeaChartCard {
     );
   }
 
-  /** One colour per device, cycling, with the remainder set apart. */
-  _colourFor(device, index) {
+  /**
+   * One colour per device, with the remainder set apart.
+   *
+   * Keyed on the device, and taken from the **whole** device list rather than
+   * this card's ranking. Indexed by position, a device changed colour whenever
+   * the ranking moved or the page filter shortened the list - and disagreed
+   * with the Sankey, which walks a different order again (HEA-101).
+   */
+  _colourFor(device) {
     return device.untracked
       ? this._colour(UNTRACKED_COLOUR)
-      : PALETTE[index % PALETTE.length];
+      : (this._colours().get(device.key) ?? PALETTE[0]);
+  }
+
+  /** The household's whole device set, which is what makes a colour stable. */
+  _colours() {
+    return coloursFor(readDevices(this._hass));
   }
 
   /**
@@ -468,16 +461,16 @@ class HeaDeviceCostsCard extends HeaChartCard {
     const rows = this._ranked();
     const loss = this._colour(LOSS);
     const labels = this._labels;
-    const hue = (device, index) => this._colourFor(device, index);
+    const hue = (device) => this._colourFor(device);
     return [
       {
         id: PAID_ID,
         name: labels.paid,
         type: "bar",
         stack: "cost",
-        data: rows.map((device, index) => ({
+        data: rows.map((device) => ({
           value: device.actualCost,
-          itemStyle: { color: tint(hue(device, index), PAID_ALPHA) },
+          itemStyle: { color: tint(hue(device), PAID_ALPHA) },
         })),
       },
       {
@@ -485,8 +478,8 @@ class HeaDeviceCostsCard extends HeaChartCard {
         name: labels.saved,
         type: "bar",
         stack: "cost",
-        data: rows.map((device, index) => {
-          const outline = device.costSavings < 0 ? loss : hue(device, index);
+        data: rows.map((device) => {
+          const outline = device.costSavings < 0 ? loss : hue(device);
           return {
             value: device.costSavings,
             itemStyle: {
@@ -504,9 +497,9 @@ class HeaDeviceCostsCard extends HeaChartCard {
               name: labels.compared_series,
               type: "bar",
               stack: "earlier",
-              data: rows.map((device, index) => ({
+              data: rows.map((device) => ({
                 value: device.before ? device.before.actualCost : null,
-                itemStyle: { color: tint(hue(device, index), BEFORE_ALPHA) },
+                itemStyle: { color: tint(hue(device), BEFORE_ALPHA) },
               })),
             },
           ]
@@ -522,8 +515,8 @@ class HeaDeviceCostsCard extends HeaChartCard {
    */
   _standingSeries() {
     const loss = this._colour(LOSS);
-    return this._ranked().flatMap((device, index) => {
-      const colour = this._colourFor(device, index);
+    return this._ranked().flatMap((device) => {
+      const colour = this._colourFor(device);
       const outline = device.costSavings < 0 ? loss : colour;
       return [
         {
@@ -712,7 +705,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
         show: true,
         type: "custom",
         data: [
-          ...this._ranked().map((device, index) => ({
+          ...this._ranked().map((device) => ({
             id: `${device.key}:paid`,
             // Every series the device owns, or hiding it would strand one
             // behind. The earlier bar is owned here as well as by the period
@@ -725,7 +718,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
             name: device.name,
             // The solid colour, not the fill: a wash of a hue is harder to tell
             // from its neighbour than the hue itself.
-            itemStyle: { color: this._colourFor(device, index) },
+            itemStyle: { color: this._colourFor(device) },
           })),
           ...this._earlierKey(),
         ],
