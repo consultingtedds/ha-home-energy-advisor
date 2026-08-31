@@ -32,6 +32,15 @@ export const TABLE_STYLE = `
   table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
   th, td { padding: 6px 8px; text-align: right; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; white-space: normal; }
+  /*
+   * A device name gets its own line on a phone. Wrapping it saves width the
+   * table does not need - it already scrolls sideways - and spends height it
+   * has none of: "Untracked Energy Devices" broke over three lines, making
+   * every row 74px and the table 1461px on a 412px screen (HEA-103).
+   */
+  @media (max-width: 767px) {
+    th:first-child, td:first-child { white-space: nowrap; }
+  }
   thead th {
     color: var(--secondary-text-color);
     font-weight: 400;

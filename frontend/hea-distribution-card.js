@@ -69,6 +69,31 @@ const METRICS = {
  */
 const NARROW = "(max-width: 767px)";
 
+/**
+ * How tall the diagram stands, each way round.
+ *
+ * Across the page the flow runs left to right, so the height is ours to choose
+ * and 400px is a comfortable band.
+ *
+ * Turned on its side the levels stack - household, floor, room, device - so the
+ * height belongs to how many levels there are, not to a constant. A fixed 600px
+ * on a Pixel 7 drew the diagram in the top ~350px and left 250px blank, which is
+ * what was reported as "a massive space at the bottom" (HEA-103). A household
+ * with no floors assigned has one level fewer and should get a shorter card, not
+ * the same empty one.
+ *
+ * Per level rather than `height: auto`, which was tried and does not work: the
+ * chart has no box to compute from on a first render and draws nothing at all.
+ * It reports a sensible height only once it has already laid out at some other
+ * size, which is exactly the measurement that made `auto` look right.
+ *
+ * 88px a level comes from that measurement - four levels wanted about 350px.
+ */
+const HORIZONTAL_HEIGHT = "400px";
+const VERTICAL_LEVEL_HEIGHT = 88;
+/** Below this a two-level diagram is a sliver rather than a short answer. */
+const VERTICAL_MIN_HEIGHT = 240;
+
 /** As Home Assistant's card names them, so a household meets one vocabulary. */
 const LAYOUTS = ["auto", "horizontal", "vertical"];
 
@@ -88,9 +113,15 @@ class HeaDistributionCard extends HeaChartCard {
   /** `auto` reads this, so the card must redraw when its answer changes. */
   static narrowQuery = NARROW;
 
+  /**
+   * The floor a diagram cannot collapse below, whichever way it runs.
+   *
+   * Turned vertical the chart asks for its own height, and a height it has not
+   * computed yet is nothing at all - so this keeps the card from flickering
+   * shut between the element arriving and its data.
+   */
   static cardStyle = `
-    ha-sankey-chart { display: block; height: 400px; }
-    :host([data-vertical]) ha-sankey-chart { height: 600px; }
+    ha-sankey-chart { display: block; min-height: 240px; }
   `;
 
   static getConfigElement() {
@@ -103,6 +134,18 @@ class HeaDistributionCard extends HeaChartCard {
    */
   _isEmpty() {
     return this._layout().nodes.length === 0;
+  }
+
+  /**
+   * A level's worth of height for each level actually drawn.
+   *
+   * Counted from the nodes rather than from the four the hierarchy allows: a
+   * household with no floors assigned draws three levels, and charging it for a
+   * fourth is how the blank space got there in the first place.
+   */
+  _verticalHeight({ nodes }) {
+    const levels = new Set(nodes.map((node) => node.index)).size;
+    return `${Math.max(VERTICAL_MIN_HEIGHT, levels * VERTICAL_LEVEL_HEIGHT)}px`;
   }
 
   /** Cost unless the household asked for energy; an unknown value is cost. */
@@ -146,6 +189,9 @@ class HeaDistributionCard extends HeaChartCard {
   _draw(chart) {
     chart.data = this._layout();
     chart.vertical = this._isVertical();
+    chart.style.height = this._isVertical()
+      ? this._verticalHeight(chart.data)
+      : HORIZONTAL_HEIGHT;
     // An allocated share is a proportion of a blended price, so it divides into
     // a long recurring decimal. Left raw, a hover reads out fourteen places of
     // a euro - unreadable, and claiming a precision money does not have.

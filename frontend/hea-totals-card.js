@@ -58,6 +58,27 @@ class HeaTotalsCard extends HeaCard {
       font-weight: 500;
       white-space: nowrap;
     }
+    /*
+     * Three figures at 8em plus two gaps need about 368px, and a phone leaves
+     * roughly 340px of card - so they wrapped two-then-one, orphaning Saved on
+     * a line of its own, and the comparison line wrapped again inside its
+     * column (HEA-103). One per row reads better than an uneven grid: the
+     * label sits against its figure and nothing is squeezed.
+     */
+    @media (max-width: 767px) {
+      .figures { flex-direction: column; gap: var(--hea-space-m); }
+      .figure {
+        flex: 1 1 auto;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: var(--hea-space-m);
+      }
+      /* Its own line beneath the pair, rather than a third thing competing
+         for the same row - it is a qualification of the figure, not a peer. */
+      .compare { flex-basis: 100%; text-align: right; }
+    }
   `;
 
   /** Everything this card offers is the shared configuration (HEA-73). */

@@ -168,6 +168,61 @@ describe("three levels on a narrow screen", () => {
     expect(chartOf(card).vertical).toBe(true);
   });
 
+  it("takes a level's worth of height per level, once on its side", async () => {
+    // Given - turned vertical the levels stack, so the height belongs to how
+    // many there are. A fixed 600px on a Pixel 7 drew the diagram in the top
+    // ~350px and left 250px blank (HEA-103)
+    withScreen(true);
+
+    // When - a household with floors: household, floor, room, device
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then - counted from the nodes actually drawn, not from the four the
+    // hierarchy allows, so a household with no floors gets a shorter card
+    const levels = new Set(chartOf(card).data.nodes.map((node) => node.index)).size;
+    expect(levels).toBeGreaterThan(1);
+    expect(chartOf(card).style.height).toBe(`${levels * 88}px`);
+  });
+
+  it("keeps a shallow diagram off a sliver of a card", async () => {
+    // Given - two levels would ask for 176px, which reads as a broken card
+    // rather than a short answer
+    withScreen(true);
+
+    // When
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then
+    expect(Number.parseInt(chartOf(card).style.height, 10)).toBeGreaterThanOrEqual(240);
+  });
+
+  it("keeps a chosen height while it runs across the page", async () => {
+    // Given / When - left to right the height is ours to choose, and nothing
+    // about the data decides it
+    withScreen(false);
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then
+    expect(chartOf(card).style.height).toBe("400px");
+  });
+
+  it("cannot collapse to nothing before its data arrives", async () => {
+    // Given - an asked-for height of `auto` is nothing at all until the chart
+    // has computed one, and a card that flickers shut reads as broken
+    withScreen(true);
+
+    // When
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then
+    const styles = card.shadowRoot.querySelector("style").textContent;
+    expect(styles).toMatch(/min-height:\s*\d+px/);
+  });
+
   it("stays across the page on a wide screen", async () => {
     // Given
     withScreen(false);
