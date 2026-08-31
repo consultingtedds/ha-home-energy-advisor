@@ -189,15 +189,20 @@ Presentation
 1. **HEA-shipped Lovelace card (HEA-50) - the flagship.** Date-range picker ×
    device filter over long-term statistics: "from 20 May to 15 July these devices
    cost x, would have cost y, saved z". Served by the integration itself (no HACS
-   dependency). The foundation for a family of shareable example views -
-   per-device comparison, a Sankey of cost flowing device → room → floor
-   (needs HEA-58's area inheritance), energy self-sufficiency (needs HEA-51).
-   Required because no core card accepts a user-driven date range with a device
-   filter (ADR-0008)
-2. Core-cards dashboard (HEA-25) - the **secondary**, zero-dependency day-to-day
-   view: devices-by-cost comparison + per-device detail + untracked share
-   (consult HA best-practices skill)
-3. README per documentation standards (including a plain-language explanation of the allocation model and its known limitations - export opportunity cost, interval approximation)
+   dependency). Required because no core card accepts a user-driven date range
+   with a device filter (ADR-0008).
+   Delivered as a **family over one shared data layer** rather than one card with
+   modes: totals, device table, cost over time, sources, device costs, cost
+   distribution, self-sufficiency, and a page filter by room, floor or label.
+   Each card's reasoning is in its own header comment and its ticket - not
+   restated here. Children still open: HEA-98, HEA-104
+2. ~~Core-cards dashboard (HEA-25)~~ - **cancelled**. A zero-dependency
+   secondary view is not wanted beside the shipped family; the installable
+   dashboard a household actually gets is HEA-94
+3. README per documentation standards (HEA-26 - a publish blocker, and where the
+   owed items are listed) including a plain-language explanation of the
+   allocation model and its known limitations - export opportunity cost,
+   interval approximation
 
 ### Epic 6 - Dogfood on production instance
 1. Install and configure a device set on the reference instance covering every behaviour pattern in `notes/DEVICE_SENSOR_SURVEY.md`: cycle-resetting energy counters, lifetime counters over Zigbee2MQTT, a cloud-polled counter, and a power-only device
