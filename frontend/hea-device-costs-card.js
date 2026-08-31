@@ -51,6 +51,7 @@ import {
   formatMoneyChange,
   formatMoneyRange,
   formatPeriod,
+  savingTone,
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
@@ -282,6 +283,7 @@ const tooltipRow = (label, amount, colour) => {
  * registry.
  */
 const tooltipFor = (device, locale, labels, toneColour) => {
+  const savedTone = savingTone(device.costSavings);
   const box = document.createElement("div");
   const title = document.createElement("div");
   title.textContent = device.name;
@@ -291,9 +293,12 @@ const tooltipFor = (device, locale, labels, toneColour) => {
     title,
     tooltipRow(labels.paid, formatMoney(device.actualCost, locale)),
     // A negative saving is a loss, and calling it "Saved" would read as a gain.
+    // Coloured both ways round, like the same figure on the cards behind this
+    // tooltip - it named the loss and then left the figure black (HEA-102).
     tooltipRow(
       device.costSavings < 0 ? labels.lost : labels.saved,
       formatMoney(device.costSavings, locale),
+      savedTone ? toneColour(savedTone) : undefined,
     ),
     tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
   );

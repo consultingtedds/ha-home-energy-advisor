@@ -87,6 +87,27 @@ const BETTER_WHEN_HIGHER = new Set(["costSavings"]);
  * signs every figure, so a reader who cannot separate the two colours still
  * has the direction. What the colour adds is whether that direction is welcome.
  */
+/**
+ * How an *absolute* saving reads: good news, bad news, or neither.
+ *
+ * Distinct from `changeTone`, which judges a movement. A saving is the one
+ * money figure with a direction of its own - more of it is better, and less
+ * than none is a battery-arbitrage loss (HEA-39). What was paid has no such
+ * direction: spending is the bill, not bad news, and only a change in it points
+ * anywhere.
+ *
+ * Zero is uncoloured. Colour is a claim, and "you saved nothing" is neither.
+ *
+ * Only bad news was marked before this, so the absence of red meant either
+ * "fine" or "no rule applies here" and a reader could not tell which (HEA-102).
+ */
+export const savingTone = (saving) => {
+  if (typeof saving !== "number" || !Number.isFinite(saving) || saving === 0) {
+    return "";
+  }
+  return saving > 0 ? "gain" : "loss";
+};
+
 export const changeTone = (concept, change) => {
   if (typeof change !== "number" || !Number.isFinite(change) || change === 0) {
     return "";

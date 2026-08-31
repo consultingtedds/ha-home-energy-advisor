@@ -484,18 +484,29 @@ describe("the table", () => {
       endCompare: new Date(2026, 4, 15),
       compareMode: "previous",
     });
-    await vi.waitFor(() =>
-      expect(card.shadowRoot.querySelector("td.gain")).not.toBeNull(),
-    );
+    // Waiting on the Change column itself, not on the first green cell
+    // anywhere: an absolute saving is green too now (HEA-102), so "something
+    // is green" stopped meaning "the comparison has arrived" and this raced
+    // ahead to assert against a table that had no Change column yet.
+    await vi.waitFor(() => {
+      const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+        cell.textContent.trim(),
+      );
+      expect(headers).toContain(LABELS.change);
+    });
 
     // Then - the two rows disagree, in one column, on the same day
     const toneOf = (name) => {
+      const headers = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+        cell.textContent.trim(),
+      );
+      // Named rather than "the first cell carrying a verdict", for the same
+      // reason. The leading device name is a `th`, so the `td` list is one short.
+      const column = headers.indexOf(LABELS.change) - 1;
       const row = [...card.shadowRoot.querySelectorAll("tbody tr")].find((tr) =>
         tr.textContent.includes(name),
       );
-      return [...row.querySelectorAll("td")].find(
-        (cell) => cell.classList.contains("gain") || cell.classList.contains("loss"),
-      )?.className;
+      return [...row.querySelectorAll("td")][column].className;
     };
     expect(toneOf("Slow Poll Aircon")).toContain("gain");
     expect(toneOf("Fine Meter Aircon")).toContain("loss");
@@ -546,6 +557,42 @@ describe("the table", () => {
       expect(card.shadowRoot.querySelector("tfoot td.loss")).not.toBeNull(),
     );
     expect(totalCells(card)[3].className).toContain("loss");
+  });
+
+  it("colours a real saving as good news, row and total alike", async () => {
+    // Given - the table marked a negative saving red and said nothing about a
+    // positive one, so the absence of red meant either "fine" or "no rule
+    // here" (HEA-102). THREE_RESPONSE saves on every device
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - 5.67 + 1.00 + 8.00 saved, green on the rows and on the total.
+    // The device name is a `th`, so Saved is the fourth `td` of five
+    const saved = [...card.shadowRoot.querySelectorAll("tbody tr")].map(
+      (row) => [...row.querySelectorAll("td")][3],
+    );
+    expect(saved.every((cell) => cell.classList.contains("gain"))).toBe(true);
+    expect(totalCells(card)[4].className).toContain("gain");
+  });
+
+  it("leaves the energy and the money uncoloured", async () => {
+    // Given - only the saving has an honest direction. Using energy is neither
+    // good nor bad, and spending is the bill rather than bad news
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - energy, paid and would-have-paid carry no verdict
+    const [firstRow] = [...card.shadowRoot.querySelectorAll("tbody tr")];
+    const cells = [...firstRow.querySelectorAll("td")];
+    for (const index of [0, 1, 2]) {
+      expect(cells[index].className, `column ${index}`).toBe("");
+    }
   });
 
   it("colours a total saving below zero as the loss it is", async () => {

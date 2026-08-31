@@ -8,7 +8,12 @@
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { changeTone, formatMoney, formatMoneyChange } from "./hea-format.js";
+import {
+  changeTone,
+  formatMoney,
+  formatMoneyChange,
+  savingTone,
+} from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 
 export const TAG = "hea-totals-card";
@@ -69,13 +74,17 @@ class HeaTotalsCard extends HeaCard {
     const totals = this._result?.totals;
     const figures = FIGURES.map(({ key, label }) => {
       const value = totals?.[key];
-      // A negative saving is a battery arbitrage loss (HEA-39); it keeps its
-      // sign and is marked so it reads as the loss it is.
-      const loss = key === "costSavings" && value < 0 ? " loss" : "";
+      // The saving is the one figure here with a direction of its own: more is
+      // better, and less than none is a battery-arbitrage loss (HEA-39). Both
+      // ways round, because marking only the loss left the absence of red
+      // meaning either "fine" or "no rule here" (HEA-102). Paid and Would have
+      // paid get nothing - spending is the bill, not bad news.
+      const verdict = key === "costSavings" ? savingTone(value) : "";
+      const tone = verdict ? ` ${verdict}` : "";
       return `
         <div class="figure">
           <span class="label">${this._labels[label]}</span>
-          <span class="value${loss}" data-figure="${key}">${formatMoney(value, locale)}</span>
+          <span class="value${tone}" data-figure="${key}">${formatMoney(value, locale)}</span>
           ${this._comparedTo(key, value, locale)}
         </div>`;
     }).join("");

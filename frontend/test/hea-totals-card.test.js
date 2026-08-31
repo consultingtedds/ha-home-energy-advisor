@@ -299,6 +299,62 @@ describe("the figures", () => {
     expect(compared("costSavings").contains("loss")).toBe(true);
   });
 
+  it("marks a real saving as the good news it is", async () => {
+    // Given - the same theme this card's loss rule needs to be visible at all.
+    // Red meant something and the absence of red meant either "fine" or "no
+    // rule here", which a reader cannot tell apart (HEA-102)
+    document.documentElement.style.setProperty("--primary-text-color", "#111111");
+    const hass = aHass({
+      response: bucketsFor("slow_poll_aircon", 10, 3, 5),
+    });
+
+    // When - paid 3 where the grid would have cost 5, so 2 was saved
+    const card = mount(hass);
+    await settled(card);
+
+    // Then - green, and actually painted rather than merely classed
+    expect(figure(card, "costSavings").classList.contains("gain")).toBe(true);
+    expect(getComputedStyle(figure(card, "costSavings")).color).toBe("#4caf50");
+  });
+
+  it("leaves a saving of nothing uncoloured", async () => {
+    // Given - paid exactly what the grid would have cost. Colour is a claim,
+    // and "you saved nothing" is neither good news nor bad
+    document.documentElement.style.setProperty("--primary-text-color", "#111111");
+    const hass = aHass({
+      response: bucketsFor("slow_poll_aircon", 10, 3, 3),
+    });
+
+    // When
+    const card = mount(hass);
+    await settled(card);
+
+    // Then
+    const saved = figure(card, "costSavings").classList;
+    expect(saved.contains("gain")).toBe(false);
+    expect(saved.contains("loss")).toBe(false);
+  });
+
+  it("leaves what was paid uncoloured, whatever it was", async () => {
+    // Given - spending money is not bad news, it is the bill. Only a *change*
+    // in it has a direction, which `changeTone` handles per concept (HEA-99)
+    document.documentElement.style.setProperty("--primary-text-color", "#111111");
+    const hass = aHass({
+      response: bucketsFor("slow_poll_aircon", 10, 3, 5),
+    });
+
+    // When
+    const card = mount(hass);
+    await settled(card);
+
+    // Then
+    for (const key of ["actualCost", "costAtGridPrice"]) {
+      const classes = figure(card, key).classList;
+      expect(classes.contains("gain"), `${key} should carry no verdict`).toBe(false);
+      expect(classes.contains("loss"), `${key} should carry no verdict`).toBe(false);
+    }
+  });
+
   it("marks a saving that is really a loss", async () => {
     // Given - battery arbitrage cost more than the grid would have (HEA-39),
     // on a dashboard whose theme defines the text colour. That variable is the

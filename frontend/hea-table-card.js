@@ -25,7 +25,7 @@
  */
 
 import { HeaCard } from "./hea-card-base.js";
-import { changeTone, escapeText } from "./hea-format.js";
+import { changeTone, escapeText, savingTone } from "./hea-format.js";
 
 export const TABLE_STYLE = `
   .scroll { overflow-x: auto; }
@@ -60,8 +60,7 @@ export const TABLE_STYLE = `
  * (HEA-99).
  */
 const classFor = (field, tone, value) => {
-  if (field === "costSavings" && value < 0) return ` class="loss"`;
-  const verdict = tone ? changeTone(tone, value) : "";
+  const verdict = field === "costSavings" ? savingTone(value) : changeTone(tone, value);
   return verdict ? ` class="${verdict}"` : "";
 };
 
