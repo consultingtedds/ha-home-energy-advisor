@@ -154,7 +154,11 @@ class HeaCostOverTimeCard extends HeaChartCard {
       xAxis: { type: "time" },
       yAxis: {
         type: "value",
-        axisLabel: { formatter: (value) => formatMoney(value, locale) },
+        axisLabel: {
+          formatter: (value) => formatMoney(value, locale),
+          // Money labels are wide and a phone-width card is not (HEA-103).
+          hideOverlap: true,
+        },
       },
       // The three figures belong together on hover: paid, saved, and the bar.
       // Formatted as money, because an allocated share is a proportion of a

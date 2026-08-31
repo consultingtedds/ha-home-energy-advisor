@@ -667,7 +667,15 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return {
       xAxis: {
         type: "value",
-        axisLabel: { formatter: (value) => formatMoney(value, locale) },
+        axisLabel: {
+          formatter: (value) => formatMoney(value, locale),
+          // The device names take the left of a phone-width card, leaving the
+          // value axis little room, and money labels are wide - they collided
+          // into an unreadable line (HEA-103). Letting the chart drop the ones
+          // that will not fit beats guessing a tick count, which would be
+          // wrong at some other width.
+          hideOverlap: true,
+        },
       },
       yAxis: {
         type: "category",

@@ -28,7 +28,26 @@ import { HeaCard } from "./hea-card-base.js";
 import { changeTone, escapeText, savingTone } from "./hea-format.js";
 
 export const TABLE_STYLE = `
-  .scroll { overflow-x: auto; }
+  /*
+   * A table too wide for the card scrolls sideways - and said so nowhere, which
+   * on a phone means the Saved and Rate columns simply do not exist as far as
+   * the reader is concerned (HEA-103).
+   *
+   * Shadows at the edges, drawn only while there is something past them: the
+   * two local-attachment gradients are painted in the content's own
+   * coordinates and so slide away as it scrolls, uncovering the fixed shadows
+   * beneath. Reaching the end hides that end's shadow, and a table that fits
+   * shows neither - which is why this is CSS rather than a cue we would have
+   * to remember to turn off.
+   */
+  .scroll {
+    overflow-x: auto;
+    background:
+      linear-gradient(to right, var(--card-background-color, #fff), transparent) 0 0 / 32px 100% no-repeat local,
+      linear-gradient(to left, var(--card-background-color, #fff), transparent) 100% 0 / 32px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.18), transparent) 0 0 / 12px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.18), transparent) 100% 0 / 12px 100% no-repeat scroll;
+  }
   table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
   th, td { padding: 6px 8px; text-align: right; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; white-space: normal; }

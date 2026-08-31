@@ -202,6 +202,23 @@ describe("the table", () => {
     expect(total[4]).toMatch(/14[.,]67/);
   });
 
+  it("shows that there is more table to the right", async () => {
+    // Given - too wide for a phone, the table scrolls sideways and said so
+    // nowhere, so Saved and Rate did not exist as far as the reader was
+    // concerned (HEA-103)
+    const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - edge shadows, drawn by the scroll container itself so a table
+    // that fits shows none and one scrolled to its end hides that end's
+    const styles = card.shadowRoot.querySelector("style").textContent;
+    expect(styles).toMatch(/\.scroll\s*\{[^}]*overflow-x:\s*auto/);
+    expect(styles).toContain("radial-gradient");
+  });
+
   it("names the rate's unit in the header, not on every row", async () => {
     // Given
     const hass = aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE });

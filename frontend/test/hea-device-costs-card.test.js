@@ -766,6 +766,17 @@ describe("laid out sideways", () => {
     expect(chartOf(card).options.legend).toBeUndefined();
   });
 
+  it("drops value labels that will not fit rather than overlapping them", async () => {
+    // Given - the device names take the left of a phone-width card, leaving
+    // the value axis little room, and money labels are wide. They collided
+    // into an unreadable line on a Pixel 7 (HEA-103)
+    const card = await sideways();
+
+    // Then - the chart decides which to drop. A fixed tick count would be
+    // wrong at some other width, and this card is drawn at every width
+    expect(chartOf(card).options.xAxis.axisLabel.hideOverlap).toBe(true);
+  });
+
   it("labels the money axis in the household's currency", async () => {
     // Given / When - the value axis swaps sides with the layout, and a bare
     // number on it would say nothing about what was being counted
