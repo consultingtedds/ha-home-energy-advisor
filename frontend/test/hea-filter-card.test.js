@@ -210,19 +210,19 @@ describe("the options it offers", () => {
 
   it("shows what a label is called, not its id", async () => {
     // Given - a label whose id is not its name, which the reference instance
-    // has: `lifetime_counter_plug` is called "high draw". Showing the id would put
+    // has: `high_draw` is called "high draw". Showing the id would put
     // an underscore in front of the household (HEA-95)
     const card = mount(
       aHass({
-        devices: [{ ...AIRCON, labels: ["lifetime_counter_plug"] }, PUMP],
-        labels: { lifetime_counter_plug: "high draw" },
+        devices: [{ ...AIRCON, labels: ["high_draw"] }, PUMP],
+        labels: { high_draw: "high draw" },
       }),
     );
 
     // Then - the name is shown, and the id is what gets selected
     expect(namesIn(card, LABELS.filter_labels)).toEqual(["high draw"]);
-    choose(card, "label:lifetime_counter_plug");
-    expect(filterFor(KEY)).toEqual({ kind: "label", id: "lifetime_counter_plug" });
+    choose(card, "label:high_draw");
+    expect(filterFor(KEY)).toEqual({ kind: "label", id: "high_draw" });
   });
 
   it("falls back to the id where the integration names no labels", async () => {
@@ -288,11 +288,11 @@ describe("leaving the control alone", () => {
     const card = mount(aHass({ devices: HOUSE }));
 
     // When
-    const renamed = placed(aDeviceRow("slow_poll_aircon", "one device's Aircon"), LOUNGE);
+    const renamed = placed(aDeviceRow("slow_poll_aircon", "Slow Poll Heat Pump"), LOUNGE);
     card.hass = aHass({ devices: [renamed, KETTLE, PUMP, UNTRACKED] });
 
     // Then
-    expect(namesIn(card, LABELS.filter_devices)).toContain("one device's Aircon");
+    expect(namesIn(card, LABELS.filter_devices)).toContain("Slow Poll Heat Pump");
   });
 });
 

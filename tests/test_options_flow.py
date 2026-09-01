@@ -171,7 +171,9 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     hass.states.async_set("sensor.electricity_price_import", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
     dryer = _register(hass, "tumble_dryer_energy", "energy", "Tumble Dryer Energy")
-    lights = _register(hass, "power_only_lights_power", "power", "Power Only Lights Power")
+    lights = _register(
+        hass, "power_only_lights_power", "power", "Power Only Lights Power"
+    )
     hass.states.async_set(dryer, "0", _ENERGY)
     hass.states.async_set(lights, "60", _POWER)
     entry = _entry(hass)

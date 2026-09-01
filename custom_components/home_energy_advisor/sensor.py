@@ -687,9 +687,9 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         """What each published label is called, resolved once rather than per row.
 
         The rows carry label *ids*, which is what a filter matches on and what
-        survives a rename. An id is not presentable, though - the reference
-        instance has one whose id is ``lifetime_counter_plug`` and whose name is "water
-        heater" - so the names travel beside the list, keyed by id.
+        survives a rename. An id is not presentable, though - a label of two
+        words has an id joined by an underscore and a name that is not - so the
+        names travel beside the list, keyed by id.
 
         Only the labels actually in use: a household's whole label registry may
         cover things this integration knows nothing about.

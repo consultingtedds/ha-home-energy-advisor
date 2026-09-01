@@ -206,7 +206,9 @@ describe("what a filter matches", () => {
     expect(matchesFilter(device, { kind: "device", id: "slow_poll_aircon" })).toBe(
       true,
     );
-    expect(matchesFilter(device, { kind: "device", id: "cloud_polled_pump" })).toBe(false);
+    expect(matchesFilter(device, { kind: "device", id: "cloud_polled_pump" })).toBe(
+      false,
+    );
     expect(matchesFilter(device, { kind: "device", id: "Slow Poll Aircon" })).toBe(
       false,
     );

@@ -197,9 +197,9 @@ class HeaFilterCard extends HTMLElement {
       .map((label) => ({
         value: encode({ kind: "label", id: label }),
         // The id is what a filter matches on and what survives a rename; the
-        // name is what a household reads. A label called "high draw" has
-        // the id `lifetime_counter_plug`, and showing that would put an underscore in
-        // front of them.
+        // name is what a household reads. A label of two words has an id
+        // joining them with an underscore, and showing that would put the
+        // underscore in front of them.
         text: names[label] ?? label,
       }))
       .sort((left, right) => left.text.localeCompare(right.text));

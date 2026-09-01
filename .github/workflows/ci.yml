@@ -36,6 +36,11 @@ jobs:
         run: ruff check .
       - name: Format
         run: ruff format --check .
+      # The structural half only: the exact-word list is git-ignored and lives
+      # on the maintainer's machine, because publishing it would disclose the
+      # very thing it guards. See scripts/privacy_check.py.
+      - name: Privacy
+        run: python scripts/privacy_check.py
 
   typecheck:
     name: mypy

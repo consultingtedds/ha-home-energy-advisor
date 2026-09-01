@@ -396,7 +396,7 @@ describe("the energy metric", () => {
     buildDistribution(rows, labels, { metric: "energy" });
 
   it("measures each device by energy rather than by what it cost", () => {
-    // Given - the cloud-polled pump ran hard and cost nothing, which is exactly the
+    // Given - the pump ran hard and cost nothing, which is exactly the
     // device a cost diagram draws as a hairline
     const rows = [anEnergyRow("pump", "Pump", { generation: 6.6 }, inLounge)];
 

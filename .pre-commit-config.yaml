@@ -15,6 +15,18 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # The one gate that is cheaper to run here than to undo. A disclosure reaching
+  # `main` is permanent and public, and has had to be swept from the history
+  # four times (HEA-63, HEA-74, HEA-76, HEA-105) - so unlike mypy and pytest
+  # above, this one earns its place in a hook that must stay fast.
+  - repo: local
+    hooks:
+      - id: privacy-check
+        name: privacy (no real household data)
+        entry: python scripts/privacy_check.py
+        language: system
+        pass_filenames: true
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

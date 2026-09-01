@@ -55,8 +55,8 @@ export const readWholeHome = (hass, entityId = DEVICES_SENSOR) => {
  * What each label a device carries is called, keyed by its id.
  *
  * The rows carry ids, which is what a filter matches on and what survives a
- * rename; an id is not presentable, though - a label called "high draw" has
- * the id `lifetime_counter_plug` - so the names travel beside the list and are resolved
+ * rename; an id is not presentable, though - a label of two words has an id
+ * joining them with an underscore - so the names travel beside the list and are resolved
  * once rather than repeated on every row.
  *
  * Empty where the integration is older than labels, which is the case a card

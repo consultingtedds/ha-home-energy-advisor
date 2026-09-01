@@ -35,3 +35,10 @@ Thumbs.db
 # needs to prove must be reproduced by a synthetic fixture instead.
 tests/fixtures/exploration_2026_07/
 tests/fixtures/bad_source_capture/
+
+# The maintainer's own household words, for scripts/privacy_check.py to grep
+# for. Ignored because a denylist naming a household's rooms, devices and family
+# *is* the inventory the rule exists to keep out - committing it would be the
+# disclosure wearing the costume of its own cure. CI runs the structural half of
+# that check; this file adds the exact-word half locally (HEA-105).
+.privacy-terms

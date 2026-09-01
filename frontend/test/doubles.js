@@ -124,8 +124,8 @@ export const AIRCON_BUCKETS = bucketsFor("slow_poll_aircon", 38.6, 0.11, 5.78);
  * that has not opted into per-device ranges, which is the case a card has to
  * tell apart from a range of zero.
  *
- * The suffixes are the entity ids as they exist on a real instance, verified on
- * `the reference instance` 2026-08-14. They are written out rather than built
+ * The suffixes are the entity ids as they exist on a real instance, verified
+ * against the reference instance 2026-08-14. They are written out rather than built
  * from the card's own `BOUNDS`, so this fixture can disagree with the card - and
  * it once should have: HEA-84 shipped `_cost_floor` on both sides against a
  * sensor Home Assistant had really named `_lowest_possible_cost`.

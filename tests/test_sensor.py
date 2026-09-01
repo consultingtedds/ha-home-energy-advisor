@@ -1040,9 +1040,9 @@ async def test_labels_on_the_source_entity_join_its_devices(
 async def test_devices_sensor_names_the_labels_it_publishes(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a label whose id is not its name. On the reference instance the
-    # `lifetime_counter_plug` label is called "high draw", so a card showing the id
-    # would put an underscore in front of the household (HEA-95)
+    # Given - a label whose id is not its name. Any label of two words has one:
+    # the id joins them with an underscore, so a card showing the id rather than
+    # the name would put that underscore in front of the household (HEA-95)
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
     _seed_states(hass)
