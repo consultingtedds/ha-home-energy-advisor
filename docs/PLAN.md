@@ -194,8 +194,14 @@ Presentation
    Delivered as a **family over one shared data layer** rather than one card with
    modes: totals, device table, cost over time, sources, device costs, cost
    distribution, self-sufficiency, and a page filter by room, floor or label.
+   The page filter narrows by room, floor, label **or a single device**, which is
+   what answers "show me this one device over the period" - the charts already
+   drew one device correctly whenever it was the only one on them, so the gap was
+   the selection rather than a missing card (HEA-98).
    Each card's reasoning is in its own header comment and its ticket - not
-   restated here. Children still open: HEA-98, HEA-104
+   restated here. Children still open: HEA-104 (what colour the cost concepts
+   wear) and HEA-106 (a performance gradient on the Would-have-paid outline,
+   which HEA-104 unblocks)
 2. ~~Core-cards dashboard (HEA-25)~~ - **cancelled**. A zero-dependency
    secondary view is not wanted beside the shipped family; the installable
    dashboard a household actually gets is HEA-94

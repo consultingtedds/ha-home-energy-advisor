@@ -93,6 +93,7 @@ deliberately made otherwise - treat it that way by default.
 | Vendor or model names for the household's own hardware | Describe what the device *does* - "a counter that resets each cycle", "a cloud-polled plug". Naming the model narrows the property as an appliance list does. Ubiquitous ecosystems (MQTT, Zigbee) identify nothing and are fine |
 | Hostnames, IPs, timezones, lifetime counter readings | "the reference instance". A live hostname is an address for someone's home |
 | Assuming a rename is enough | **Minimise first, anonymise second.** Ask what the project actually needs. A 9-row table relabelled still discloses that the house has 9 rooms |
+| Copying a real name in from a ticket, a capture or a chat | Re-invent it. Evidence from the live instance belongs in a ticket; by the time it has made two respectable hops it stops feeling like live data, which is how HEA-107 nearly landed a member's name in a test |
 
 ### Process
 
@@ -137,6 +138,15 @@ deliberately made otherwise - treat it that way by default.
   home, and does the project actually need it?* Omit before renaming
 - Real captures live only in `.gitignore`d fixture directories; their tests skip
   when absent, and a synthetic equivalent covers whatever CI must prove
+- **`scripts/privacy_check.py` enforces what it can**, in pre-commit and CI. It
+  is a backstop, not the rule: four incidents in, every one was caught by a
+  person reading a diff, so read the table above rather than trusting a green
+  hook. Structural shapes (room words in identifiers and display names, live
+  hostnames) run everywhere; the household's actual words live in a git-ignored
+  `.privacy-terms` and so run only locally, because a committed denylist naming
+  a family and its rooms would be the disclosure it exists to prevent. **Add to
+  that file whenever the instance gains a device or a person** - it catches what
+  no pattern can. Reasoning and its deliberate gaps: HEA-107
 - **Privacy overrides append-only.** An accepted ADR is normally never edited, but
   a disclosure left in one stays in the tree, and honouring the process rule there
   would protect the process rather than the household. Edit it in place and say so
