@@ -148,6 +148,24 @@ def test_it_allows_a_documented_host_and_a_dotted_filename(
     assert findings == []
 
 
+def test_the_room_lists_survived_a_history_rewrite() -> None:
+    # Given - the guard's own room words are the one place in this repo where
+    # those words are *supposed* to appear, which makes them collateral in any
+    # `filter-repo --replace-text` sweep. HEA-107's rewrite mapped them onto
+    # the fixture vocabulary and left a checker that would flag
+    # `slow_poll_aircon` and miss a real room; nothing here noticed, because
+    # the words these tests happen to use were not in that sweep.
+    #
+    # Assembled from fragments so a literal replacement cannot rewrite the
+    # assertion to agree with a corrupted list.
+    expected = ("living" + "_room", "games" + "_room", "pool" + "_house")
+
+    # Then
+    for word in expected:
+        assert word in privacy_check.ROOM_SNAKE
+        assert word.replace("_", " ").title() in privacy_check.ROOM_TITLE
+
+
 def test_the_repository_itself_is_clean() -> None:
     # Given - the guard pointed at the tree it guards. This is the assertion
     # that would have failed before the HEA-105 sweep, and the one that fails

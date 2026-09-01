@@ -51,17 +51,27 @@ SKIP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf", ".zip
 #: Rooms only a *home* has. A device or fixture named for one of these is naming
 #: somebody's floor plan, which is the failure mode of HEA-74 and HEA-76 both.
 #:
-#: Matched only where a room word is *attached to something* - `coarse_step`,
-#: "Master Bathroom" - never bare. Prose may say "a device in a bedroom" without
-#: describing anybody's house, and a check that shouts at prose gets turned off.
+#: Matched only where a room word is *attached to something* - `spare_room_fan`,
+#: "Utility Room Heater" - never bare. Prose may say "a device in a bedroom"
+#: without describing anybody's house, and a check that shouts at ordinary prose
+#: is a check somebody turns off.
+#:
+#: **Exclude this file from any future `git filter-repo --replace-text` run.**
+#: The HEA-107 rewrite mapped real room words onto the fixture vocabulary across
+#: every blob, and these two lists are the one place in the repo where those
+#: words are supposed to appear - so the sweep quietly rewrote the guard into
+#: one that would flag `slow_poll_aircon` and miss the thing it was built for.
+#: The existing tests did not notice, because the words they happened to use
+#: were not in the sweep - so `test_the_room_lists_survived_a_history_rewrite`
+#: now asserts these entries directly, from fragments a replacement cannot see.
 ROOM_SNAKE = (
-    "bedroom|bathroom|ensuite|slow_poll|dining_room|coarse_step|utility_room|"
-    "box_room|spare_room|playroom|conservatory|lifetime_counter|driveway|patio|"
+    "bedroom|bathroom|ensuite|living_room|dining_room|games_room|utility_room|"
+    "box_room|spare_room|playroom|conservatory|pool_house|driveway|patio|"
     "cellar|attic|hallway|porch|annexe"
 )
 ROOM_TITLE = (
-    "Bedroom|Bathroom|Ensuite|Slow Poll|Dining Room|Coarse Step|Utility Room|"
-    "Box Room|Spare Room|Playroom|Conservatory|Lifetime Counter|Driveway|Patio|"
+    "Bedroom|Bathroom|Ensuite|Living Room|Dining Room|Games Room|Utility Room|"
+    "Box Room|Spare Room|Playroom|Conservatory|Pool House|Driveway|Patio|"
     "Cellar|Attic|Hallway|Porch|Annexe"
 )
 
