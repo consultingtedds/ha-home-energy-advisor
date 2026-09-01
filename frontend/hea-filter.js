@@ -82,10 +82,16 @@ export const setFilter = (key, filter) => {
 /**
  * Whether a device row belongs in the current selection.
  *
- * The **Untracked remainder is never in one**. It is not in a room and carries
- * no label by definition, so a filtered view must not show it - and must not
- * sweep it into the unfiled bucket either, which is a claim about rooms rather
- * than a bucket for everything without one.
+ * The **Untracked remainder is in no grouping**. It is not in a room and
+ * carries no label by definition, so a filtered view must not show it - and
+ * must not sweep it into the unfiled bucket either, which is a claim about
+ * rooms rather than a bucket for everything without one.
+ *
+ * Naming it *as a device* is a different act, and is allowed, which is why the
+ * device kind is answered before that rule rather than after it. The remainder
+ * is frequently the largest line in the house; a drill-down that could name
+ * every device except that one would be a strange thing to offer, and there is
+ * nothing ambiguous about picking it by name (HEA-98).
  *
  * `id: null` is the unfiled bucket, and it earns its place: measured on the
  * reference instance, one tracked device has no area and five have no floor,
@@ -95,6 +101,9 @@ export const setFilter = (key, filter) => {
 export const matchesFilter = (device, filter) => {
   const { kind, id } = filter ?? EVERYTHING;
   if (kind === "all") return true;
+  // The key identifies a device the way an area id identifies a room; a name is
+  // only how the household says it, and may be changed at any time.
+  if (kind === "device") return device.key === id;
   if (device.untracked) return false;
   if (kind === "label") {
     // Absent rather than empty on an integration published before labels

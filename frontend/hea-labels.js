@@ -106,7 +106,12 @@ export const DEFAULTS = Object.freeze({
   filter_rooms: "Rooms",
   filter_floors: "Floors",
   filter_labels: "Labels",
+  filter_devices: "Devices",
   filter_unfiled: "Not in one",
+  hourly_shape_estimate:
+    "One device's hourly shape is an estimate: each meter reading is spread " +
+    "across the hours it spanned, so cost may not land in the hour the energy " +
+    "was used.",
   statistics_failed: "Statistics could not be loaded.",
   no_picker: "Add an Energy date picker card to choose the range.",
   chart_not_loaded:

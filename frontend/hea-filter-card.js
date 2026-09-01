@@ -9,7 +9,13 @@
  *
  * The options come from the device rows the HEA-55 sensor publishes, so a
  * household that adds a room finds it in the list without touching a dashboard.
- * Nothing here names a room, a floor or a label.
+ * Nothing here names a room, a floor, a label or a device.
+ *
+ * Individual devices are offered too (HEA-98), which is what answers "show me
+ * this one device across the period": the charts already draw a single device
+ * correctly when it is the only one on them - `_devices()` narrows, and the
+ * series are built from whatever list they are handed - so what was missing was
+ * never a chart but a way to say which device.
  *
  * A plain `<select>` rather than one of Home Assistant's own form components.
  * ADR-0012 confines internals to one adapter, and this card needs none of them:
@@ -36,9 +42,14 @@ const EDITOR_TAG = `${TAG}-editor`;
  * The groups offered, in the order a household thinks in.
  *
  * Rooms first: it is the question most often asked and the one every instance
- * can answer. Labels last, because they exist only where a household has made
- * them, and an empty group would read as "you have no labels" rather than as a
- * grouping nobody has set up.
+ * can answer. Labels after them, because they exist only where a household has
+ * made them, and an empty group would read as "you have no labels" rather than
+ * as a grouping nobody has set up.
+ *
+ * Individual devices last of all. Naming one is the step *after* a grouping -
+ * the question asked once a ranking has said which device to look at (HEA-98) -
+ * and it is also the longest list, so it belongs past the groups rather than
+ * between them.
  */
 const GROUPS = [
   { kind: "area", label: "filter_rooms", id: "areaId", name: "areaName" },
@@ -96,13 +107,15 @@ class HeaFilterCard extends HTMLElement {
    * choosing from it, which is what made the first version unusable (HEA-95).
    *
    * So the card redraws only when what it *shows* has moved: the rooms, floors
-   * and labels in use, their names, the current selection, and the vocabulary
-   * once it arrives. A device's cost changes constantly and is not in here,
-   * because this card never draws one.
+   * and labels in use, their names, the devices and *their* names, the current
+   * selection, and the vocabulary once it arrives. A device's cost changes
+   * constantly and is not in here, because this card never draws one.
    */
   _signature() {
     return JSON.stringify([
-      this._devices().map((device) => [
+      this._allDevices().map((device) => [
+        device.key,
+        device.name,
         device.areaId,
         device.areaName,
         device.floorId,
@@ -129,14 +142,21 @@ class HeaFilterCard extends HTMLElement {
   }
 
   /**
-   * The devices the options are built from.
+   * The devices the *groupings* are built from.
    *
    * The Untracked remainder is left out: it is in no room and carries no label
    * by definition, so counting it would put an "unfiled" bucket on every
-   * household's card whether or not they had anything unfiled.
+   * household's card whether or not they had anything unfiled. It is offered
+   * by name in the Devices group instead, where nothing has to be claimed
+   * about where it lives (HEA-98).
    */
   _devices() {
     return readDevices(this._hass).filter((device) => !device.untracked);
+  }
+
+  /** Everything nameable, remainder included. */
+  _allDevices() {
+    return readDevices(this._hass);
   }
 
   /**
@@ -185,6 +205,21 @@ class HeaFilterCard extends HTMLElement {
       .sort((left, right) => left.text.localeCompare(right.text));
   }
 
+  /**
+   * Every device by name, the remainder among them.
+   *
+   * No unfiled bucket and no omissions: a device is either in the house or it
+   * is not, and the remainder is a real line with a real cost.
+   */
+  _deviceOptions() {
+    return this._allDevices()
+      .map((device) => ({
+        value: encode({ kind: "device", id: device.key }),
+        text: device.name,
+      }))
+      .sort((left, right) => left.text.localeCompare(right.text));
+  }
+
   _groups() {
     const devices = this._devices();
     const groups = GROUPS.map((group) => ({
@@ -195,6 +230,7 @@ class HeaFilterCard extends HTMLElement {
     if (labels.length) {
       groups.push({ label: this._labels.filter_labels, options: labels });
     }
+    groups.push({ label: this._labels.filter_devices, options: this._deviceOptions() });
     return groups.filter((group) => group.options.length > 0);
   }
 
@@ -251,8 +287,9 @@ class HeaFilterCard extends HTMLElement {
   /**
    * The control itself.
    *
-   * A room's name is the household's own text and is escaped; so is a label,
-   * which a household types into Home Assistant's label registry.
+   * A room's name is the household's own text and is escaped; so are a label,
+   * which a household types into Home Assistant's label registry, and a device
+   * name, which comes from the device registry.
    */
   _control(labels) {
     const groups = this._groups()
@@ -285,7 +322,7 @@ export const register = () => {
   registerCard(TAG, HeaFilterCard, {
     name: "Home Energy Advisor: Filter",
     description:
-      "Narrow every Home Energy Advisor card on the page to a room, a floor or a label.",
+      "Narrow every Home Energy Advisor card on the page to a room, a floor, a label or one device.",
   });
 };
 

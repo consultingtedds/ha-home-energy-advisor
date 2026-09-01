@@ -87,8 +87,12 @@ describe("the options it offers", () => {
     // touching a dashboard, which is the rule every card here follows
     const card = mount(aHass({ devices: HOUSE }));
 
-    // Then
-    expect(groupsOf(card)).toEqual([LABELS.filter_rooms, LABELS.filter_floors]);
+    // Then - groupings first, then the individual devices to drill into
+    expect(groupsOf(card)).toEqual([
+      LABELS.filter_rooms,
+      LABELS.filter_floors,
+      LABELS.filter_devices,
+    ]);
     // Alphabetical, and no unfiled bucket: every *tracked* device here has a
     // room, and the Untracked remainder is not counted when building the list
     expect(namesIn(card, LABELS.filter_rooms)).toEqual([
@@ -141,6 +145,35 @@ describe("the options it offers", () => {
 
     // Then
     expect(namesIn(card, LABELS.filter_rooms)).not.toContain(LABELS.filter_unfiled);
+  });
+
+  it("offers every device by name, last, once a ranking has named one", async () => {
+    // Given - the drill-down HEA-98 asks for: the chart already draws one
+    // device correctly when it is the only one shown, and what was missing was
+    // a way to say which. Last in the list, because it is the step *after* the
+    // groupings rather than a peer of them
+    const card = mount(aHass({ devices: HOUSE }));
+
+    // Then - alphabetical, and the Untracked remainder is among them. It is
+    // frequently the largest line in the house, and a device list naming every
+    // device except that one would be a strange thing to offer
+    expect(groupsOf(card).at(-1)).toBe(LABELS.filter_devices);
+    expect(namesIn(card, LABELS.filter_devices)).toEqual([
+      "Cloud Polled Pump",
+      "Fine Meter Kettle",
+      "Slow Poll Aircon",
+      "Untracked",
+    ]);
+  });
+
+  it("keeps the remainder out of the groupings while offering it as a device", async () => {
+    // Given - naming it is unambiguous; filing it under a room is a claim
+    // nobody can make for it
+    const card = mount(aHass({ devices: [AIRCON, UNTRACKED] }));
+
+    // Then
+    expect(namesIn(card, LABELS.filter_rooms)).not.toContain(LABELS.filter_unfiled);
+    expect(namesIn(card, LABELS.filter_devices)).toContain("Untracked");
   });
 
   it("offers no labels until the integration publishes them", async () => {
@@ -248,9 +281,34 @@ describe("leaving the control alone", () => {
     // Then
     expect(namesIn(card, LABELS.filter_rooms)).toContain("Snug");
   });
+
+  it("rebuilds when a device is renamed", async () => {
+    // Given - a device's own name is now an option's text, so the control has
+    // to notice it moving as well as its room's (HEA-98)
+    const card = mount(aHass({ devices: HOUSE }));
+
+    // When
+    const renamed = placed(aDeviceRow("slow_poll_aircon", "one device's Aircon"), LOUNGE);
+    card.hass = aHass({ devices: [renamed, KETTLE, PUMP, UNTRACKED] });
+
+    // Then
+    expect(namesIn(card, LABELS.filter_devices)).toContain("one device's Aircon");
+  });
 });
 
 describe("choosing one", () => {
+  it("narrows the page to a single device", async () => {
+    // Given - the question asked once a ranking has said which device to look
+    // at, answered by every card on the page rather than by a second control
+    const card = mount(aHass({ devices: HOUSE }));
+
+    // When
+    choose(card, "device:slow_poll_aircon");
+
+    // Then - the key, never the name: a household may rename a device
+    expect(filterFor(KEY)).toEqual({ kind: "device", id: "slow_poll_aircon" });
+  });
+
   it("narrows the page, not just itself", async () => {
     // Given
     const card = mount(aHass({ devices: HOUSE }));

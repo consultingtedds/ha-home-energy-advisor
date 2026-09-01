@@ -196,6 +196,44 @@ describe("what a filter matches", () => {
     expect(matchesFilter(aDevice(), { kind: "floor", id: null })).toBe(false);
   });
 
+  it("matches one device by its key", () => {
+    // Given - the drill-down after a ranking has said which device to look at.
+    // The key identifies a device the way an area id identifies a room; a name
+    // is only how the household says it (HEA-98)
+    const device = aDevice();
+
+    // When / Then
+    expect(matchesFilter(device, { kind: "device", id: "slow_poll_aircon" })).toBe(
+      true,
+    );
+    expect(matchesFilter(device, { kind: "device", id: "cloud_polled_pump" })).toBe(false);
+    expect(matchesFilter(device, { kind: "device", id: "Slow Poll Aircon" })).toBe(
+      false,
+    );
+  });
+
+  it("lets the Untracked remainder be named, though no grouping holds it", () => {
+    // Given - the remainder is often the largest line in the house, and a
+    // device selection that could name every device except that one would be a
+    // strange thing to offer. Naming it is unambiguous in a way that filing it
+    // under a room never is (HEA-98)
+    const untracked = aDevice({
+      key: "untracked",
+      untracked: true,
+      areaId: null,
+      floorId: null,
+      labels: [],
+    });
+
+    // When / Then
+    expect(matchesFilter(untracked, { kind: "device", id: "untracked" })).toBe(true);
+    expect(matchesFilter(untracked, { kind: "device", id: "slow_poll_aircon" })).toBe(
+      false,
+    );
+    // And the grouping rule is untouched: still in no room, under no floor
+    expect(matchesFilter(untracked, { kind: "area", id: null })).toBe(false);
+  });
+
   it("takes everything for a kind it does not know", () => {
     // Given - a selection from a newer control, or a hand-edited one. Showing
     // the house is the safe reading; matching nothing would look like a house

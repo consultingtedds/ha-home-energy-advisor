@@ -148,6 +148,37 @@ class HeaCostOverTimeCard extends HeaChartCard {
     ];
   }
 
+  /**
+   * The caption, plus what an hourly shape may honestly claim about one device.
+   *
+   * A device reporting every 30-90 minutes has its energy spread across the
+   * buckets its counter spanned (ADR-0006), so this chart is an accrual
+   * estimate rather than a record of when the energy was used. Across a house
+   * that averages out and nobody is misled; pointed at one device it is the
+   * whole picture, and the bars imply a precision ADR-0016's bounds exist
+   * precisely because we do not have (HEA-98).
+   *
+   * Two conditions, because a note shown everywhere is a note nobody reads.
+   * Hourly only: a 90-minute counter cannot move energy out of the *day* it was
+   * used in, so at daily buckets the caveat would be true of nothing visible.
+   * And one device, however it got there - the page filter or a room
+   * dashboard's own config both put the reader in front of the same chart.
+   *
+   * It says nothing about *this* device's counter, because the card cannot
+   * know: the published rows carry no reporting cadence, and inventing one
+   * would be a claim rather than a caveat. So it describes the method, which is
+   * true of every device to a degree the household can weigh for itself.
+   */
+  _caption(locale) {
+    return `${super._caption(locale)}${this._accrualNote()}`;
+  }
+
+  _accrualNote() {
+    if (this._devices().length !== 1) return "";
+    if (!this._period || bucketPeriodFor(this._period) !== "hour") return "";
+    return `<div class="hint">${this._labels.hourly_shape_estimate}</div>`;
+  }
+
   _options(locale) {
     const labels = this._labels;
     return {

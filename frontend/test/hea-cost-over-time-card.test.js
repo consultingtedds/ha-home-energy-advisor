@@ -14,14 +14,18 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TAG, register } from "../hea-cost-over-time-card.js";
+import { resetFilters, setFilter } from "../hea-filter.js";
 import { formatMoney, formatPeriod } from "../hea-format.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 import {
+  JULY,
+  MAY,
   aDeviceRow,
   aHass,
   anEnergyCollection,
   mountCard,
   settled,
+  text,
 } from "./doubles.js";
 
 const EURO = { language: "en-GB", currency: "EUR" };
@@ -79,6 +83,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   document.body.replaceChildren();
+  // The page filter is a module-global store, so a selection left by one test
+  // would narrow the next one's chart without it ever saying so (HEA-98).
+  resetFilters();
 });
 
 describe("registration", () => {
@@ -631,6 +638,88 @@ describe("when there is nothing to draw", () => {
     expect(card.shadowRoot.querySelector("[data-state]")).not.toBe(null);
     warn.mockRestore();
     delete globalThis.loadCardHelpers;
+  });
+});
+
+/**
+ * What an hourly shape may honestly claim about one device (HEA-98).
+ *
+ * A device reporting every 30-90 minutes has its energy spread across the
+ * buckets its counter spanned (ADR-0006), so the chart is an accrual estimate
+ * rather than a profile of when the energy was used. Aggregated over a house
+ * that washes out; pointed at one device it is the whole picture, and ADR-0016's
+ * bounds exist precisely because the moment is unknowable.
+ */
+describe("the accrual caveat", () => {
+  /** Exactly two days, which `bucketPeriodFor` still buckets hourly. */
+  const TWO_DAYS = new Date(DAY_ONE.getTime() + 2 * 86400000);
+
+  const KETTLE = aDeviceRow("fine_meter_kettle", "Fine Meter Kettle");
+
+  const bothDevices = {
+    ...twoDays,
+    "sensor.fine_meter_kettle_energy_used": [{ start: DAY_ONE.getTime(), change: 4 }],
+    "sensor.fine_meter_kettle_actual_cost": [{ start: DAY_ONE.getTime(), change: 1 }],
+    "sensor.fine_meter_kettle_cost_at_grid_price": [
+      { start: DAY_ONE.getTime(), change: 2 },
+    ],
+  };
+
+  const house = (start, end) =>
+    aHass({
+      devices: [...AIRCON, KETTLE],
+      response: bothDevices,
+      collection: anEnergyCollection(start, end),
+    });
+
+  it("says so when the page is narrowed to a single device at hourly buckets", async () => {
+    // Given - a house of two, drilled into one, which is the gesture HEA-98
+    // adds to the filter
+    const card = mount(house(DAY_ONE, TWO_DAYS));
+    await ready(card);
+
+    // When
+    setFilter("energy_hea-costs", { kind: "device", id: "slow_poll_aircon" });
+
+    // Then - stated rather than left for the reader to infer from a shape that
+    // looks like a measurement
+    await vi.waitFor(() =>
+      expect(text(card)).toContain(LABELS.hourly_shape_estimate),
+    );
+  });
+
+  it("stays quiet while the chart is a house rather than a device", async () => {
+    // Given - the same hourly buckets, unfiltered. Across a house the accrual
+    // averages out, and a caveat on every chart is a caveat nobody reads
+    const card = mount(house(DAY_ONE, TWO_DAYS));
+
+    // Then
+    await ready(card);
+    expect(text(card)).not.toContain(LABELS.hourly_shape_estimate);
+  });
+
+  it("stays quiet at daily buckets, where a counter's spread is invisible", async () => {
+    // Given - a 90-minute counter cannot move energy out of the day it was
+    // used in, so the caveat would be true of nothing the reader can see
+    const card = mount(house(MAY, JULY));
+    await ready(card);
+
+    // When
+    setFilter("energy_hea-costs", { kind: "device", id: "slow_poll_aircon" });
+
+    // Then
+    await vi.waitFor(() => expect(seriesOf(card, "paid").data.length).toBeGreaterThan(0));
+    expect(text(card)).not.toContain(LABELS.hourly_shape_estimate);
+  });
+
+  it("says so for a card configured to one device, however it got there", async () => {
+    // Given - a room dashboard pinning a single device in its config reads the
+    // same chart with the same caveat, and never touches the page filter
+    const card = mount(house(DAY_ONE, TWO_DAYS), { devices: ["slow_poll_aircon"] });
+
+    // Then
+    await ready(card);
+    expect(text(card)).toContain(LABELS.hourly_shape_estimate);
   });
 });
 
