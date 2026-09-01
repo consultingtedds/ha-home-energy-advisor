@@ -3,8 +3,8 @@
  *
  * One colour per device, meaning the device (HEA-101).
  *
- * Reported filtering the testing view to the aircons: one device's was blue on the
- * device-costs chart and yellow on the Sankey, and Second Slow Poll the other way
+ * Reported filtering the testing view to the aircons: one was blue on the
+ * device-costs chart and yellow on the Sankey, and another the other way
  * round. Both cards indexed the palette by a device's *position in that card's
  * own list*, and the two lists are ordered differently - one by what was paid,
  * the other by key with zero-valued devices dropped. So position 0 named a
@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { TAG as COSTS_TAG } from "../hea-device-costs-card.js";
 import { TAG as SANKEY_TAG } from "../hea-distribution-card.js";
 import { resetFilters, setFilter } from "../hea-filter.js";
-import { coloursFor, PALETTE } from "../hea-palette.js";
+import { coloursFor, PALETTE, SECOND_LAP, SLOTS } from "../hea-palette.js";
 import {
   aDeviceRow,
   aHass,
@@ -117,19 +117,52 @@ describe("assigning the colours", () => {
     expect(coloursFor(devices).get("b_apple")).toBe(PALETTE[1]);
   });
 
-  it("cycles rather than running out", () => {
-    // Given - a household may track more devices than the palette has hues.
-    // Okabe-Ito is eight because that is the set that stays distinguishable
-    const many = Array.from({ length: PALETTE.length + 2 }, (_, index) =>
-      aDeviceRow(`device_${index}`, `Device ${index}`),
+  /** As many devices as there are slots across every lap. */
+  const manyDevices = (count) =>
+    Array.from({ length: count }, (_, index) =>
+      aDeviceRow(`device_${String(index).padStart(2, "0")}`, `Device ${index}`),
     );
 
-    // When
-    const colours = coloursFor(many);
+  it("gives a second lap of devices colours of their own", () => {
+    // Given - fourteen tracked devices on the reference instance, and eight
+    // hues. Before HEA-105 the ninth device was handed byte-for-byte the hex
+    // the first already had, so filtering to one floor drew two pairs that
+    // could not be told apart at all
+    const colours = coloursFor(manyDevices(SLOTS));
 
-    // Then - every device has one, and the ninth shares with the first
-    expect(colours.size).toBe(PALETTE.length + 2);
-    expect(new Set(colours.values()).size).toBe(PALETTE.length);
+    // Then - every device has a colour, and no two share one
+    expect(colours.size).toBe(SLOTS);
+    expect(new Set(colours.values()).size).toBe(SLOTS);
+  });
+
+  it("leaves the first lap exactly as it was", () => {
+    // Given - households have already learned these. A fix for the wrap that
+    // repainted the eight devices below it would be a worse change than the
+    // bug, and every screenshot and memory of the dashboard would be wrong
+    const colours = coloursFor(manyDevices(SLOTS));
+
+    // Then
+    PALETTE.forEach((hue, index) => {
+      expect(colours.get(`device_${String(index).padStart(2, "0")}`)).toBe(hue);
+    });
+  });
+
+  it("cycles again once every lap is spent", () => {
+    // Given - the palette does not grow without limit. Past sixteen a
+    // household has two devices sharing, and cycling keeps that predictable
+    // rather than arbitrary, which is the best available answer
+    const colours = coloursFor(manyDevices(SLOTS + 1));
+
+    // Then - the seventeenth wears the first one's colour again
+    expect(colours.get(`device_${String(SLOTS).padStart(2, "0")}`)).toBe(PALETTE[0]);
+    expect(new Set(colours.values()).size).toBe(SLOTS);
+  });
+
+  it("never repeats a hue within a lap", () => {
+    // Given - the second lap is the first rotated into the gaps beside it, so
+    // a rotation that happened to land on a hue already in use would reproduce
+    // the defect one lap along instead of fixing it
+    expect(new Set([...PALETTE, ...SECOND_LAP]).size).toBe(SLOTS);
   });
 });
 
