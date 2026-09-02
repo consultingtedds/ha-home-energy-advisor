@@ -27,9 +27,9 @@
  *
  * * **Hue** is the saving rate. Red where nearly all the grid price was paid
  *   anyway, amber in between, green where almost none of it was.
- * * **How loudly it is said** is the share, square-rooted so a mid-sized device
- *   still registers instead of everything below the largest collapsing to grey.
- *   Its job is suppressing the irrelevant, not announcing the large.
+ * * **How loudly it is said** is the share. Its job is suppressing the
+ *   irrelevant, not announcing the large - see `AUDIBLE` for why that is a
+ *   soft-saturating curve rather than the square root it started as.
  *
  * ## The lightness ramp is deliberate, and re-derived for text
  *
@@ -134,6 +134,29 @@ const rampAt = (rate, ground) => {
   };
 };
 
+/**
+ * The share at which a device is already half as loud as the largest one.
+ *
+ * The weighting exists to suppress rates that are **unreliable** - HEA-75's
+ * near-zero denominators, where a percentage over EUR 0.00 is noise dressed as
+ * a verdict. It started as `sqrt(share)`, which conflated *unreliable* with
+ * merely *smaller*, and the two are not the same thing.
+ *
+ * Read on the real instance for 28 August: a device at 18% of the largest fell
+ * to 42% volume and one at 9% to 30%, and both were reading 9% and 0% saved -
+ * the worst verdicts on the page, rendered nearly invisible. The poor
+ * performers on any given day tend to be the smaller devices, so the curve was
+ * muting exactly the rows worth looking at, while every large well-performing
+ * device shouted. Good news was structurally louder than bad.
+ *
+ * `share / (share + AUDIBLE)` collapses hard at the very bottom and stays flat
+ * through the middle, which is the shape the intent actually wanted: a real
+ * EUR 0.53 keeps its verdict, two cents does not. Still no threshold and no
+ * cliff - it is one smooth curve, just one that bends where the data stops
+ * meaning anything rather than where the arithmetic happened to.
+ */
+const AUDIBLE = 0.05;
+
 const round = (value) => Math.round(value * 10) / 10;
 
 /**
@@ -156,11 +179,13 @@ export const verdictScaleFor = (rows, { dark = false } = {}) => {
   return (row) => {
     const rate = savingRate(row ?? {});
     if (rate === undefined || largest <= 0) return undefined;
-    // Square-rooted, so a device a quarter of the largest still speaks at half
-    // volume rather than a quarter of it. Capped, because a caller may pass a
-    // row that is not one of the set - a table's totals line outspends every
-    // device summed into it, and uncapped it would oversaturate past the scale.
-    const weight = Math.min(1, Math.sqrt(costOf(row) / largest));
+    // Capped, because a caller may pass a row that is not one of the set - a
+    // table's totals line outspends every device summed into it, and uncapped
+    // it would oversaturate past the top of the scale.
+    const share = Math.min(1, costOf(row) / largest);
+    // Normalised so the largest contributor lands on exactly 1 rather than on
+    // whatever the curve happens to reach there.
+    const weight = (share * (1 + AUDIBLE)) / (share + AUDIBLE);
     const clamped = Math.min(1, Math.max(0, rate));
     const { hue, lightness } = rampAt(clamped, ground);
     const saturation = SATURATION[ground] * weight;

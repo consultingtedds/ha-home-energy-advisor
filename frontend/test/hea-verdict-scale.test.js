@@ -135,19 +135,38 @@ describe("weighting by how much the device matters", () => {
     expect(alphaOf(scale(LARGE).edge)).toBeCloseTo(1);
   });
 
-  it("keeps a mid-sized device legible rather than collapsing it to grey", () => {
-    // Given - a square-root ramp rather than a linear one. Linear against the
-    // largest contributor puts everything below the top device close to grey,
-    // and a household with one dominant device would see one coloured row
+  it("keeps a mid-sized device as loud as the verdict deserves", () => {
+    // Given - a device a quarter the size of the largest. Read on the real
+    // instance, `sqrt` put this at half volume and a device at 18% of the
+    // largest at 42%, which is where the complaint came from: the poor
+    // performers on a given day are usually the smaller devices, so the
+    // weighting muted exactly the rows worth looking at (HEA-106).
+    //
+    // The suppression is meant for rates that are *unreliable* - HEA-75's
+    // near-zero denominators - and a real EUR 5 against a real EUR 20 is not
+    // unreliable, it is merely smaller. So the curve collapses hard at the
+    // very bottom and stays flat through the middle.
     const middling = aRow(5, 2.5);
+    const scaleOf = verdictScaleFor([LARGE, middling, TINY]);
 
     // When
-    const verdict = verdictScaleFor([LARGE, middling, TINY])(middling);
+    const quieter = saturationOf(scaleOf(middling).text);
+    const loudest = saturationOf(scaleOf(LARGE).text);
 
-    // Then - a quarter of the largest by value, half of it by weight
-    expect(saturationOf(verdict.text)).toBeCloseTo(
-      saturationOf(verdictScaleFor([LARGE, middling, TINY])(LARGE).text) / 2,
-      0,
+    // Then - quieter than the largest, and nowhere near faded out
+    expect(quieter).toBeLessThan(loudest);
+    expect(quieter).toBeGreaterThan(loudest * 0.7);
+  });
+
+  it("still collapses a device whose rate is genuinely noise", () => {
+    // Given - the other half of the same curve, and the reason it exists.
+    // Two cents of grid-price cost supports no percentage worth colouring
+    const scaleOf = verdictScaleFor([LARGE, TINY]);
+
+    // When / Then - a twentieth of the loudest, where a mid-sized device keeps
+    // better than seven tenths of it
+    expect(saturationOf(scaleOf(TINY).text)).toBeLessThan(
+      saturationOf(scaleOf(LARGE).text) * 0.1,
     );
   });
 
