@@ -44,6 +44,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
+import { tint } from "./hea-colour.js";
 import { readDevices } from "./hea-devices.js";
 import {
   changeTone,
@@ -204,43 +205,6 @@ const PAID_ALPHA = 0.8;
  */
 const BEFORE_ALPHA = 0.45;
 const SAVED_ALPHA = 0.22;
-
-const HEX = /^#([\da-f]{3}|[\da-f]{6})$/i;
-const RGB = /^rgba?\(([^)]+)\)$/i;
-
-/** The red, green and blue of a colour, or nothing where it is not written so. */
-const channelsOf = (colour) => {
-  const hex = HEX.exec(colour);
-  if (hex) {
-    const digits = hex[1];
-    const pairs =
-      digits.length === 3
-        ? [...digits].map((digit) => digit + digit)
-        : [0, 2, 4].map((at) => digits.slice(at, at + 2));
-    return pairs.map((pair) => Number.parseInt(pair, 16));
-  }
-  const rgb = RGB.exec(colour);
-  if (!rgb) return undefined;
-  const parts = rgb[1]
-    .split(/[\s,/]+/)
-    .filter(Boolean)
-    .slice(0, 3)
-    .map(Number);
-  return parts.length === 3 && parts.every(Number.isFinite) ? parts : undefined;
-};
-
-/**
- * A colour at the given alpha, so a fill and its outline read as one hue.
- *
- * A theme is free to write a variable as `rgb()` rather than as hex, and may
- * write it in a form we do not parse at all. An unreadable colour is returned
- * as it came: that loses the fade, where composing `rgba(NaN, NaN, NaN)` would
- * lose the bar.
- */
-export const tint = (colour, alpha) => {
-  const channels = channelsOf(String(colour).trim());
-  return channels ? `rgba(${channels.join(", ")}, ${alpha})` : colour;
-};
 
 /** Which of a device's two segments a series id belongs to. */
 const SEGMENT = /:(?:paid|saved|before)$/;

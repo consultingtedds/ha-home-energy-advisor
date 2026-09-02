@@ -17,7 +17,8 @@
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { EARLIER_ID, TAG, register, tint } from "../hea-device-costs-card.js";
+import { tint } from "../hea-colour.js";
+import { EARLIER_ID, TAG, register } from "../hea-device-costs-card.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 import {
   aDeviceRow,
