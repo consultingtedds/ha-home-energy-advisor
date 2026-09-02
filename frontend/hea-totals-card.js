@@ -8,6 +8,7 @@
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
+import { CONCEPT_STYLE, swatch } from "./hea-concepts.js";
 import {
   changeTone,
   formatMoney,
@@ -37,7 +38,7 @@ const FIGURES = [
 class HeaTotalsCard extends HeaCard {
   static titleKey = "title_totals";
 
-  static cardStyle = `
+  static cardStyle = `${CONCEPT_STYLE}
     .figures { display: flex; flex-wrap: wrap; gap: var(--hea-space-l); }
     .figure {
       flex: 1 1 8em;
@@ -102,9 +103,13 @@ class HeaTotalsCard extends HeaCard {
       // paid get nothing - spending is the bill, not bad news.
       const verdict = key === "costSavings" ? savingTone(value) : "";
       const tone = verdict ? ` ${verdict}` : "";
+      // The mark says *which quantity* this is; the figure beside it says
+      // whether the news is good. Two vocabularies that agree on Saved and are
+      // free to disagree - a battery-arbitrage loss draws a red figure under a
+      // green mark, because the identity does not move with the data (HEA-104).
       return `
         <div class="figure">
-          <span class="label">${this._labels[label]}</span>
+          <span class="label">${swatch(label)}${this._labels[label]}</span>
           <span class="value${tone}" data-figure="${key}">${formatMoney(value, locale)}</span>
           ${this._comparedTo(key, value, locale)}
         </div>`;

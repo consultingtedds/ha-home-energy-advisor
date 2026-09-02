@@ -43,8 +43,12 @@ const settled = (card, state = "ready") => settledOn(expect, card, state);
 beforeEach(() => {
   document.body.replaceChildren();
   // A theme variable set by one test would otherwise leak into the next, and
-  // these rules turn on whether it resolves.
-  document.documentElement.style.removeProperty("--primary-text-color");
+  // these rules turn on whether it resolves. Cleared here rather than at the
+  // end of the test that sets one: a failing assertion never reaches its own
+  // cleanup, so the next test would fail too and hide which one broke.
+  for (const variable of ["--primary-text-color", "--primary-color"]) {
+    document.documentElement.style.removeProperty(variable);
+  }
 });
 
 describe("registration", () => {
@@ -377,6 +381,82 @@ describe("the figures", () => {
     expect(figure(card, "costSavings").textContent).toMatch(/-/);
     expect(figure(card, "costSavings").classList.contains("loss")).toBe(true);
     expect(getComputedStyle(figure(card, "costSavings")).color).toBe("#db4437");
+  });
+});
+
+describe("what each concept wears", () => {
+  /** The mark on one figure's label, from the shared vocabulary (HEA-104). */
+  const markOn = (card, concept) =>
+    card.shadowRoot.querySelector(`.swatch.${concept}`);
+
+  it("marks Paid and Saved in the colours the chart draws them", async () => {
+    // Given - a household reading the stacked bar learns that blue means Paid
+    // and green means Saved. They then read this card, where both were black,
+    // so the vocabulary was colour-coded in one place and not the other
+    const card = mount(aHass());
+
+    // When
+    await settled(card);
+
+    // Then - actually painted, not merely classed
+    expect(getComputedStyle(markOn(card, "paid")).backgroundColor).toBe("#03a9f4");
+    expect(getComputedStyle(markOn(card, "saved")).backgroundColor).toBe("#4caf50");
+  });
+
+  it("draws Would have paid as a container rather than a third fill", async () => {
+    // Given - it is Paid plus Saved by construction, so in every chart that
+    // draws it, it is the whole bar with the other two as its segments
+    const card = mount(aHass());
+
+    // When
+    await settled(card);
+
+    // Then - an outline, and nothing painted inside it. A third fill would have
+    // a container contradicting its own contents
+    const mark = getComputedStyle(markOn(card, "would-have-paid"));
+    expect(mark.border).toContain("#212121");
+    expect(mark.backgroundColor).toBeFalsy();
+  });
+
+  it("keeps the mark on Saved green when the figure itself is a loss", async () => {
+    // Given - battery arbitrage cost more than the grid would have (HEA-39),
+    // so the figure is negative and wears `.loss`
+    document.documentElement.style.setProperty("--primary-text-color", "#111111");
+    const card = mount(aHass({ response: bucketsFor("slow_poll_aircon", 10, 5, 3) }));
+
+    // When
+    await settled(card);
+
+    // Then - the number carries the verdict and the mark keeps the identity.
+    // On a chart the bar itself turns red, because the verdict has nowhere else
+    // to go; here it does, and a mark that moved with the data would stop
+    // naming which quantity this is (HEA-104)
+    expect(figure(card, "costSavings").classList.contains("loss")).toBe(true);
+    expect(getComputedStyle(markOn(card, "saved")).backgroundColor).toBe("#4caf50");
+  });
+
+  it("follows a theme that sets the variables itself", async () => {
+    // Given - a household on a theme of their own. The marks name variables
+    // rather than hexes, so the cards move with the dashboard around them
+    document.documentElement.style.setProperty("--primary-color", "#7b1fa2");
+    const card = mount(aHass());
+
+    // When
+    await settled(card);
+
+    // Then
+    expect(getComputedStyle(markOn(card, "paid")).backgroundColor).toBe("#7b1fa2");
+  });
+
+  it("leaves the mark out of what a screen reader announces", async () => {
+    // Given / When - colour is reinforcement and never the only cue: the label
+    // beside it is already the whole meaning
+    const card = mount(aHass());
+    await settled(card);
+
+    // Then
+    expect(markOn(card, "paid").getAttribute("aria-hidden")).toBe("true");
+    expect(text(card)).toContain(LABELS.paid);
   });
 });
 
