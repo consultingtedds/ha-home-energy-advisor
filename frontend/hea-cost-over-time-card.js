@@ -14,6 +14,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
+import { PAID, SAVED } from "./hea-concepts.js";
 import { formatMoney } from "./hea-format.js";
 import { bucketPeriodFor } from "./hea-statistics.js";
 
@@ -55,15 +56,18 @@ const midpointOffset = (rows, period) => {
   return (measured ? Math.min(measured, nominal) : nominal) / 2;
 };
 
-/** `name` is a key into the household's vocabulary, resolved at render. */
+/**
+ * `name` is a key into the household's vocabulary, resolved at render.
+ *
+ * The colours come from `hea-concepts.js` rather than being chosen here. They
+ * were chosen here, and were the only place the identity vocabulary existed - so
+ * a household learned that blue means Paid from this chart and then read the
+ * totals card, where Paid was black (HEA-104). Nothing about this chart changed
+ * when they moved; the other cards gained the same words' colours.
+ */
 const SERIES = {
-  paid: { id: "paid", name: "paid", variable: "--primary-color", fallback: "#03a9f4" },
-  saved: {
-    id: "saved",
-    name: "saved",
-    variable: "--success-color",
-    fallback: "#4caf50",
-  },
+  paid: { id: "paid", name: "paid", ...PAID },
+  saved: { id: "saved", name: "saved", ...SAVED },
 };
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
 /**
