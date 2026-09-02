@@ -90,7 +90,17 @@ const COLUMNS = [
   { field: "actualCost", label: "paid", format: formatMoney },
   CHANGE,
   RANGE,
-  { field: "costAtGridPrice", label: "would_have_paid", format: formatMoney },
+  // The one column that carries how well the device did, not just what it came
+  // to (HEA-106). Would have paid is the right home for it because the verdict
+  // is precisely this figure measured against Paid beside it: a row where the
+  // two nearly agree avoided nothing, and one where Paid is a fraction of it
+  // avoided almost everything.
+  {
+    field: "costAtGridPrice",
+    label: "would_have_paid",
+    format: formatMoney,
+    carriesVerdict: true,
+  },
   { field: "costSavings", label: "saved", format: formatMoney },
   {
     derive: effectiveRate,

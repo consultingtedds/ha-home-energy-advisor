@@ -92,6 +92,11 @@ const totalCells = (card) => [
 
 beforeEach(() => {
   document.body.replaceChildren();
+  // The verdict ramp reads the theme's text colour to decide which ground it
+  // is drawing on, so a theme set by one test would change every table after
+  // it. Cleared here rather than at the end of the test that sets one: a
+  // failing assertion never reaches its own cleanup.
+  document.documentElement.style.removeProperty("--primary-text-color");
 });
 
 describe("registration", () => {
@@ -168,6 +173,146 @@ describe("what each concept wears", () => {
     for (const mark of card.shadowRoot.querySelectorAll("thead .swatch")) {
       expect(mark.getAttribute("aria-hidden")).toBe("true");
     }
+  });
+});
+
+describe("how well each device did", () => {
+  /** Two devices that cost the same and did very differently (HEA-106). */
+  const CONTRASTING = [
+    aDeviceRow("coarse_step_aircon", "Coarse Step Aircon"),
+    aDeviceRow("cloud_polled_pump", "Cloud Polled Pump"),
+  ];
+  const CONTRASTING_RESPONSE = {
+    // Paid 0.40 of a 10.00 counterfactual: almost all of it avoided.
+    ...bucketsFor("coarse_step_aircon", 40, 0.4, 10),
+    // Paid 9.50 of a 10.00 counterfactual: almost none of it avoided.
+    ...bucketsFor("cloud_polled_pump", 40, 9.5, 10),
+  };
+
+  /** The Would-have-paid cell for one device, by its position in the row. */
+  const gridPriceCell = (card, name) =>
+    [...card.shadowRoot.querySelectorAll("tbody tr")]
+      .find((row) => row.querySelector("th").textContent.trim() === name)
+      ?.querySelectorAll("td")[2];
+
+  const mountContrasting = () =>
+    mount(aHass({ devices: CONTRASTING, response: CONTRASTING_RESPONSE }));
+
+  it("colours the two ends of the scale differently", async () => {
+    // Given - both devices would have cost EUR 10 at grid price, and one paid
+    // EUR 0.40 of it while the other paid EUR 9.50. The figures say so and the
+    // household had to do the division per row to see it
+    const card = mountContrasting();
+
+    // When
+    await ready(card);
+
+    // Then - the same figure, two verdicts
+    const good = gridPriceCell(card, "Coarse Step Aircon").style.color;
+    const bad = gridPriceCell(card, "Cloud Polled Pump").style.color;
+    expect(good).toMatch(/^hsl/);
+    expect(bad).toMatch(/^hsl/);
+    expect(good).not.toBe(bad);
+  });
+
+  it("states the rate in words as well as in colour", async () => {
+    // Given - colour is never the only cue. The two figures it is derived from
+    // are on the row already, and this says the division outright
+    const card = mountContrasting();
+
+    // When
+    await ready(card);
+
+    // Then
+    expect(gridPriceCell(card, "Coarse Step Aircon").title).toMatch(/96\s*%/);
+    expect(gridPriceCell(card, "Cloud Polled Pump").title).toMatch(/5\s*%/);
+  });
+
+  it("bands the row in the same verdict as the figure", async () => {
+    // Given - a continuous vertical edge is what a reader scans a list by,
+    // where colour on a figure has to be fixated on one row at a time
+    const card = mountContrasting();
+
+    // When
+    await ready(card);
+
+    // Then - on the name cell, which is the start of the row
+    const band = [...card.shadowRoot.querySelectorAll("tbody th")].map(
+      (cell) => cell.style.boxShadow,
+    );
+    expect(band.every((shadow) => shadow.includes("inset"))).toBe(true);
+    expect(band[0]).not.toBe(band[1]);
+  });
+
+  it("says nothing about a device that never ran", async () => {
+    // Given - no counterfactual means no rate. Zero would claim the device did
+    // badly, which is a verdict on a device that did not run
+    const hass = aHass({
+      devices: CONTRASTING,
+      response: {
+        ...bucketsFor("coarse_step_aircon", 40, 0.4, 10),
+        ...bucketsFor("cloud_polled_pump", 0, 0, 0),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then
+    const quiet = gridPriceCell(card, "Cloud Polled Pump");
+    expect(quiet.style.color).toBe("");
+    expect(quiet.title).toBe("");
+  });
+
+  it("leaves every other figure in the ordinary text colour", async () => {
+    // Given - one column carries the verdict. Paid, Energy and the rate are
+    // quantities, not judgements, and colouring them would make the table a
+    // wash of hues with nothing standing out
+    const card = mountContrasting();
+
+    // When
+    await ready(card);
+
+    // Then
+    const row = card.shadowRoot.querySelector("tbody tr");
+    const tinted = [...row.querySelectorAll("td")].filter(
+      (cell) => cell.style.color !== "",
+    );
+    expect(tinted).toHaveLength(1);
+  });
+
+  it("turns the ramp over on a dark theme, so good news stays the loudest", async () => {
+    // Given - a household running a dark Home Assistant theme, which sets its
+    // text light. The same ramp unturned would put the strongest verdict in
+    // the colour with the least contrast against the card. This is where the
+    // device palette's yellow was lost, so it is asserted rather than
+    // eyeballed - and it is read from the theme rather than from
+    // `prefers-color-scheme`, which would answer for the operating system
+    document.documentElement.style.setProperty("--primary-text-color", "#e1e1e1");
+
+    // When
+    const card = mountContrasting();
+    await ready(card);
+
+    // Then - light text on a dark card, and the device that avoided almost
+    // everything is the brightest of it
+    const lightnessOf = (cell) =>
+      Number(/,\s*([\d.]+)%\)$/.exec(cell.style.color)[1]);
+    const good = lightnessOf(gridPriceCell(card, "Coarse Step Aircon"));
+    const bad = lightnessOf(gridPriceCell(card, "Cloud Polled Pump"));
+    expect(good).toBeGreaterThan(bad);
+    expect(bad).toBeGreaterThan(50);
+  });
+
+  it("gives the household's own line a verdict too", async () => {
+    // Given / When - the totals row is the one line always worth reading, and
+    // rendered plain it would be the one uncoloured figure in a coloured column
+    const card = mountContrasting();
+    await ready(card);
+
+    // Then
+    expect(totalCells(card).at(3).style.color).toMatch(/^hsl/);
   });
 });
 

@@ -232,6 +232,7 @@
     "card_range_device": "Lo que pagaste podría estar entre {range}.",
     "card_compared": "{change} frente a {before}",
     "card_compared_period": "{period} frente a {compared}",
+    "card_saved_share": "{percent} del coste a precio de red evitado",
     "card_change": "Cambio",
     "card_compared_series": "Periodo anterior",
     "card_device": "Dispositivo",

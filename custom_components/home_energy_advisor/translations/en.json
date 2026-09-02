@@ -232,6 +232,7 @@
     "card_range_device": "What you paid could be between {range}.",
     "card_compared": "{change} vs {before}",
     "card_compared_period": "{period} vs {compared}",
+    "card_saved_share": "{percent} of the grid-price cost avoided",
     "card_change": "Change",
     "card_compared_series": "Earlier period",
     "card_device": "Device",

@@ -25,8 +25,16 @@
  */
 
 import { HeaCard } from "./hea-card-base.js";
+import { drawsOnDark } from "./hea-colour.js";
 import { CONCEPT_STYLE, swatch } from "./hea-concepts.js";
-import { changeTone, escapeText, savingTone } from "./hea-format.js";
+import {
+  changeTone,
+  escapeText,
+  formatPercent,
+  savingTone,
+} from "./hea-format.js";
+import { fill } from "./hea-labels.js";
+import { verdictScaleFor } from "./hea-verdict-scale.js";
 
 export const TABLE_STYLE = `${CONCEPT_STYLE}
   /*
@@ -52,6 +60,12 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
   table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
   th, td { padding: 6px 8px; text-align: right; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; white-space: normal; }
+  /* Room for the verdict band, so it sits beside the name rather than under
+     the first letter of it (HEA-106). On the head row, which carries no band,
+     it keeps the heading aligned with the names beneath. */
+  thead th:first-child, tbody th:first-child, tfoot th:first-child {
+    padding-left: 14px;
+  }
   /*
    * A device name gets its own line on a phone. Wrapping it saves width the
    * table does not need - it already scrolls sideways - and spends height it
@@ -93,6 +107,23 @@ const classFor = (field, tone, value) => {
   return verdict ? ` class="${verdict}"` : "";
 };
 
+/**
+ * The band down the start of a row, carrying the same verdict as its figure.
+ *
+ * Said twice on purpose (HEA-106): a continuous vertical edge is what a reader
+ * scans a list by, where colour on a figure has to be fixated on one row at a
+ * time. The colour is ours - interpolated from numbers, never from anything the
+ * household typed - so it is written into the attribute directly.
+ *
+ * An inset shadow rather than a border, because a border on a
+ * `border-collapse: collapse` table shifts the column it is added to and the
+ * shadow is painted inside the cell it already has.
+ */
+const edgeOf = (verdict) =>
+  verdict ? ` style="box-shadow: inset ${EDGE_WIDTH} 0 0 ${verdict.edge}"` : "";
+
+const EDGE_WIDTH = "4px";
+
 export class HeaTableCard extends HeaCard {
   /** @type {Array<object>} set by the subclass. */
   static columns = [];
@@ -124,6 +155,7 @@ export class HeaTableCard extends HeaCard {
 
   _body(locale) {
     const columns = this._columns();
+    const verdict = this._verdictScale();
     return `
       <div class="scroll">
         <table>
@@ -131,11 +163,29 @@ export class HeaTableCard extends HeaCard {
             .map((column) => this._heading(column, locale))
             .join("")}</tr></thead>
           <tbody>${this._ranked()
-            .map((device) => this._row(device, locale))
+            .map((device) => this._row(device, locale, verdict))
             .join("")}</tbody>
-          <tfoot>${this._total(locale)}</tfoot>
+          <tfoot>${this._total(locale, verdict)}</tfoot>
         </table>
       </div>`;
+  }
+
+  /**
+   * How well each device did, weighted against the rows beside it (HEA-106).
+   *
+   * Built once per render rather than per cell, because the weighting is
+   * relative: a device matters in proportion to the largest contributor *on
+   * screen*, so a filtered card weights against what it is showing rather than
+   * against a household total it is not claiming to represent.
+   *
+   * Asked of the card's own computed style for the ground it sits on, which is
+   * why this is here and not in the scale: the ramp turns over on a dark theme
+   * so the good end stays the highest contrast, and only the element knows.
+   */
+  _verdictScale() {
+    return verdictScaleFor(this._result?.devices ?? [], {
+      dark: drawsOnDark(this),
+    });
   }
 
   /**
@@ -171,34 +221,60 @@ export class HeaTableCard extends HeaCard {
     );
   }
 
-  _row(device, locale) {
+  _row(device, locale, verdict) {
     return `<tr>${this._columns()
-      .map((column) => this._cell(column, device, locale))
+      .map((column) => this._cell(column, device, locale, verdict?.(device)))
       .join("")}</tr>`;
   }
 
-  _cell({ field, derive, format, tone }, device, locale) {
+  _cell({ field, derive, format, tone, carriesVerdict }, device, locale, verdict) {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
-    if (!format) return `<th scope="row">${escapeText(device[field])}</th>`;
+    if (!format) {
+      return `<th scope="row"${edgeOf(verdict)}>${escapeText(device[field])}</th>`;
+    }
     const value = derive ? derive(device) : device[field];
-    return `<td${classFor(field, tone, value)}>${format(value, locale)}</td>`;
+    const mark = carriesVerdict ? this._verdictOn(verdict, locale) : "";
+    return `<td${classFor(field, tone, value)}${mark}>${format(value, locale)}</td>`;
   }
 
-  _total(locale) {
+  _total(locale, verdict) {
     const totals = this._sumOfShown();
+    // The household's own verdict, on the same scale as the rows above it. Its
+    // weight lands at the ceiling because the total outspends every device in
+    // it, which is right: the summary line is the one row always worth reading.
+    const overall = verdict?.(totals);
     const cells = this._columns()
-      .map(({ field, derive, format, tone }) => {
-        if (!format) return `<th scope="row">${this._labels.total}</th>`;
+      .map(({ field, derive, format, tone, carriesVerdict }) => {
+        if (!format) {
+          return `<th scope="row"${edgeOf(overall)}>${this._labels.total}</th>`;
+        }
         // Derived from the summed fields, never from the rows' own derived
         // values: a table's rate is what the period came to overall.
         const value = derive ? derive(totals) : totals[field];
+        const mark = carriesVerdict ? this._verdictOn(overall, locale) : "";
         // Through the same verdict as every row above it. Rendered plain, the
         // total was the one uncoloured figure in a coloured column (HEA-99).
-        return `<td${classFor(field, tone, value)}>${format(value, locale)}</td>`;
+        return `<td${classFor(field, tone, value)}${mark}>${format(value, locale)}</td>`;
       })
       .join("");
     return `<tr>${cells}</tr>`;
+  }
+
+  /**
+   * The colour a verdict paints its figure, and the rate stated in words.
+   *
+   * Both, never colour alone. The two figures this rate is derived from sit on
+   * the same row, so the colour already saves a division rather than carrying
+   * something unavailable otherwise - and the `title` states it outright for a
+   * reader who would rather not take a hue's word for it.
+   */
+  _verdictOn(verdict, locale) {
+    if (!verdict) return "";
+    const said = fill(this._labels.saved_share, {
+      percent: formatPercent(verdict.rate, locale),
+    });
+    return ` style="color: ${verdict.text}" title="${escapeText(said)}"`;
   }
 
   /**
