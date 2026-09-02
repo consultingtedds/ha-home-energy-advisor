@@ -109,6 +109,68 @@ describe("registration", () => {
   });
 });
 
+describe("what each concept wears", () => {
+  /** The mark in one column's heading, from the shared vocabulary (HEA-104). */
+  const markIn = (card, concept) =>
+    card.shadowRoot.querySelector(`thead .swatch.${concept}`);
+
+  it("marks the three cost columns in the colours the charts draw them", async () => {
+    // Given - Paid means blue and Saved means green on the over-time chart, and
+    // meant nothing at all in this table's headings
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+
+    // When
+    await ready(card);
+
+    // Then
+    expect(getComputedStyle(markIn(card, "paid")).backgroundColor).toBe("#03a9f4");
+    expect(getComputedStyle(markIn(card, "saved")).backgroundColor).toBe("#4caf50");
+    expect(getComputedStyle(markIn(card, "would-have-paid")).border).toContain(
+      "#212121",
+    );
+  });
+
+  it("marks nothing that is not a cost concept", async () => {
+    // Given - Device, Energy and the unit price are not quantities in this
+    // vocabulary, and a mark against them would invent a meaning the reader
+    // would then go looking for
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+
+    // When
+    await ready(card);
+
+    // Then - three columns marked out of the six this table renders
+    expect(card.shadowRoot.querySelectorAll("thead .swatch")).toHaveLength(3);
+  });
+
+  it("leaves the rate column's own heading alone", async () => {
+    // Given - the one column whose label is a function of the locale, because
+    // its unit follows the household's currency. Handed to the vocabulary as a
+    // key it must not resolve to a mark rather than throwing
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+
+    // When
+    await ready(card);
+
+    // Then - still built, still carrying its unit outside the uppercasing
+    const headings = [...card.shadowRoot.querySelectorAll("thead th")];
+    const rate = headings.at(-1);
+    expect(rate.querySelector(".swatch")).toBeNull();
+    expect(rate.querySelector(".unit").textContent).toBe("c/kWh");
+  });
+
+  it("keeps the marks out of what a screen reader announces", async () => {
+    // Given / When - the heading text is already the whole meaning
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+    await ready(card);
+
+    // Then
+    for (const mark of card.shadowRoot.querySelectorAll("thead .swatch")) {
+      expect(mark.getAttribute("aria-hidden")).toBe("true");
+    }
+  });
+});
+
 describe("the card header", () => {
   it("names itself when no title is configured", async () => {
     // Given / When - added from the picker, with nothing filled in

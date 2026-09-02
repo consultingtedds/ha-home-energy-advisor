@@ -25,9 +25,10 @@
  */
 
 import { HeaCard } from "./hea-card-base.js";
+import { CONCEPT_STYLE, swatch } from "./hea-concepts.js";
 import { changeTone, escapeText, savingTone } from "./hea-format.js";
 
-export const TABLE_STYLE = `
+export const TABLE_STYLE = `${CONCEPT_STYLE}
   /*
    * A table too wide for the card scrolls sideways - and said so nowhere, which
    * on a phone means the Saved and Rate columns simply do not exist as far as
@@ -142,12 +143,20 @@ export class HeaTableCard extends HeaCard {
    *
    * `text-transform: uppercase` would render c/kWh as C/KWH - which is not
    * merely shouty, it is the wrong symbol.
+   *
+   * A column naming a cost concept carries that concept's mark, so Paid means
+   * blue here and on the chart above it rather than in one place only
+   * (HEA-104). The vocabulary decides which columns those are, from the label
+   * they already wear - Device, Energy and the rate get nothing, and a table
+   * added later is marked without having to know this happens.
    */
   _heading({ label }, locale) {
     const labels = this._labels;
     // A plain label is a key into the household's own vocabulary (ADR-0018);
     // only the rate column, whose unit follows the currency, builds its own.
-    if (typeof label !== "function") return `<th>${labels[label]}</th>`;
+    if (typeof label !== "function") {
+      return `<th>${swatch(label)}${labels[label]}</th>`;
+    }
     const { text, unit } = label(locale, labels);
     return `<th>${text} <span class="unit">${escapeText(unit)}</span></th>`;
   }
