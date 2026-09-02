@@ -3,5 +3,5 @@
 # or pytest-cov here - the pins would conflict with it.
 pytest-homeassistant-custom-component==0.13.346
 
-ruff==0.16.3
-mypy==2.3.0
+ruff==0.16.5
+mypy==2.3.1
