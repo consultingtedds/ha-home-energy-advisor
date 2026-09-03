@@ -111,7 +111,7 @@ describe("weighting by how much the device matters", () => {
   const TINY = aRow(0.02, 0.01);
   const scale = verdictScaleFor([LARGE, TINY]);
 
-  it("fades a trivial device toward the ordinary text colour", () => {
+  it("drains the colour out of a trivial device, and only the colour", () => {
     // Given - this is HEA-75's failure mode and the whole reason for the
     // weighting: both devices avoided exactly half, but one of them avoided
     // half of two cents. The rate is arithmetically identical and only one of
@@ -120,8 +120,13 @@ describe("weighting by how much the device matters", () => {
     const loud = scale(LARGE);
     const quiet = scale(TINY);
 
-    // Then - the same hue, said at a fraction of the volume
+    // Then - the same hue at a fraction of the volume, and the *same
+    // lightness*. Weight used to pull lightness back toward the body text as
+    // well, which turned every muted red into a brick: dark plus desaturated
+    // is how a red stops being one, and the bad end is the end that most needs
+    // to be striking (HEA-106, read on 28 Aug).
     expect(hueOf(quiet.text)).toBe(hueOf(loud.text));
+    expect(lightnessOf(quiet.text)).toBe(lightnessOf(loud.text));
     expect(saturationOf(quiet.text)).toBeLessThan(saturationOf(loud.text) / 3);
   });
 

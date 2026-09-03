@@ -110,15 +110,32 @@ export const savingRate = ({ costSavings, costAtGridPrice }) => {
  * news is the furthest from the background.
  */
 const STOPS = [
-  { at: 0, hue: 6, light: 46, dark: 58 },
-  { at: 0.5, hue: 38, light: 40, dark: 66 },
-  { at: 1, hue: 142, light: 30, dark: 74 },
+  { at: 0, hue: 3, light: 48, dark: 62 },
+  { at: 0.5, hue: 35, light: 46, dark: 68 },
+  { at: 1, hue: 142, light: 31, dark: 76 },
 ];
 
-/** How saturated the strongest verdict is, and what the text fades toward. */
-const SATURATION = { light: 70, dark: 62 };
-/** The lightness of ordinary body text, which a trivial device settles back to. */
-const NEUTRAL = { light: 20, dark: 88 };
+/** How saturated the strongest verdict is. */
+const SATURATION = { light: 85, dark: 70 };
+
+/**
+ * How quickly a device loses its colour as it stops mattering.
+ *
+ * Weight scales saturation and **nothing else**. It used to pull lightness back
+ * toward the body-text colour as well, which read as brown rather than as red:
+ * on 28 Aug a device that saved 0% of its grid-price cost came out
+ * `hsl(6, 38%, 34%)`, and dark plus desaturated is exactly how a red stops being
+ * one. Red is the hue that suffers most from darkening - a dark green is still
+ * green and a dark blue still blue, but a dark red is a brick - so the one end
+ * of this scale that most needs to be striking was the one the weighting spoiled.
+ *
+ * Eased rather than linear for the same reason `AUDIBLE` is a soft curve: at
+ * `weight ** 1` a device two thirds the size of the largest lost a third of its
+ * colour, which is more suppression than "slightly smaller" deserves. The
+ * exponent lifts the middle while leaving the bottom to collapse - a device at
+ * 2% of the largest still ends near grey.
+ */
+const TOWARD_GREY = 0.7;
 
 const between = (from, to, position) => from + (to - from) * position;
 
@@ -212,16 +229,15 @@ export const verdictScaleFor = (rows, { dark = false } = {}) => {
     // than the grid would have, which a rate floored at zero cannot express.
     const clamped = Math.min(1, Math.max(0, rate));
     const { hue, lightness } = rampAt(clamped, ground);
-    const saturation = SATURATION[ground] * weight;
-    // Text recedes toward the ordinary text colour and the edge recedes toward
-    // nothing at all. Both are "this device does not matter", each said the way
-    // its own medium can: fading a figure to transparent would make it
-    // unreadable, and a grey bar on every trivial row is noise rather than the
-    // absence of a claim.
-    const settled = between(NEUTRAL[ground], lightness, weight);
+    // Saturation carries the weight; lightness stays where the verdict put it.
+    // Text recedes toward grey and the edge recedes toward nothing at all -
+    // both are "this device does not matter", each said the way its own medium
+    // can. Fading a figure to transparent would make it unreadable, and a grey
+    // bar on every trivial row is noise rather than the absence of a claim.
+    const saturation = SATURATION[ground] * weight ** TOWARD_GREY;
     return {
       rate,
-      text: `hsl(${round(hue)}, ${round(saturation)}%, ${round(settled)}%)`,
+      text: `hsl(${round(hue)}, ${round(saturation)}%, ${round(lightness)}%)`,
       edge: `hsla(${round(hue)}, ${round(SATURATION[ground])}%, ${round(lightness)}%, ${round(weight)})`,
     };
   };
