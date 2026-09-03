@@ -229,6 +229,85 @@ describe("the bars", () => {
   });
 });
 
+describe("how well the device did, on hover", () => {
+  /** The tooltip the chart would draw for one device's bar. */
+  const tooltipFor = (card, key) =>
+    chartOf(card).options.tooltip.formatter({ seriesId: `${key}:paid`, dataIndex: 0 });
+
+  const verdictLine = (card, key) =>
+    [...tooltipFor(card, key).querySelectorAll("div")].find((node) =>
+      /%/.test(node.textContent),
+    );
+
+  it("says what share was saved, without asking the reader to divide", async () => {
+    // Given - the bar's geometry already shows the ratio, but comparing two
+    // short bars by eye is exactly what it is bad at. The figures either side
+    // of the division are both on the tooltip already; this states the answer
+    const card = mount(aHass({ devices: [PUMP], response: THREE }));
+
+    // When - paid EUR 3.00 of a EUR 4.00 counterfactual
+    await ready(card);
+
+    // Then - and it names the base rather than leaving "25%" of something
+    // unstated, which beside a column of money could be read three ways
+    const said = verdictLine(card, "cloud_polled_pump").textContent;
+    expect(said).toMatch(/25\s*%/);
+    expect(said).toContain("would have paid");
+  });
+
+  it("colours it on the same scale the figures wear", async () => {
+    // Given - so a glance says good or bad and large or trivial at once,
+    // without reading the number at all
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+
+    // When - the aircon saved EUR 5.00 of EUR 5.50, the pump EUR 1.00 of 4.00
+    await ready(card);
+
+    // Then
+    const good = verdictLine(card, "slow_poll_aircon").style.color;
+    const poor = verdictLine(card, "cloud_polled_pump").style.color;
+    expect(good).toMatch(/^hsl/);
+    expect(good).not.toBe(poor);
+  });
+
+  it("says a loss the way round it happened", async () => {
+    // Given - battery arbitrage cost more than the grid would have (HEA-39).
+    // A rate floored at zero would report "0% was saved", and a signed one
+    // "-20% was saved", neither of which is what occurred
+    const card = mount(
+      aHass({ devices: [AIRCON], response: bucketsFor("slow_poll_aircon", 10, 6, 5) }),
+    );
+
+    // When - paid EUR 6.00 where the grid would have cost EUR 5.00
+    await ready(card);
+
+    // Then - 20% more, said as more rather than as negative less
+    const said = verdictLine(card, "slow_poll_aircon").textContent;
+    expect(said).toMatch(/20\s*%/);
+    expect(said).toContain("more was paid");
+    expect(said).not.toMatch(/-\s*20/);
+  });
+
+  it("says nothing at all about a device that never ran", async () => {
+    // Given - no counterfactual, so no rate and no claim
+    const hass = aHass({
+      devices: [AIRCON, PUMP],
+      response: {
+        ...bucketsFor("slow_poll_aircon", 10, 3, 5),
+        ...bucketsFor("cloud_polled_pump", 0, 0, 0),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then
+    expect(verdictLine(card, "cloud_polled_pump")).toBeUndefined();
+    expect(verdictLine(card, "slow_poll_aircon")).toBeDefined();
+  });
+});
+
 describe("comparing against an earlier period", () => {
   const comparing = async () => {
     const collection = anEnergyCollection();
@@ -495,10 +574,18 @@ describe("the tooltip", () => {
     );
     await ready(card);
 
-    // Then
-    const shown = hover(card, "slow_poll_aircon:paid");
-    expect(shown).toMatch(/€/);
-    expect(shown).not.toMatch(/\d[.,]\d{3}/);
+    // Then - row by row rather than over the whole tooltip's text. Read as one
+    // blob the figures run into whatever follows them, and "EUR 2.00" beside a
+    // "38%" share reads as "2.0038" - a three-decimal match that is an artefact
+    // of the concatenation and not something any reader sees.
+    const box = chartOf(card).options.tooltip.formatter({
+      seriesId: "slow_poll_aircon:paid",
+    });
+    const figures = [...box.querySelectorAll("span")].map((node) => node.textContent);
+    expect(figures.join(" ")).toMatch(/€/);
+    for (const figure of figures) {
+      expect(figure, figure).not.toMatch(/\d[.,]\d{3}/);
+    }
   });
 
   it("calls a loss a loss", async () => {

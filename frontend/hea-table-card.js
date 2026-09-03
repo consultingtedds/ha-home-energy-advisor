@@ -27,14 +27,8 @@
 import { HeaCard } from "./hea-card-base.js";
 import { drawsOnDark } from "./hea-colour.js";
 import { CONCEPT_STYLE, swatch } from "./hea-concepts.js";
-import {
-  changeTone,
-  escapeText,
-  formatPercent,
-  savingTone,
-} from "./hea-format.js";
-import { fill } from "./hea-labels.js";
-import { verdictScaleFor } from "./hea-verdict-scale.js";
+import { changeTone, escapeText, savingTone } from "./hea-format.js";
+import { verdictScaleFor, verdictSentence } from "./hea-verdict-scale.js";
 
 export const TABLE_STYLE = `${CONCEPT_STYLE}
   /*
@@ -281,9 +275,7 @@ export class HeaTableCard extends HeaCard {
    */
   _verdictOn(verdict, locale) {
     if (!verdict) return "";
-    const said = fill(this._labels.saved_share, {
-      percent: formatPercent(verdict.rate, locale),
-    });
+    const said = verdictSentence(verdict.rate, this._labels, locale);
     return ` style="color: ${verdict.text}" title="${escapeText(said)}"`;
   }
 

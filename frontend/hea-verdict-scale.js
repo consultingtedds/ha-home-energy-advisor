@@ -62,6 +62,27 @@
  * cell's `title` as well, for a reader who wants it stated.
  */
 
+import { formatPercent } from "./hea-format.js";
+import { fill } from "./hea-labels.js";
+
+/**
+ * The rate said in words, so the colour is never carrying it alone.
+ *
+ * Two sentences rather than one with a sign, because a negative saving is a
+ * different claim rather than the same one pointing the other way: "-20% of what
+ * you would have paid was saved" is not English, and a reader should not have to
+ * work out that a minus means the device cost *more* than the grid would have.
+ * The tooltip already swaps its "Saved" row to "Lost" on the same test.
+ *
+ * Both name the base outright - what you would have paid - so the figure needs
+ * no arithmetic to interpret. Passive, and the number leads, because these are
+ * read at a glance rather than as prose.
+ */
+export const verdictSentence = (rate, labels, locale) => {
+  const template = rate < 0 ? labels.lost_share : labels.saved_share;
+  return fill(template, { percent: formatPercent(Math.abs(rate), locale) });
+};
+
 /**
  * The share of a device's grid-price cost that never had to be spent.
  *
@@ -186,6 +207,9 @@ export const verdictScaleFor = (rows, { dark = false } = {}) => {
     // Normalised so the largest contributor lands on exactly 1 rather than on
     // whatever the curve happens to reach there.
     const weight = (share * (1 + AUDIBLE)) / (share + AUDIBLE);
+    // Clamped for the *colour* only. The rate handed back is the real one: a
+    // caller stating it in words has to be able to say a device paid 20% more
+    // than the grid would have, which a rate floored at zero cannot express.
     const clamped = Math.min(1, Math.max(0, rate));
     const { hue, lightness } = rampAt(clamped, ground);
     const saturation = SATURATION[ground] * weight;
@@ -196,7 +220,7 @@ export const verdictScaleFor = (rows, { dark = false } = {}) => {
     // absence of a claim.
     const settled = between(NEUTRAL[ground], lightness, weight);
     return {
-      rate: clamped,
+      rate,
       text: `hsl(${round(hue)}, ${round(saturation)}%, ${round(settled)}%)`,
       edge: `hsla(${round(hue)}, ${round(SATURATION[ground])}%, ${round(lightness)}%, ${round(weight)})`,
     };

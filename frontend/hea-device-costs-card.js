@@ -44,7 +44,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { tint } from "./hea-colour.js";
+import { drawsOnDark, tint } from "./hea-colour.js";
 import { readDevices } from "./hea-devices.js";
 import {
   changeTone,
@@ -56,6 +56,7 @@ import {
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
+import { verdictScaleFor, verdictSentence } from "./hea-verdict-scale.js";
 
 export const TAG = "hea-device-costs-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -246,7 +247,7 @@ const tooltipRow = (label, amount, colour) => {
  * string - and a device name is whatever the household typed into their own
  * registry.
  */
-const tooltipFor = (device, locale, labels, toneColour) => {
+const tooltipFor = (device, locale, labels, toneColour, verdict) => {
   const savedTone = savingTone(device.costSavings);
   const box = document.createElement("div");
   const title = document.createElement("div");
@@ -266,11 +267,44 @@ const tooltipFor = (device, locale, labels, toneColour) => {
     ),
     tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
   );
+  const share = shareNote(verdict, locale, labels);
+  if (share) box.append(share);
   const change = changeRow(device, locale, labels, toneColour);
   if (change) box.append(change);
   const range = rangeNote(device, locale, labels);
   if (range) box.append(range);
   return box;
+};
+
+/**
+ * How well this device did, as a share and as a colour (HEA-106).
+ *
+ * The bar already shows this ratio geometrically - the solid fill against the
+ * whole - and for a long bar that reads perfectly well. It is short bars the eye
+ * is bad at: 9% and 57% of two small amounts look much the same, and those are
+ * the devices a household most wants to separate. So the answer to the division
+ * is stated rather than a mark added to the chart, which is why a pip at the
+ * bar's end was built, read on real data, and dropped: it duplicated the
+ * geometry at lower resolution.
+ *
+ * A sentence rather than a row, like the range note below it, because it
+ * qualifies the three figures above rather than adding a fourth. It names its
+ * own base - what you would have paid - so a bare percentage beside a column of
+ * money cannot be read as a share of the bill or of the energy.
+ *
+ * Coloured on the verdict scale, at full strength rather than the range note's
+ * fade: this is the one line here whose colour is information. It carries both
+ * dimensions at once - hue for how well the device did, and how far the colour
+ * has settled back toward ordinary text for whether the figure is worth reading
+ * at all.
+ */
+const shareNote = (verdict, locale, labels) => {
+  if (!verdict) return undefined;
+  const note = document.createElement("div");
+  note.style.marginTop = "4px";
+  note.style.color = verdict.text;
+  note.textContent = verdictSentence(verdict.rate, labels, locale);
+  return note;
 };
 
 /**
@@ -386,6 +420,18 @@ class HeaDeviceCostsCard extends HeaChartCard {
   /** The household's whole device set, which is what makes a colour stable. */
   _colours() {
     return coloursFor(readDevices(this._hass));
+  }
+
+  /**
+   * How well each device did, weighted against the ones drawn beside it.
+   *
+   * Against `_ranked()` rather than the household, for the same reason the table
+   * weights against its own rows: a card narrowed to three devices is comparing
+   * those three, and weighting them against a total it is not showing would fade
+   * all of them together.
+   */
+  _verdicts() {
+    return verdictScaleFor(this._ranked(), { dark: drawsOnDark(this) });
   }
 
   /**
@@ -550,8 +596,12 @@ class HeaDeviceCostsCard extends HeaChartCard {
     // Undefined suppresses the tooltip, where a half-built one would render an
     // empty box against the cursor.
     return device
-      ? tooltipFor(device, locale, this._labels, (tone) =>
-          this._colour(TONE_COLOUR[tone]),
+      ? tooltipFor(
+          device,
+          locale,
+          this._labels,
+          (tone) => this._colour(TONE_COLOUR[tone]),
+          this._verdicts()(device),
         )
       : undefined;
   }
