@@ -118,6 +118,29 @@ Presentation
     on a Spanish install. The file already carried a comment stating the rule it
     broke (HEA-89, HEA-88)
 
+19. ADR-0019: Two colour vocabularies - identity on the mark, verdict on the
+    figure. Colour arrived one ticket at a time and by HEA-104 three schemes
+    were in use with nothing saying how they related, while `--success-color`
+    was simultaneously Saved's *identity* and the *verdict* for good news. A
+    concept's identity now goes on a swatch beside its label and never on the
+    number, which the verdict owns; Would have paid takes no fill at all,
+    because it is Paid + Saved by construction and so is the container rather
+    than a third quantity. Where the two disagree - a negative saving - the mark
+    holds the identity and the figure takes the verdict, which a chart cannot do
+    because there the bar is the only surface. HEA-106's saving rate is a
+    *continuous* verdict on the same figure, weighted by share of the largest
+    contributor on screen so that HEA-75's near-zero denominators fade out
+    rather than colouring on noise. Two properties are load-bearing: weight
+    scales **saturation only** (scaling lightness too turns every muted red into
+    a brick, and red suffers darkening worse than any other hue), and lightness
+    is **monotonic and turns over on a dark theme** so the good end is always
+    furthest from its ground. **No single chart may use both the device palette
+    and the concept hues** - they share a blue, a green and an amber, and only
+    the separation keeps them legible. Three defects here were found by reading
+    the live dashboard and none by 496 green tests, because each card's suite
+    asserts what that card claims and none said what a card must *not* do
+    (HEA-104, HEA-106)
+
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
 2. Interval ledger: 5-min energy balance from house-level inputs; device delta spreading
@@ -199,9 +222,15 @@ Presentation
    drew one device correctly whenever it was the only one on them, so the gap was
    the selection rather than a missing card (HEA-98).
    Each card's reasoning is in its own header comment and its ticket - not
-   restated here. Children still open: HEA-104 (what colour the cost concepts
-   wear) and HEA-106 (a performance gradient on the Would-have-paid outline,
-   which HEA-104 unblocks)
+   restated here.
+   **Every child is now Done.** The last two settled how the family uses colour:
+   HEA-104 gave each cost concept an identity mark, and HEA-106 put a continuous
+   verdict - how much of what a device would have paid it actually avoided - on
+   the Would-have-paid figure and down the row. Both are recorded in ADR-0019,
+   which is the file to read before adding colour to any card. HEA-106's pip on
+   the device-costs chart was built, deployed and reverted: the bar's own fill
+   proportion already *is* the saving rate, at better resolution than a mark
+   beside it, so the number went into the tooltip instead
 2. ~~Core-cards dashboard (HEA-25)~~ - **cancelled**. A zero-dependency
    secondary view is not wanted beside the shipped family; the installable
    dashboard a household actually gets is HEA-94
