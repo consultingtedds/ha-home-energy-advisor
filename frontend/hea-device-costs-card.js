@@ -44,7 +44,7 @@
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { tint } from "./hea-colour.js";
+import { drawsOnDark, tint } from "./hea-colour.js";
 import { readDevices } from "./hea-devices.js";
 import {
   changeTone,
@@ -56,6 +56,7 @@ import {
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
+import { verdictScaleFor } from "./hea-verdict-scale.js";
 
 export const TAG = "hea-device-costs-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -177,6 +178,10 @@ const STANDING_HEADROOM = 120;
 /** The base class's middle term, kept in step with `HeaChartCard.chartHeight`. */
 const PREFERRED_HEIGHT = "40vw";
 
+/** How big the verdict pip is, and how far it stands off the bar's end. */
+const PIP_SIZE = 9;
+const PIP_DISTANCE = 4;
+
 /**
  * What the sideways chart leaves around its plot.
  *
@@ -187,10 +192,61 @@ const PREFERRED_HEIGHT = "40vw";
  */
 const HORIZONTAL_GRID = {
   left: 8,
-  right: 16,
+  // Room for the pip past the end of the longest bar. `containLabel` keeps the
+  // *axis* labels inside the grid but a series label drawn beyond a bar's end
+  // is not what it contains, so without this the widest device's verdict is
+  // clipped by the edge of the plot - and the widest device is the one whose
+  // verdict matters most.
+  right: 16 + PIP_SIZE + PIP_DISTANCE,
   top: 8,
   bottom: 28,
   containLabel: true,
+};
+
+/**
+ * The mark at the end of a bar saying how well that device did (HEA-106).
+ *
+ * A **label on the saved series** rather than a series of its own, which is
+ * what makes it behave: a label belongs to the series it is set on, so it hides
+ * when the device is toggled off in the legend and never appears in the legend
+ * itself. A fourth bar would do neither, and would also join a stack that means
+ * something exact.
+ *
+ * Drawn as a bare rectangle - an empty formatter with a background colour and a
+ * size - because there is no figure to write here. The number it stands for is
+ * in the tooltip, which is where a chart can afford the words.
+ *
+ * The colour is the *edge* of the verdict rather than its text form: this is a
+ * fill, so it recedes by going transparent where a figure recedes by going
+ * neutral. A device whose rate is noise ends up with no pip at all, which is
+ * the honest answer.
+ */
+/**
+ * Where a pip sits, given which way the bars run and which way the saving went.
+ *
+ * A negative saving stacks *below* the axis (ADR-0012 decision 3), so the end
+ * of the bar moves to the other side of it and the pip has to follow. Pinned to
+ * the top it would float over the middle of a bar it is no longer the end of.
+ */
+const PIP_POSITION = {
+  sideways: { gained: "right", lost: "left" },
+  standing: { gained: "top", lost: "bottom" },
+};
+
+const pipFor = (verdict, saving, sideways) => {
+  if (!verdict) return undefined;
+  const ends = PIP_POSITION[sideways ? "sideways" : "standing"];
+  const position = saving < 0 ? ends.lost : ends.gained;
+  return {
+    show: true,
+    position,
+    distance: PIP_DISTANCE,
+    formatter: () => "",
+    backgroundColor: verdict.edge,
+    width: PIP_SIZE,
+    height: PIP_SIZE,
+    borderRadius: PIP_SIZE / 2,
+  };
 };
 
 const BORDER_WIDTH = 1.5;
@@ -389,6 +445,18 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 
   /**
+   * How well each device did, weighted against the ones drawn beside it.
+   *
+   * Against `_ranked()` rather than the household, for the same reason the
+   * table weights against its own rows: a card narrowed to three devices is
+   * comparing those three, and weighting them against a total it is not showing
+   * would fade all of them together.
+   */
+  _verdicts() {
+    return verdictScaleFor(this._ranked(), { dark: drawsOnDark(this) });
+  }
+
+  /**
    * Whether the bars lie down, which a household may settle or leave to the
    * screen.
    *
@@ -431,6 +499,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     const loss = this._colour(LOSS);
     const labels = this._labels;
     const hue = (device) => this._colourFor(device);
+    const verdicts = this._verdicts();
     return [
       {
         id: PAID_ID,
@@ -449,6 +518,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
         stack: "cost",
         data: rows.map((device) => {
           const outline = device.costSavings < 0 ? loss : hue(device);
+          const pip = pipFor(verdicts(device), device.costSavings, true);
           return {
             value: device.costSavings,
             itemStyle: {
@@ -456,6 +526,9 @@ class HeaDeviceCostsCard extends HeaChartCard {
               borderColor: outline,
               borderWidth: BORDER_WIDTH,
             },
+            // On the point rather than the series: one series holds every
+            // device here, so a verdict set on it would paint them all alike.
+            ...(pip ? { label: pip } : {}),
           };
         }),
       },
@@ -484,9 +557,11 @@ class HeaDeviceCostsCard extends HeaChartCard {
    */
   _standingSeries() {
     const loss = this._colour(LOSS);
+    const verdicts = this._verdicts();
     return this._ranked().flatMap((device) => {
       const colour = this._colourFor(device);
       const outline = device.costSavings < 0 ? loss : colour;
+      const pip = pipFor(verdicts(device), device.costSavings, false);
       return [
         {
           id: `${device.key}:paid`,
@@ -508,6 +583,9 @@ class HeaDeviceCostsCard extends HeaChartCard {
             borderColor: outline,
             borderWidth: BORDER_WIDTH,
           },
+          // On the series, because a device owns its own pair here - so the
+          // pip hides with the device the legend toggles.
+          ...(pip ? { label: pip } : {}),
           data: [device.costSavings],
         },
         // A stack of its own, so ECharts sets it beside the device rather than

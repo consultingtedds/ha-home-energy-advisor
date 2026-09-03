@@ -229,6 +229,103 @@ describe("the bars", () => {
   });
 });
 
+describe("the pip at the end of the bar", () => {
+  /** The pip on a device's saved segment, which is where the bar ends. */
+  const pipOn = (card, key) => deviceSeries(card, key)[1].label;
+
+  it("marks how well the device did, at the end of its bar", async () => {
+    // Given - the bars say what each device cost and, until now, nothing said
+    // how well it did. The table carries that verdict; this is the same claim
+    // on the chart beside it (HEA-106)
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+
+    // When
+    await ready(card);
+
+    // Then - the aircon saved EUR 5.00 of EUR 5.50 and the pump EUR 1.00 of
+    // EUR 4.00, so the two pips must not be the same colour
+    const aircon = pipOn(card, "slow_poll_aircon");
+    const pump = pipOn(card, "cloud_polled_pump");
+    expect(aircon.backgroundColor).toMatch(/^hsla?\(/);
+    expect(aircon.backgroundColor).not.toBe(pump.backgroundColor);
+  });
+
+  it("belongs to the series, so it hides with its device", async () => {
+    // Given - a label on the saved series rather than a series of its own.
+    // An extra series would appear in the legend and would stay on the chart
+    // when its device was toggled off, which is the whole reason for this
+    // shape rather than a fourth bar
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }));
+
+    // When
+    await ready(card);
+
+    // Then - four series for two devices, exactly as before the pip existed
+    expect(chartOf(card).data).toHaveLength(4);
+    expect(legendOf(card).data).toHaveLength(2);
+  });
+
+  it("follows the bar's end when a saving goes negative", async () => {
+    // Given - battery arbitrage puts the saving below the axis, so ECharts
+    // stacks that segment downward and the end of the bar moves with it
+    // (HEA-39). A pip pinned to the top would float over the middle of a bar
+    // it is no longer the end of
+    const saving = mount(
+      aHass({ devices: [AIRCON], response: bucketsFor("slow_poll_aircon", 10, 3, 5) }),
+    );
+    await ready(saving);
+    const above = pipOn(saving, "slow_poll_aircon").position;
+
+    // When
+    document.body.replaceChildren();
+    const losing = mount(
+      aHass({ devices: [AIRCON], response: bucketsFor("slow_poll_aircon", 10, 5, 3) }),
+    );
+    await ready(losing);
+
+    // Then
+    expect(above).toBe("top");
+    expect(pipOn(losing, "slow_poll_aircon").position).toBe("bottom");
+  });
+
+  it("says nothing about a device that never ran", async () => {
+    // Given - no counterfactual means no rate, so there is no verdict to mark.
+    // A pip of some neutral colour would still be a mark where the truth is
+    // that nothing can be said
+    const hass = aHass({
+      devices: [AIRCON, PUMP],
+      response: {
+        ...bucketsFor("slow_poll_aircon", 10, 3, 5),
+        ...bucketsFor("cloud_polled_pump", 0, 0, 0),
+      },
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then
+    expect(pipOn(card, "cloud_polled_pump")).toBeUndefined();
+    expect(pipOn(card, "slow_poll_aircon")).toBeDefined();
+  });
+
+  it("turns to the end of a sideways bar rather than the top of it", async () => {
+    // Given - laid on their side the bars run left to right, so "the end" is
+    // an edge rather than a height (HEA-100)
+    const card = mount(aHass({ devices: [AIRCON, PUMP], response: THREE }), {
+      layout: "horizontal",
+    });
+
+    // When
+    await ready(card);
+
+    // Then - one series holds every device here, so the pip travels on the
+    // point rather than on the series
+    const saved = chartOf(card).data.find((series) => series.id === "saved");
+    expect(saved.data[0].label.position).toBe("right");
+  });
+});
+
 describe("comparing against an earlier period", () => {
   const comparing = async () => {
     const collection = anEnergyCollection();
