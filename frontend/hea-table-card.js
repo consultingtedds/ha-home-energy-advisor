@@ -183,6 +183,16 @@ export class HeaTableCard extends HeaCard {
    * so the good end stays the highest contrast, and only the element knows.
    */
   _verdictScale() {
+    // Nothing at all unless a column asked for it. The band and the tinted
+    // figure are one claim said twice, so the band follows the column rather
+    // than the table: built on the base alone it appeared down "Where the
+    // energy came from", whose rows are kWh by source and have no saving rate
+    // to carry a verdict about. Derived from the columns rather than from a
+    // second flag a card would have to remember to set, so the two cannot come
+    // apart.
+    if (!this._columns().some((column) => column.carriesVerdict)) {
+      return undefined;
+    }
     return verdictScaleFor(this._result?.devices ?? [], {
       dark: drawsOnDark(this),
     });

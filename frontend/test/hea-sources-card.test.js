@@ -76,6 +76,27 @@ describe("registration", () => {
   });
 });
 
+describe("what this table does not claim", () => {
+  it("carries no cost verdict, because its rows are energy", async () => {
+    // Given - the saving-rate band belongs to the column that carries the same
+    // verdict as a figure (HEA-106). Built on the shared table base it painted
+    // here too, down a table whose rows are kWh by source: this card names no
+    // cost at all, so a red or green band beside a device would be answering a
+    // question nobody asked of it. Caught on the live dashboard, not in a test
+    const hass = aHass({ devices: [AIRCON, PUMP], response: SPLIT });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - no band, and no tinted figure either
+    const cells = [...card.shadowRoot.querySelectorAll("tbody th, tbody td")];
+    expect(cells.length).toBeGreaterThan(0);
+    expect(cells.every((cell) => cell.style.boxShadow === "")).toBe(true);
+    expect(cells.every((cell) => cell.style.color === "")).toBe(true);
+  });
+});
+
 describe("the split", () => {
   it("shows each source beside the energy it accounts for", async () => {
     // Given / When
