@@ -1,0 +1,76 @@
+# Home Energy Advisor - a complete dashboard, by hand.
+#
+# You do not need this. Settings -> Dashboards -> Add dashboard -> Home Energy
+# Advisor builds the same page and keeps it current as devices come and go. This
+# is for a dashboard defined by a YAML file, where nothing is UI-editable, and
+# for anyone who wants to start from the shipped layout and change it.
+#
+# Paste into a dashboard's raw configuration editor, or into your dashboard
+# file. There is nothing to fill in: no device is named anywhere below, because
+# every card reads the tracked-device list from the integration. Add a device to
+# Home Energy Advisor and it appears here on its own.
+#
+# The one thing worth knowing: the `energy-date-selection` card is Home
+# Assistant's own, and it is what sets the period every card below reads. Remove
+# it and they fall back to the last 30 days.
+
+title: Energy Costs
+views:
+  - title: Costs
+    path: costs
+    type: sections
+    icon: mdi:home-lightning-bolt
+    max_columns: 4
+
+    # Pinned at the bottom, so the period and the filter stay put while the page
+    # scrolls. Both control every card on the view.
+    footer:
+      max_width: 1600
+      card:
+        type: horizontal-stack
+        cards:
+          - type: energy-date-selection
+          - type: custom:hea-filter-card
+
+    sections:
+      # The money, largest first: the summary, then the per-device breakdown,
+      # then how it accumulated and where the energy came from.
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:hea-totals-card
+            grid_options: { columns: full, rows: auto }
+          - type: custom:hea-devices-card
+            sort_by: actual_cost
+            grid_options: { columns: full, rows: auto }
+          - type: custom:hea-cost-over-time-card
+            grid_options: { columns: full, rows: auto }
+          - type: custom:hea-sources-card
+            sort_by: energy_used
+            grid_options: { columns: full, rows: auto }
+
+      # The same figures drawn, for the questions a table answers badly: which
+      # device cost most, where the money went, and how much was our own.
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:hea-device-costs-card
+            grid_options: { columns: full, rows: auto }
+          - type: custom:hea-distribution-card
+            grid_options: { columns: full, rows: auto }
+          - type: custom:hea-self-sufficiency-card
+            grid_options: { columns: full, rows: auto }
+
+# No card sets a `title`. Left out, each one names itself in the household's own
+# language; a title written here would be English on every install. Set one only
+# where you mean to override it, and use an empty string for no heading.
+#
+# Other options, all optional and all documented in dashboard.md:
+#
+#   hea-devices-card      sort_by: actual_cost | cost_at_grid_price
+#                                  | cost_savings | energy_used
+#   hea-sources-card      sort_by: energy_used | energy_from_grid
+#                                  | energy_from_generation | energy_from_battery
+#   hea-device-costs-card layout:  auto | horizontal | vertical
+#   hea-distribution-card metric:  cost | energy
+#                         layout:  auto | horizontal | vertical

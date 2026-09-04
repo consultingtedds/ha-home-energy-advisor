@@ -140,6 +140,19 @@ Presentation
     the live dashboard and none by 496 green tests, because each card's suite
     asserts what that card claims and none said what a card must *not* do
     (HEA-104, HEA-106)
+20. ADR-0020: The integration serves its own frontend, and offers a dashboard.
+    One bundle built from `frontend/` ships inside `custom_components/` and is
+    registered with `frontend.add_extra_js_url` - not as a Lovelace resource,
+    because `ResourceYAMLCollection` has no `async_create_item` and the
+    registration would silently do nothing on a YAML-resource install. The url
+    carries the release *and* a content digest, because every build between two
+    releases shares a version and the path is cached for 31 days. Home Assistant
+    offers the dashboard itself: a strategy registered in
+    `window.customStrategies` appears in Add dashboard beside Map, so the
+    household creates it and can always take control of it. Creating one from
+    Python was rejected as a data-loss hazard - a second `DashboardsCollection`
+    over the same store would let the next UI-created dashboard erase ours
+    (HEA-94, HEA-109)
 
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -234,6 +247,15 @@ Presentation
 2. ~~Core-cards dashboard (HEA-25)~~ - **cancelled**. A zero-dependency
    secondary view is not wanted beside the shipped family; the installable
    dashboard a household actually gets is HEA-94
+2b. **The installable dashboard (HEA-94) - done.** The integration serves one
+   bundled module and Home Assistant offers the dashboard built from it, under
+   Add dashboard beside Map. Nothing is copied, no resource is registered, no
+   YAML is filled in and no device is named. Three routes: a dashboard of its
+   own, a view inside an existing dashboard (two lines, until HEA-108 lands
+   upstream), or individual cards from the picker. HEA-109 cut the payload from
+   25 requests and 230 KB to one of 51 KB after measuring that the parse cost
+   the ticket was written to fix was a median 0.6 ms. All of it is ADR-0020;
+   `docs/dashboard.md` is the household-facing version
 3. README per documentation standards (HEA-26 - a publish blocker, and where the
    owed items are listed) including a plain-language explanation of the
    allocation model and its known limitations - export opportunity cost,
