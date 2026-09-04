@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Copy the Lovelace cards into a timestamped folder under Home Assistant's www.
 #
+# This is the fallback, not the route: the integration serves the cards itself,
+# so deploying it deploys them. Use this to push a card change without
+# redeploying the integration, or to roll back to a previous stamp. Anything it
+# serves loads *in addition* to the integration's own copy, so remove the
+# Lovelace resource once you are done with it.
+#
 # Home Assistant serves /local/ with `Cache-Control: max-age=2678400` - 31 days.
 # Overwriting a card in place therefore does nothing for anyone whose browser
 # already fetched it, and a `?v=` on the dashboard resource url does not help:
@@ -48,7 +54,9 @@ to_shell_path() {
   printf '%s' "$path"
 }
 
-[ -f frontend/hea-cards.js ] || die "run this from the repository root"
+cards="custom_components/home_energy_advisor/frontend"
+
+[ -f "$cards/hea-cards.js" ] || die "run this from the repository root"
 
 [ -n "${1:-}" ] || die "usage: $0 <path-to-config/www> [stamp]"
 www="$(to_shell_path "$1")"
@@ -59,9 +67,9 @@ stamp="${2:-$(date +%Y%m%d-%H%M%S)}"
 target="$www/home-energy-advisor/$stamp"
 
 mkdir -p "$target"
-cp frontend/*.js "$target/"
+cp "$cards"/*.js "$target/"
 
-echo "Copied $(ls -1 frontend/*.js | wc -l | tr -d ' ') files to $target"
+echo "Copied $(ls -1 "$cards"/*.js | wc -l | tr -d ' ') files to $target"
 echo
 echo "Set the dashboard resource to:"
 echo "  /local/home-energy-advisor/$stamp/hea-cards.js"

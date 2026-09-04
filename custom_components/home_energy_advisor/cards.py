@@ -1,0 +1,70 @@
+"""Serve the shipped Lovelace cards and have the frontend load them.
+
+The card sources ship inside the integration, so one deploy carries both halves
+and the cards can never be a different version from the accounting they draw.
+This module puts them on a versioned url and registers that url as an extra
+frontend module, which is what removes any need for a hand-managed Lovelace
+resource. Where an install has no frontend the cards are skipped: the accounting
+is the product, and a headless instance still gets every sensor.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
+from homeassistant.loader import async_get_integration
+from homeassistant.util.hass_dict import HassKey
+
+from .const import DOMAIN
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
+CARDS_DIR = Path(__file__).parent / "frontend"
+
+#: Every card registers itself when this module is imported, so one url covers
+#: the family and a card added later needs no dashboard change.
+ENTRY_POINT = "hea-cards.js"
+
+_CARDS_URL: HassKey[str] = HassKey(f"{DOMAIN}_cards_url")
+
+
+async def async_register_cards(hass: HomeAssistant) -> str | None:
+    """Serve the cards under a versioned url and have the frontend load them.
+
+    Returns the url, or ``None`` where there is no frontend to serve them to.
+    Safe to call on every setup: a second call returns what the first
+    established, because aiohttp's router only grows and the config entry
+    reloads on every configuration change.
+    """
+    if (existing := async_cards_url(hass)) is not None:
+        return existing
+    if "frontend" not in hass.config.components:
+        return None
+    url = f"/{DOMAIN}/{await _async_release(hass)}"
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(url, str(CARDS_DIR), cache_headers=True)]
+    )
+    add_extra_js_url(hass, f"{url}/{ENTRY_POINT}")
+    hass.data[_CARDS_URL] = url
+    return url
+
+
+def async_cards_url(hass: HomeAssistant) -> str | None:
+    """Where the cards are served from, or ``None`` if they are not."""
+    return hass.data.get(_CARDS_URL)
+
+
+async def _async_release(hass: HomeAssistant) -> str:
+    """This integration's version, as its manifest declares it.
+
+    The version is in the url *path* because the cards are ES modules: a query
+    string busts the entry point but not its relative imports, and a browser
+    holding one stale module fails the whole import, registering no cards at
+    all. Only a moving folder re-fetches the set atomically.
+    """
+    integration = await async_get_integration(hass, DOMAIN)
+    return str(integration.version)

@@ -11,6 +11,11 @@ so they drift silently:
 * ``ruff`` is pinned in ``requirements_test.txt`` and again as the
   ``ruff-pre-commit`` rev. Bumping one alone leaves the local hook formatting
   code the way CI then refuses to accept.
+* ``home-assistant-frontend`` is pinned in ``requirements_test.txt`` and again,
+  authoritatively, by the pinned Home Assistant's own frontend manifest. phacc
+  does not install it, so nothing resolves the two: a phacc bump moves what Home
+  Assistant asks for while the requirements file stays put, and the card tests
+  then run against a frontend that release never shipped with.
 
 Dependabot ignores the first pair (a phacc bump is a supported-floor decision,
 not a chore) and bumps the second. A ruff PR therefore arrives red until its
@@ -25,15 +30,18 @@ when the version it looks for is absent.
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any, Final
 
 import yaml
+from homeassistant.components import frontend
 
 REPO_ROOT: Final = Path(__file__).parent.parent
 PHACC: Final = "pytest-homeassistant-custom-component"
 RUFF_PRE_COMMIT_REPO: Final = "https://github.com/astral-sh/ruff-pre-commit"
+FRONTEND: Final = "home-assistant-frontend"
 
 
 def requirement_pin(requirements: str, package: str) -> str | None:
@@ -49,6 +57,16 @@ def ci_matrix_phacc_pins(workflow: str) -> list[str]:
     document: dict[str, Any] = yaml.safe_load(workflow)
     include = document["jobs"]["test"]["strategy"]["matrix"]["include"]
     return [str(entry["phacc"]) for entry in include if "phacc" in entry]
+
+
+def manifest_requirement(manifest: str, package: str) -> str | None:
+    """Return the version an integration manifest requires, or None if absent."""
+    requirements: list[str] = json.loads(manifest).get("requirements", [])
+    prefix = f"{package}=="
+    for requirement in requirements:
+        if requirement.startswith(prefix):
+            return requirement.removeprefix(prefix)
+    return None
 
 
 def pre_commit_rev(config: str, repo: str) -> str | None:
@@ -123,6 +141,27 @@ jobs:
     assert ci_matrix_phacc_pins(workflow) == []
 
 
+def test_manifest_requirement_reads_the_version_for_the_named_package() -> None:
+    # Given - an integration manifest requiring the frontend package
+    manifest = json.dumps(
+        {"domain": "frontend", "requirements": [f"{FRONTEND}==20260624.5"]}
+    )
+
+    # When - the requirement is read
+    requirement = manifest_requirement(manifest, FRONTEND)
+
+    # Then
+    assert requirement == "20260624.5"
+
+
+def test_manifest_requirement_is_none_when_the_package_is_absent() -> None:
+    # Given - a manifest that requires something else entirely
+    manifest = json.dumps({"domain": "lovelace", "requirements": ["some-other==1.0"]})
+
+    # When / Then - a missing requirement must be visible, not read as a match
+    assert manifest_requirement(manifest, FRONTEND) is None
+
+
 def test_pre_commit_rev_reads_the_rev_pinned_for_the_named_repo() -> None:
     # Given - a hook config pinning ruff-pre-commit among other repos
     config = f"""
@@ -193,6 +232,21 @@ repos:
     )
 
 
+def test_a_frontend_pin_left_behind_by_a_phacc_bump_reads_as_drift() -> None:
+    # Given - a Home Assistant moved on by a phacc bump, and a requirements file
+    # still pinning the frontend that shipped with the release before it
+    requirements = f"{FRONTEND}==20260624.5\n"
+    manifest = json.dumps(
+        {"domain": "frontend", "requirements": [f"{FRONTEND}==20260729.5"]}
+    )
+
+    # When / Then - the same expression the repo-wide check asserts, on the
+    # half-applied bump it exists to catch
+    assert requirement_pin(requirements, FRONTEND) != manifest_requirement(
+        manifest, FRONTEND
+    )
+
+
 def test_phacc_pin_in_requirements_is_one_the_ci_matrix_actually_tests() -> None:
     # Given - the pin contributors install, and the pins CI runs the suite against
     requirements = (REPO_ROOT / "requirements_test.txt").read_text(encoding="utf-8")
@@ -207,6 +261,22 @@ def test_phacc_pin_in_requirements_is_one_the_ci_matrix_actually_tests() -> None
     # matrix may hold more entries than this; it must hold at least this one.
     assert pinned is not None
     assert pinned in matrix_pins
+
+
+def test_frontend_pin_in_requirements_is_the_one_home_assistant_asks_for() -> None:
+    # Given - the frontend contributors install, and the one the pinned Home
+    # Assistant declares for itself
+    requirements = (REPO_ROOT / "requirements_test.txt").read_text(encoding="utf-8")
+    manifest = (Path(frontend.__file__).parent / "manifest.json").read_text(
+        encoding="utf-8"
+    )
+    pinned = requirement_pin(requirements, FRONTEND)
+    declared = manifest_requirement(manifest, FRONTEND)
+
+    # Then - the card tests boot the real frontend component, so a mismatch runs
+    # them against a build that Home Assistant release never shipped with
+    assert pinned is not None
+    assert pinned == declared
 
 
 def test_ruff_pin_in_requirements_matches_the_pre_commit_hook_rev() -> None:
