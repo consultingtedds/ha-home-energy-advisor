@@ -57,6 +57,64 @@ code when a test reveals a genuine design flaw.
 
 ---
 
+## What to assert
+
+Coverage says which lines ran. These three rules are about the assertions that
+made them run, and each is here because a green suite missed something that
+then cost live debugging time.
+
+### Assert the obligation, not the mechanism
+
+A test that describes your implementation can only confirm you wrote what you
+wrote. Assert the job the value has to do.
+
+```python
+# BAD - restates the implementation, and passes for any build of the same release
+assert "0.0.1" in url
+
+# GOOD - states why the url exists: it must differ when the content differs
+assert fingerprint(changed) != fingerprint(before)
+```
+
+The first shipped. The url carried only the release, every build between two
+releases reused it, and it is served with a 31-day cache, so a redeploy was
+invisible to any browser that had already loaded the cards.
+
+**Where a value's purpose is a relation between two states, the test has to
+instantiate both states.** One output inspected for a substring cannot express
+"differs when it should". This covers cache keys, `unique_id`, idempotency
+guards, migration versions, restore baselines, and anything else whose whole
+point is same-or-different.
+
+It pairs with the rule that a fixture must be able to disagree: `"0.0.1"` was a
+string also written into the manifest, so the test and the code were reading
+from the same belief.
+
+### Enumerate the host contract
+
+When implementing against a Home Assistant interface, read the **type
+definition**, not the guide, and record a decision for every member: implement
+it, or omit it deliberately and say why.
+
+The developer docs for dashboard strategies describe one member, `generate`. The
+interface has six, plus `getCreateSuggestions` alongside. Implementing only the
+documented one shipped a dashboard that opened an empty title/icon/url form, and
+very nearly shipped a layout that never regenerated. Two defects, one omission,
+and no test of our own code could have found either: the code was absent, not
+wrong.
+
+### What CI cannot reach gets a check in the procedure
+
+Some failures live outside the test boundary - a deploy that copies without
+deleting, a share holding files the repository no longer has. Those get a step
+in the deploy procedure rather than a test.
+
+**Make it assert a number.** "Check the cards work" passes in the broken state;
+the cards worked perfectly while the instance served a bundle from two releases
+earlier. "One request of about 51 KB" does not.
+
+---
+
 ## Test types
 
 | Type | Scope | Tools | Speed |

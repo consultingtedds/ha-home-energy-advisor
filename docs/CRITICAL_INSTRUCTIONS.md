@@ -74,6 +74,8 @@ custom integration.
 | `foo` / `bar` / `test123` data | Realistic data: a coarse-step aircon, €0.234/kWh, 0.25 kWh steps |
 | Naming a fixture for a room, an occupant, or a hardware model | Name it for the **metering behaviour** the test exercises: `coarse_step_aircon`, `slow_poll_aircon`, `cloud_polled_pump`, `wall_lights_power`. Anonymous, and it says why the device is in the test |
 | Naked float equality | `Decimal` comparisons or `pytest.approx` with explicit tolerance |
+| Asserting a single output contains a string you also wrote (`assert "0.0.1" in url`) | Where a value's job is to **differ** - cache keys, `unique_id`, idempotency guards, migration versions - instantiate two states and compare them. A one-output assertion cannot express "differs when it should", and it shipped a cache key that never moved between builds |
+| Implementing only the member of a Home Assistant interface that the guide documents | Read the **type definition** and record a decision for every member. The strategy docs describe `generate`; the interface has six plus `getCreateSuggestions`. No test of our own code finds an absent one |
 | Invoking `pytest` from Windows-side automation (git hooks, pre-commit, scripts) | Route it through a Unix shell (WSL). HA imports `fcntl`, so pytest dies at *collection* on native Windows - even for tests with no HA imports |
 
 ### Privacy - this is a public repo
