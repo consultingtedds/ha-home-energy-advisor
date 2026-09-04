@@ -7,7 +7,7 @@ pytest-homeassistant-custom-component==0.13.346
 # not install it. This must be the version the pinned Home Assistant's own
 # frontend manifest asks for, so it moves with every phacc bump; a drift guard
 # in tests/test_dependency_pins.py fails when it does not.
-home-assistant-frontend==20260624.5
+home-assistant-frontend==20260826.1
 
-ruff==0.16.3
-mypy==2.3.0
+ruff==0.16.5
+mypy==2.3.1
