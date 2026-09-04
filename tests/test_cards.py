@@ -7,6 +7,7 @@ that omit it are exercising the headless path deliberately.
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -16,9 +17,11 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.cards import (
+    CARDS_DIR,
     ENTRY_POINT,
     async_cards_url,
     async_register_cards,
+    fingerprint,
 )
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
@@ -28,6 +31,8 @@ from custom_components.home_energy_advisor.const import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from homeassistant.core import HomeAssistant
 
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
@@ -84,8 +89,56 @@ async def test_the_url_carries_the_release_so_an_upgrade_refetches_the_set(
     # modules and a relative import does not inherit a query string, so only a
     # moving folder re-fetches the imports along with the entry point
     assert url is not None
-    assert "0.0.1" in url
     assert "?" not in url
+    # The release, so an upgrade always moves it, and a digest of the sources,
+    # so a build between two releases moves it too
+    assert url.endswith(f"/0.0.1-{fingerprint(CARDS_DIR)}")
+
+
+def test_the_url_moves_when_a_card_changes_under_an_unchanged_version(
+    tmp_path: Path,
+) -> None:
+    # Given - the same release, twice, with one card edited in between. This is
+    # every deploy that is not a release: the manifest version does not move
+    # between them
+    (tmp_path / "hea-cards.js").write_text('import "./hea-totals-card.js";')
+    before = fingerprint(tmp_path)
+    (tmp_path / "hea-cards.js").write_text('import "./hea-totals-card.js";\n')
+
+    # When / Then - a version alone would leave every browser that had already
+    # loaded the cards serving them from a 31-day cache, whatever was deployed
+    assert fingerprint(tmp_path) != before
+
+
+def test_the_url_holds_still_when_a_deploy_only_copies_the_same_cards(
+    tmp_path: Path,
+) -> None:
+    # Given - two copies of identical sources with different timestamps, which
+    # is what copying a directory onto a share produces for every file in it
+    first, second = tmp_path / "a", tmp_path / "b"
+    for directory, mtime in ((first, 1_600_000_000), (second, 1_700_000_000)):
+        directory.mkdir()
+        card = directory / "hea-cards.js"
+        card.write_text('import "./hea-totals-card.js";')
+        os.utime(card, (mtime, mtime))
+
+    # When / Then - reading timestamps would move the url on every deploy and
+    # throw away a cache that was still good, for all 25 files at once
+    assert fingerprint(first) == fingerprint(second)
+
+
+def test_the_fingerprint_ignores_the_card_tests_shipped_beside_them(
+    tmp_path: Path,
+) -> None:
+    # Given - a card, and the test directory that ships in the same folder
+    (tmp_path / "hea-cards.js").write_text('import "./hea-totals-card.js";')
+    before = fingerprint(tmp_path)
+    (tmp_path / "test").mkdir()
+    (tmp_path / "test" / "hea-cards.test.js").write_text("it('...', () => {});")
+
+    # When / Then - a browser never fetches those, so editing one must not
+    # invalidate a cache for every household
+    assert fingerprint(tmp_path) == before
 
 
 @pytest.mark.usefixtures("frontend")
