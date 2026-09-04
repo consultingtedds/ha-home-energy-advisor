@@ -20,6 +20,17 @@ import { labelsFor, loadLabels } from "./hea-labels.js";
 /** The `custom:` type a dashboard config names, without the prefix. */
 export const STRATEGY_TYPE = "hea";
 
+/**
+ * What the dashboard is called, in the picker and in the create dialog.
+ *
+ * Two words at least: Home Assistant rejects a single-word url path, and the
+ * create dialog derives the url by slugifying this title, so a one-word name
+ * would silently become `dashboard-<name>`.
+ */
+const NAME = "Home Energy Advisor";
+
+const ICON = "mdi:home-lightning-bolt";
+
 export const DASHBOARD_TAG = `ll-strategy-dashboard-${STRATEGY_TYPE}`;
 export const VIEW_TAG = `ll-strategy-view-${STRATEGY_TYPE}`;
 
@@ -118,6 +129,25 @@ class HeaDashboardStrategy extends HTMLElement {
   static async generate(_config, hass) {
     return { views: [await generateView(hass)] };
   }
+
+  /** There is nothing to configure, so offer no editor for it. */
+  static noEditor = true;
+
+  /**
+   * Fill in the dialog Home Assistant opens once this is chosen.
+   *
+   * Without these it opens empty and the household names something we have
+   * already named. The url path is not offered here and does not need to be:
+   * the dialog slugifies the suggested title into it.
+   *
+   * `registryDependencies` is deliberately not set. The built-in strategies
+   * declare `[]`, which means never regenerating; this layout depends on
+   * whether any device is tracked, so the default - entities, devices, areas
+   * and floors - is what makes a first device appear without a reload.
+   */
+  static getCreateSuggestions() {
+    return { title: NAME, icon: ICON };
+  }
 }
 
 class HeaViewStrategy extends HTMLElement {
@@ -145,7 +175,7 @@ export const register = () => {
   offer({
     type: STRATEGY_TYPE,
     strategyType: "dashboard",
-    name: "Home Energy Advisor",
+    name: NAME,
     description:
       "What each device cost to run, and what solar and the battery saved.",
   });

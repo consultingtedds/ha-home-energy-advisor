@@ -128,6 +128,46 @@ describe("the dashboard strategy", () => {
     expect(views[0].sections[0].cards[0].content).toMatch(/tracked/i);
   });
 
+  it("fills in the create dialog, so nothing is left for the household to name", async () => {
+    // Given / When - what Home Assistant asks a dashboard strategy for before
+    // it opens the title/icon/url dialog
+    const suggestions = await customElements
+      .get(DASHBOARD_TAG)
+      .getCreateSuggestions(hass);
+
+    // Then - both fields the dialog offers. Without these it opens empty and a
+    // household has to invent a name and a url for something we already named
+    expect(suggestions.title).toBe("Home Energy Advisor");
+    expect(suggestions.icon).toMatch(/^mdi:/);
+  });
+
+  it("suggests a title Home Assistant can turn into a valid url", async () => {
+    // Given - the dialog derives the url path by slugifying the suggested title
+    const { title } = await customElements
+      .get(DASHBOARD_TAG)
+      .getCreateSuggestions(hass);
+
+    // When / Then - Home Assistant rejects a single-word url path, so a
+    // one-word title would be prefixed "dashboard-" behind the household's back
+    expect(title.trim().split(/\s+/).length).toBeGreaterThan(1);
+  });
+
+  it("offers no config editor, having nothing to configure", () => {
+    // Given / When / Then - the strategy takes no options; without this Home
+    // Assistant offers a YAML editor for a config that is two lines and fixed
+    expect(customElements.get(DASHBOARD_TAG).noEditor).toBe(true);
+  });
+
+  it("leaves regeneration on Home Assistant's default registries", () => {
+    // Given / When / Then - the built-in strategies set this to [], which means
+    // never regenerating. The layout depends on the device list, so a household
+    // adding their first device would be left looking at the empty state until
+    // they reloaded. The default already watches entities, devices, areas and
+    // floors, which is exactly what this reads
+    const strategy = customElements.get(DASHBOARD_TAG);
+    expect(strategy.registryDependencies).toBeUndefined();
+  });
+
   it("generates the same view standalone, for a dashboard already in use", async () => {
     // Given / When - the view strategy, which has no picker in Home Assistant's
     // UI but resolves fine when written into a view by hand
