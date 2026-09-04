@@ -1,7 +1,7 @@
 {
   "domain": "home_energy_advisor",
   "name": "Home Energy Advisor",
-  "after_dependencies": ["derivative", "energy", "frontend", "recorder"],
+  "after_dependencies": ["derivative", "energy", "frontend", "http", "recorder"],
   "codeowners": ["@consultingtedds"],
   "config_flow": true,
   "dependencies": ["integration", "utility_meter"],
