@@ -79,10 +79,27 @@ ruff check . && ruff format --check .
 mypy custom_components tests
 ```
 
+### The Lovelace cards
+
+The cards are plain ES modules under `frontend/`, tested with vitest. What the
+integration serves is a single bundle built from them:
+
+```bash
+npm ci
+npm test                                # vitest
+npm run build                           # frontend/ -> custom_components/.../frontend/
+```
+
+**The bundle is committed.** HACS ships `custom_components/` and nothing builds
+on a household's machine, so the built file has to be in the repository. If you
+change anything under `frontend/`, run `npm run build` and commit the result
+alongside it - CI rebuilds and fails on a diff, because a stale bundle would
+serve card code that no longer matches the sources under review.
+
 ### The gates
 
-CI runs ruff, mypy (strict), pytest with a 90% coverage floor, hassfest and HACS
-validation. All must pass.
+CI runs ruff, mypy (strict), pytest with a 90% coverage floor, vitest, the
+bundle-is-current check, hassfest and HACS validation. All must pass.
 
 There is also a **SonarQube** gate, which runs only on the maintainer's local
 server and is **deliberately not required in CI** - an external contributor

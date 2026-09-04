@@ -10,9 +10,9 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import enJson from "../../translations/en.json" with { type: "json" };
-import esJson from "../../translations/es.json" with { type: "json" };
-import stringsJson from "../../strings.json" with { type: "json" };
+import enJson from "../../custom_components/home_energy_advisor/translations/en.json" with { type: "json" };
+import esJson from "../../custom_components/home_energy_advisor/translations/es.json" with { type: "json" };
+import stringsJson from "../../custom_components/home_energy_advisor/strings.json" with { type: "json" };
 import { DEFAULTS, fill, labelsFor, loadLabels, resetLabels } from "../hea-labels.js";
 
 const aHass = (language, resources) => ({

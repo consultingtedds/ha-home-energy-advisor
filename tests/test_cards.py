@@ -127,18 +127,14 @@ def test_the_url_holds_still_when_a_deploy_only_copies_the_same_cards(
     assert fingerprint(first) == fingerprint(second)
 
 
-def test_the_fingerprint_ignores_the_card_tests_shipped_beside_them(
-    tmp_path: Path,
-) -> None:
-    # Given - a card, and the test directory that ships in the same folder
-    (tmp_path / "hea-cards.js").write_text('import "./hea-totals-card.js";')
-    before = fingerprint(tmp_path)
-    (tmp_path / "test").mkdir()
-    (tmp_path / "test" / "hea-cards.test.js").write_text("it('...', () => {});")
+def test_the_integration_ships_the_bundle_and_not_the_card_sources() -> None:
+    # Given - the directory a household downloads with the integration
+    shipped = sorted(path.name for path in CARDS_DIR.iterdir() if path.is_file())
 
-    # When / Then - a browser never fetches those, so editing one must not
-    # invalidate a cache for every household
-    assert fingerprint(tmp_path) == before
+    # Then - one built module. The sources live in `frontend/` and are bundled
+    # into this; shipping them beside it would quadruple what every install
+    # downloads, for modules no browser ever loads
+    assert shipped == [ENTRY_POINT]
 
 
 @pytest.mark.usefixtures("frontend")

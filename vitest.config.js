@@ -1,18 +1,15 @@
 import { defineConfig } from "vitest/config";
 
-// The cards ship inside the integration: that is the directory HACS copies and
-// the one the integration serves from.
-const CARDS = "custom_components/home_energy_advisor/frontend";
-
 export default defineConfig({
   test: {
     // The integration is Python; JavaScript exists only for the shipped
-    // Lovelace cards (HEA-50), so keep the runner out of everything else.
-    include: [`${CARDS}/**/*.test.js`],
+    // Lovelace cards (HEA-50), so keep the runner out of everything else. The
+    // sources are here; what ships is the bundle built from them.
+    include: ["frontend/**/*.test.js"],
     coverage: {
       provider: "v8",
-      include: [`${CARDS}/**/*.js`],
-      exclude: [`${CARDS}/test/**`],
+      include: ["frontend/**/*.js"],
+      exclude: ["frontend/test/**"],
       reporter: ["text", "lcov"],
       reportsDirectory: "coverage-frontend",
     },

@@ -56,7 +56,8 @@ to_shell_path() {
 
 cards="custom_components/home_energy_advisor/frontend"
 
-[ -f "$cards/hea-cards.js" ] || die "run this from the repository root"
+[ -d frontend ] || die "run this from the repository root"
+[ -f "$cards/hea-cards.js" ] || die "no bundle at $cards - run 'npm run build'"
 
 [ -n "${1:-}" ] || die "usage: $0 <path-to-config/www> [stamp]"
 www="$(to_shell_path "$1")"

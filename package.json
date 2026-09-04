@@ -2,10 +2,11 @@
   "name": "ha-home-energy-advisor",
   "version": "0.0.1",
   "private": true,
-  "description": "Commit tooling and the shipped Lovelace cards for the Home Energy Advisor integration. The integration itself is Python; Node covers husky, commitlint, and the card sources under custom_components/home_energy_advisor/frontend/ and their tests.",
+  "description": "Commit tooling and the shipped Lovelace cards for the Home Energy Advisor integration. The integration itself is Python; Node covers husky, commitlint, the card sources under frontend/ and their tests, and the build that bundles them into the integration.",
   "license": "MIT",
   "scripts": {
     "prepare": "husky",
+    "build": "node scripts/build-frontend.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
@@ -13,6 +14,7 @@
     "@commitlint/cli": "^21.2.2",
     "@commitlint/config-conventional": "^21.2.0",
     "@vitest/coverage-v8": "^4.1.10",
+    "esbuild": "^0.28.2",
     "happy-dom": "^20.11.2",
     "husky": "^9.1.7",
     "sonarqube-scanner": "^5.0.0",

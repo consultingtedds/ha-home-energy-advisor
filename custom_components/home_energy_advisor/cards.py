@@ -1,11 +1,11 @@
 """Serve the shipped Lovelace cards and have the frontend load them.
 
-The card sources ship inside the integration, so one deploy carries both halves
-and the cards can never be a different version from the accounting they draw.
-This module puts them on a url keyed to the release and to the sources
-themselves, and registers that url as an extra frontend module, which is what
-removes any need for a hand-managed Lovelace resource. Where an install has no
-frontend the cards are skipped: the accounting is the product, and a headless
+The bundle built from ``frontend/`` ships inside the integration, so one deploy
+carries both halves and the cards can never be a different version from the
+accounting they draw. This module puts it on a url keyed to the release and to
+the bundle itself, and registers that url as an extra frontend module, which is
+what removes any need for a hand-managed Lovelace resource. Where an install has
+no frontend the cards are skipped: the accounting is the product, and a headless
 instance still gets every sensor.
 """
 
@@ -61,12 +61,11 @@ def async_cards_url(hass: HomeAssistant) -> str | None:
 
 
 def fingerprint(directory: Path) -> str:
-    """A short digest of the card sources in ``directory``.
+    """A short digest of what is served from ``directory``.
 
-    Content, not timestamps. A deploy copies every file, which resets every
-    mtime, so reading timestamps would move the url on each one and discard a
-    cache that was still good. Only the top-level modules count: the tests ship
-    beside them and no browser ever fetches one.
+    Content, not timestamps. A deploy copies the bundle, which resets its mtime,
+    so reading timestamps would move the url on every deploy and discard a cache
+    that was still good.
     """
     digest = hashlib.sha256()
     for path in sorted(directory.glob("*.js")):
@@ -78,14 +77,11 @@ def fingerprint(directory: Path) -> str:
 async def _async_cache_key(hass: HomeAssistant) -> str:
     """The path segment the cards are served under.
 
-    In the *path* rather than a query string because the cards are ES modules:
-    a query string busts the entry point but not its relative imports, and a
-    browser holding one stale module fails the whole import and registers no
-    cards at all. Only a moving folder re-fetches the set atomically.
-
-    The release alone is not enough to move it. Every build between two releases
-    carries the same version, so a household - or a maintainer redeploying -
-    would keep being served a month-old cached copy of whatever changed.
+    In the *path* rather than a query string, so the whole thing re-fetches at
+    once. The release alone is not enough to move it: every build between two
+    releases carries the same version, so a household - or a maintainer
+    redeploying - would keep being served a month-old cached copy of whatever
+    changed.
     """
     integration = await async_get_integration(hass, DOMAIN)
     digest = await hass.async_add_executor_job(fingerprint, CARDS_DIR)
