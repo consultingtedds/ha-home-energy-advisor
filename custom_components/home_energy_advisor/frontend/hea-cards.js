@@ -7,6 +7,7 @@
  */
 
 import "./hea-cost-over-time-card.js";
+import "./hea-dashboard-strategy.js";
 import "./hea-device-costs-card.js";
 import "./hea-devices-card.js";
 import "./hea-distribution-card.js";
