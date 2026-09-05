@@ -52,20 +52,19 @@ registers as a pytest plugin, so on native Windows `pytest` fails at
 *collection* - even for tests that never import HA. This is a hard platform
 limit, not a configuration problem.
 
-Python **≥3.14.2** (HA's floor). Set up with:
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements_test.txt
-```
+Python version and setup: see `CONTRIBUTING.md`.
 
 ## Commands
 
+Standard `pytest` / `ruff` / `mypy` invocations - configured in `pyproject.toml`,
+spelled out in `CONTRIBUTING.md`. The ones that are not guessable:
+
 ```bash
-pytest                          # unit tests (fast, no HA instance needed)
-pytest --cov --cov-fail-under=90
-ruff check . && ruff format --check .
-mypy custom_components tests
+npm run build                        # frontend/ -> the bundle the integration serves
 ./scripts/sonar-check.sh scan        # local SonarQube gate (see CRITICAL_INSTRUCTIONS)
 ./scripts/sonar-check.sh qualitygate # "status" must be "OK" - read full output, never tail/head
 ```
+
+The Lovelace cards live in `frontend/` and ship as one bundle inside the
+integration. **Change anything there and you must rebuild and commit the
+bundle** - CI rebuilds and fails on a diff (ADR-0020).
