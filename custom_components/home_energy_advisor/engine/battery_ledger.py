@@ -24,6 +24,10 @@ against Predbat's own accounting in dogfooding (HEA-28):
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class BatteryLedger:
@@ -89,3 +93,23 @@ class BatteryLedger:
             raise ValueError(msg)
         self._stored_kwh += kwh
         self._stored_cost += cost
+
+    def snapshot(self) -> dict[str, str]:
+        """What the battery holds, so a restart resumes pricing rather than reset.
+
+        The stored cost is physical fact: the battery holds energy bought at a
+        known price, and discharging it after a restart is no more free than
+        after a rebase.
+
+        ``Decimal`` goes to ``str``, never ``float`` - the ledger exists to price
+        energy exactly.
+        """
+        return {
+            "stored_kwh": str(self._stored_kwh),
+            "stored_cost": str(self._stored_cost),
+        }
+
+    def restore(self, data: Mapping[str, str]) -> None:
+        """Reinstates a snapshot taken by :meth:`snapshot`."""
+        self._stored_kwh = Decimal(data["stored_kwh"])
+        self._stored_cost = Decimal(data["stored_cost"])

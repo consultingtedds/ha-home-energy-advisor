@@ -29,6 +29,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from . import issues
+from .accountant_store import AccountantStore
 from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
@@ -150,14 +151,53 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._history_probed: set[str] = set()
         self._unreconciled_raised = False
         self._implausible_sources: set[str] = set()
-        self._accountant = Accountant(
-            house_sources=house_sources,
-            device_energy_entities=devices,
+        self._devices = devices
+        self._accountant = self._new_accountant()
+        self._store = AccountantStore(self.hass, entry.entry_id)
+        self._restored: Totals | None = None
+
+    def _new_accountant(self) -> Accountant:
+        return Accountant(
+            house_sources=self._house_sources,
+            device_energy_entities=self._devices,
             units=self._read_units(),
         )
 
+    @property
+    def restored(self) -> Totals | None:
+        """Totals carried in from the snapshot, or ``None`` on a cold start.
+
+        The sensors read this to work out how much of their restored state the
+        engine is already holding, so the two do not both count it.
+        """
+        return self._restored
+
+    async def _async_restore_accounting(self) -> None:
+        """Carry the previous run's accounting in, if there is any to trust.
+
+        The store checks that a snapshot is present, stamped and recent; only
+        the engine can say whether it is *shaped* right. A snapshot written by a
+        build that keyed the state differently would raise here, so the engine
+        gets a fresh accountant and the household loses one restart's accounting
+        rather than the integration failing to start.
+        """
+        stored = await self._store.async_load(now=dt_util.utcnow())
+        if stored is None:
+            return
+        try:
+            self._accountant.restore(stored)
+        except KeyError, TypeError, ValueError, InvalidOperation:
+            _LOGGER.warning(
+                "Ignoring an accounting snapshot this version cannot read; "
+                "accounting resumes from the sensors' restored totals"
+            )
+            self._accountant = self._new_accountant()
+            return
+        self._restored = self._accountant.totals()
+
     async def async_start(self) -> None:
-        """Baseline current states, subscribe to changes, and start the timer."""
+        """Restore, baseline current states, subscribe, and start the timer."""
+        await self._async_restore_accounting()
         for entity_id in self._energy_entities:
             self._feed_energy(entity_id, self.hass.states.get(entity_id))
         self._feed_price(self.hass.states.get(self._price_entity))
@@ -234,6 +274,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_remainder_health()
         self._check_source_plausibility()
         self.async_set_updated_data(self._accountant.totals())
+        self._store.async_schedule_save(
+            self._accountant.snapshot, now_func=dt_util.utcnow
+        )
 
     def _check_sources_ever_reported(self, now: datetime) -> None:
         """Name, in Repairs, a device source that has never produced a reading.

@@ -26,13 +26,13 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from datetime import datetime
+    from collections.abc import Mapping
 
 _WH_PER_KWH = Decimal(1000)
 
@@ -218,6 +218,38 @@ class CumulativeEnergySource:
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
         self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=accrued_from, end=current.at)
+
+    def persisted_state(self) -> dict[str, Any]:
+        """The counter's position, so a restart resumes rather than rebaselines.
+
+        ``_moved_at`` travels with the reading because it anchors how far back a
+        step may be spread; without it a quiet run collapses into one bucket.
+
+        The decision log is excluded: it is the diagnostics ring, and restoring
+        it would present readings this run never saw.
+
+        Distinct from :meth:`snapshot`, which builds the diagnostics view.
+        """
+        return {
+            "unit": self._unit.value,
+            "last": None
+            if self._last is None
+            else {"at": self._last.at.isoformat(), "value": str(self._last.value)},
+            "moved_at": None if self._moved_at is None else self._moved_at.isoformat(),
+        }
+
+    def restore(self, data: Mapping[str, Any]) -> None:
+        """Reinstates state captured by :meth:`persisted_state`."""
+        last = data["last"]
+        self._last = (
+            None
+            if last is None
+            else _Observation(
+                at=datetime.fromisoformat(last["at"]), value=Decimal(last["value"])
+            )
+        )
+        moved_at = data["moved_at"]
+        self._moved_at = None if moved_at is None else datetime.fromisoformat(moved_at)
 
     def _accrual_start(self, previous: _Observation) -> datetime:
         """When the energy a stepping counter reveals began accumulating.

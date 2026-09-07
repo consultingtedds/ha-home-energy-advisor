@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 from homeassistant.const import Platform
 
 from . import reset
+from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
     CONF_CYCLE_METERS,
@@ -110,7 +111,11 @@ async def async_remove_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None
 
     Only helpers HEA created are removed: a helper the user already had over a
     source (adopted) is theirs to keep, never deleted on uninstall (HEA-52).
+
+    The accounting snapshot goes too, so a later reinstall starts from zero
+    rather than inheriting the totals the household deleted.
     """
+    await AccountantStore(hass, entry.entry_id).async_remove()
     owned = (
         *entry.data.get(CONF_INTEGRAL_HELPERS, {}).values(),
         *entry.data.get(CONF_CYCLE_METERS, {}).values(),

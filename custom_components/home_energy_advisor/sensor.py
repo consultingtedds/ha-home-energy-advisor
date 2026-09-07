@@ -63,7 +63,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from .coordinator import HeaConfigEntry, HeaCoordinator
-    from .engine.accountant import DeviceTotals
+    from .engine.accountant import DeviceTotals, Totals
 
 # Device keys for the two synthetic aggregates; real devices are keyed by subentry
 # id (a UUID), so these literals cannot collide with one. The whole-home key is
@@ -383,13 +383,30 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         """
         return (self._baseline + running).quantize(self._quantum)
 
+    def _running_from(self, totals: Totals) -> Decimal:
+        """This sensor's own figure within a set of totals."""
+        raise NotImplementedError
+
     async def async_added_to_hass(self) -> None:
-        """Restore the pre-restart total as the baseline for the running figure."""
+        """Set the baseline that sits under the engine's running figure.
+
+        Two stores can hold a figure, written at different moments: the engine's
+        snapshot and this sensor's own restored state. The baseline is whatever
+        the restored state holds *beyond* what the engine already carries, so a
+        figure present in both is counted once.
+
+        Clamped at zero, and it is ``max`` rather than a subtraction for the same
+        reason: whichever store is ahead wins, so a published
+        ``total_increasing`` figure never steps backwards into what Home
+        Assistant would read as a meter reset.
+        """
         await super().async_added_to_hass()
+        carried = self.coordinator.restored
+        already_held = self._running_from(carried) if carried else Decimal(0)
         last = await self.async_get_last_sensor_data()
         if last is not None and isinstance(last.native_value, Decimal):
-            self._baseline = last.native_value
-            self._restored = True
+            self._baseline = max(Decimal(0), last.native_value - already_held)
+        self._restored = last is not None or carried is not None
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -439,9 +456,11 @@ class HeaCostSensor(_HeaRestoringSensor):
     @property
     def native_value(self) -> Decimal:
         """This device's share, on top of whatever it published before a restart."""
-        totals = self._device_totals()
-        running = self.entity_description.value_fn(totals) if totals else Decimal(0)
-        return self._published(running)
+        return self._published(self._running_from(self.coordinator.data))
+
+    def _running_from(self, totals: Totals) -> Decimal:
+        device = self._device_in(totals)
+        return self.entity_description.value_fn(device) if device else Decimal(0)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
@@ -477,13 +496,12 @@ class HeaCostSensor(_HeaRestoringSensor):
             return None
         return {"warming_up": True}
 
-    def _device_totals(self) -> DeviceTotals | None:
-        data = self.coordinator.data
+    def _device_in(self, totals: Totals) -> DeviceTotals | None:
         if self._device_key == _UNTRACKED_KEY:
-            return data.untracked
+            return totals.untracked
         if self._device_key == _WHOLE_HOME_KEY:
-            return data.whole_home
-        return data.devices.get(self._device_key)
+            return totals.whole_home
+        return totals.devices.get(self._device_key)
 
 
 class HeaUnreconciledSensor(_HeaRestoringSensor):
@@ -520,7 +538,10 @@ class HeaUnreconciledSensor(_HeaRestoringSensor):
     @property
     def native_value(self) -> Decimal:
         """Energy published that the house meters never accounted for."""
-        return self._published(self.coordinator.data.unreconciled_kwh)
+        return self._published(self._running_from(self.coordinator.data))
+
+    def _running_from(self, totals: Totals) -> Decimal:
+        return totals.unreconciled_kwh
 
 
 @dataclass(frozen=True)

@@ -7,9 +7,10 @@ meter deltas into the house-served sources the allocation model needs.
 
 The Home Assistant coordinator (HEA-21 stage B) feeds this class state changes
 and a wall-clock ``now``; the class itself holds no Home Assistant references and
-is fully unit-testable. It keeps per-device *since-startup* running totals: the
-sensors add a restored baseline on top, so restarts neither double-count nor need
-the runtime to persist anything.
+is fully unit-testable. Its runtime state is serialisable (:meth:`Accountant.
+snapshot` / :meth:`Accountant.restore`), so accounting continues across a restart
+rather than resuming from nothing; the integration layer owns where that state is
+kept.
 
 Completed intervals are finalised on a lateness margin, but not sealed: each
 finalised bucket's context (its served sources, prices and draws) is retained in
@@ -36,10 +37,10 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from .allocation import (
     DeviceAllocation,
@@ -58,7 +59,6 @@ from .interval_ledger import BUCKET, IntervalBucket, SourceKind, spread_energy
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
-    from datetime import datetime
 
     from .energy_source import EnergyDelta, SourceSnapshot
 
@@ -466,6 +466,195 @@ class Accountant:
         # contribute to any total, and repaying it after the rebase would move
         # value between figures that no longer share a baseline.
         self._debts = DebtLedger(expiry=self._max_quiet_span)
+
+    def snapshot(self) -> dict[str, Any]:
+        """Everything the engine has learned, for carrying across a restart.
+
+        Where each counter stands, what the battery holds, which buckets are
+        open, and what is owed to whom. Anything derivable from the config entry
+        is absent: it is rebuilt on every setup, and restoring it would let a
+        stale snapshot override a household's reconfiguration.
+
+        Plain JSON-safe primitives, every ``Decimal`` a string. The integration
+        layer owns the file and the staleness rule.
+        """
+        return {
+            "sources": {
+                entity: source.persisted_state()
+                for entity, source in self._sources.items()
+            },
+            "raw": [
+                {
+                    "at": start.isoformat(),
+                    "roles": {role.value: str(kwh) for role, kwh in roles.items()},
+                }
+                for start, roles in self._raw.items()
+            ],
+            "draws": [
+                {
+                    "at": start.isoformat(),
+                    "devices": {device: str(kwh) for device, kwh in devices.items()},
+                }
+                for start, devices in self._draws.items()
+            ],
+            "prices": [
+                {"at": when.isoformat(), "price": str(price)}
+                for when, price in self._prices
+            ],
+            "battery": self._battery.snapshot(),
+            "debts": self._debts.snapshot(),
+            "pending_bounds": [
+                {
+                    "device": bound.device,
+                    "kwh": str(bound.kwh),
+                    "buckets": [start.isoformat() for start in bound.buckets],
+                }
+                for bound in self._pending_bounds
+            ],
+            "held": [
+                {
+                    "device": held.device,
+                    "at": held.at.isoformat(),
+                    "energy_kwh": str(held.energy_kwh),
+                    "actual_cost": str(held.actual_cost),
+                    "naive_cost": str(held.naive_cost),
+                    "cost_savings": str(held.cost_savings),
+                    "by_source": _dump_by_source(held.by_source),
+                }
+                for held in self._held
+            ],
+            "running": {
+                device: _dump_running(running)
+                for device, running in self._running.items()
+            },
+            "house": _dump_running(self._house),
+            "retained": [
+                {
+                    "at": start.isoformat(),
+                    "consumption": str(bucket.consumption),
+                    "blended": str(bucket.blended),
+                    "import_price": str(bucket.import_price),
+                    "draw": str(bucket.draw),
+                    "sources": _dump_by_source(bucket.sources),
+                }
+                for start, bucket in self._retained.items()
+            ],
+            "watermark": (
+                None if self._watermark is None else self._watermark.isoformat()
+            ),
+            "window": [
+                {
+                    "consumption": str(bucket.consumption),
+                    "claimed": {
+                        device: str(kwh) for device, kwh in bucket.claimed.items()
+                    },
+                }
+                for bucket in self._window
+            ],
+            "implausible": sorted(self._implausible),
+        }
+
+    def restore(self, data: Mapping[str, Any]) -> None:
+        """Reinstates a snapshot taken by :meth:`snapshot`.
+
+        Applied to a freshly configured accountant, so only what the engine
+        learned is written over.
+
+        Anything held for a device no longer configured is dropped: its counter
+        position, running totals, share of an open bucket, and any correction it
+        was owed. The device stays deleted, and its energy stays with the
+        Untracked remainder, which keeps the split reconciling.
+        """
+        tracked = set(self._entity_of)
+        known = set(self._role_of) | set(self._device_of)
+        for entity, source_data in data["sources"].items():
+            if entity not in known:
+                continue
+            source = CumulativeEnergySource(
+                unit=self._units.get(entity, EnergyUnit.KWH),
+                max_quiet_span=self._max_quiet_span,
+            )
+            source.restore(source_data)
+            self._sources[entity] = source
+
+        self._raw = {
+            datetime.fromisoformat(bucket["at"]): {
+                SourceRole(role): Decimal(kwh) for role, kwh in bucket["roles"].items()
+            }
+            for bucket in data["raw"]
+        }
+        self._draws = {
+            datetime.fromisoformat(bucket["at"]): {
+                device: Decimal(kwh)
+                for device, kwh in bucket["devices"].items()
+                if device in tracked
+            }
+            for bucket in data["draws"]
+        }
+        self._prices = [
+            (datetime.fromisoformat(entry["at"]), Decimal(entry["price"]))
+            for entry in data["prices"]
+        ]
+        self._battery.restore(data["battery"])
+        self._debts.restore(data["debts"])
+        self._pending_bounds = [
+            _PendingBound(
+                device=bound["device"],
+                kwh=Decimal(bound["kwh"]),
+                buckets=tuple(
+                    datetime.fromisoformat(start) for start in bound["buckets"]
+                ),
+            )
+            for bound in data["pending_bounds"]
+            if bound["device"] in tracked
+        ]
+        self._held = [
+            _HeldCorrection(
+                device=held["device"],
+                at=datetime.fromisoformat(held["at"]),
+                energy_kwh=Decimal(held["energy_kwh"]),
+                actual_cost=Decimal(held["actual_cost"]),
+                naive_cost=Decimal(held["naive_cost"]),
+                cost_savings=Decimal(held["cost_savings"]),
+                by_source=_load_by_source(held["by_source"]),
+            )
+            for held in data["held"]
+            if held["device"] in tracked
+        ]
+        self._running = {
+            device: _load_running(running)
+            for device, running in data["running"].items()
+            if device in tracked
+        }
+        self._house = _load_running(data["house"])
+        self._retained = {
+            datetime.fromisoformat(bucket["at"]): _RetainedBucket(
+                consumption=Decimal(bucket["consumption"]),
+                blended=Decimal(bucket["blended"]),
+                import_price=Decimal(bucket["import_price"]),
+                draw=Decimal(bucket["draw"]),
+                sources=_load_by_source(bucket["sources"]),
+            )
+            for bucket in data["retained"]
+        }
+        watermark = data["watermark"]
+        self._watermark = (
+            None if watermark is None else datetime.fromisoformat(watermark)
+        )
+        self._window = deque(
+            (
+                _WindowBucket(
+                    consumption=Decimal(bucket["consumption"]),
+                    claimed={
+                        device: Decimal(kwh)
+                        for device, kwh in bucket["claimed"].items()
+                    },
+                )
+                for bucket in data["window"]
+            ),
+            maxlen=_PLAUSIBILITY_WINDOW,
+        )
+        self._implausible = frozenset(data["implausible"])
 
     def totals(self) -> Totals:
         """Returns the since-startup running totals per device, home and Untracked.
@@ -1089,6 +1278,44 @@ def _withhold(
 
 def _sum(values: Iterable[Decimal]) -> Decimal:
     return sum(values, Decimal(0))
+
+
+def _dump_by_source(by_source: Mapping[SourceKind, Decimal]) -> dict[str, str]:
+    """A source split as JSON-safe pairs, keyed by the enum's stable value."""
+    return {kind.value: str(kwh) for kind, kwh in by_source.items()}
+
+
+def _load_by_source(data: Mapping[str, str]) -> dict[SourceKind, Decimal]:
+    return {SourceKind(kind): Decimal(kwh) for kind, kwh in data.items()}
+
+
+def _dump_running(running: _Running) -> dict[str, Any]:
+    """One accumulator's six figures and its source split.
+
+    Listed field by field rather than walked, so adding a figure to ``_Running``
+    fails the round-trip test until it is carried here too.
+    """
+    return {
+        "energy_kwh": str(running.energy_kwh),
+        "actual_cost": str(running.actual_cost),
+        "naive_cost": str(running.naive_cost),
+        "cost_savings": str(running.cost_savings),
+        "cost_floor": str(running.cost_floor),
+        "cost_ceiling": str(running.cost_ceiling),
+        "by_source": _dump_by_source(running.by_source),
+    }
+
+
+def _load_running(data: Mapping[str, Any]) -> _Running:
+    return _Running(
+        energy_kwh=Decimal(data["energy_kwh"]),
+        actual_cost=Decimal(data["actual_cost"]),
+        naive_cost=Decimal(data["naive_cost"]),
+        cost_savings=Decimal(data["cost_savings"]),
+        cost_floor=Decimal(data["cost_floor"]),
+        cost_ceiling=Decimal(data["cost_ceiling"]),
+        by_source=_load_by_source(data["by_source"]),
+    )
 
 
 def _affordable(held: _HeldCorrection, budget: _HeldCorrection) -> Decimal:

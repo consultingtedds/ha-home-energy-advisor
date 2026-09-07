@@ -32,12 +32,13 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
 
 @dataclass(frozen=True)
@@ -147,6 +148,44 @@ class DebtLedger:
     def forgiven_kwh(self) -> Decimal:
         """Energy written off, measuring how far the household's meters disagree."""
         return self._forgiven
+
+    def snapshot(self) -> dict[str, Any]:
+        """Outstanding debt and the running forgiven count, for a restart.
+
+        ``_expiry`` is not included: it is derived from the configured quiet span
+        and belongs to the accountant that rebuilds this ledger, so a snapshot
+        must not be able to reinstate an expiry a household has since changed.
+        """
+        return {
+            "tranches": [
+                {
+                    "at": tranche.at.isoformat(),
+                    "kwh": str(tranche.kwh),
+                    "charged": str(tranche.charged),
+                    "debtors": {
+                        device: str(drawn) for device, drawn in tranche.debtors.items()
+                    },
+                }
+                for tranche in self._tranches
+            ],
+            "forgiven": str(self._forgiven),
+        }
+
+    def restore(self, data: Mapping[str, Any]) -> None:
+        """Reinstates a snapshot taken by :meth:`snapshot`."""
+        self._tranches = deque(
+            _Tranche(
+                at=datetime.fromisoformat(tranche["at"]),
+                kwh=Decimal(tranche["kwh"]),
+                charged=Decimal(tranche["charged"]),
+                debtors={
+                    device: Decimal(drawn)
+                    for device, drawn in tranche["debtors"].items()
+                },
+            )
+            for tranche in data["tranches"]
+        )
+        self._forgiven = Decimal(data["forgiven"])
 
     def _settle(
         self, tranche: _Tranche, available: Decimal, unit_price: Decimal

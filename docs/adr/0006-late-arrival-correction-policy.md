@@ -218,3 +218,33 @@ closes no buckets, a large outstanding overdraw takes every surplus before any
 remainder is published, and a household whose tracked devices account for
 everything has no remainder to give. A device permanently short is a worse answer
 than one figure that dips once.
+
+## Update - the runtime is persisted, and the flush is withdrawn (2026-09-07, ADR-0021)
+
+The 2026-07-28 update above says the coordinator flushes "on unload - a restart,
+or **any** options/config change", so that "up to ~20 min × all devices of
+accounting that used to die on every reload now survives it".
+
+**That is true of a reload and false of a restart.** Home Assistant does not
+unload config entries when it stops: `EVENT_HOMEASSISTANT_STOP` reaches
+`entry.async_shutdown()`, which cancels a pending retry setup and nothing more,
+so `async_unload_entry` and its flush were never reached on the path a household
+actually takes. Measured on the reference instance, restarts cost up to 1.31 kWh
+in a single hour and left published whole-home energy 2.04 % below the metered
+house load over eight days.
+
+ADR-0021 replaces the mechanism: the accountant's runtime state is serialised and
+persisted, so open buckets, counter positions, the battery ledger, the retained
+ring and carried debt all cross the restart intact.
+
+**The trade-off this ADR accepted is therefore withdrawn.** It reads:
+
+> Flushing seals the partial *current* bucket early, so a device portion that
+> would have arrived for it *after* the reload can no longer correct it - and the
+> rebuilt runtime's retention ring (decision 1) starts empty, holding no
+> pre-reload buckets.
+
+There is no longer an early seal, no uncorrectable tail, and the ring carries.
+Decision 1's retained-context correction now works across a restart exactly as it
+does within one, which is what this ADR wanted in the first place and could not
+have without somewhere to put the state.

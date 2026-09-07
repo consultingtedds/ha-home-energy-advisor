@@ -142,6 +142,44 @@ def test_coarse_step_naive_cost_reproduces_the_published_complete_days() -> None
     assert daily == {8: Decimal("0.58"), 9: Decimal("0.52"), 10: Decimal("0.41")}
 
 
+def _deltas_across_a_restart(
+    filename: str, entity_id: str, after: int
+) -> list[EnergyDelta]:
+    """The same deltas, with the counter snapshotted and restored mid-run."""
+    states = _states(filename, entity_id)
+    source = CumulativeEnergySource()
+    deltas = [
+        delta
+        for state in states[:after]
+        if (delta := source.observe(_reading(state))) is not None
+    ]
+    restored = CumulativeEnergySource()
+    restored.restore(source.persisted_state())
+    deltas.extend(
+        delta
+        for state in states[after:]
+        if (delta := restored.observe(_reading(state))) is not None
+    )
+    return deltas
+
+
+def test_coarse_step_energy_survives_a_restart_between_any_two_readings() -> None:
+    # Given - the coarse-step counter's real run, which carries genuine cycle
+    # resets and scores of unavailable flaps
+    entity = _entity("coarse_step_aircon")
+    expected = _deltas("aircon_raw_batch1.json", entity)
+    states = _states("aircon_raw_batch1.json", entity)
+
+    # When / Then - restarting between any two readings yields the identical
+    # delta sequence. Real data is the point: a restart that forgot ``_moved_at``
+    # would still pass on tidy synthetic readings, and would quietly crush a
+    # coarse counter's quiet run into one bucket the way HEA-74 did.
+    for after in range(1, len(states)):
+        assert _deltas_across_a_restart("aircon_raw_batch1.json", entity, after) == (
+            expected
+        ), f"restarting after reading {after} changed the deltas"
+
+
 def test_slow_poll_attributes_the_full_delta_across_an_unavailable_gap() -> None:
     # Given - the slow-poll counter reads 1.0, drops to unavailable for ~2 hours,
     # then recovers at 2.5 (the documented Jul 9 real-data edge)
