@@ -94,6 +94,17 @@ class BatteryLedger:
         self._stored_kwh += kwh
         self._stored_cost += cost
 
+    def diagnostics(self) -> dict[str, str]:
+        """What the ledger holds, so a discharge price can be explained.
+
+        Unrounded: these two figures are what set the rate the next discharge is
+        priced at, and a rounded pair cannot reproduce it.
+        """
+        return {
+            "stored_kwh": str(self._stored_kwh),
+            "stored_cost": str(self._stored_cost),
+        }
+
     def snapshot(self) -> dict[str, str]:
         """What the battery holds, so a restart resumes pricing rather than reset.
 

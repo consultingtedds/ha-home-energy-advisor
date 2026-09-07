@@ -185,3 +185,24 @@ def test_battery_zero_movements_are_harmless_no_ops() -> None:
     assert cost == Decimal(0)
     assert ledger.stored_kwh == Decimal(4)
     assert ledger.unit_cost == OVERNIGHT
+
+
+def test_battery_diagnostics_expose_what_the_ledger_holds() -> None:
+    # Given - a ledger holding grid-bought and generated charge at once, so the
+    # stored cost is a blend rather than a single price
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(4), OVERNIGHT)
+    ledger.charge_from_generation(Decimal(6))
+
+    # When - the diagnostics view is read
+    held = ledger.diagnostics()
+
+    # Then - both figures are exposed, and at full Decimal precision as strings:
+    # rounding either would make a discharge price that cannot be reproduced from
+    # the download, which is the whole point of publishing it
+    assert held == {"stored_kwh": "10", "stored_cost": "0.372"}
+
+    # ...and they explain the rate the next discharge will be priced at
+    assert Decimal(held["stored_cost"]) / Decimal(held["stored_kwh"]) == (
+        ledger.unit_cost
+    )

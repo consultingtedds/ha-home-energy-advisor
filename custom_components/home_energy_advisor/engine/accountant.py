@@ -706,6 +706,15 @@ class Accountant:
             cost_ceiling=whole_home.actual_cost - actual,
         )
 
+    def battery_diagnostics(self) -> dict[str, str]:
+        """What the stored-cost ledger holds, for the diagnostics download.
+
+        Discharge is priced from this and from nothing else, so without it a
+        discharge costed below the import rate cannot be explained from the
+        download alone.
+        """
+        return self._battery.diagnostics()
+
     def source_diagnostics(self) -> dict[str, SourceSnapshot]:
         """Per-source accumulator state and decision log, keyed by entity id.
 

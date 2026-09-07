@@ -333,3 +333,23 @@ def test_every_accountant_field_is_classified_for_the_snapshot() -> None:
     # A new field lands in none of the three sets and fails here rather than
     # being quietly dropped on the next restart.
     assert set(vars(acc)) == _PERSISTED | _CONFIG_DERIVED | _TRANSIENT
+
+
+def test_battery_diagnostics_report_the_ledger_behind_the_discharge_price() -> None:
+    # Given - a run that force-charges the battery from the grid overnight
+    acc = _accountant()
+    for when, price in _PRICES:
+        acc.record_price(at(when), price)
+    for entity, when, value in _READINGS:
+        if when <= 20:
+            acc.observe(entity, at(when), Decimal(value))
+    acc.finalize(at(60))
+
+    # When - the battery diagnostics are read
+    held = acc.battery_diagnostics()
+
+    # Then - the ledger's contents are exposed, so a household reading the
+    # download can see why the next discharge was priced as it was rather than
+    # having to infer it from the totals
+    assert Decimal(held["stored_kwh"]) > 0
+    assert Decimal(held["stored_cost"]) > 0
