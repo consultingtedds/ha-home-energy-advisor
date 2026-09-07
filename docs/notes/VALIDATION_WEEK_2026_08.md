@@ -41,6 +41,10 @@ metered concept breaks the statistics series the comparison is drawn from, and
 an accounting change makes the week's data two datasets rather than one. On the
 day the run started, nothing remaining in the backlog required either.
 
+Deploying such a change *is* now safe, because the restart it needs costs
+nothing: the accounting runtime is persisted and carries across (ADR-0021). What
+is forbidden is the content of the change, not the restart that delivers it.
+
 Because the reset zeroes everything, this run can reconcile on **absolute**
 values, not just window deltas - which is what makes a one-week comparison
 meaningful at all.
@@ -131,10 +135,13 @@ also their first real exercise.
    a source that has never reported since the restart is the one thing that will
    quietly produce a zero device-day (HEA-69 raises a Repair for it, but only
    once its silence outlasts the grace period).
-1. Record the starting instant and confirm every HEA total is zero.
-2. Let it run seven full days. Do not reload, reconfigure, or add devices -
-   a reload seals in-flight buckets (ADR-0006) and a device change reshapes the
-   allocation.
+1. Record the starting instant. Totals need not be zero - every check is a
+   window delta, so the run reconciles from wherever the counters stand (see the
+   2026-09-07 update).
+2. Let it run seven full days. Do not reconfigure or add devices - a device
+   change reshapes the allocation, and a sensor rename or a new metered concept
+   breaks the statistics series step 3 draws from. Restarts and reloads are
+   fine: the accounting runtime is persisted, so it survives them (ADR-0021).
 3. Pull per-device, per-day figures from **long-term statistics** (`change`
    between day boundaries), which ADR-0008 makes the substrate for exactly this
    question - not from the cycle meters, whose fixed periods cannot be re-cut.
@@ -328,3 +335,43 @@ would have failed on day one, by 29-44 %. It is now check 3 above. The
 negative-remainder Repair should have been the other line of defence and was not:
 it counted *consecutive* overdrawn buckets, and an intermittent coarse step reset
 the tally every time, so it stayed silent for weeks (fixed under HEA-74).
+
+## Update - restarts no longer cost accounting (2026-09-07, ADR-0021)
+
+Method step 2 and the mid-run change rule above have been amended. **What changed
+is an operational constraint, because the software changed. The acceptance
+threshold and the four reconciliation checks are untouched**, and that
+distinction is the point of the header's note about writing them before seeing
+any numbers: a threshold moved after results is a description, but a constraint
+that only existed because the runtime lost state stops applying when it stops
+losing it.
+
+The accountant's runtime state is now persisted and restored, so a restart or a
+reload carries open buckets, counter positions, the battery ledger, the retained
+ring and carried debt. Measured across three restarts on the reference instance:
+publication resumed **67 seconds** after a snapshot-backed restart, against a
+**19 minute 26 second** stall on one with no snapshot to restore.
+
+So the rule is now about the *content* of a change, never the restart delivering
+it. Still forbidden mid-run: adding or removing a device, renaming a sensor,
+adding a metered concept, any `engine/` change that alters a figure. All of those
+either reshape the allocation or break the statistics series the comparison is
+drawn from.
+
+### What the next run must carry forward
+
+* **The reset is not repeated.** `reset_totals` ran 2026-08-18 and HEA-78 is
+  closed; long-term statistics were deliberately never cleared. Every check is a
+  window delta, so absolute values are not needed - which withdraws the
+  Preconditions claim above that only a zeroed instance makes a one-week
+  comparison meaningful.
+* **Check 3 now has controls.** Restart-free days on the reference instance read
+  +0.094 %, +0.123 %, -0.027 % and +0.308 %, against -0.97 % to -7.32 % on days
+  carrying a restart. The pass condition is that restart days become
+  indistinguishable from those controls, which is sharper than the +/-1.5 %
+  tolerance alone.
+* **Recorder retention is the binding constraint on the analysis.** The manual
+  recomputation reads recorder *history*, not statistics. Retention on the
+  reference instance was 5 days and is now 10, so the analysis has roughly three
+  days of slack after the window closes. Confirm it before opening a window, and
+  do not leave the analysis a fortnight.
