@@ -382,3 +382,54 @@ describe("when there is nothing to filter", () => {
     expect(card.shadowRoot.textContent).toContain(LABELS.no_devices);
   });
 });
+
+describe("the period picker beside it", () => {
+  /** Home Assistant's picker, two shadow roots deep, as the footer builds it. */
+  const aPickerIn = (footer) => {
+    const card = document.createElement("hui-energy-date-selection-card");
+    const selector = document.createElement("hui-energy-period-selector");
+    const picker = document.createElement("ha-date-range-picker");
+    picker.popoverPlacement = "bottom-start";
+    selector.attachShadow({ mode: "open" }).append(picker);
+    card.attachShadow({ mode: "open" }).append(selector);
+    footer.append(card);
+    return picker;
+  };
+
+  it("is turned upwards once this card is in the footer with it", () => {
+    // Given - the view footer Home Assistant builds, holding its picker
+    const footer = document.createElement("hui-view-footer");
+    document.body.append(footer);
+    const picker = aPickerIn(footer);
+
+    // When - this card joins it, as the dashboard strategy pairs the two
+    const card = document.createElement("hea-filter-card");
+    card.setConfig({});
+    footer.append(card);
+
+    // Then - the calendar opens upward. Pinned to the bottom of the viewport
+    // it would otherwise be drawn past the edge, where nothing scrolls to it.
+    expect(picker.popoverPlacement).toBe("top-start");
+    footer.remove();
+  });
+
+  it("puts it back when Home Assistant recomputes the placement", () => {
+    // Given - a card already beside a pinned picker
+    const footer = document.createElement("hui-view-footer");
+    document.body.append(footer);
+    const picker = aPickerIn(footer);
+    const card = document.createElement("hea-filter-card");
+    card.setConfig({});
+    footer.append(card);
+
+    // When - the selector reasserts its own choice and this card redraws
+    picker.popoverPlacement = "bottom-start";
+    card.hass = aHass({ devices: HOUSE });
+
+    // Then - it is pointed back. The selector owns the property and derives it
+    // from a measurement, so holding it is a matter of re-applying, not of
+    // setting once.
+    expect(picker.popoverPlacement).toBe("top-start");
+    footer.remove();
+  });
+});

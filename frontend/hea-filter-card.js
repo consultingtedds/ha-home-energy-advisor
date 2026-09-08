@@ -28,6 +28,7 @@
  * asking the recorder for figures it never draws.
  */
 
+import { pinPeriodPickerAbove } from "./ha-energy-collection.js";
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { readDevices, readLabelNames } from "./hea-devices.js";
@@ -96,6 +97,28 @@ class HeaFilterCard extends HTMLElement {
     this._unfilter ??= subscribeToFilter(this._config?.collection_key, () =>
       this._renderIfChanged(),
     );
+    this._pinPeriodPicker();
+  }
+
+  /**
+   * Point the neighbouring period picker's calendar upward (HEA-115).
+   *
+   * This card is the strategy's companion to the picker in the view footer, so
+   * it is the one element that knows where that picker is. The reaching itself
+   * lives in the adapter, which is the only module allowed to touch Home
+   * Assistant internals (ADR-0012).
+   *
+   * Retried because the two cards render independently and the picker may not
+   * exist yet, and re-applied on every redraw because the selector owns the
+   * property and recomputes it from a measurement.
+   */
+  _pinPeriodPicker(attemptsLeft = 10) {
+    clearTimeout(this._pinRetry);
+    if (pinPeriodPickerAbove(this) || attemptsLeft <= 0) return;
+    this._pinRetry = setTimeout(
+      () => this._pinPeriodPicker(attemptsLeft - 1),
+      100,
+    );
   }
 
   /**
@@ -135,6 +158,7 @@ class HeaFilterCard extends HTMLElement {
   disconnectedCallback() {
     this._unfilter?.();
     this._unfilter = null;
+    clearTimeout(this._pinRetry);
   }
 
   get _labels() {
@@ -238,6 +262,7 @@ class HeaFilterCard extends HTMLElement {
     const labels = this._labels;
     const devices = this._devices();
     this._drawn = this._signature();
+    pinPeriodPickerAbove(this);
     const body = devices.length
       ? this._control(labels)
       : `<p class="message">${labels.no_devices}</p>`;
