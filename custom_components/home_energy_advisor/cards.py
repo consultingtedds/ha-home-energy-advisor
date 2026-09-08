@@ -3,10 +3,19 @@
 The bundle built from ``frontend/`` ships inside the integration, so one deploy
 carries both halves and the cards can never be a different version from the
 accounting they draw. This module puts it on a url keyed to the release and to
-the bundle itself, and registers that url as an extra frontend module, which is
-what removes any need for a hand-managed Lovelace resource. Where an install has
-no frontend the cards are skipped: the accounting is the product, and a headless
-instance still gets every sensor.
+the bundle itself, and has the frontend load it two ways: as an extra module url,
+and as a Lovelace resource the integration owns and keeps pointed at the current
+url. Neither asks anything of the household.
+
+Both are needed. The extra module url covers every page; the resource is what
+Lovelace *waits for* before it renders a dashboard, and the dashboard strategy
+needs that. A card that arrives late paints "custom element not found" and
+recovers; a strategy asked for before its element exists fails the whole
+dashboard.
+
+Where an install has no frontend the cards are skipped, and where it has no
+Lovelace in storage mode only the resource is: the accounting is the product, and
+a headless instance still gets every sensor.
 """
 
 from __future__ import annotations
@@ -17,6 +26,8 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.http import StaticPathConfig
+from homeassistant.components.lovelace.const import LOVELACE_DATA, MODE_STORAGE
+from homeassistant.components.lovelace.resources import ResourceStorageCollection
 from homeassistant.loader import async_get_integration
 from homeassistant.util.hass_dict import HassKey
 
@@ -52,7 +63,45 @@ async def async_register_cards(hass: HomeAssistant) -> str | None:
     )
     add_extra_js_url(hass, f"{url}/{ENTRY_POINT}")
     hass.data[_CARDS_URL] = url
+    await _async_reconcile_resource(hass, f"{url}/{ENTRY_POINT}")
     return url
+
+
+async def _async_reconcile_resource(hass: HomeAssistant, module_url: str) -> None:
+    """Keep exactly one Lovelace resource, pointing at the url served now.
+
+    Reconciled rather than created: the url carries the bundle's digest, so it
+    moves whenever a card changes. A resource left behind on an old url loads a
+    second copy of the cards into the same page, where the two collide on
+    ``customElements.define`` and whichever loses dies part-way through
+    registering.
+
+    Only urls this integration serves are considered, so a household's own
+    resources are never touched.
+    """
+    data = hass.data.get(LOVELACE_DATA)
+    if data is None or data.resource_mode != MODE_STORAGE:
+        return
+    resources = data.resources
+    if not isinstance(resources, ResourceStorageCollection):
+        return
+
+    # `async_items` does not read storage; only the mutating calls do. Asking
+    # for the info is the public way to be sure what is already registered
+    # before deciding whether to add to it - without it a household's existing
+    # resources are invisible and ours would be created a second time.
+    await resources.async_get_info()
+    ours = [
+        item
+        for item in resources.async_items()
+        if str(item.get("url", "")).startswith(f"/{DOMAIN}/")
+    ]
+    for duplicate in ours[1:]:
+        await resources.async_delete_item(duplicate["id"])
+    if not ours:
+        await resources.async_create_item({"res_type": "module", "url": module_url})
+    elif ours[0]["url"] != module_url:
+        await resources.async_update_item(ours[0]["id"], {"url": module_url})
 
 
 def async_cards_url(hass: HomeAssistant) -> str | None:

@@ -106,3 +106,45 @@ binary must stay byte-for-byte in step with the `.js` while the digest globs
 Revisit if Home Assistant gives integrations a supported way to create a
 dashboard, if `add_extra_js_url` gains a scope narrower than every page, or if
 the bundle grows enough that loading it everywhere stops being free.
+
+## Update - the strategy needs a resource, not only an extra module url (2026-09-08, HEA-114)
+
+This ADR has the integration serve the bundle and register it with
+`frontend.add_extra_js_url`, on the grounds that it asks nothing of the
+household and replaces a hand-managed Lovelace resource. The first half holds.
+The second was wrong about what an extra module url guarantees.
+
+**`add_extra_js_url` is fire-and-forget: nothing awaits it.** Lovelace awaits its
+*resources* before rendering a dashboard; extra module urls it never waits for.
+On the reference instance the dashboard failed on almost every direct load with
+`Timeout waiting for strategy element ll-strategy-dashboard-hea to be
+registered`, rendering blank. The bundle was fetched and never threw - it simply
+had not registered when Home Assistant stopped waiting, about five seconds in,
+while the browser worked through the fifty Lovelace resources that instance
+carries, two of which fail outright and stall.
+
+**A strategy dashboard has no graceful degradation.** A late custom card paints
+"custom element not found" and recovers when its module lands. A strategy is
+asked for once; if the element is not there, nothing renders at all.
+
+So the integration now also owns a Lovelace resource pointing at the url it
+serves, reconciled on every setup: created if absent, re-pointed when the digest
+moves, and any extra copy of its own removed. A household's own resources are
+never touched. Measured after: the bundle loads at 92 ms rather than ~500 ms, and
+directly-loaded dashboards stopped failing.
+
+**Why this is not the hazard this ADR rejected for dashboards.** Creating
+dashboards from Python was rejected because `DashboardsCollection` is a local in
+`lovelace.async_setup`, so a second instance over the same store would erase what
+the first held. The resource collection is *not* like that: it is published on
+`hass.data[LOVELACE_DATA].resources`, so the integration uses Home Assistant's
+own instance and its normal create/update/delete API. Nothing is constructed over
+the store a second time.
+
+One sharp edge, recorded because it is easy to get wrong: `async_items()` does
+not read storage, and only the mutating calls load it. Reading the collection
+without forcing a load first reports a household's existing resources as absent,
+and ours would be created again on every start.
+
+Both mechanisms stay. The extra module url covers every page; the resource is
+what makes the dashboard's strategy reliable.

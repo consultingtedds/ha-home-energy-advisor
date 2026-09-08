@@ -8,11 +8,13 @@ that omit it are exercising the headless path deliberately.
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 from homeassistant.components.frontend import DATA_EXTRA_MODULE_URL
+from homeassistant.components.lovelace.const import LOVELACE_DATA
+from homeassistant.components.lovelace.resources import ResourceStorageCollection
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -182,3 +184,92 @@ async def test_registering_without_a_frontend_is_a_no_op(hass: HomeAssistant) ->
     # When / Then - asking directly is safe rather than an AttributeError on the
     # frontend's own hass.data key, which is what a bare call would hit
     assert await async_register_cards(hass) is None
+
+
+@pytest.fixture
+async def lovelace(hass: HomeAssistant) -> None:
+    """Home Assistant with Lovelace in storage mode, as a UI install has."""
+    assert await async_setup_component(hass, "lovelace", {})
+
+
+def _resource_collection(hass: HomeAssistant) -> ResourceStorageCollection:
+    """The storage-backed collection, which is what a UI install has."""
+    collection = hass.data[LOVELACE_DATA].resources
+    assert isinstance(collection, ResourceStorageCollection)
+    return collection
+
+
+def _resources(hass: HomeAssistant) -> list[dict[str, Any]]:
+    return _resource_collection(hass).async_items()
+
+
+@pytest.mark.usefixtures("frontend", "lovelace")
+async def test_the_bundle_is_registered_as_a_lovelace_resource(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a household sets the integration up
+    await _household(hass)
+
+    # Then - the bundle is a Lovelace resource, not only an extra module url.
+    # Lovelace awaits its resources before rendering a dashboard; extra module
+    # urls it never waits for, so a dashboard strategy asked for before the
+    # module arrives fails outright rather than degrading.
+    ours = [r for r in _resources(hass) if r["url"].startswith(f"/{DOMAIN}/")]
+    assert len(ours) == 1
+    assert ours[0]["url"] == f"{async_cards_url(hass)}/{ENTRY_POINT}"
+    assert ours[0]["type"] == "module"
+
+
+@pytest.mark.usefixtures("frontend", "lovelace")
+async def test_a_moved_bundle_url_replaces_the_resource_rather_than_adding_one(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a household whose registered resource points at an older build
+    stale = f"/{DOMAIN}/0.0.1-000000000000/{ENTRY_POINT}"
+    await _resource_collection(hass).async_create_item(
+        {"res_type": "module", "url": stale}
+    )
+
+    # When - the integration sets up on a build whose bundle digest has moved
+    await _household(hass)
+
+    # Then - there is still exactly one, pointing at what is served now. Two
+    # copies of the cards in one page collide on `customElements.define`, and
+    # whichever module loses that race dies part-way through registering.
+    ours = [r for r in _resources(hass) if r["url"].startswith(f"/{DOMAIN}/")]
+    assert len(ours) == 1
+    assert ours[0]["url"] == f"{async_cards_url(hass)}/{ENTRY_POINT}"
+    assert stale not in [r["url"] for r in _resources(hass)]
+
+
+@pytest.mark.usefixtures("frontend", "lovelace")
+async def test_a_household_s_own_resources_are_left_alone(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a household with their own custom cards registered
+    theirs = "/hacsfiles/some-card/some-card.js"
+    await _resource_collection(hass).async_create_item(
+        {"res_type": "module", "url": theirs}
+    )
+
+    # When - the integration sets up
+    await _household(hass)
+
+    # Then - only our own url is ever touched
+    assert theirs in [r["url"] for r in _resources(hass)]
+
+
+@pytest.mark.usefixtures("frontend")
+async def test_setting_up_without_lovelace_still_serves_the_cards(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - an install with no Lovelace at all (a YAML-only dashboard
+    # install, or one where it has not been set up)
+    await _household(hass)
+
+    # Then - setup succeeds and the cards are still served and loaded. The
+    # resource is an optimisation of *when* the module arrives, never the thing
+    # that makes it available.
+    assert async_cards_url(hass) is not None
+    urls = hass.data[DATA_EXTRA_MODULE_URL].urls
+    assert any(url.endswith(f"/{ENTRY_POINT}") for url in urls)
