@@ -108,3 +108,25 @@ async def test_diagnostics_expose_the_battery_ledger(
     # ...and it carries no entity id or device name, so nothing here needs
     # redacting on a public bug report
     assert set(result["battery"]) == {"stored_kwh", "stored_cost"}
+
+
+async def test_diagnostics_say_why_the_previous_accounting_was_not_carried(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a first run on a household that has never written a snapshot
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the diagnostics download is produced
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    # Then - it records that the run began cold and why. A restart that silently
+    # drops the battery ledger changes what discharge costs, so the download has
+    # to explain the change rather than leave the figures unaccountable.
+    assert result["snapshot"] == {"status": "absent", "age_seconds": None}

@@ -29,7 +29,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
 from . import issues
-from .accountant_store import AccountantStore
+from .accountant_store import AccountantStore, SnapshotStatus
 from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
@@ -155,6 +155,8 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
         self._restored: Totals | None = None
+        self._snapshot_status = SnapshotStatus.ABSENT
+        self._snapshot_age: timedelta | None = None
 
     def _new_accountant(self) -> Accountant:
         return Accountant(
@@ -181,17 +183,20 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         gets a fresh accountant and the household loses one restart's accounting
         rather than the integration failing to start.
         """
-        stored = await self._store.async_load(now=dt_util.utcnow())
-        if stored is None:
+        loaded = await self._store.async_load(now=dt_util.utcnow())
+        self._snapshot_status = loaded.status
+        self._snapshot_age = loaded.age
+        if loaded.state is None:
             return
         try:
-            self._accountant.restore(stored)
+            self._accountant.restore(loaded.state)
         except KeyError, TypeError, ValueError, InvalidOperation:
             _LOGGER.warning(
                 "Ignoring an accounting snapshot this version cannot read; "
                 "accounting resumes from the sensors' restored totals"
             )
             self._accountant = self._new_accountant()
+            self._snapshot_status = SnapshotStatus.INCOMPATIBLE
             return
         self._restored = self._accountant.totals()
 
@@ -511,7 +516,25 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             "config": self._config_diagnostics(),
             "sources": self._source_diagnostics(),
             "battery": self._accountant.battery_diagnostics(),
+            "snapshot": self._snapshot_diagnostics(),
             "totals": self._totals_diagnostics(),
+        }
+
+    def _snapshot_diagnostics(self) -> dict[str, Any]:
+        """Whether this run carried the previous one's accounting, and why not.
+
+        A run that started cold prices battery discharge at zero until the
+        stored-cost ledger refills, and holds no open buckets from before the
+        restart. Both change what the figures say, so the download has to name
+        the cause rather than leave them unaccountable.
+        """
+        return {
+            "status": str(self._snapshot_status),
+            "age_seconds": (
+                None
+                if self._snapshot_age is None
+                else self._snapshot_age.total_seconds()
+            ),
         }
 
     def _config_diagnostics(self) -> dict[str, Any]:

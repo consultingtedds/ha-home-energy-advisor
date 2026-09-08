@@ -4,14 +4,19 @@ The engine produces and consumes plain JSON-safe state
 (``Accountant.snapshot`` / ``Accountant.restore``); this module owns where that
 state lives and how old it may be before it is refused.
 
-A snapshot is a cache, not a source of truth. Every failure path returns
-``None`` and the engine starts cold, because failing setup over an unreadable
-cache would cost a household more than the accounting the cache carries.
+A snapshot is a cache, not a source of truth. Every failure path starts the
+engine cold, because failing setup over an unreadable cache would cost a
+household more than the accounting the cache carries. Each of those paths
+reports *why*: refusing a snapshot changes what the next discharge costs, and
+diagnostics have to be able to explain a cost figure.
 """
 
 from __future__ import annotations
 
+import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.exceptions import HomeAssistantError
@@ -23,6 +28,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from homeassistant.core import HomeAssistant
+
+_LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
 
@@ -38,39 +45,101 @@ MAX_SNAPSHOT_AGE = timedelta(hours=24)
 SAVE_DELAY = 300
 
 
+class SnapshotStatus(StrEnum):
+    """What became of the previous run's accounting on this startup."""
+
+    RESTORED = "restored"
+    # No file yet: a first install, or the first start on a version that writes
+    # one. Expected, and the only status that is not worth a log line.
+    ABSENT = "absent"
+    STALE = "stale"
+    # Present but not the shape this version reads - unstamped, undated, or
+    # damaged.
+    UNREADABLE = "unreadable"
+    # Readable here, but the engine could not restore it.
+    INCOMPATIBLE = "incompatible"
+
+
+@dataclass(frozen=True)
+class SnapshotLoad:
+    """The outcome of reading a snapshot, and how old it was."""
+
+    state: dict[str, Any] | None
+    status: SnapshotStatus
+    age: timedelta | None = None
+
+
 class AccountantStore:
     """Reads and writes one config entry's accounting snapshot."""
 
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
-        self._store = Store[dict[str, Any]](
+        # Deliberately untyped contents: what comes back is whatever is on disk,
+        # which a partial write or an older build may have shaped differently.
+        # Declaring it as the mapping we expect would make the checks below look
+        # redundant to a type checker and unguarded at runtime.
+        self._store = Store[Any](
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.accountant"
         )
 
-    async def async_load(self, *, now: datetime) -> dict[str, Any] | None:
-        """The stored engine state, or ``None`` when there is nothing to trust.
+    async def async_load(self, *, now: datetime) -> SnapshotLoad:
+        """The stored engine state, and why it was refused when it is missing.
 
-        One return value covers never written, written by a version that shaped
-        it differently, too old, and damaged: the caller answers all of them the
-        same way.
+        Every caller responds to a refusal the same way - start cold - but they
+        are not the same event to a household reading diagnostics, so the reason
+        travels with the answer rather than collapsing into ``None``.
         """
         try:
             stored = await self._store.async_load()
         except HomeAssistantError, ValueError, KeyError:
-            return None
+            return self._refused(SnapshotStatus.UNREADABLE)
+        if stored is None:
+            return SnapshotLoad(state=None, status=SnapshotStatus.ABSENT)
+
+        written = self._written_at(stored)
+        state = stored.get("state") if isinstance(stored, dict) else None
+        if written is None or not isinstance(state, dict):
+            return self._refused(SnapshotStatus.UNREADABLE)
+
+        age = now - written
+        if age > MAX_SNAPSHOT_AGE:
+            return self._refused(SnapshotStatus.STALE, age)
+        return SnapshotLoad(state=state, status=SnapshotStatus.RESTORED, age=age)
+
+    @staticmethod
+    def _written_at(stored: object) -> datetime | None:
+        """When the snapshot was written, or ``None`` if that cannot be read.
+
+        An age that cannot be established is the one case the limit exists to
+        stop, so an unreadable stamp is refused rather than assumed fresh.
+        """
         if not isinstance(stored, dict):
             return None
-
         written_at = stored.get("written_at")
-        state = stored.get("state")
-        if not isinstance(written_at, str) or not isinstance(state, dict):
+        if not isinstance(written_at, str):
             return None
         try:
-            written = datetime.fromisoformat(written_at)
+            return datetime.fromisoformat(written_at)
         except ValueError:
             return None
-        if now - written > MAX_SNAPSHOT_AGE:
-            return None
-        return state
+
+    @staticmethod
+    def _refused(status: SnapshotStatus, age: timedelta | None = None) -> SnapshotLoad:
+        """Records a refusal in the log on the way past."""
+        if status is SnapshotStatus.STALE:
+            _LOGGER.warning(
+                "Accounting snapshot is %s old, past the %s limit, so accounting "
+                "resumes from the sensors' restored totals. Energy metered while "
+                "Home Assistant was down is not counted, and battery discharge is "
+                "priced at zero until the stored-cost ledger refills",
+                age,
+                MAX_SNAPSHOT_AGE,
+            )
+        else:
+            _LOGGER.warning(
+                "Accounting snapshot could not be read, so accounting resumes "
+                "from the sensors' restored totals"
+            )
+        return SnapshotLoad(state=None, status=status, age=age)
 
     async def async_save(self, state: dict[str, Any], *, now: datetime) -> None:
         """Writes a snapshot immediately, stamped so its age can be judged."""
