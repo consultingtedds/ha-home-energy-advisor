@@ -252,43 +252,110 @@ async def test_only_one_instance_can_be_configured(hass: HomeAssistant) -> None:
     assert result["reason"] == "single_instance_allowed"
 
 
-async def test_energy_dashboard_preferences_prefill_the_source_entities(
-    hass: HomeAssistant,
-) -> None:
-    # Given - the household has configured the Energy Dashboard
-    prefs = SimpleNamespace(
-        data={
-            "energy_sources": [
-                {
-                    "type": "grid",
-                    "flow_from": [{"stat_energy_from": "sensor.grid_import"}],
-                    "flow_to": [{"stat_energy_to": "sensor.grid_export"}],
-                },
-                {"type": "solar", "stat_energy_from": "sensor.generation"},
-                {
-                    "type": "battery",
-                    "stat_energy_to": "sensor.battery_charge",
-                    "stat_energy_from": "sensor.battery_discharge",
-                },
-            ]
-        }
-    )
-
-    # When - the flow opens
+async def _prefill_from(
+    hass: HomeAssistant, sources: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Open the flow over these Energy Dashboard sources and read the suggestions."""
+    prefs = SimpleNamespace(data={"energy_sources": sources})
     with patch(_PATH, AsyncMock(return_value=prefs)):
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-
-    # Then - the source fields are pre-filled from those preferences
     data_schema = result["data_schema"]
     assert data_schema is not None
-    suggested = _suggested_values(data_schema)
+    return _suggested_values(data_schema)
+
+
+async def test_prefill_reads_a_grid_source_carrying_its_own_meters(
+    hass: HomeAssistant,
+) -> None:
+    """Home Assistant 2026.9 onwards puts the pair on the source itself.
+
+    Preferences saved by a current Home Assistant look like this, and older ones
+    are migrated into this shape when they are loaded, so on any supported
+    instance that has been started recently this is what prefill actually meets.
+    """
+    # Given - a household whose Energy Dashboard names a grid, solar and battery
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.grid_import",
+                "stat_energy_to": "sensor.grid_export",
+            },
+            {"type": "solar", "stat_energy_from": "sensor.generation"},
+            {
+                "type": "battery",
+                "stat_energy_to": "sensor.battery_charge",
+                "stat_energy_from": "sensor.battery_discharge",
+            },
+        ],
+    )
+
+    # Then - every source field arrives answered
     assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
     assert suggested[CONF_GRID_EXPORT_ENTITY] == "sensor.grid_export"
     assert suggested[CONF_GENERATION_ENTITY] == "sensor.generation"
     assert suggested[CONF_BATTERY_CHARGE_ENTITY] == "sensor.battery_charge"
     assert suggested[CONF_BATTERY_DISCHARGE_ENTITY] == "sensor.battery_discharge"
+
+
+async def test_prefill_reads_a_grid_source_holding_flows_in_arrays(
+    hass: HomeAssistant,
+) -> None:
+    """Home Assistant before 2026.9 held the flows in arrays.
+
+    `hacs.json` supports instances from 2026.7, whose stored preferences carry
+    this shape until they are next loaded and migrated.
+    """
+    # Given - a household on a Home Assistant that stores grid flows as arrays
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "flow_from": [{"stat_energy_from": "sensor.grid_import"}],
+                "flow_to": [{"stat_energy_to": "sensor.grid_export"}],
+            },
+        ],
+    )
+
+    # Then - the meters are found just the same
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert suggested[CONF_GRID_EXPORT_ENTITY] == "sensor.grid_export"
+
+
+async def test_prefill_keeps_the_first_grid_source_and_not_the_last(
+    hass: HomeAssistant,
+) -> None:
+    """A second grid source must not overwrite the meter the first one named.
+
+    Pricing a standing charge means declaring it as a second grid source, so a
+    household can hold two, only one of which meters imported energy. Suggesting
+    the daily-charge sensor as the grid import meter would be worse than
+    suggesting nothing, because nothing about the form invites doubt.
+    """
+    # Given - the real meter, and a standing charge declared as a second grid
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.grid_import",
+                "stat_energy_to": "sensor.grid_export",
+            },
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.daily_standing_charge",
+                "stat_energy_to": None,
+            },
+        ],
+    )
+
+    # Then - the meter that actually measures imported energy is the suggestion
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert suggested[CONF_GRID_EXPORT_ENTITY] == "sensor.grid_export"
 
 
 async def test_prefill_failure_never_blocks_the_flow(hass: HomeAssistant) -> None:

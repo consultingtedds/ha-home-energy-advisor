@@ -190,10 +190,7 @@ def _collect_prefs_source(
     """Map one Energy Dashboard source onto the matching config defaults."""
     kind = source.get("type")
     if kind == "grid":
-        if imports := source.get("flow_from"):
-            defaults[CONF_GRID_IMPORT_ENTITY] = imports[0]["stat_energy_from"]
-        if exports := source.get("flow_to"):
-            defaults[CONF_GRID_EXPORT_ENTITY] = exports[0]["stat_energy_to"]
+        _collect_grid_meters(source, defaults)
     elif kind == "solar" and (stat := source.get("stat_energy_from")):
         defaults[CONF_GENERATION_ENTITY] = stat
     elif kind == "battery":
@@ -201,6 +198,41 @@ def _collect_prefs_source(
             defaults[CONF_BATTERY_CHARGE_ENTITY] = charge
         if discharge := source.get("stat_energy_from"):
             defaults[CONF_BATTERY_DISCHARGE_ENTITY] = discharge
+
+
+def _collect_grid_meters(
+    source: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    defaults: dict[str, str],
+) -> None:
+    """Read a grid source's import and export meters, whichever shape it is in.
+
+    Home Assistant holds the pair two ways. From 2026.9 they sit on the source
+    itself; before that they were lists of flows, and `hacs.json` supports back
+    to 2026.7. A stored preference is migrated to the newer shape when it is
+    loaded, so both are live and neither can be assumed.
+
+    A household can hold more than one grid source - pricing a standing charge
+    means declaring one - and only some of them meter imported energy. The first
+    answer wins, because suggesting a daily-charge sensor as the grid import
+    meter is worse than suggesting nothing: it is one of the two fields the
+    integration cannot work without, and nothing about a filled-in form invites
+    the household to doubt it.
+    """
+    imports = source.get("flow_from")
+    if (
+        meter := imports[0]["stat_energy_from"]
+        if imports
+        else source.get("stat_energy_from")
+    ):
+        defaults.setdefault(CONF_GRID_IMPORT_ENTITY, meter)
+
+    exports = source.get("flow_to")
+    if (
+        meter := exports[0]["stat_energy_to"]
+        if exports
+        else source.get("stat_energy_to")
+    ):
+        defaults.setdefault(CONF_GRID_EXPORT_ENTITY, meter)
 
 
 class DeviceSubentryFlowHandler(ConfigSubentryFlow):
