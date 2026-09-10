@@ -265,6 +265,52 @@ describe("subscribeToPeriod", () => {
     expect(onPeriod.mock.calls[0][0].fallback).toBe(true);
   });
 
+  it("attaches once the picker's collection appears, with no other change", async () => {
+    // Given - a card up before the picker has created its collection, which is
+    // the ordinary case: card order within a view is not guaranteed
+    vi.useFakeTimers();
+    try {
+      const connection = {};
+      const onPeriod = vi.fn();
+      subscribeToPeriod(aHass(connection), "hea-costs", onPeriod);
+      expect(onPeriod.mock.calls[0][0].fallback).toBe(true);
+
+      // When - the picker creates it, and nothing else on the page happens.
+      // Retrying only on a `hass` update is not enough: `hass` changes when
+      // some entity changes state, and a quiet house may not touch one for
+      // minutes. The card must not need an unrelated event to find the picker.
+      connection["_energy_hea-costs"] = anEnergyCollection(MAY, JULY);
+      await vi.advanceTimersByTimeAsync(2000);
+
+      // Then - it followed the picker on its own
+      expect(onPeriod).toHaveBeenLastCalledWith(
+        expect.objectContaining({ start: MAY, end: JULY, fallback: false }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops looking for a picker that never arrives", async () => {
+    // Given - a dashboard that genuinely has no picker on it
+    vi.useFakeTimers();
+    try {
+      const onPeriod = vi.fn();
+      const subscription = subscribeToPeriod(aHass({}), "hea-costs", onPeriod);
+
+      // When - a good while passes
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      // Then - the card kept its fallback and the search gave up, rather than
+      // waking every few moments for the life of the page
+      expect(onPeriod).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("emits the picker's period as soon as it attaches", () => {
     // Given - a picker already on the page
     const energy = anEnergyCollection(MAY, JULY);

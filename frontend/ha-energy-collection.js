@@ -30,6 +30,14 @@ const KEY_PREFIX = "energy_";
 const FALLBACK_DAYS = 30;
 
 /**
+ * How often, and for how long, a card looks for a picker that was not there
+ * when it first asked. Ten seconds is far longer than a view takes to lay
+ * itself out, and short enough that a page with no picker settles quickly.
+ */
+const RETRY_MS = 250;
+const RETRY_LIMIT = 40;
+
+/**
  * The connection key for a collection key, mirroring how the picker caches it.
  *
  * Home Assistant caches at `_` + the collection key, and rejects a key that
@@ -150,7 +158,16 @@ const comparisonIn = (data) =>
  *
  * The collection is created lazily by whichever card asks first, and card order
  * within a view is not guaranteed, so it may not exist when a card is
- * constructed. Call `retry(hass)` on each `hass` update until it returns true.
+ * constructed.
+ *
+ * So this looks again on a short timer until it finds one, and gives up after a
+ * few seconds. `retry(hass)` is still worth calling on each `hass` update - it
+ * attaches sooner, and keeps the newest `hass` - but nothing depends on it any
+ * more. It used to: a card that missed the collection on its first look waited
+ * for the next `hass` update to look again, and `hass` only changes when some
+ * entity changes state. On a quiet house nothing does, so every card sat on the
+ * fallback period, telling the household to add the picker that was already on
+ * the page (HEA-119).
  *
  * Emits the fallback period immediately so a card always has something to draw,
  * then the picker's period as soon as it is reachable.
@@ -159,6 +176,9 @@ const comparisonIn = (data) =>
  */
 export const subscribeToPeriod = (hass, collectionKey, onPeriod) => {
   let unsubscribe = null;
+  let timer = null;
+  let attempts = 0;
+  let latestHass = hass;
 
   const attach = (currentHass) => {
     if (unsubscribe) return true;
@@ -182,12 +202,34 @@ export const subscribeToPeriod = (hass, collectionKey, onPeriod) => {
     return true;
   };
 
+  /**
+   * Look again shortly, up to a limit.
+   *
+   * Bounded on purpose. A dashboard with no picker on it is a legitimate
+   * arrangement - a household can put a single card on a page of their own -
+   * and that card should settle on its fallback rather than wake every quarter
+   * second for as long as the page is open.
+   */
+  const lookAgain = () => {
+    timer = setTimeout(() => {
+      timer = null;
+      attempts += 1;
+      if (attach(latestHass)) return;
+      if (attempts < RETRY_LIMIT) lookAgain();
+    }, RETRY_MS);
+  };
+
   onPeriod(fallbackPeriod());
-  attach(hass);
+  if (!attach(hass)) lookAgain();
 
   return {
-    retry: (currentHass) => attach(currentHass),
+    retry: (currentHass) => {
+      if (currentHass) latestHass = currentHass;
+      return attach(latestHass);
+    },
     unsubscribe: () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
       try {
         if (typeof unsubscribe === "function") unsubscribe();
       } catch {
