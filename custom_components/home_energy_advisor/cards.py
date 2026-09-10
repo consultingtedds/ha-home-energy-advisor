@@ -61,14 +61,35 @@ async def async_register_cards(hass: HomeAssistant) -> str | None:
     await hass.http.async_register_static_paths(
         [StaticPathConfig(url, str(CARDS_DIR), cache_headers=True)]
     )
-    add_extra_js_url(hass, f"{url}/{ENTRY_POINT}")
     hass.data[_CARDS_URL] = url
-    await _async_reconcile_resource(hass, f"{url}/{ENTRY_POINT}")
+    module_url = f"{url}/{ENTRY_POINT}"
+    if not await _async_reconcile_resource(hass, module_url):
+        # Nothing to register with, so fall back to putting the module in the
+        # page directly. Worse, for the reason below, but a household whose
+        # dashboards are YAML files would otherwise get no cards at all.
+        add_extra_js_url(hass, module_url)
     return url
 
 
-async def _async_reconcile_resource(hass: HomeAssistant, module_url: str) -> None:
+async def _async_reconcile_resource(hass: HomeAssistant, module_url: str) -> bool:
     """Keep exactly one Lovelace resource, pointing at the url served now.
+
+    Returns whether the resource is registered, so the caller knows whether the
+    cards will reach the browser without help.
+
+    A resource rather than an extra module url, and that distinction is the
+    whole of HEA-114. An extra module url is placed in the page during the
+    frontend's own boot, and Home Assistant replaces ``window.customElements``
+    with a scoped registry part-way through that boot. A bundle loaded early
+    defines its cards and strategies into the registry that is about to be
+    thrown away; Home Assistant then asks the new one for the dashboard
+    strategy, waits five seconds, and renders nothing. Lovelace imports its
+    resources after the boot has finished, so what the module defines is what is
+    later found.
+
+    Loading it both ways does not help, which is what the first attempt at this
+    assumed. A module is evaluated once per url, so the resource import of an
+    already-loaded url does nothing at all.
 
     Reconciled rather than created: the url carries the bundle's digest, so it
     moves whenever a card changes. A resource left behind on an old url loads a
@@ -81,10 +102,10 @@ async def _async_reconcile_resource(hass: HomeAssistant, module_url: str) -> Non
     """
     data = hass.data.get(LOVELACE_DATA)
     if data is None or data.resource_mode != MODE_STORAGE:
-        return
+        return False
     resources = data.resources
     if not isinstance(resources, ResourceStorageCollection):
-        return
+        return False
 
     # `async_items` does not read storage; only the mutating calls do. Asking
     # for the info is the public way to be sure what is already registered
@@ -102,6 +123,7 @@ async def _async_reconcile_resource(hass: HomeAssistant, module_url: str) -> Non
         await resources.async_create_item({"res_type": "module", "url": module_url})
     elif ours[0]["url"] != module_url:
         await resources.async_update_item(ours[0]["id"], {"url": module_url})
+    return True
 
 
 def async_cards_url(hass: HomeAssistant) -> str | None:

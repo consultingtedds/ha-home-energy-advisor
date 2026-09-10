@@ -64,17 +64,53 @@ async def _household(hass: HomeAssistant) -> MockConfigEntry:
     return entry
 
 
-@pytest.mark.usefixtures("frontend")
-async def test_setting_up_serves_the_cards_and_asks_the_frontend_to_load_them(
+@pytest.mark.usefixtures("lovelace_yaml", "frontend")
+async def test_a_household_without_lovelace_storage_still_gets_the_cards(
     hass: HomeAssistant,
 ) -> None:
-    # Given / When - a household sets the integration up, doing nothing else
+    """The fallback for a household whose dashboards are YAML files.
+
+    Only a storage-mode Lovelace has a resource collection to register with, so
+    where there is none the browser has to be told to load the module directly.
+    That is worse - see the test below for why - but it is far better than a
+    household getting no cards at all.
+    """
+    # Given / When - a household with no storage-mode Lovelace sets the
+    # integration up
     await _household(hass)
 
-    # Then - the browser is told to load the one module every card imports from,
-    # so no Lovelace resource has to be added by hand
+    # Then - the browser is told to load the one module every card imports from
     urls = hass.data[DATA_EXTRA_MODULE_URL].urls
     assert any(url.endswith(f"/{ENTRY_POINT}") for url in urls)
+
+
+@pytest.mark.usefixtures("frontend", "lovelace")
+async def test_a_registered_resource_replaces_the_extra_module_url(
+    hass: HomeAssistant,
+) -> None:
+    """Loading it both ways is not harmless, which is what HEA-114 assumed.
+
+    An extra module url is placed in the page during the frontend's own boot,
+    and Home Assistant replaces `window.customElements` with a scoped registry
+    part-way through that boot. Our bundle, loaded early, defines every card and
+    both strategies into the registry being replaced. They are then invisible:
+    Home Assistant asks the new registry for the dashboard strategy, waits five
+    seconds, and renders nothing.
+
+    Registering the same url as a Lovelace resource does not rescue it, because
+    a module is evaluated once per url - the second import is a no-op. So the
+    early load has to go, not merely be joined by a later one.
+
+    Measured on a clean 2026.9.1: nine of ten cold loads failed with both
+    mechanisms; the cards were provably in the old registry and absent from the
+    current one.
+    """
+    # Given / When - a household with a storage-mode Lovelace sets it up
+    await _household(hass)
+
+    # Then - the bundle is loaded only through the resource
+    urls = hass.data[DATA_EXTRA_MODULE_URL].urls
+    assert not any(url.endswith(f"/{ENTRY_POINT}") for url in urls)
 
 
 @pytest.mark.usefixtures("frontend")
@@ -192,6 +228,17 @@ async def lovelace(hass: HomeAssistant) -> None:
     assert await async_setup_component(hass, "lovelace", {})
 
 
+@pytest.fixture
+async def lovelace_yaml(hass: HomeAssistant) -> None:
+    """Lovelace driven from YAML files, which has no resource collection.
+
+    Set up before the frontend, which depends on Lovelace and would otherwise
+    bring it up in storage mode first. That dependency is why simply omitting
+    the storage fixture does not produce a household without one.
+    """
+    assert await async_setup_component(hass, "lovelace", {"lovelace": {"mode": "yaml"}})
+
+
 def _resource_collection(hass: HomeAssistant) -> ResourceStorageCollection:
     """The storage-backed collection, which is what a UI install has."""
     collection = hass.data[LOVELACE_DATA].resources
@@ -210,10 +257,10 @@ async def test_the_bundle_is_registered_as_a_lovelace_resource(
     # Given / When - a household sets the integration up
     await _household(hass)
 
-    # Then - the bundle is a Lovelace resource, not only an extra module url.
-    # Lovelace awaits its resources before rendering a dashboard; extra module
-    # urls it never waits for, so a dashboard strategy asked for before the
-    # module arrives fails outright rather than degrading.
+    # Then - the bundle is a Lovelace resource. Lovelace imports its resources
+    # after the frontend has finished booting, which is what matters: by then
+    # Home Assistant has installed the custom element registry it will actually
+    # read from, so what the module defines is what it later finds.
     ours = [r for r in _resources(hass) if r["url"].startswith(f"/{DOMAIN}/")]
     assert len(ours) == 1
     assert ours[0]["url"] == f"{async_cards_url(hass)}/{ENTRY_POINT}"
@@ -259,17 +306,16 @@ async def test_a_household_s_own_resources_are_left_alone(
     assert theirs in [r["url"] for r in _resources(hass)]
 
 
-@pytest.mark.usefixtures("frontend")
-async def test_setting_up_without_lovelace_still_serves_the_cards(
+@pytest.mark.usefixtures("lovelace_yaml", "frontend")
+async def test_setting_up_without_lovelace_storage_still_serves_the_cards(
     hass: HomeAssistant,
 ) -> None:
-    # Given / When - an install with no Lovelace at all (a YAML-only dashboard
-    # install, or one where it has not been set up)
+    # Given / When - a household whose dashboards are YAML files
     await _household(hass)
 
-    # Then - setup succeeds and the cards are still served and loaded. The
-    # resource is an optimisation of *when* the module arrives, never the thing
-    # that makes it available.
+    # Then - setup succeeds and the cards are still served and loaded. Which
+    # mechanism carries the module is a matter of when it arrives; it is never
+    # the thing that decides whether it is available at all.
     assert async_cards_url(hass) is not None
     urls = hass.data[DATA_EXTRA_MODULE_URL].urls
     assert any(url.endswith(f"/{ENTRY_POINT}") for url in urls)
