@@ -1,0 +1,38 @@
+# A throwaway Home Assistant, for screenshots and for breaking things (HEA-80).
+#
+# Nothing here points at the reference instance. The house it describes is
+# invented, its figures are seeded by `seed.mjs` rather than measured, and the
+# whole thing is meant to be destroyed and rebuilt rather than maintained.
+#
+# See `README.md` in this directory for the sequence that fills it.
+name: hea-demo
+
+services:
+  homeassistant:
+    # Pinned to the version the reference instance runs, so a screenshot shows
+    # the chrome a reader will actually meet. Bump it deliberately, and retake
+    # the screenshots when you do - Home Assistant moves its own UI often.
+    image: ghcr.io/home-assistant/home-assistant:2026.9.1
+    container_name: hea-demo
+
+    # Bridge networking with one published port, never `network_mode: host`.
+    # Host networking would put this container on the real LAN, where Home
+    # Assistant's discovery would find the household's actual hardware and
+    # offer it in the very screens we are photographing.
+    ports:
+      - "127.0.0.1:8123:8123"
+
+    volumes:
+      # Everything Home Assistant writes stays under `config/`, which is
+      # git-ignored apart from the files we author. Deleting it is the reset.
+      - ./config:/config
+      # The integration under test, read-only: the demo must never be able to
+      # write back into the working tree.
+      - ../custom_components/home_energy_advisor:/config/custom_components/home_energy_advisor:ro
+
+    environment:
+      TZ: Europe/Madrid
+
+    # A demo instance that comes back after a reboot is a demo instance nobody
+    # remembers is running.
+    restart: "no"

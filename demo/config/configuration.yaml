@@ -1,0 +1,228 @@
+# The demo household. Every name and every number here is invented (HEA-80).
+#
+# Deliberately lean rather than `default_config`, for two reasons. A screenshot
+# should show a sidebar carrying nothing the integration does not need. And the
+# discovery components that `default_config` pulls in - ssdp, zeroconf, dhcp,
+# bluetooth, usb - have no business running on a container that sits on the
+# maintainer's own network.
+#
+# The counters below advance from a fixed date so they are alive rather than
+# static, but nothing in a screenshot comes from them. The figures the cards
+# show are written straight into the recorder by `seed.mjs`, because waiting for
+# the engine to accumulate a week is the one thing this harness must not do.
+
+homeassistant:
+  name: Demo
+  # A city centre, so the location cannot be read as anybody's address.
+  latitude: 40.4168
+  longitude: -3.7038
+  elevation: 650
+  unit_system: metric
+  currency: EUR
+  country: ES
+  time_zone: Europe/Madrid
+
+# Statistics are what the cards read and what the seed writes, so the retention
+# window has to outlast the seeded week by a wide margin. A `purge_keep_days`
+# shorter than the seed would quietly delete the screenshots' own data.
+recorder:
+  purge_keep_days: 30
+
+history:
+logbook:
+energy:
+config:
+
+template:
+  - sensor:
+      # --- The house ------------------------------------------------------
+      # A two-step time-of-use tariff. The step is what makes the cost-over-time
+      # card worth looking at, and what gives "moved to the afternoon" a point.
+      - name: Electricity Import Price
+        unique_id: demo_price_import
+        unit_of_measurement: EUR/kWh
+        state_class: measurement
+        state: "{{ 0.3120 if 8 <= now().hour < 22 else 0.1140 }}"
+
+      - name: Electricity Export Price
+        unique_id: demo_price_export
+        unit_of_measurement: EUR/kWh
+        state_class: measurement
+        state: "{{ 0.0740 }}"
+
+      - name: Grid Import
+        unique_id: demo_grid_import
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (4210 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.90) | round(3) }}
+
+      - name: Grid Export
+        unique_id: demo_grid_export
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (1880 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.40) | round(3) }}
+
+      - name: Solar Generation
+        unique_id: demo_generation
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (3320 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.70) | round(3) }}
+
+      - name: Battery Charge
+        unique_id: demo_battery_charge
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (640 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.25) | round(3) }}
+
+      - name: Battery Discharge
+        unique_id: demo_battery_discharge
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (590 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.22) | round(3) }}
+
+      - name: House Consumption
+        unique_id: demo_house_consumption
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (6100 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 1.40) | round(3) }}
+
+      # --- The devices we track -------------------------------------------
+      # Eight energy counters and one power sensor. The power one is
+      # deliberate: it is the branch where the integration creates an Integral
+      # helper for you, the README says so, and a screenshot should show it.
+      - name: Air Conditioner Energy
+        unique_id: demo_air_conditioner
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (214 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.30) | round(3) }}
+
+      - name: Dishwasher Energy
+        unique_id: demo_dishwasher
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (61 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.09) | round(3) }}
+
+      - name: Tumble Dryer Energy
+        unique_id: demo_tumble_dryer
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (96 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.14) | round(3) }}
+
+      - name: Washing Machine Energy
+        unique_id: demo_washing_machine
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (74 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.042) | round(3) }}
+
+      - name: Car Charger Energy
+        unique_id: demo_car_charger
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (1180 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.205) | round(3) }}
+
+      - name: Ceiling Fan Energy
+        unique_id: demo_ceiling_fan
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (39 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.031) | round(3) }}
+
+      - name: Panel Heater Energy
+        unique_id: demo_panel_heater
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (168 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.067) | round(3) }}
+
+      - name: Water Heater Energy
+        unique_id: demo_water_heater
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (923 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.171) | round(3) }}
+
+      - name: Wall Lights Power
+        unique_id: demo_wall_lights
+        device_class: power
+        state_class: measurement
+        unit_of_measurement: W
+        state: "{{ 46 if 18 <= now().hour < 24 else 4 }}"
+
+      # --- Untracked, so the discovery screen has something to list --------
+      # Two genuine candidates, then two false friends. Discovery still offers
+      # a battery or a forecast but sorts it last, and the screenshot is the
+      # only place a reader can see that behaviour before they meet it.
+      - name: Fridge Freezer Energy
+        unique_id: demo_fridge_freezer
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (133 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.05) | round(3) }}
+
+      - name: Oven Energy
+        unique_id: demo_oven
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (402 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.07) | round(3) }}
+
+      - name: Phone Battery Energy
+        unique_id: demo_phone_battery
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (7 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.01) | round(3) }}
+
+      - name: Solar Forecast Today
+        unique_id: demo_solar_forecast
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (18 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.60) | round(3) }}

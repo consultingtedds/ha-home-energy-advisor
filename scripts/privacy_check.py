@@ -108,6 +108,7 @@ KNOWN_HOSTS = {
     "developers.home-assistant.io",
     "fonts.googleapis.com",
     "fonts.gstatic.com",
+    "ghcr.io",
     "github.com",
     "home-assistant.io",
     "linear.app",

@@ -1,0 +1,18 @@
+# Home Assistant writes its entire working state into `config/`, including
+# `.storage`, which holds this instance's users and long-lived tokens. None of
+# it belongs in a public repo, and the demo is meant to be rebuilt rather than
+# preserved - deleting the directory is the reset.
+#
+# Ignore everything under `config/` and re-admit only what we author, so the
+# next file Home Assistant decides to write is excluded by default rather than
+# committed by whoever runs `git add` next.
+config/*
+!config/configuration.yaml
+
+# Where the run puts the token and ids it discovers, so the seed and screenshot
+# steps can be run separately without redoing onboarding.
+.demo-session.json
+
+# Written when a screenshot run fails, to show where the browser had got to.
+# Evidence for whoever is debugging, never something to keep.
+failure.png
