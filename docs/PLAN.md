@@ -252,6 +252,19 @@ Presentation
     energy refused outright and a meter failure would otherwise move real
     consumption into Untracked)
 
+> **Epic 4 closed 2026-09-11.** Every item above shipped and is running on the
+> reference instance. The last thing open under it was HEA-113, a device-registry
+> lookup Home Assistant removes in 2027.8, closed by resolving each row's device
+> through one of our own entities instead - which needs no API that moves and
+> names, by construction, the device that row's figures are published on.
+>
+> Two pieces of the layer arrived after the original list and belong to it:
+> persisting the accounting runtime across a restart (ADR-0021, HEA-111/112), and
+> the zero point every `total` figure now stamps when a rebase sends it back to
+> zero (ADR-0022, HEA-122).
+>
+> What remains for release sits in Epic 8, not here.
+
 ### Epic 5 - Presentation & documentation
 1. **HEA-shipped Lovelace card (HEA-50) - the flagship.** Date-range picker ×
    device filter over long-term statistics: "from 20 May to 15 July these devices

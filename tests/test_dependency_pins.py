@@ -16,6 +16,10 @@ so they drift silently:
   does not install it, so nothing resolves the two: a phacc bump moves what Home
   Assistant asks for while the requirements file stays put, and the card tests
   then run against a frontend that release never shipped with.
+* The **minimum Home Assistant version** is stated in ``README.md``, where a
+  household reads it, and again in ``hacs.json``, where HACS enforces it. A
+  README naming an older release sends somebody to an install HACS will refuse.
+  This pair drifted the moment the floor moved (ADR-0023).
 
 Dependabot ignores the first pair (a phacc bump is a supported-floor decision,
 not a chore) and bumps the second. A ruff PR therefore arrives red until its
@@ -67,6 +71,20 @@ def manifest_requirement(manifest: str, package: str) -> str | None:
         if requirement.startswith(prefix):
             return requirement.removeprefix(prefix)
     return None
+
+
+def readme_minimum_ha(readme: str) -> str | None:
+    """Return the Home Assistant version the README tells a household it needs."""
+    match = re.search(
+        r"^- Home Assistant (\S+) or newer\.$", readme, flags=re.MULTILINE
+    )
+    return match.group(1) if match else None
+
+
+def hacs_minimum_ha(hacs: str) -> str | None:
+    """Return the minimum Home Assistant version HACS will install against."""
+    declared: object = json.loads(hacs).get("homeassistant")
+    return declared if isinstance(declared, str) else None
 
 
 def pre_commit_rev(config: str, repo: str) -> str | None:
@@ -277,6 +295,46 @@ def test_frontend_pin_in_requirements_is_the_one_home_assistant_asks_for() -> No
     # them against a build that Home Assistant release never shipped with
     assert pinned is not None
     assert pinned == declared
+
+
+def test_readme_minimum_ha_reads_the_version_the_requirements_line_states() -> None:
+    # Given - the requirements section a household reads before installing
+    readme = "## What you need\n\n- Home Assistant 2026.9 or newer.\n- A grid.\n"
+
+    # When / Then
+    assert readme_minimum_ha(readme) == "2026.9"
+
+
+def test_readme_minimum_ha_is_none_when_no_line_states_one() -> None:
+    # Given - a README that never names a Home Assistant version
+    readme = "## What you need\n\n- A grid connection.\n"
+
+    # When / Then - a missing line must be visible, not read as agreement
+    assert readme_minimum_ha(readme) is None
+
+
+def test_hacs_minimum_ha_is_none_when_the_key_is_absent() -> None:
+    # Given - a hacs.json declaring no floor at all, which HACS permits
+    hacs = json.dumps({"name": "Home Energy Advisor"})
+
+    # When / Then - absent is not the same as matching whatever the README says
+    assert hacs_minimum_ha(hacs) is None
+
+
+def test_the_readme_promises_the_home_assistant_hacs_will_install_against() -> None:
+    # Given - the floor a household reads, and the floor HACS enforces
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    hacs = (REPO_ROOT / "hacs.json").read_text(encoding="utf-8")
+    promised = readme_minimum_ha(readme)
+    enforced = hacs_minimum_ha(hacs)
+
+    # Then - HACS refuses to install below its own floor, so a README naming an
+    # older one sends a household to an install that cannot happen (ADR-0023).
+    # Compared as a prefix: the README names a release series, `hacs.json` the
+    # exact build, and "2026.9 or newer" is the honest way to say 2026.9.1.
+    assert promised is not None
+    assert enforced is not None
+    assert enforced.startswith(promised)
 
 
 def test_ruff_pin_in_requirements_matches_the_pre_commit_hook_rev() -> None:

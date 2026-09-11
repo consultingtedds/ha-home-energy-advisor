@@ -32,7 +32,7 @@ figures sit at zero because there is nothing to save against.
 
 ## What you need
 
-- Home Assistant 2026.7 or newer.
+- Home Assistant 2026.9 or newer.
 - **A grid connection**, with a sensor giving your current import price per kWh.
   Dynamic tariff integrations provide one. On a fixed rate, create a Number
   helper and type your rate into it.
