@@ -1,6 +1,6 @@
 # Dependency automation - HEA-71.
 #
-# Two deliberate omissions, both of which look like oversights:
+# Three deliberate omissions, all of which look like oversights:
 #
 # 1. `pytest-homeassistant-custom-component` is ignored below. It pins the Home
 #    Assistant version the suite tests against, so bumping it is a supported-
@@ -8,6 +8,14 @@
 #    ci.yml test matrix - which the test job installs *over* the requirements
 #    file. A bot bump of one copy alone would be silently undone and still
 #    report success. Change both by hand, together.
+#
+# 1b. `home-assistant-frontend` is ignored for the same reason, one step
+#    removed. Its version is not ours to choose: it has to be the build the
+#    pinned Home Assistant declares in its own manifest, because the card tests
+#    boot the real frontend component and a mismatch runs them against a build
+#    no Home Assistant release ever shipped. A bot that only sees "newer version
+#    available" will raise this every time the upstream frontend moves, which is
+#    weekly. It changes when the Home Assistant pin changes, and not otherwise.
 #
 # 2. There is no `pre-commit` ecosystem entry, even though ruff is pinned in
 #    .pre-commit-config.yaml as well as requirements_test.txt. Groups do not
@@ -36,6 +44,8 @@ updates:
     ignore:
       # See note 1 above.
       - dependency-name: pytest-homeassistant-custom-component
+      # See note 1b above.
+      - dependency-name: home-assistant-frontend
 
   - package-ecosystem: github-actions
     directory: "/"

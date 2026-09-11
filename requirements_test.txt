@@ -9,5 +9,5 @@ pytest-homeassistant-custom-component==0.13.346
 # in tests/test_dependency_pins.py fails when it does not.
 home-assistant-frontend==20260624.5
 
-ruff==0.16.3
-mypy==2.3.0
+ruff==0.16.6
+mypy==2.3.1
