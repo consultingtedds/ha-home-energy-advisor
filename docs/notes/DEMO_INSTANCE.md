@@ -19,6 +19,24 @@ found here in a day: HEA-117, HEA-119, and the real cause of HEA-114, whose
 previous fix had shipped green against an inference that the demo disproved in
 minutes.
 
+## What it cannot answer
+
+The integration here is real, installed and configured through its own flow. The
+**figures are not**. `demo/seed.mjs` writes the week straight into long-term
+statistics with `recorder/import_statistics`, so nothing in a screenshot was
+computed by the accounting engine, and no statistic here was compiled from
+recorded states.
+
+That is the right trade for pictures and for anything the frontend does, and it
+rules out a whole class of question. Nothing that depends on Home Assistant
+compiling statistics *from states* can be asked here - reset behaviour and the
+long-term statistics compiler among them (HEA-122 was settled against the real
+recorder in `tests/test_reset_statistics.py` instead). Running `reset_totals` on
+the demo would clear the seeded week and prove nothing.
+
+Worth knowing before scoping the end-to-end tests in HEA-116: what this instance
+tests well is setup, discovery, the flows, the dashboard and the cards.
+
 ## Running it
 
 Docker Desktop has to be running. Nothing else is needed.
