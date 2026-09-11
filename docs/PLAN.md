@@ -261,14 +261,56 @@ Presentation
    allocation model and its known limitations - export opportunity cost,
    interval approximation
 
+> **Epic 5 closed 2026-09-11.** The README carries the walkthrough, the entities
+> table, the accounting model with what Actual Cost excludes, the known issues,
+> labelling as the prerequisite for the label filter, and a card section built
+> from real screenshots. Those come from `demo/` (HEA-80): a throwaway Home
+> Assistant holding an invented household, so nothing published is anybody's.
+>
+> Three dashboard defects were found and fixed in the process, none of which the
+> test suite could reach: the bundle loaded before Home Assistant swapped its
+> custom element registry so no card was ever defined (HEA-114), the cards never
+> found the period picker because their retry hung off an event a quiet house
+> never fires (HEA-119), and the picker's calendar opened off the bottom of the
+> screen because the strategy never set the card option that says which way it
+> should open (HEA-115).
+
 ### Epic 6 - Dogfood on production instance
 1. Install and configure a device set on the reference instance covering every behaviour pattern in `notes/DEVICE_SENSOR_SURVEY.md`: cycle-resetting energy counters, lifetime counters over Zigbee2MQTT, a cloud-polled counter, and a power-only device
 2. One-week parallel run; reconciliation checks: Σ device+remainder cost vs actual import cost; remainder plausibility; **Σ published energy vs the house meter**; battery ledger vs Predbat's own accounting. The energy check was added after the first attempt (`notes/VALIDATION_WEEK_2026_08.md`) - the cost check stayed within ~4 % throughout HEA-74 and would have passed, while the energy check would have failed on day one by 29-44 %
 3. Fixes arising; note: summer dogfooding cannot exercise the winter battery regime - revisit accuracy after the first winter month (tracked as follow-up). Partially anticipated under HEA-75 by replaying a captured week against January's solar profile; that answered the *spreading* question but not the stored-cost ledger under force-charging, which still needs real winter data
 
-### Epic 7 - Historical backfill (deferred 2026-07-23 - not deleted)
+> **Epic 6 closed 2026-09-11.** The validation week ran on 4-10 September, after
+> the original August window turned out to have no statistics behind it at all.
+> Allocations summed to the whole home every day, worst residual 0.0002 against
+> a 0.0008 rounding bound; Cost at Grid Price matched an independent
+> recomputation **per device** to within €0.00007 on a day whose price never
+> moved, which is exact rather than approximate. The window also contained a
+> real disturbance - generation falling from 26.3 to 10.7 kWh over three days -
+> absorbed as a shift to grid and battery rather than as a hole.
+>
+> The winter regime is HEA-123, carried out rather than holding the epic open.
+> Full record in `notes/VALIDATION_WEEK_2026_08.md`.
+
+### Epic 7 - Historical backfill (CANCELLED 2026-09-11)
 1. ~~Backfill via `recorder.import_statistics` on device setup~~
 2. ~~Validate backfilled statistics against manual tables~~
+
+> **Cancelled 2026-09-11**, having been deferred since July. Paul: *"I'm now not
+> seeing any value in backfilling data, there's nothing left to backfill for my
+> system, and I don't think we would support it for other systems."* The
+> reference instance has been accounting for real since July, so it has no gap
+> to fill; and reconstructing a history for anybody else means publishing
+> figures we never computed, from a price series and a meter history we never
+> observed. For a product whose claim is that the figures reconcile, that is the
+> wrong thing to ship. HEA-7, HEA-29 and HEA-30 are closed.
+>
+> `recorder.import_statistics` did not go to waste: `demo/` uses it to write an
+> invented week into a throwaway container, which is the one place fabricated
+> history is the point rather than the risk.
+>
+> The original deferral reasoning, kept because it is the substance of the
+> decision:
 
 > **Deferred, not deleted (2026-07-23).** Backfill would have to recompute **and
 > overwrite** long-term statistics - including rewriting the Untracked remainder

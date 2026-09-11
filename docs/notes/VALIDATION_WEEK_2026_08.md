@@ -506,12 +506,45 @@ UTC, and a query written from midnight UTC silently takes two hours from the
 wrong end at each edge. Always take the hourly buckets from the daily bucket's
 own start.
 
+### Per device, on the flat-price day
+
+The whole-home agreement above could in principle hide compensating per-device
+errors, so each device was recomputed independently. The flat-price day makes
+this exact rather than approximate: with a constant price, a device's Cost at
+Grid Price must be simply its energy times that price, and the hourly
+approximation cannot enter.
+
+Every device that drew anything on 6 September, against `energy × 0.093`:
+
+| Device | Energy | Expected | Published | Difference |
+|---|---|---|---|---|
+| A | 5.750 kWh | €0.5347 | €0.5347 | −0.009 % |
+| B | 3.250 kWh | €0.3023 | €0.3022 | −0.017 % |
+| C | 4.290 kWh | €0.3990 | €0.3989 | −0.018 % |
+| D | 4.000 kWh | €0.3720 | €0.3720 | 0.000 % |
+| E (Untracked) | 23.594 kWh | €2.1943 | €2.1943 | 0.002 % |
+| F | 0.702 kWh | €0.0653 | €0.0653 | 0.021 % |
+
+**Worst difference on any device: €0.00007.** That is the 4 dp publication
+rounding and nothing else - four orders of magnitude inside the €0.05 threshold.
+
+The nine devices that drew nothing published exactly zero, which is its own
+check: a remainder model can quietly hand a sleeping device a share of the
+house, and this one does not.
+
+Untracked is included deliberately. It is the largest line in the house and the
+one figure nobody meters directly, so it is where an allocation error would go
+to hide.
+
 ### Not covered by this run
 
 * **Check 3, the battery stored-cost ledger against Predbat's own accounting.**
-  Not attempted.
-* **Per-device manual recomputation.** The comparison above is whole-home. The
-  per-device figures reconcile to it exactly, which constrains them, but is not
-  the same as recomputing each device independently.
-* **The winter battery regime**, as the original scope already noted. A
-  post-winter review remains required before the model is considered proven.
+  Not attempted, and deliberately not waited for.
+* **Actual Cost per device is constrained rather than recomputed.** The
+  per-device comparison above is of *Cost at Grid Price*, which is the pricing
+  path. Actual Cost depends on the source allocation, which has no independent
+  hand calculation to check against - that is what the reconciliation checks
+  exist for.
+* **The winter battery regime**, as the original scope noted. Carried to its own
+  ticket rather than holding this one open, because a check nobody has scheduled
+  is how work sits in a backlog for months.

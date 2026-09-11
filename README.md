@@ -200,6 +200,14 @@ The integration's settings menu also carries:
   history behind them. There is also a `home_energy_advisor.reset_totals`
   service for the same thing. It cannot be undone.
 
+  > **Known issue: money figures spanning the reset read wrongly.** Energy
+  > figures come through a reset correctly. The cost figures do not: Home
+  > Assistant records the whole previous balance as one large negative on the
+  > day you reset, so any period on the dashboard that *includes* that day shows
+  > money that is wrong, often inverted. Periods after the reset are correct, so
+  > the practical advice is to avoid looking at ranges that straddle it. Being
+  > fixed.
+
 ## The dashboard
 
 ![The Add dashboard dialog, with Home Energy Advisor listed under community dashboards](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/add-dashboard.png)
