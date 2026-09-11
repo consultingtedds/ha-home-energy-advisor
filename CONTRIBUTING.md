@@ -96,6 +96,26 @@ change anything under `frontend/`, run `npm run build` and commit the result
 alongside it - CI rebuilds and fails on a diff, because a stale bundle would
 serve card code that no longer matches the sources under review.
 
+### Trying a change against a real Home Assistant
+
+`demo/` stands up a throwaway Home Assistant in a container, with an invented
+household in it: rooms, devices, a week of fabricated figures, and the
+integration set up against them. It needs Docker and nothing else.
+
+```bash
+node demo/reset.mjs        # throw the house away, leave a container ready
+node demo/setup.mjs        # onboard, build the rooms, fill in the Energy Dashboard
+node demo/screenshots.mjs  # drive the setup flow, seed a week, photograph it all
+node demo/cold-load.mjs 10 # load the dashboard cold N times, and count what renders
+```
+
+It is worth reaching for before a frontend change in particular. The unit tests
+mount a card against a double, which cannot disagree with the code it was
+written beside; the demo runs the real cards in a real Home Assistant, and has
+caught several things the green suite did not.
+
+`docs/notes/DEMO_INSTANCE.md` covers it properly.
+
 ### The gates
 
 CI runs ruff, mypy (strict), pytest with a 90% coverage floor, vitest, the

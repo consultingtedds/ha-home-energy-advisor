@@ -62,16 +62,74 @@ example to copy from.
 Every option is optional. Left alone, each card shows all tracked devices for
 the page's selected period.
 
-| Card | Shows | Options |
-| --- | --- | --- |
-| Totals | Paid, Would have paid, Saved for the period | |
-| Devices | Per-device table with energy, money and rate | `sort_by`: `actual_cost` (default), `cost_at_grid_price`, `cost_savings`, `energy_used` |
-| Device costs (chart) | What each device cost, dearest first | `layout`: `auto` (default), `horizontal`, `vertical` |
-| Cost over time | The period's cost as it accumulated | |
-| Energy sources | Where the energy came from, per device | `sort_by`: `energy_used` (default), `energy_from_grid`, `energy_from_generation`, `energy_from_battery` |
-| Cost distribution | Where the cost went, by floor, room and device | `metric`: `cost` (default), `energy`; `layout`: `auto`, `horizontal`, `vertical` |
-| Self-sufficiency | What share ran on your own generation | |
-| Filter | Narrows the page by room, floor, label or device | |
+The pictures below come from a demo household, invented for the purpose. None
+of the devices or figures belongs to anybody.
+
+### Totals
+
+![The totals card: what was paid, what it would have cost at grid price, and the saving](images/card-totals.png)
+
+Paid, Would have paid, and Saved for the period. No options beyond the two
+every card takes.
+
+### Devices
+
+![The device table: each device with its energy, cost, what it would have cost, its saving and an effective rate](images/card-devices.png)
+
+Every device as a row, with energy, money, and the rate per kWh it worked out
+at. The coloured edge compares that rate to grid price.
+
+`sort_by`: `actual_cost` (default), `cost_at_grid_price`, `cost_savings`,
+`energy_used`
+
+### Device costs
+
+![A bar per device, dearest first, with the grid-price comparison drawn behind each bar](images/card-device-costs.png)
+
+The same figures as a chart, dearest first. A device that cost more than grid
+price draws below the axis.
+
+`layout`: `auto` (default), `horizontal`, `vertical`
+
+### Cost over time
+
+![A bar for each hour of the period, showing what was paid against what it would have cost](images/card-cost-over-time.png)
+
+The period broken into its own intervals, so you can see *when* the money went
+rather than only how much.
+
+### Energy sources
+
+![A stacked bar per device showing how much of its energy came from the grid, from generation and from the battery](images/card-sources.png)
+
+Where each device's energy came from: the grid, your own generation, or the
+battery.
+
+`sort_by`: `energy_used` (default), `energy_from_grid`,
+`energy_from_generation`, `energy_from_battery`
+
+### Cost distribution
+
+![A flow diagram from the household through each floor and room to each device](images/card-distribution.png)
+
+The total broken down by floor, then room, then device. Floors and rooms come
+from Home Assistant's areas, via the source sensor you chose for each device.
+
+`metric`: `cost` (default), `energy`; `layout`: `auto`, `horizontal`,
+`vertical`
+
+### Self-sufficiency
+
+![The self-sufficiency card, showing the share of the house that ran on its own generation](images/card-self-sufficiency.png)
+
+What share of the house ran on your own electricity rather than the grid's.
+
+### Filter
+
+![The filter control, a dropdown offering rooms, floors, labels and individual devices](images/card-filter.png)
+
+Narrows every card on the page to a room, a floor, a label, or a single device.
+One filter drives the whole page.
 
 Two options every card accepts:
 

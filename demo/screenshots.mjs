@@ -285,6 +285,7 @@ const CARDS = [
   ["hea-devices-card", "card-devices"],
   ["hea-device-costs-card", "card-device-costs"],
   ["hea-cost-over-time-card", "card-cost-over-time"],
+  ["hea-sources-card", "card-sources"],
   ["hea-distribution-card", "card-distribution"],
   ["hea-self-sufficiency-card", "card-self-sufficiency"],
   ["hea-filter-card", "card-filter"],

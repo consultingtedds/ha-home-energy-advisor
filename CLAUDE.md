@@ -19,6 +19,9 @@ Energy Used, Actual Cost, Cost at Grid Price, Cost Savings.
   Python, zero `homeassistant.*` imports**, fully unit-testable
 - `tests/` - pytest; `tests/fixtures/exploration_2026_07/` holds golden-master
   data captured from the real instance (provenance in its README)
+- `demo/` - a throwaway Home Assistant in a container, holding an invented
+  household. Produces every screenshot in `docs/images/`, and is where to break
+  things instead of the live instance. See `docs/notes/DEMO_INSTANCE.md`
 - `docs/` - plan, ADRs, standards, notes
 
 ## Core architecture (detail in docs/PLAN.md and ADR-0002/0004)
