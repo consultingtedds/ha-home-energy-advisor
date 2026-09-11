@@ -25,6 +25,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 
 from homeassistant.components.sensor import (
+    ATTR_LAST_RESET,
     RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
@@ -41,6 +42,7 @@ from homeassistant.helpers import label_registry as lr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
@@ -57,6 +59,7 @@ from .const import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from datetime import datetime
     from typing import Any
 
     from homeassistant.core import HomeAssistant
@@ -365,6 +368,32 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         # cannot answer, because a device that has never drawn restores zero and
         # a first install starts at zero. Same number, opposite meanings (HEA-47).
         self._restored = False
+        # When this figure last started again, or None if it never has (HEA-122).
+        self._last_reset: datetime | None = None
+
+    @property
+    def last_reset(self) -> datetime | None:
+        """When a `total` figure last started again, for the statistics compiler.
+
+        Home Assistant's compiler has two ways to learn that an accumulator has
+        gone back to zero, and which one it uses is decided by the state class. A
+        `total_increasing` counter falling is read as a reset on sight. A `total`
+        figure falling is read as a *decrease* - so a rebase looks like a meter
+        that lost its whole balance, and the compiler books that loss as one
+        enormous negative change. This attribute is the only way to tell it
+        otherwise: when the stamp moves, it starts a new accumulation from the
+        current value instead (HEA-122).
+
+        `None` until a rebase actually happens, and never published on a
+        `total_increasing` figure. Both matter. Home Assistant refuses a stamp on
+        any other state class outright, and a stamp appearing on a household that
+        has simply upgraded would read as a new cycle on a series that never had
+        one - booking the whole lifetime balance as a change, which is the same
+        defect with its sign flipped.
+        """
+        if self.state_class is not SensorStateClass.TOTAL:
+            return None
+        return self._last_reset
 
     def _published(self, running: Decimal) -> Decimal:
         """The restored baseline plus the running total, rounded for publication.
@@ -407,6 +436,7 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         if last is not None and isinstance(last.native_value, Decimal):
             self._baseline = max(Decimal(0), last.native_value - already_held)
         self._restored = last is not None or carried is not None
+        self._last_reset = await self._async_restored_zero_point()
         self.async_on_remove(
             async_dispatcher_connect(
                 self.hass,
@@ -415,14 +445,38 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
             )
         )
 
+    async def _async_restored_zero_point(self) -> datetime | None:
+        """The zero point this figure published before the restart, if it had one.
+
+        Read from the restored state rather than kept in a store of our own,
+        because the stamp is only ever meaningful next to the figure it belongs
+        to, and Home Assistant already carries both together.
+
+        It has to survive a restart. A stamp that moved on every startup would
+        tell the compiler a new cycle had begun while the figure came back
+        holding its whole restored lifetime balance - and that balance would be
+        booked as a change, every restart. Losing the stamp instead is harmless:
+        the compiler keeps the zero point already recorded in the statistics, and
+        the next real rebase sets a new one it will still recognise as a change.
+        """
+        last = await self.async_get_last_state()
+        stamp = last.attributes.get(ATTR_LAST_RESET) if last else None
+        return dt_util.parse_datetime(stamp) if isinstance(stamp, str) else None
+
     @callback
     def _handle_reset(self) -> None:
         """Drop the restored baseline when the household's totals are rebased.
 
         The engine clears its running total in the same breath; the coordinator
         publishes straight after, so no state write is needed here (HEA-57).
+
+        The zero point moves with it. This is the moment - and on a `total`
+        figure the only signal - that tells Home Assistant's statistics compiler
+        the fall to zero is a fresh start rather than a loss of the whole
+        balance (HEA-122).
         """
         self._baseline = Decimal(0)
+        self._last_reset = dt_util.utcnow()
 
 
 class HeaCostSensor(_HeaRestoringSensor):

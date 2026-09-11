@@ -10,6 +10,9 @@ is the supported one.
 Three things have to happen together, in this order:
 
 1. the runtime's running totals and the sensors' restore baselines go to zero,
+   and every `total` sensor stamps a new zero point - without which Home
+   Assistant's statistics compiler reads the fall as a loss of the whole balance
+   and books it as one enormous negative change (`sensor.last_reset`, HEA-122),
 2. the cycle meters HEA created are calibrated to zero - after step 1, never
    before, because a net-consumption meter subtracts its source's drop,
 3. HEA's own long-term statistics are cleared, so the cleared figures are not

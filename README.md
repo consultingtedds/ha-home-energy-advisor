@@ -200,13 +200,13 @@ The integration's settings menu also carries:
   history behind them. There is also a `home_energy_advisor.reset_totals`
   service for the same thing. It cannot be undone.
 
-  > **Known issue: money figures spanning the reset read wrongly.** Energy
-  > figures come through a reset correctly. The cost figures do not: Home
-  > Assistant records the whole previous balance as one large negative on the
-  > day you reset, so any period on the dashboard that *includes* that day shows
-  > money that is wrong, often inverted. Periods after the reset are correct, so
-  > the practical advice is to avoid looking at ranges that straddle it. Being
-  > fixed.
+  > **A reset done by an earlier build left the money figures wrong across that
+  > day.** Energy always came through a reset correctly; the cost figures did
+  > not, because Home Assistant recorded the whole previous balance as one large
+  > negative on the day of the reset. Any period on the dashboard that
+  > *includes* such a day still shows money that is wrong, often inverted, and
+  > nothing can repair a day already recorded that way - avoid ranges that
+  > straddle it. Resets from this version onwards are clean.
 
 ## The dashboard
 
