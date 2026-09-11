@@ -7,7 +7,7 @@ generation (for example: solar, wind or hydro) and battery saved you.
 Home Assistant already shows you where your energy went. This shows you where
 your money went.
 
-![The Home Energy Advisor dashboard: cost summary, cost by device and where the energy came from](docs/images/dashboard.png)
+![The Home Energy Advisor dashboard: cost summary, cost by device and where the energy came from](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/dashboard.png)
 
 ## Why you might want it
 
@@ -79,7 +79,7 @@ Go to **Settings** > **Devices & services** > **Add integration** and search for
 
 ### The house
 
-![The house inputs step of the setup, with the import price and grid import meter filled in](docs/images/setup-house-inputs.png)
+![The house inputs step of the setup, with the import price and grid import meter filled in](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-house-inputs.png)
 
 The first screen asks about your house as a whole. **Only two of these are
 required: the import price and the grid import meter.** Every other field is
@@ -139,7 +139,7 @@ a helper Home Assistant already has:
 
 ### Your devices
 
-![Adding a tracked device, with a name and its energy sensor](docs/images/setup-add-device.png)
+![Adding a tracked device, with a name and its energy sensor](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-add-device.png)
 
 Once the house is set up, add the devices you want costed. On the Home Energy
 Advisor card in **Settings** > **Devices & services**, select **Add device**,
@@ -159,7 +159,7 @@ like they are not really devices - a phone battery, a generation forecast -
 because plenty of sensors carry an energy or power unit without being an
 appliance.
 
-![The discovery screen listing untracked energy and power sensors](docs/images/discover-devices.png)
+![The discovery screen listing untracked energy and power sensors](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/discover-devices.png)
 
 ### Labelling your devices
 
@@ -202,7 +202,7 @@ The integration's settings menu also carries:
 
 ## The dashboard
 
-![The Add dashboard dialog, with Home Energy Advisor listed under community dashboards](docs/images/add-dashboard.png)
+![The Add dashboard dialog, with Home Energy Advisor listed under community dashboards](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/add-dashboard.png)
 
 Go to **Settings** > **Dashboards** > **Add dashboard**, and choose **Home
 Energy Advisor** under *Community dashboards*. The title, icon and url are
@@ -235,18 +235,18 @@ Two other ways in, if a dashboard of its own is not what you want:
   every tracked device.
 
 If your dashboards are YAML files rather than UI-managed, none of the above
-applies, and [`docs/dashboard-template.yaml`](docs/dashboard-template.yaml) is a
+applies, and [`docs/dashboard-template.yaml`](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/dashboard-template.yaml) is a
 complete working page to copy.
 
 ### What the cards tell you
 
 The dashboard is one card per question. These are the ones that answer the
-questions at the top of this page; [`docs/dashboard.md`](docs/dashboard.md) has
+questions at the top of this page; [`docs/dashboard.md`](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/dashboard.md) has
 the rest, and every option each of them takes.
 
 **What each device cost, and what it would have cost.**
 
-![The device table: each device with its energy, what was paid, what it would have cost at grid price, the saving, and an effective rate per kWh](docs/images/card-devices.png)
+![The device table: each device with its energy, what was paid, what it would have cost at grid price, the saving, and an effective rate per kWh](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/card-devices.png)
 
 Every device, sorted by what it cost. *Would have paid* is the same energy
 bought off the meter at the price it was drawn, so the difference is what your
@@ -261,7 +261,7 @@ put into the battery when electricity was dearer than it is overnight.
 
 **When the money went.**
 
-![The cost over time chart, with a bar for each hour of the day showing what was paid and what it would have cost](docs/images/card-cost-over-time.png)
+![The cost over time chart, with a bar for each hour of the day showing what was paid and what it would have cost](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/card-cost-over-time.png)
 
 The same period, hour by hour. This is the card that answers whether the washing
 machine is cheaper overnight or in the middle of the afternoon, because you can
@@ -269,14 +269,14 @@ see the answer rather than work it out.
 
 **How much your own generation actually saved you.**
 
-![The self-sufficiency card, showing the share of energy that came from generation, from the battery and from the grid](docs/images/card-self-sufficiency.png)
+![The self-sufficiency card, showing the share of energy that came from generation, from the battery and from the grid](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/card-self-sufficiency.png)
 
 What share of the house ran on your own electricity rather than the grid's, in
 energy and in money.
 
 **Where the cost went.**
 
-![The cost distribution card, a flow diagram from the household through each floor and room to each device](docs/images/card-distribution.png)
+![The cost distribution card, a flow diagram from the household through each floor and room to each device](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/card-distribution.png)
 
 The same total, broken down by floor, then room, then device. Rooms and floors
 come from Home Assistant's own areas, so this needs nothing from you beyond
@@ -342,7 +342,7 @@ Untracked add up to what the energy really cost.** Not approximately. If your
 figures do not add up to your meter, that is a bug, and there is an
 Unreconciled Energy sensor whose job is to tell you.
 
-[ADR-0002](docs/adr/0002-cost-attribution-proportional-source-allocation.md) is
+[ADR-0002](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/adr/0002-cost-attribution-proportional-source-allocation.md) is
 the full reasoning, including the simpler model that was tried first and why it
 was wrong.
 
@@ -439,7 +439,7 @@ device names are redacted.
 
 ## Contributing
 
-Contributions are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers the
+Contributions are welcome. [CONTRIBUTING.md](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/CONTRIBUTING.md) covers the
 development setup, the house style and the things that are easy to trip over.
 
 The test suite needs a Unix-like operating system - Linux, macOS, or WSL on
@@ -455,9 +455,9 @@ plain Python with no Home Assistant imports at all, so the model can be tested
 on its own. That is deliberate, and it is where the interesting tests live.
 
 If you want to understand why the code is shaped as it is, read
-[`docs/adr/`](docs/adr/). Every significant decision is recorded there, along
+[`docs/adr/`](https://github.com/consultingtedds/ha-home-energy-advisor/tree/main/docs/adr). Every significant decision is recorded there, along
 with the alternatives that were rejected and the reasons.
 
 ## Licence
 
-[MIT](LICENSE)
+[MIT](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/LICENSE)

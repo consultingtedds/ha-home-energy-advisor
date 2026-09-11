@@ -110,6 +110,9 @@ KNOWN_HOSTS = {
     "fonts.gstatic.com",
     "ghcr.io",
     "github.com",
+    # The README's images and links are absolute because HACS strips relative
+    # ones out of a rendered README, leaving every picture blank in the store.
+    "raw.githubusercontent.com",
     "home-assistant.io",
     "linear.app",
     "pre-commit.com",
