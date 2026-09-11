@@ -25,6 +25,14 @@
 #
 # Both pairings are enforced by tests/test_dependency_pins.py, so neither
 # depends on anyone remembering this comment.
+#
+# One security alert is open on purpose and will stay open: `adm-zip`
+# (CVE-2026-76845, medium, development scope), reached through
+# `sonarqube-scanner`. There is no patched release - the affected range covers
+# every published version including the latest - and the scanner is already on
+# its own latest. It is deliberately not dismissed, because a dismissal hides
+# it; HEA-120 records the reasoning and what would change the answer. If you are
+# reading this because the security tab is red, that is why.
 
 version: 2
 
