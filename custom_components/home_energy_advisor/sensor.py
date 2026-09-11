@@ -789,6 +789,36 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         floor = fr.async_get(self.hass).async_get_floor(floor_id)
         return floor.name if floor is not None else None
 
+    def _device_behind(
+        self, registry: er.EntityRegistry, entity_id: str | None
+    ) -> dr.DeviceEntry | None:
+        """The registry device one of this integration's own entities sits on.
+
+        Resolved through the entity rather than by looking the device up by the
+        identifier we gave it. `device_registry.async_get_device` takes a *set*
+        of identifiers and matches any of them, on an assumption Home Assistant
+        has since dropped - an identifier is unique only *within* a config entry
+        - so it is deprecated and stops working in 2027.8. The call here was
+        right only by accident of the identifier already embedding the entry id,
+        which is correct behaviour resting on nothing that guarantees it
+        (HEA-113).
+
+        Its direct replacement, `async_get_device_by_identifier`, arrived after
+        the Home Assistant version this integration supports, so reaching for it
+        would raise the floor. It is not needed: the entity already records
+        which device it belongs to, and looking a device up *by its id* is
+        neither deprecated nor ambiguous. The row is better for it - one fewer
+        place that rebuilds an identifier and has to be right about it, and the
+        device it names is now by construction the device its own figures are
+        published on.
+        """
+        if entity_id is None:
+            return None
+        entry = registry.async_get(entity_id)
+        if entry is None or entry.device_id is None:
+            return None
+        return dr.async_get(self.hass).async_get(entry.device_id)
+
     def _row(
         self,
         device_key: str,
@@ -797,18 +827,17 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         source: str | None,
         untracked: bool,
     ) -> dict[str, Any]:
-        device = dr.async_get(self.hass).async_get_device(
-            identifiers={(DOMAIN, f"{self._entry_id}_{device_key}")}
-        )
         # An identifier for this device - stable, unique, and a card's handle for
         # colour and series grouping. It is *not* a component of any entity id:
         # `statistics` below carries those, because composing one assumes the
         # English suffix (HEA-89, ADR-0018). Still derived from the Actual Cost
         # entity rather than the name, because that is what makes it unique when
         # two devices share a name and Home Assistant de-duplicates.
-        actual_cost_id = er.async_get(self.hass).async_get_entity_id(
+        registry = er.async_get(self.hass)
+        actual_cost_id = registry.async_get_entity_id(
             "sensor", DOMAIN, f"{self._entry_id}_{device_key}_actual_cost"
         )
+        device = self._device_behind(registry, actual_cost_id)
         key = (
             actual_cost_id.removeprefix("sensor.").removesuffix("_actual_cost")
             if actual_cost_id is not None

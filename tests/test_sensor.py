@@ -420,6 +420,42 @@ async def test_devices_registry_sensor_lists_devices_with_slug_name_and_flags(
     assert untracked["name"] == "Untracked Energy Devices"
 
 
+async def test_each_row_names_the_device_its_own_entities_are_on(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a running integration with tracked devices, Untracked and the
+    # whole-home aggregate, each a device of its own carrying HEA's sensors
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer)
+
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_devices"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+
+    # When / Then - every published `device_id` is the device that row's own
+    # Actual Cost entity belongs to. The row carries a card's handle for colour,
+    # grouping and the area and floor it draws, so a lookup landing on a
+    # neighbouring device would mislabel rather than fail visibly - which is why
+    # the device is resolved through an entity that is ours rather than by
+    # rebuilding an identifier and trusting it to be unique (HEA-113).
+    rows = [*state.attributes["devices"], state.attributes["whole_home"]]
+    assert len(rows) == 4
+    for row in rows:
+        actual_cost = row["statistics"]["actual_cost"]
+        owner = registry.async_get(actual_cost)
+        assert owner is not None, f"{actual_cost} is not registered"
+        assert row["device_id"] == owner.device_id, row["key"]
+
+
 async def test_every_concept_key_is_the_entity_id_suffix(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
