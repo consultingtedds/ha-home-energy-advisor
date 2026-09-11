@@ -172,6 +172,18 @@ Presentation
     appearing on a household that merely upgraded books its lifetime balance as
     a *positive* change) and unchanged across a restart. Extends ADR-0007
     rather than reopening it (HEA-122)
+23. ADR-0023: Declare the oldest Home Assistant the suite actually runs against.
+    The floor read 2026.7.0, the suite tested 2026.7.2 and the reference
+    instance ran 2026.9.1 - so the only version anyone used was the one nothing
+    tested, which is how HEA-113's deprecation reached a deploy with CI green.
+    HACS requires nothing here and the ecosystem has only a habit (floors three
+    months to six years behind), so the rule comes from Home Assistant's own
+    guarantees: Core over 24 months is unsupported, users are told to update
+    within 6, and deprecations run about two years. CI tests the latest *and*
+    the floor; `hacs.json` declares the floor and never a version we have not
+    run. Measured, not chosen: the integration passes on 2026.7.0 and fails on
+    2026.6.4, on the power-only Integral helper and on the cycle-meter crater.
+    Pre-release the floor is simply the latest (HEA-124)
 
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)

@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.device_registry import DeviceEntry
 
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 _CONCEPTS = ("energy_used", "actual_cost", "cost_at_grid_price", "cost_savings")
@@ -163,10 +164,7 @@ async def test_untracked_is_a_normal_device(
     # real tracked devices: it reads as a genuine, intentional entry, not a service
     # device. (Marking it SERVICE did not suppress HA's area-assignment prompt, so
     # that approach was dropped in favour of a clearer name - HEA-44.)
-    devices = dr.async_get(hass)
-    untracked = devices.async_get_device_by_identifier(
-        (DOMAIN, f"{entry.entry_id}_untracked"), entry.entry_id
-    )
+    untracked = _hea_device(hass, entry, "_untracked")
     assert untracked is not None
     assert untracked.entry_type is None
 
@@ -249,10 +247,7 @@ async def test_whole_home_aggregate_publishes_the_monotonic_total(
 
     # Then - the Whole Home aggregate is its own device, and its energy/cost totals
     # stay `total_increasing` (they only ever grow - corrections add to the home)
-    devices = dr.async_get(hass)
-    whole_home = devices.async_get_device_by_identifier(
-        (DOMAIN, f"{entry.entry_id}_whole_home"), entry.entry_id
-    )
+    whole_home = _hea_device(hass, entry, "_whole_home")
     assert whole_home is not None
     registry = er.async_get(hass)
     energy_id = registry.async_get_entity_id(
@@ -376,6 +371,28 @@ async def test_totals_survive_a_restart_via_restore(
     state = hass.states.get(entity_id)
     assert state is not None
     assert Decimal(state.state) == Decimal("0.36")
+
+
+def _hea_device(
+    hass: HomeAssistant, entry: MockConfigEntry, suffix: str
+) -> DeviceEntry | None:
+    """The device this config entry registered under ``suffix``, or None.
+
+    Found among the config entry's own devices rather than by asking the
+    registry to match an identifier. `async_get_device` takes a *set* and
+    matches any of them on an assumption Home Assistant has dropped - an
+    identifier is unique only within a config entry - and from 2026.9 it raises
+    here rather than warning (HEA-113).
+
+    Its replacement, `async_get_device_by_identifier`, would work but exists
+    only from 2026.9, which would pin the whole suite to that release and take
+    the supported floor with it (HEA-124). Scanning the entry's devices needs no
+    API that moves, and says exactly what the lookup means: an identifier is
+    unique *within this config entry*, so this is the entry's device wearing it.
+    """
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    wanted = (DOMAIN, f"{entry.entry_id}{suffix}")
+    return next((device for device in devices if wanted in device.identifiers), None)
 
 
 async def _tick(hass: HomeAssistant, freezer: FrozenDateTimeFactory) -> None:
@@ -536,10 +553,7 @@ async def test_devices_registry_sensor_lives_on_the_hub_device(
     await hass.async_block_till_done()
 
     # Then - the sensor is grouped under a single hub device, not a tracked device
-    devices = dr.async_get(hass)
-    hub = devices.async_get_device_by_identifier(
-        (DOMAIN, entry.entry_id), entry.entry_id
-    )
+    hub = _hea_device(hass, entry, "")
     assert hub is not None
     assert hub.name == "Home Energy Advisor"
     registry = er.async_get(hass)
@@ -1151,10 +1165,7 @@ async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
     # entity id (HA composes `area + device + entity`, doubling the room name), and
     # `suggested_area` is removed in HA 2026.9 - so the hierarchy is exposed as
     # data, never written to the registry
-    devices = dr.async_get(hass)
-    hea_device = devices.async_get_device_by_identifier(
-        (DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}"), entry.entry_id
-    )
+    hea_device = _hea_device(hass, entry, f"_{_aircon_subentry_id(entry)}")
     assert hea_device is not None
     assert hea_device.area_id is None
     assert hass.states.get("sensor.coarse_step_aircon_energy_used") is not None
@@ -1205,9 +1216,7 @@ async def test_unreconciled_energy_lives_on_the_hub_device(
     await hass.async_block_till_done()
 
     # Then
-    hub = dr.async_get(hass).async_get_device_by_identifier(
-        (DOMAIN, entry.entry_id), entry.entry_id
-    )
+    hub = _hea_device(hass, entry, "")
     registry = er.async_get(hass)
     resolved = registry.async_get_entity_id(
         "sensor", DOMAIN, f"{entry.entry_id}_unreconciled_energy"

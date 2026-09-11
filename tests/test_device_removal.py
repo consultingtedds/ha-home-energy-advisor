@@ -71,13 +71,21 @@ async def _household(hass: HomeAssistant) -> MockConfigEntry:
 def _device(hass: HomeAssistant, entry: MockConfigEntry, suffix: str) -> DeviceEntry:
     """The HEA device this config entry registered under ``suffix``.
 
-    Looked up by identifier *and* owning config entry, because an identifier is
-    unique only within one (HEA-113). The set-taking `async_get_device` this
-    replaced raises in a custom integration's tests from Home Assistant 2026.9.
+    Found among the config entry's own devices rather than by asking the
+    registry to match an identifier. `async_get_device` takes a *set* and
+    matches any of them on an assumption Home Assistant has dropped - an
+    identifier is unique only within a config entry - and from 2026.9 it raises
+    here rather than warning (HEA-113).
+
+    Its replacement, `async_get_device_by_identifier`, would work but exists
+    only from 2026.9, which would pin the whole suite to that release and take
+    the supported floor with it (HEA-124). Scanning the entry's devices needs no
+    API that moves, and says exactly what the lookup means: an identifier is
+    unique *within this config entry*, so this is the entry's device wearing it.
     """
-    device = dr.async_get(hass).async_get_device_by_identifier(
-        (DOMAIN, f"{entry.entry_id}{suffix}"), entry.entry_id
-    )
+    devices = dr.async_entries_for_config_entry(dr.async_get(hass), entry.entry_id)
+    wanted = (DOMAIN, f"{entry.entry_id}{suffix}")
+    device = next((d for d in devices if wanted in d.identifiers), None)
     assert device is not None
     return device
 
