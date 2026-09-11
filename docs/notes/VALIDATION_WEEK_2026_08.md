@@ -375,3 +375,143 @@ drawn from.
   reference instance was 5 days and is now 10, so the analysis has roughly three
   days of slack after the window closes. Confirm it before opening a window, and
   do not leave the analysis a fortnight.
+
+---
+
+# Second run - 2026-09-04 to 2026-09-10 (HEA-28)
+
+> Written 2026-09-11, before any figure was compared. The first run's window is
+> void; this section records why, and what changed in the method as a result.
+
+## The August window has no data left
+
+Measured on the reference instance on 2026-09-11: the earliest long-term
+statistic for any Home Energy Advisor sensor is **2026-08-18**. The first run's
+window - the seven days from 2026-08-06 - has nothing behind it at any
+resolution. Raw history for it went long ago at 10-day retention, and the
+statistics are simply absent.
+
+**That contradicts the carry-forward note above**, which recorded that "long-term
+statistics were deliberately never cleared" by the 2026-08-18 reset. Whatever the
+intent, they were: the series starts the day of the reset. The README describes
+`reset_totals` as clearing the history behind the figures, so this is more likely
+the action working as documented than a defect - but the earlier note should not
+be trusted on the point.
+
+The August run is therefore unrecoverable, not merely unanalysed. It is left in
+place above as a record of method, which is the part that survives.
+
+## No second reset, and why
+
+The instance was **not** reset for this run, and should not be.
+
+* **The data since 18 August already reconciles.** Over 1-10 September, the
+  fifteen device figures plus the Untracked remainder sum to the whole-home
+  figure with a residual of `0.0000` on Actual Cost. Check 1 passes before the
+  run begins.
+* **Thirteen consecutive days to 2026-09-10 carry no gap and no negative**, and
+  every daily figure is plausible.
+* **A reset would actively damage the money series.** HEA-122: `reset_totals`
+  books the entire previous balance as one negative change on the money
+  statistics, because the cost sensors are `total` rather than
+  `total_increasing`, which Home Assistant handles. The 2026-08-18 reset left
+  −94.86 on Cost Savings and −23.90 on Actual Cost. Doing it again would put a
+  fresh crater in exactly the series this run reads.
+
+## Window and resolution
+
+| | |
+|---|---|
+| Window | **2026-09-04 to 2026-09-10**, seven whole local days |
+| Integration side | hourly long-term statistics |
+| Manual side | recorder history, confirmed reaching back to 2026-09-02 |
+| Excluded | 2026-09-11, a part day |
+
+Retention was checked before choosing the window rather than after, which is what
+the carry-forward note above asks for. The window sits two days inside the raw
+history edge.
+
+**Absolute reconciliation is not available and is not needed.** The first run
+could compare absolute values because the reset had zeroed everything. Every
+check here is a window delta instead, which the carry-forward note already
+anticipated.
+
+## The solar drop-off is in the window on purpose
+
+Generation falls away sharply over the last three days: 26.3 kWh on 8 September,
+then 17.4, then 10.7, while grid import holds steady around 12 kWh. A validation
+week containing a real disturbance is worth more than a clean one, because the
+question is not whether the accounting works when nothing happens.
+
+What it should demonstrate: the fall shows up as a shift from generation to grid
+rather than as a hole, costs rise rather than vanish, and the reconciliation
+holds throughout.
+
+## Results - 2026-09-11
+
+### Check 1: allocations sum to the whole home
+
+Daily, every day of the window, Actual Cost:
+
+| | |
+|---|---|
+| Worst residual on any day | **0.0002** |
+| Bound from 4 dp rounding across 16 sensors | ±0.0008 |
+| Days inside the bound | 7 of 7 |
+
+**Pass.** The allocation is exhaustive across the window, and the residual is
+presentation rounding rather than a ledger break, exactly as the first run found.
+
+### Check 2: the remainder is never negative
+
+**Pass.** No device-day in the window is negative, including Untracked, which
+carried €0.75-€1.59 a day - the largest single line in the house throughout.
+
+### The manual comparison, with a control
+
+Cost at Grid Price recomputed independently from the source statistics, as
+Σ(hourly energy × hourly price), against what the integration published:
+
+| Day | Price behaviour | Manual | Published | Difference |
+|---|---|---|---|---|
+| 6 Sept | flat, 0.093 all day | €3.8675 | €3.8675 | **0.000 %** |
+| 8 Sept | four steps | €7.6387 | €7.6947 | −0.727 % |
+
+**Pass**, and the control is what makes it meaningful. On a day where the price
+never moves, the hourly approximation cannot introduce error - and the two
+figures agree *exactly*, to the cent. That is the pricing path validated
+end to end, not merely found to be close.
+
+The −0.727 % on 8 September is then attributable to the approximation itself: an
+hourly mean price times an hourly energy total is not the same as pricing each
+five-minute interval at the price of the moment, and energy is not spread evenly
+within an hour. The sign is what that predicts, given the house draws most
+heavily in the afternoon.
+
+### The solar drop-off
+
+Generation fell from 26.3 kWh on 8 September to 17.4 and then 10.7, while grid
+import held between 12.1 and 13.6 kWh. Nothing went missing: the shortfall
+appears as grid and battery rather than as a hole, daily cost rose from €1.70 to
+€1.73 as generation fell away, and the reconciliation above held on every one of
+those days. The accounting absorbed a real disturbance without being told about
+it.
+
+### A trap worth recording
+
+The first attempt at the manual comparison was wrong by about 0.6 % on **both**
+days, including the flat-price control - which is what gave it away. The cause:
+the instance is UTC+2, so a local day's statistics run from 22:00 UTC to 22:00
+UTC, and a query written from midnight UTC silently takes two hours from the
+wrong end at each edge. Always take the hourly buckets from the daily bucket's
+own start.
+
+### Not covered by this run
+
+* **Check 3, the battery stored-cost ledger against Predbat's own accounting.**
+  Not attempted.
+* **Per-device manual recomputation.** The comparison above is whole-home. The
+  per-device figures reconcile to it exactly, which constrains them, but is not
+  the same as recomputing each device independently.
+* **The winter battery regime**, as the original scope already noted. A
+  post-winter review remains required before the model is considered proven.
