@@ -153,6 +153,25 @@ Presentation
     Python was rejected as a data-loss hazard - a second `DashboardsCollection`
     over the same store would let the next UI-created dashboard erase ours
     (HEA-94, HEA-109)
+21. ADR-0021: Persist the accounting runtime across a restart. A snapshot of the
+    engine's state is written beside the sensors' own restored totals, because
+    the sensors can carry a figure and not the context behind it - the retained
+    ring, the open buckets, the battery's stored-cost ledger. Supersedes the
+    flush-on-unload mechanism ADR-0006 accepted as a trade-off. The snapshot is
+    a cache and never a source of truth: every failure path starts the engine
+    cold and says why, because refusing one changes what the next discharge
+    costs (HEA-111, HEA-112)
+22. ADR-0022: A `total` figure owes its own zero point. ADR-0007 moved money to
+    `total` and recorded that the monotonic costs "lose nothing" by the move;
+    they lost the free reset detection `total_increasing` carries, and nothing
+    needed it until `reset_totals` shipped. The rebase of 2026-08-18 was
+    therefore booked as the household losing its whole balance - **-94.86** on
+    Cost Savings, **-23.90** on Actual Cost - so every period containing that
+    day reported money inverted. Every `total` sensor now stamps `last_reset`
+    when it starts again, absent until a rebase really happens (a stamp
+    appearing on a household that merely upgraded books its lifetime balance as
+    a *positive* change) and unchanged across a restart. Extends ADR-0007
+    rather than reopening it (HEA-122)
 
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -291,6 +310,14 @@ Presentation
 >
 > The winter regime is HEA-123, carried out rather than holding the epic open.
 > Full record in `notes/VALIDATION_WEEK_2026_08.md`.
+>
+> Dogfooding also found the defect the validation run itself had to route
+> around: a rebase booked the whole previous balance as one negative change on
+> every money figure, because `total` carries no reset detection and nothing had
+> ever told it otherwise. Fixed under HEA-122 and recorded as ADR-0022. It is
+> the strongest argument for the epic - four weeks of ordinary use surfaced a
+> defect that 374 passing tests, and a reading of the ticket that called it
+> production-immune, both missed.
 
 ### Epic 7 - Historical backfill (CANCELLED 2026-09-11)
 1. ~~Backfill via `recorder.import_statistics` on device setup~~

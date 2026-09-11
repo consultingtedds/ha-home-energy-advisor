@@ -418,6 +418,13 @@ The instance was **not** reset for this run, and should not be.
   −94.86 on Cost Savings and −23.90 on Actual Cost. Doing it again would put a
   fresh crater in exactly the series this run reads.
 
+  > **Fixed later the same day**, after this run had already chosen not to
+  > reset. Every `total` sensor now stamps `last_reset` when it starts again, so
+  > the compiler reads the fall as a new cycle rather than a loss (ADR-0022).
+  > The reasoning above still stands as the reason *this* run did not reset, and
+  > the 2026-08-18 crater is still there - nothing repairs a day already
+  > recorded that way.
+
 ## Window and resolution
 
 | | |
