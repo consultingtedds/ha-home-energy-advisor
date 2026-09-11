@@ -105,6 +105,7 @@ deliberately made otherwise - treat it that way by default.
 | Secrets in code or git | Environment variables; nothing secret belongs in this repo at all |
 | Writing multiple files in one operation | One file at a time - each change must trigger the IDE diff window |
 | Authoring project files through shell heredocs (`cat >> file`) | The editor, always. A shell write opens no diff, so the maintainer cannot see or challenge it as it happens. Bash is for *running* things, never for authoring |
+| Writing a file the maintainer never saw as a diff | Nothing. **Every file write is reviewed before it lands, without exception.** The diff window is part of the approval prompt, so a session that auto-accepts edits skips it and the review silently stops happening - the tool call is the only signal, and it looks identical either way. A `permissions.ask` rule on the edit tools plus a `PreToolUse` hook returning `permissionDecision: "ask"` (both in `~/.claude/settings.json`) force the prompt back on, because an interactive mode switch overrides `defaultMode`. If a write ever completes with no prompt, stop and say so before writing anything else |
 
 ---
 
