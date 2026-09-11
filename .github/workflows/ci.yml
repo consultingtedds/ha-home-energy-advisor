@@ -62,12 +62,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One entry while the supported floor is the latest release. Adding an
-        # older floor means adding its matching phacc pin here - phacc hard-pins
-        # the Home Assistant version it tests against.
+        # One entry, because before the first release this integration tracks
+        # Home Assistant's latest and supports nothing older - so the floor and
+        # the ceiling are the same version and a second entry would test a
+        # promise nobody is making. Supporting a range means adding the older
+        # floor here with its matching phacc pin; phacc hard-pins the Home
+        # Assistant version it tests against, so the pin is how the version is
+        # chosen (HEA-124).
+        #
+        # Letting this fall behind is not a chore, it is a blind spot: at
+        # 2026.7.2 the suite could not see the deprecation that reached a deploy
+        # in HEA-113, and was green the whole time because on that release the
+        # call was not deprecated.
         include:
-          - ha-version: "2026.7.2"
-            phacc: "0.13.346"
+          - ha-version: "2026.9.1"
+            phacc: "0.13.364"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

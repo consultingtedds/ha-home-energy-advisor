@@ -164,8 +164,8 @@ async def test_untracked_is_a_normal_device(
     # device. (Marking it SERVICE did not suppress HA's area-assignment prompt, so
     # that approach was dropped in favour of a clearer name - HEA-44.)
     devices = dr.async_get(hass)
-    untracked = devices.async_get_device(
-        identifiers={(DOMAIN, f"{entry.entry_id}_untracked")}
+    untracked = devices.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}_untracked"), entry.entry_id
     )
     assert untracked is not None
     assert untracked.entry_type is None
@@ -250,8 +250,8 @@ async def test_whole_home_aggregate_publishes_the_monotonic_total(
     # Then - the Whole Home aggregate is its own device, and its energy/cost totals
     # stay `total_increasing` (they only ever grow - corrections add to the home)
     devices = dr.async_get(hass)
-    whole_home = devices.async_get_device(
-        identifiers={(DOMAIN, f"{entry.entry_id}_whole_home")}
+    whole_home = devices.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}_whole_home"), entry.entry_id
     )
     assert whole_home is not None
     registry = er.async_get(hass)
@@ -537,7 +537,9 @@ async def test_devices_registry_sensor_lives_on_the_hub_device(
 
     # Then - the sensor is grouped under a single hub device, not a tracked device
     devices = dr.async_get(hass)
-    hub = devices.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    hub = devices.async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     assert hub is not None
     assert hub.name == "Home Energy Advisor"
     registry = er.async_get(hass)
@@ -1150,8 +1152,8 @@ async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
     # `suggested_area` is removed in HA 2026.9 - so the hierarchy is exposed as
     # data, never written to the registry
     devices = dr.async_get(hass)
-    hea_device = devices.async_get_device(
-        identifiers={(DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}")}
+    hea_device = devices.async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}"), entry.entry_id
     )
     assert hea_device is not None
     assert hea_device.area_id is None
@@ -1203,7 +1205,9 @@ async def test_unreconciled_energy_lives_on_the_hub_device(
     await hass.async_block_till_done()
 
     # Then
-    hub = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    hub = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, entry.entry_id), entry.entry_id
+    )
     registry = er.async_get(hass)
     resolved = registry.async_get_entity_id(
         "sensor", DOMAIN, f"{entry.entry_id}_unreconciled_energy"

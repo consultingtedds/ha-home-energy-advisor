@@ -78,6 +78,16 @@ ignore_missing_imports = true
 module = "yaml"
 ignore_missing_imports = true
 
+# `StaticPathConfig` is defined in `http.server` and imported into the `http`
+# package, which declares no `__all__` - so under strict mode it is not a
+# re-export and the import is rejected. Home Assistant plainly means it to be
+# public there: that is how its own `frontend` integration imports it, and the
+# defining module is not a path any integration should reach into. Narrowed to
+# the one package, so nothing else gains an implicit re-export (HEA-124).
+[[tool.mypy.overrides]]
+module = "homeassistant.components.http"
+implicit_reexport = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Puts the repo root on sys.path so `custom_components.home_energy_advisor`

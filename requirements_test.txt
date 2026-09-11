@@ -1,13 +1,13 @@
 # pytest-homeassistant-custom-component pins the Home Assistant version it
-# tests against (2026.7.2) along with pytest and its plugins. Do not pin pytest
+# tests against (2026.9.1) along with pytest and its plugins. Do not pin pytest
 # or pytest-cov here - the pins would conflict with it.
-pytest-homeassistant-custom-component==0.13.346
+pytest-homeassistant-custom-component==0.13.364
 
 # The frontend component is a hard requirement of the card tests and phacc does
 # not install it. This must be the version the pinned Home Assistant's own
 # frontend manifest asks for, so it moves with every phacc bump; a drift guard
 # in tests/test_dependency_pins.py fails when it does not.
-home-assistant-frontend==20260624.5
+home-assistant-frontend==20260826.6
 
 ruff==0.16.6
 mypy==2.3.1

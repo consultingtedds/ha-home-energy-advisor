@@ -791,7 +791,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
 
     def _device_behind(
         self, registry: er.EntityRegistry, entity_id: str | None
-    ) -> dr.DeviceEntry | None:
+    ) -> dr.AnyDeviceEntry | None:
         """The registry device one of this integration's own entities sits on.
 
         Resolved through the entity rather than by looking the device up by the
@@ -811,6 +811,13 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         place that rebuilds an identifier and has to be right about it, and the
         device it names is now by construction the device its own figures are
         published on.
+
+        The return type is `AnyDeviceEntry` because a device id can now resolve
+        to a `ChildDeviceEntry`, which is *not* a `DeviceEntry` - both descend
+        from `BaseDeviceEntry` instead. Only base attributes are read from it
+        here (`id`, `name`, `name_by_user`), which is what keeps that
+        distinction from mattering: reaching for a `DeviceEntry`-only attribute
+        on a child returns a default and warns, rather than failing.
         """
         if entity_id is None:
             return None

@@ -68,9 +68,16 @@ async def _household(hass: HomeAssistant) -> MockConfigEntry:
     return entry
 
 
-def _device(hass: HomeAssistant, identifier: str) -> DeviceEntry:
-    """The HEA device registered under ``identifier``."""
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, identifier)})
+def _device(hass: HomeAssistant, entry: MockConfigEntry, suffix: str) -> DeviceEntry:
+    """The HEA device this config entry registered under ``suffix``.
+
+    Looked up by identifier *and* owning config entry, because an identifier is
+    unique only within one (HEA-113). The set-taking `async_get_device` this
+    replaced raises in a custom integration's tests from Home Assistant 2026.9.
+    """
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, f"{entry.entry_id}{suffix}"), entry.entry_id
+    )
     assert device is not None
     return device
 
@@ -82,7 +89,7 @@ async def test_deleting_a_tracked_device_removes_its_subentry(
     # Given - a household tracking one device
     entry = await _household(hass)
     subentry_id = next(iter(entry.subentries))
-    device = _device(hass, f"{entry.entry_id}_{subentry_id}")
+    device = _device(hass, entry, f"_{subentry_id}")
 
     # When - that device is deleted from its device page
     assert await async_remove_config_entry_device(hass, entry, device)
@@ -106,7 +113,7 @@ async def test_an_aggregate_device_cannot_be_deleted(
     """Test the aggregates are refused - they are derived, not configured."""
     # Given - a set-up household
     entry = await _household(hass)
-    device = _device(hass, f"{entry.entry_id}{suffix}")
+    device = _device(hass, entry, suffix)
 
     # When / Then - Home Assistant is told the device may not be removed
     assert not await async_remove_config_entry_device(hass, entry, device)
