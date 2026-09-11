@@ -60,7 +60,7 @@ async function main() {
     // old figures and reports success: nine of ten devices came back identical
     // to the cent after their profiles had been rewritten.
     const targets = statisticIds(rows);
-    await socket.send({ type: "recorder/clear_statistics", statistic_ids: targets });
+    await clearAndWait(socket, targets);
 
     // Per-hour totals for the whole house, accumulated as each device is built.
     const house = { used: zeros(hours), grid: zeros(hours), solar: zeros(hours), battery: zeros(hours) };
@@ -180,6 +180,38 @@ function statisticIds(rows) {
   );
   const sources = rows.map((row) => row.profile.source).filter(Boolean);
   return [...new Set([...concepts, ...sources, ...HOUSE_METERS, HOUSE.importPrice])];
+}
+
+/**
+ * Clear the statistics, and wait until they are actually gone.
+ *
+ * The wait is the point. `clear_statistics` returns before the recorder has
+ * committed it, so importing straight afterwards leaves rows from the previous
+ * seeding sitting in front of the new ones. The new series restarts its running
+ * total at zero, so the sum goes *backwards* at the join, and Home Assistant
+ * correctly reports that hour as a large negative change - about minus a week's
+ * worth. Every card then adds it up and shows negative money and negative
+ * energy, which looks like a product defect and is not (HEA-121).
+ *
+ * A real sensor cannot do this. Its statistics come from Home Assistant's own
+ * engine, which handles a counter reset and never writes a decreasing sum. Only
+ * imported statistics can go backwards, so only this seed can cause it.
+ */
+async function clearAndWait(socket, ids) {
+  await socket.send({ type: "recorder/clear_statistics", statistic_ids: ids });
+  const wide = { start_time: new Date(0).toISOString(), statistic_ids: ids, period: "month" };
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const found = await socket.send({
+      type: "recorder/statistics_during_period",
+      ...wide,
+    });
+    if (Object.keys(found).length === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    "The old statistics are still there after thirty seconds. Seeding over " +
+      "them would make the running totals go backwards and every card negative.",
+  );
 }
 
 /**

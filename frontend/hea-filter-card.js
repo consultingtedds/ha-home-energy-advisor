@@ -28,7 +28,6 @@
  * asking the recorder for figures it never draws.
  */
 
-import { pinPeriodPickerAbove } from "./ha-energy-collection.js";
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { readDevices, readLabelNames } from "./hea-devices.js";
@@ -97,28 +96,6 @@ class HeaFilterCard extends HTMLElement {
     this._unfilter ??= subscribeToFilter(this._config?.collection_key, () =>
       this._renderIfChanged(),
     );
-    this._pinPeriodPicker();
-  }
-
-  /**
-   * Point the neighbouring period picker's calendar upward (HEA-115).
-   *
-   * This card is the strategy's companion to the picker in the view footer, so
-   * it is the one element that knows where that picker is. The reaching itself
-   * lives in the adapter, which is the only module allowed to touch Home
-   * Assistant internals (ADR-0012).
-   *
-   * Retried because the two cards render independently and the picker may not
-   * exist yet, and re-applied on every redraw because the selector owns the
-   * property and recomputes it from a measurement.
-   */
-  _pinPeriodPicker(attemptsLeft = 10) {
-    clearTimeout(this._pinRetry);
-    if (pinPeriodPickerAbove(this) || attemptsLeft <= 0) return;
-    this._pinRetry = setTimeout(
-      () => this._pinPeriodPicker(attemptsLeft - 1),
-      100,
-    );
   }
 
   /**
@@ -158,7 +135,6 @@ class HeaFilterCard extends HTMLElement {
   disconnectedCallback() {
     this._unfilter?.();
     this._unfilter = null;
-    clearTimeout(this._pinRetry);
   }
 
   get _labels() {
@@ -262,7 +238,6 @@ class HeaFilterCard extends HTMLElement {
     const labels = this._labels;
     const devices = this._devices();
     this._drawn = this._signature();
-    pinPeriodPickerAbove(this);
     const body = devices.length
       ? this._control(labels)
       : `<p class="message">${labels.no_devices}</p>`;
@@ -280,7 +255,26 @@ class HeaFilterCard extends HTMLElement {
           flex-direction: column;
           justify-content: center;
         }
-        .body { padding: 16px; display: flex; align-items: center; gap: 12px; }
+        /*
+         * 4px of vertical padding around a 48px row, which is exactly the
+         * energy-date-selection card beside it: 56px overall.
+         *
+         * Height is not cosmetic here. A horizontal stack stretches its cards
+         * to the tallest of them, so a taller filter card raises the whole
+         * footer and pushes the period picker's trigger down with it. Home
+         * Assistant decides which way that picker's calendar opens by measuring
+         * whether it fits above, and at a 639px viewport the margin is two
+         * pixels - so 16px of padding here was enough to make the calendar open
+         * downwards off the screen (HEA-115).
+         */
+        .body {
+          box-sizing: border-box;
+          min-height: 56px;
+          padding: 4px 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
         .label {
           color: var(--secondary-text-color);
           font-size: 0.85em;

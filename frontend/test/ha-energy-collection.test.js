@@ -14,7 +14,6 @@ import {
   fallbackPeriod,
   findEnergyCollections,
   isEnergyCollection,
-  pinPeriodPickerAbove,
   resolveCollection,
   subscribeToPeriod,
 } from "../ha-energy-collection.js";
@@ -454,83 +453,5 @@ describe("subscribeToPeriod", () => {
     // Then - no listener left behind, and no further callbacks
     expect(energy.listenerCount).toBe(0);
     expect(onPeriod).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("pinning the period picker's calendar above it", () => {
-  /**
-   * A stand-in for the footer Home Assistant builds around our cards. The
-   * picker lives behind two shadow roots, exactly as it does on the page.
-   */
-  const aFooter = ({ withPicker = true } = {}) => {
-    const footer = document.createElement("hui-view-footer");
-    const card = document.createElement("hui-energy-date-selection-card");
-    const shadow = card.attachShadow({ mode: "open" });
-    const selector = document.createElement("hui-energy-period-selector");
-    const inner = selector.attachShadow({ mode: "open" });
-    const picker = document.createElement("ha-date-range-picker");
-    picker.popoverPlacement = "bottom-start";
-    if (withPicker) inner.append(picker);
-    shadow.append(selector);
-    const ours = document.createElement("hea-filter-card");
-    footer.append(card, ours);
-    return { footer, ours, picker };
-  };
-
-  it("turns the picker upwards so its calendar is not drawn off the screen", () => {
-    // Given - our card beside Home Assistant's picker in the view footer
-    const { ours, picker } = aFooter();
-
-    // When - the adapter is asked to pin the calendar above the control
-    const pinned = pinPeriodPickerAbove(ours);
-
-    // Then - the picker opens upward. Anywhere else on a page it can flip on
-    // its own; pinned to the bottom of the viewport it decides `bottom-start`
-    // and draws the calendar past the edge, where nothing scrolls to reach it.
-    expect(pinned).toBe(true);
-    expect(picker.popoverPlacement).toBe("top-start");
-  });
-
-  it("reports failure when the picker has not rendered yet", () => {
-    // Given - the footer exists but Home Assistant's card has not filled it in
-    const { ours } = aFooter({ withPicker: false });
-
-    // When / Then - the caller is told, so it can try again rather than
-    // assuming a picker it never found is now pointing the right way
-    expect(pinPeriodPickerAbove(ours)).toBe(false);
-  });
-
-  it("leaves pickers outside our own footer alone", () => {
-    // Given - a picker on some other dashboard, in no footer of ours
-    const loose = document.createElement("ha-date-range-picker");
-    loose.popoverPlacement = "bottom-start";
-    document.body.append(loose);
-    const orphan = document.createElement("hea-filter-card");
-    document.body.append(orphan);
-
-    // When - the adapter is asked to pin from a card with no footer above it
-    const pinned = pinPeriodPickerAbove(orphan);
-
-    // Then - nothing is touched. Our bundle loads on every page, so reaching
-    // for any picker it can see would change Home Assistant's own dashboards.
-    expect(pinned).toBe(false);
-    expect(loose.popoverPlacement).toBe("bottom-start");
-    loose.remove();
-    orphan.remove();
-  });
-
-  it("is idempotent, so it can be re-applied whenever our card updates", () => {
-    // Given - a footer whose picker has already been pinned once
-    const { ours, picker } = aFooter();
-    pinPeriodPickerAbove(ours);
-
-    // When - Home Assistant reasserts its own choice and we pin again
-    picker.popoverPlacement = "bottom-start";
-    const pinned = pinPeriodPickerAbove(ours);
-
-    // Then - it is put back. The selector owns this property and recomputes it,
-    // so re-applying has to be safe to do on every render.
-    expect(pinned).toBe(true);
-    expect(picker.popoverPlacement).toBe("top-start");
   });
 });

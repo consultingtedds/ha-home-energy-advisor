@@ -79,7 +79,15 @@ const footer = () => ({
   card: {
     type: "horizontal-stack",
     cards: [
-      { type: "energy-date-selection" },
+      {
+        type: "energy-date-selection",
+        // The card's own option, passed straight through to the period
+        // selector, which turns "up" into a `top-start` placement for the
+        // calendar. Left at its default the calendar opens downwards from a
+        // control already pinned to the bottom of the viewport, where a sticky
+        // footer never scrolls to reach it (HEA-115).
+        vertical_opening_direction: "up",
+      },
       { type: "custom:hea-filter-card" },
     ],
   },

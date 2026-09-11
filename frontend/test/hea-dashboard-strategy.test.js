@@ -94,6 +94,20 @@ describe("the dashboard strategy", () => {
     ]);
   });
 
+  it("asks the picker to open its calendar upwards", async () => {
+    // Given / When
+    const { views } = await generateDashboard(hass);
+    const picker = views[0].footer.card.cards.find(
+      (card) => card.type === "energy-date-selection",
+    );
+
+    // Then - the card's own option, which it passes to the period selector.
+    // Left at its default the calendar is drawn downwards from a control
+    // already pinned to the bottom of the viewport, past the edge of a sticky
+    // footer that never scrolls to reach it (HEA-115).
+    expect(picker.vertical_opening_direction).toBe("up");
+  });
+
   it("names no device anywhere in what it generates", async () => {
     // Given / When - a household whose devices have names the cards could have
     // been made to hardcode
