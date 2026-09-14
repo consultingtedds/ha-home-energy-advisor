@@ -198,6 +198,35 @@ export async function freshAuth() {
 }
 
 /**
+ * The entity id behind one of the integration's `unique_id`s.
+ *
+ * Never compose one. Home Assistant builds an entity id from the entity's
+ * *translated* name, so on the Spanish instance this harness stands up, the
+ * devices sensor is `sensor.home_energy_advisor_dispositivos` and every device
+ * figure is named in Spanish too (ADR-0018).
+ *
+ * That is not a hypothetical. The first version of the end-to-end runner asked
+ * for the English id, got nothing back, and reported that the integration had
+ * published no devices at all - the identical mistake the cards are forbidden
+ * to make, committed by the harness written to catch it.
+ *
+ * The `unique_id` is ours and is never translated, which is why it is the thing
+ * to look up by.
+ */
+export async function entityIdForUniqueId(token, suffix, domain = "home_energy_advisor") {
+  const socket = await HaSocket.connect(token);
+  try {
+    const entries = await socket.send({ type: "config/entity_registry/list" });
+    const found = entries.find(
+      (entry) => entry.platform === domain && entry.unique_id?.endsWith(suffix),
+    );
+    return found?.entity_id ?? null;
+  } finally {
+    socket.close();
+  }
+}
+
+/**
  * A websocket connection with the command ids and the auth handshake handled.
  *
  * Almost everything the seed does - registries, energy preferences, importing

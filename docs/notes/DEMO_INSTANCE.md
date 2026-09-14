@@ -34,14 +34,15 @@ long-term statistics compiler among them (HEA-122 was settled against the real
 recorder in `tests/test_reset_statistics.py` instead). Running `reset_totals` on
 the demo would clear the seeded week and prove nothing.
 
-Worth knowing before scoping the end-to-end tests in HEA-116: what this instance
-tests well is setup, discovery, the flows, the dashboard and the cards.
+What this instance tests well is setup, discovery, the flows, the dashboard and
+the cards.
 
 ## Running it
 
 Docker Desktop has to be running. Nothing else is needed.
 
 ```bash
+node demo/run-e2e.mjs      # build a house, assert against it, repeat in Spanish
 node demo/reset.mjs        # throw the house away, leave a container ready
 node demo/setup.mjs        # onboard, build the rooms, fill in the Energy Dashboard
 node demo/screenshots.mjs  # drive the flows, seed a week, photograph everything
@@ -50,6 +51,57 @@ node demo/cold-load.mjs 10 # load the dashboard cold N times and count what rend
 
 `screenshots.mjs` seeds as it goes, so it is the only one to run for a rebuild.
 `seed.mjs` can be run alone when only the figures need changing.
+
+## The end-to-end checks
+
+```bash
+node demo/run-e2e.mjs         # both languages, then tear the container down
+node demo/run-e2e.mjs es      # one language
+node demo/run-e2e.mjs --keep  # leave the instance up to poke at
+node demo/e2e.mjs             # assert against a house that already exists
+```
+
+Ten minutes or so, because each language rebuilds the instance from nothing.
+
+**They are not one of the five gates**, deliberately. They are slow, they need
+Docker, and Home Assistant ships monthly and will break them periodically. Run
+them when the answer matters: before a release, or after a change to the cards.
+
+### What they are for
+
+The card unit tests mount a card against a double written from the same belief
+as the card, and a double like that cannot disagree - HEA-84 shipped broken past
+501 green tests. These load the real dashboard in a real Home Assistant and read
+what a household would see, which makes them the only tests here that can tell
+us we were wrong.
+
+They assert **figures, never pixels**. A screenshot comparison rots against
+Home Assistant's own UI within a release or two, and then everyone learns to
+ignore it.
+
+### Why the Spanish pass rebuilds the instance
+
+Home Assistant builds an entity id from the entity's translated name, and it
+does that once, when the entity is first registered. The registry then keeps
+that id forever, keyed by `unique_id`: deleting the integration and adding it
+back restores the ids it had before. So a Spanish pass cannot be a language
+switch on a running house - it needs an instance whose language was Spanish
+before the integration created anything.
+
+Only the *instance* language changes. The account stays English, so the browser
+automation keeps meeting English menus while the ids underneath it are Spanish.
+
+That pass earned its cost immediately. It found that every card rendered "No
+devices are being tracked yet." on a Spanish instance with nine tracked devices,
+because `hea-devices.js` hardcoded the English entity id of the sensor that
+lists them - five lines below its own comment explaining why that is wrong
+(HEA-126). Three places in this harness had the same bug.
+
+### What they still do not cover
+
+Everything in *What it cannot answer* above, and one thing more: anything a
+chart draws to a canvas is invisible to them. The figures they read are the ones
+in the DOM, which is roughly what a screen reader would reach.
 
 ## Retaking the screenshots
 

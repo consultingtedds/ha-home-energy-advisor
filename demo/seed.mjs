@@ -29,7 +29,17 @@
 import { DEVICES, HOUSE, TARIFF, UNTRACKED, WINDOW_DAYS } from "./house.mjs";
 import { HaSocket, freshAuth } from "./ha-client.mjs";
 
-const DEVICES_SENSOR = "sensor.home_energy_advisor_devices";
+/**
+ * How the devices sensor is found: by the `unique_id` we gave it, never by a
+ * composed entity id.
+ *
+ * The module docstring above already says Home Assistant translates entity ids
+ * in the 41 languages that include Spanish. This file then hardcoded the
+ * English one, and nothing noticed until the end-to-end run stood a Spanish
+ * instance up and the seed insisted the integration was not configured
+ * (HEA-116, ADR-0018).
+ */
+const DEVICES_UNIQUE_ID_SUFFIX = "_devices";
 const CURRENCY = "EUR";
 const HOURS_PER_DAY = 24;
 
@@ -111,13 +121,23 @@ async function readDeviceRows(socket) {
   // catches up on its own refresh, which took over half a minute here.
   let rows = [];
   for (let attempt = 0; attempt < 90; attempt += 1) {
-    const states = await socket.send({ type: "get_states" });
-    const sensor = states.find((state) => state.entity_id === DEVICES_SENSOR);
-    if (!sensor) {
+    const registry = await socket.send({ type: "config/entity_registry/list" });
+    const registered = registry.find(
+      (entry) =>
+        entry.platform === "home_energy_advisor" &&
+        entry.unique_id?.endsWith(DEVICES_UNIQUE_ID_SUFFIX),
+    );
+    if (!registered) {
       throw new Error(
-        `${DEVICES_SENSOR} does not exist. Configure the integration first - ` +
-          "the screenshot run drives that flow through the browser.",
+        "The integration's devices sensor is not registered. Configure the " +
+          "integration first - `demo/configure.mjs`, or the screenshot run, " +
+          "which drives that flow through the browser.",
       );
+    }
+    const states = await socket.send({ type: "get_states" });
+    const sensor = states.find((state) => state.entity_id === registered.entity_id);
+    if (!sensor) {
+      throw new Error(`${registered.entity_id} is registered but has no state yet.`);
     }
     rows = (sensor.attributes.devices ?? []).map((row) => ({
       ...row,
@@ -221,11 +241,20 @@ async function clearAndWait(socket, ids) {
  * says nothing about what is readable. Whatever runs next - the screenshot pass,
  * most obviously - would otherwise photograph a card with a device missing from
  * it, and nothing on the page would say why.
+ *
+ * Two minutes, raised from forty seconds. The original bound was tuned against
+ * an instance that had been sitting idle, and the end-to-end run seeds one that
+ * has just created sixty-one native helpers - the recorder is still working
+ * through that, and twenty-five statistics were still uncommitted when the old
+ * limit expired. Waiting longer costs nothing on a quiet instance, because this
+ * returns the moment everything is readable.
  */
+const READBACK_ATTEMPTS = 120;
+
 async function confirmReadable(socket, ids, hours) {
   const start = hours[0].toISOString();
   const end = new Date(hours.at(-1).getTime() + 3600_000).toISOString();
-  for (let attempt = 0; attempt < 40; attempt += 1) {
+  for (let attempt = 0; attempt < READBACK_ATTEMPTS; attempt += 1) {
     const found = await socket.send({
       type: "recorder/statistics_during_period",
       start_time: start,
@@ -235,7 +264,7 @@ async function confirmReadable(socket, ids, hours) {
     });
     const missing = ids.filter((id) => !found[id]?.length);
     if (missing.length === 0) return;
-    if (attempt === 39) {
+    if (attempt === READBACK_ATTEMPTS - 1) {
       throw new Error(
         `${missing.length} statistics never became readable, including ` +
           `${missing.slice(0, 4).join(", ")}. The cards would be short of them.`,

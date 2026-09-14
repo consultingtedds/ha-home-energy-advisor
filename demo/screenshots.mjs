@@ -22,6 +22,7 @@ import { chromium } from "playwright";
 
 import { DEVICES, HOUSE } from "./house.mjs";
 import { BASE_URL, HaSocket, browserTokens, freshAuth } from "./ha-client.mjs";
+import { clickIconButton, stepBackOneDay, strandedCards } from "./browser.mjs";
 
 /** Where the generated dashboard lives, as the strategy names it. */
 const DASHBOARD_PATH = "home-energy-advisor";
@@ -336,12 +337,7 @@ async function captureCards(browser, tokens) {
   // built and swaps to the picker's period a beat later, and cards further down
   // the page are built later still. Sampling once catches whichever happen to
   // be mid-flight.
-  let stranded = 0;
-  for (let attempt = 0; attempt < 30; attempt += 1) {
-    stranded = await page.getByText("Add an Energy date picker card").count();
-    if (stranded === 0) break;
-    await page.waitForTimeout(1000);
-  }
+  const stranded = await strandedCards(page);
   if (stranded > 0) {
     throw new Error(
       `${stranded} cards did not find the period picker. Their figures are for a ` +
@@ -354,8 +350,7 @@ async function captureCards(browser, tokens) {
   // has not run yet, so it reads zero, and a house where most devices cost
   // nothing photographs as a broken one. Yesterday is a whole day for every
   // device, which is what the README is illustrating.
-  await clickIconButton(page, "Previous");
-  await page.waitForTimeout(5000);
+  await stepBackOneDay(page);
 
   await shot(page, "dashboard");
 
@@ -404,31 +399,6 @@ async function captureDiscovery(page) {
   await shot(page, "discover-devices");
   await page.keyboard.press("Escape");
   await page.waitForTimeout(1000);
-}
-
-/**
- * Click one of Home Assistant's icon buttons by its label.
- *
- * They carry the label as a property rather than an attribute, so none of
- * Playwright's accessible-name selectors can see it and the page offers sixty
- * identical-looking buttons instead.
- */
-async function clickIconButton(page, label) {
-  const clicked = await page.evaluate((wanted) => {
-    const search = (root) => {
-      for (const element of root.querySelectorAll("*")) {
-        if (element.tagName.toLowerCase() === "ha-icon-button" && element.label === wanted) {
-          element.click();
-          return true;
-        }
-        if (element.shadowRoot && search(element.shadowRoot)) return true;
-      }
-      return false;
-    };
-    return search(document);
-  }, label);
-  if (!clicked) throw new Error(`No icon button labelled "${label}"`);
-  await page.waitForTimeout(1500);
 }
 
 /**

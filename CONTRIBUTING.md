@@ -142,16 +142,22 @@ household in it: rooms, devices, a week of fabricated figures, and the
 integration set up against them. It needs Docker and nothing else.
 
 ```bash
+node demo/run-e2e.mjs      # build a house, assert against it, repeat in Spanish
 node demo/reset.mjs        # throw the house away, leave a container ready
 node demo/setup.mjs        # onboard, build the rooms, fill in the Energy Dashboard
 node demo/screenshots.mjs  # drive the setup flow, seed a week, photograph it all
 node demo/cold-load.mjs 10 # load the dashboard cold N times, and count what renders
 ```
 
-It is worth reaching for before a frontend change in particular. The unit tests
-mount a card against a double, which cannot disagree with the code it was
-written beside; the demo runs the real cards in a real Home Assistant, and has
-caught several things the green suite did not.
+**`run-e2e.mjs` is the one to reach for before a frontend change.** It takes
+about ten minutes and is deliberately not one of the gates - too slow, needs
+Docker, and Home Assistant ships monthly and will break it periodically.
+
+It earns that anyway. The unit tests mount a card against a double, which cannot
+disagree with the code it was written beside; this runs the real cards in a real
+Home Assistant and reads the figures a household would see. Its first Spanish
+run found that every card reported an empty house on a Spanish install, which
+501 green tests had never been able to see.
 
 `docs/notes/DEMO_INSTANCE.md` covers it properly.
 
