@@ -95,11 +95,15 @@ def next_version(current: str, messages: list[str]) -> str | None:
     release" from "release the same version again". The second would fail on an
     existing tag, loudly and for entirely the wrong reason.
 
-    **A breaking change before 1.0.0 bumps the minor, not the major.** 0.x
-    already means "anything here may change", and 1.0.0 is a statement about
-    stability that a maintainer makes deliberately - not one a commit subject
-    makes on their behalf. Reaching it by accident would promise a household
-    something nobody decided to promise.
+    **A breaking change before 1.0.0 bumps the minor, not the major.** Settled
+    2026-09-14, not a default: 0.x already means "anything here may change", and
+    1.0.0 is a statement about stability a maintainer makes deliberately - not
+    one a commit subject makes on their behalf. Reaching it by accident would
+    promise a household something nobody decided to promise.
+
+    Once 1.0.0 is cut the promise exists, and this switches to bumping the major
+    on its own. Nothing here needs changing for that; cutting it is the
+    decision, and it is the only one left in this rule.
     """
     bump = max((bump_for(message) for message in messages), default=Bump.NONE)
     if bump is Bump.NONE:
