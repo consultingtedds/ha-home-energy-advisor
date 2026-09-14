@@ -26,13 +26,15 @@
 # Both pairings are enforced by tests/test_dependency_pins.py, so neither
 # depends on anyone remembering this comment.
 #
-# One security alert is open on purpose and will stay open: `adm-zip`
-# (CVE-2026-76845, medium, development scope), reached through
-# `sonarqube-scanner`. There is no patched release - the affected range covers
-# every published version including the latest - and the scanner is already on
-# its own latest. It is deliberately not dismissed, because a dismissal hides
-# it; HEA-120 records the reasoning and what would change the answer. If you are
-# reading this because the security tab is red, that is why.
+# An `adm-zip` advisory (GHSA-vwc7-r8mq-g2x9, moderate, development scope) was
+# accepted as permanently red for a while, because it was reached through
+# `sonarqube-scanner` and no patched release existed. One does now: the affected
+# range ends at 0.6.0 and 0.6.1 carries the fix, while the scanner still pins
+# 0.6.0 exactly. An `overrides` entry in `package.json` takes the patch, which is
+# why that entry exists and why it is not a stray pin (HEA-120).
+#
+# Removing the override needs the scanner to bump its own dependency first;
+# until then npm resolves 0.6.0 again and the alert returns.
 
 version: 2
 
