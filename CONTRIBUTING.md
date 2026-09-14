@@ -33,6 +33,45 @@ repository:
 If you find yourself needing a ticket to understand something, that is a
 documentation bug worth raising.
 
+## How the code is laid out
+
+```
+custom_components/home_energy_advisor/          the integration - a thin adapter
+custom_components/home_energy_advisor/engine/   the accounting engine
+frontend/                                       the Lovelace cards, plain ES modules
+tests/                                          pytest
+demo/                                           a throwaway Home Assistant in a container
+docs/                                           plan, ADRs, standards, notes
+```
+
+**The split between the first two is the load-bearing one.** The engine is pure
+Python with zero `homeassistant.*` imports - it is the financial model, and it
+stays independently testable. Everything that knows about Home Assistant lives
+above it and adapts state into engine inputs.
+
+What the engine does, in a paragraph: house consumption over each five-minute
+interval is decomposed into grid import (priced live), generation (priced at
+zero, with the export cost deferred) and battery discharge (priced at the
+weighted average cost of what went in). That is allocated across the tracked
+devices and an "Untracked" remainder by each one's share of the draw, so the
+allocations always sum to the real cost. Period totals and any power-to-energy
+conversion use Home Assistant's own `utility_meter` and Integral helpers,
+created automatically - the arithmetic is never reimplemented here.
+
+`docs/adr/0002` and `docs/adr/0004` carry that properly, with the alternatives
+that were rejected.
+
+## Where the reasoning lives
+
+- `docs/CRITICAL_INSTRUCTIONS.md` - the project's own rules, as two checklists of
+  what is never done and what is always done. Terse by design.
+- `docs/PLAN.md` - the delivery plan, the decision log, and the epic map.
+- `docs/adr/` - accepted decisions, append-only. Start here for *why*.
+- `docs/TESTING_STANDARDS.md` and `docs/DOCUMENTATION_STANDARDS.md` - how tests
+  and docs are written here, and why they look as they do.
+- `docs/notes/DEVICE_SENSOR_SURVEY.md` - how real energy and power sensors
+  actually behave, which is where several of the stranger rules come from.
+
 ## Commit messages
 
 **[Conventional Commits](https://www.conventionalcommits.org/) are required**, and

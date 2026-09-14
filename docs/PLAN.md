@@ -36,7 +36,7 @@ reference, not as target outputs.
 | i18n | **Day one**: `strings.json` + `translations/` (en, es) | Same discipline as the retirement platform; retrofitting translations is worse than starting with them |
 | Quality gates | ruff (strict) + mypy (strict) + pytest coverage ≥90% enforced in CI; **SonarQube as a local pre-commit gate** (existing local server, same `sonar-check.sh` workflow as the retirement repos), never a CI-blocking step | Revised 2026-07-12: with the server and workflow already in place the marginal cost is near zero, and Sonar adds what ruff+mypy don't - cognitive-complexity enforcement (the mechanism behind the "orchestrators read as linear steps" rule), cross-file duplication detection, and the new-code quality-gate ratchet. CI stays green without it so external contributors are never blocked; revisit SonarCloud (free for OSS) if the project attracts contributors |
 | Local dev environment | **WSL (Ubuntu-24.04) + uv**, Python 3.14, venv at `~/.venvs/hea` - not Windows | Discovered 2026-07-12 while building the CI pipeline: Home Assistant imports `fcntl` (Unix-only) and `pytest-homeassistant-custom-component` loads as a pytest plugin, so on Windows `pytest` dies at collection even for tests with no HA imports. Windows is not a supported HA platform and never will be. WSL also makes the local pre-commit gate byte-identical to CI (same Linux, Python and HA versions), so the gate genuinely predicts CI rather than approximating it. ruff and mypy do still run natively on Windows - they never execute the code - but the split is not worth maintaining |
-| Workflow | TDD, conventional commits with ticket scope (`fix(HEA-nn):`), direct-to-main, append-only ADRs, adapted ways-of-working doc set | Same principles as `ai-shared-config/CRITICAL_INSTRUCTIONS.md`, tuned for Python/HA |
+| Workflow | TDD, conventional commits with ticket scope (`fix(HEA-nn):`), direct-to-main, append-only ADRs, a standing checklist of project rules | Carried over from the maintainer's other projects and tuned for Python/HA; `docs/CRITICAL_INSTRUCTIONS.md` is the checklist |
 | Tracking | Linear team **Home Energy Advisor (HEA)**, one project "MVP - Device Cost Accounting", epics as parent issues | Clean separation from retirement-platform work |
 | Distribution | Public GitHub repo under `consultingtedds`, MIT licence, HACS custom repository first; HACS default store later | HACS requires a public repo; matches the charter's Open Source First principle (MIT is the norm for HA custom integrations). Public repos get unlimited GitHub Actions minutes |
 
@@ -87,7 +87,7 @@ Presentation
 1. ~~Create public GitHub repo~~ (done 2026-07-11); hassfest-compliant integration skeleton (`manifest.json`, `hacs.json`)
 2. CI: ruff, mypy, pytest + coverage gate, hassfest action, HACS validation action, commitlint
 3. Pre-commit hooks + husky/commitlint local setup
-4. Ways-of-working docs adapted from `ai-shared-config`: `CRITICAL_INSTRUCTIONS.md`, `TESTING_STANDARDS.md`, `DOCUMENTATION_STANDARDS.md`, `CLAUDE.md`, ADR template
+4. Ways-of-working docs: `CRITICAL_INSTRUCTIONS.md`, `TESTING_STANDARDS.md`, `DOCUMENTATION_STANDARDS.md`, `CONTRIBUTING.md`, ADR template
 
 ### Epic 2 - ADRs
 1. ADR-0001: Native HA integration (over template helpers / AppDaemon)

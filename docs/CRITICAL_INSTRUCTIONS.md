@@ -1,28 +1,27 @@
 # Critical Instructions - Home Energy Advisor
 
-Scan this before every session. Push details to the linked documents - this
-file is the checklist, not the guide. Adapted from the retirement platform's
-`ai-shared-config/CRITICAL_INSTRUCTIONS.md` for a Python / Home Assistant
-custom integration.
+The project's own rules, as a checklist rather than a guide. Scan it before
+starting work and again before committing; the detail lives in the linked
+documents. `CONTRIBUTING.md` is the friendlier way in.
 
 ---
 
-## AI Workflow
+## How work proceeds
 
 ### Before writing any code
-1. Read `CLAUDE.md`, this file, `docs/PLAN.md`, and any ADRs touching the task
-2. If any requirement or approach is ambiguous, ask clarifying questions one at a time before writing code - do not assume
-3. Think before coding. State your assumptions. If a request is impossible, explain why and propose alternatives. If a simpler approach exists, propose it. If a more complex approach is required, explain why.
-4. Do not just agree that recommendations or answers are great or right. Reason them through; if you disagree, give your reasoning. Healthy debate is expected - the maintainer chooses the course.
+1. Read this file, `docs/PLAN.md`, and any ADRs touching the task
+2. Where a requirement or an approach is ambiguous, ask rather than assume - one question at a time
+3. State the assumptions the work rests on. If something is impossible, say why and propose alternatives; if a simpler approach exists, propose that instead; if a more complex one is genuinely required, say what forces it
+4. A recommendation is argued, not accepted. Disagreement with reasoning behind it is expected and useful - the maintainer chooses the course
 
-### Before responding
+### Before presenting a change
 1. Review every changed file against the 🚫 NEVER and ✓ ALWAYS checklists below
 2. List every violation found
 3. Fix every violation
-4. Only then present the solution
+4. Only then present the work
 
-### Workflow for writing new code
-1. Confirm the Linear ticket (HEA-nn) the work belongs to
+### Writing new code
+1. Confirm the ticket (HEA-nn) the work belongs to
 2. Write the tests first (TDD) - engine behaviour before integration wiring
 3. Write the code to make the tests pass
 4. Run ruff, mypy, pytest with coverage
@@ -101,18 +100,18 @@ deliberately made otherwise - treat it that way by default.
 
 | Never | Use instead |
 | --- | --- |
-| Code without a Linear ticket | Create/pick the HEA-nn ticket first |
+| Code without a ticket | Create or pick the HEA-nn ticket first |
 | Secrets in code or git | Environment variables; nothing secret belongs in this repo at all |
-| Writing multiple files in one operation | One file at a time - each change must trigger the IDE diff window |
-| Authoring project files through shell heredocs (`cat >> file`) | The editor, always. A shell write opens no diff, so the maintainer cannot see or challenge it as it happens. Bash is for *running* things, never for authoring |
-| Writing a file the maintainer never saw as a diff | Nothing. **Every file write is reviewed before it lands, without exception.** The diff window is part of the approval prompt, so a session that auto-accepts edits skips it and the review silently stops happening - the tool call is the only signal, and it looks identical either way. A `permissions.ask` rule on the edit tools plus a `PreToolUse` hook returning `permissionDecision: "ask"` (both in `~/.claude/settings.json`) force the prompt back on, because an interactive mode switch overrides `defaultMode`. If a write ever completes with no prompt, stop and say so before writing anything else |
+| Writing several files in one operation | One file at a time, so each change surfaces as its own diff |
+| Authoring project files through shell heredocs (`cat >> file`) | The editor, always. A shell write opens no diff, so the maintainer cannot see or challenge it as it happens. A shell is for *running* things, never for authoring |
+| Writing a file the maintainer never saw as a diff | Nothing. **Every file write is reviewed before it lands, without exception.** Review that does not happen is indistinguishable from review that did, so this one is enforced by tooling rather than trusted to habit. If a write ever completes without the maintainer seeing it, stop and say so before writing anything else |
 
 ---
 
 ## ✓ ALWAYS
 
 ### Before writing any file
-- Confirm with the maintainer first - skip only if a plan covering those files was already approved this session
+- Confirm with the maintainer first - skip only where an already-approved plan covers those files
 
 ### Architecture
 - Engine (`engine/`) pure Python, fully typed, no HA dependency

@@ -38,6 +38,7 @@ TERMS_FILE = REPO / ".privacy-terms"
 #: Never scanned: local notes, the lock files nobody reads, and this checker -
 #: which necessarily contains the patterns it looks for.
 SKIP = {
+    "CLAUDE.md",
     "CLAUDE.local.md",
     ".privacy-terms",
     "scripts/privacy_check.py",
@@ -103,7 +104,6 @@ KNOWN_HOSTS = {
     "astral.sh",
     "cdn.jsdelivr.net",
     "cdnjs.cloudflare.com",
-    "claude.ai",
     "code.jquery.com",
     "developers.home-assistant.io",
     "fonts.googleapis.com",

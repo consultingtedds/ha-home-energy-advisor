@@ -63,7 +63,7 @@ unit-testable.
 - Commits the project to the Home Assistant integration toolchain and its
   constraints: Python, async event loop, `hassfest`/HACS validation, and the
   Unix-only test story (`pytest-homeassistant-custom-component`; see
-  `CLAUDE.md`).
+  `CONTRIBUTING.md`).
 - Enables the whole downstream plan - config flow (HEA-20), native helper reuse
   (ADR-0004), long-term statistics and backfill (Epic 7), Repairs/diagnostics
   (HEA-24) - none of which the alternatives support cleanly.
