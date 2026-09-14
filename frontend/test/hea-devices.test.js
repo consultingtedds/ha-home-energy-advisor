@@ -7,7 +7,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { DEVICES_SENSOR, readDevices, readWholeHome } from "../hea-devices.js";
+import {
+  DEVICES_SENSOR,
+  readDevices,
+  readLabelNames,
+  readWholeHome,
+} from "../hea-devices.js";
 
 /** A row as the HEA-55 sensor publishes it, in its own snake_case. */
 const aRow = (key, name, overrides = {}) => ({
@@ -199,5 +204,77 @@ describe("readWholeHome", () => {
     expect(readWholeHome(aHass({ devices: [] }))).toBeNull();
     expect(readWholeHome(undefined)).toBeNull();
     expect(readWholeHome(aHass({ whole_home: { name: "no key" } }))).toBeNull();
+  });
+});
+
+describe("finding the sensor on a translated instance", () => {
+  /**
+   * Home Assistant builds an entity id from the entity's *translated* name, so
+   * on a Spanish install the devices sensor is
+   * `sensor.home_energy_advisor_dispositivos` and there is no
+   * `sensor.home_energy_advisor_devices` at all (ADR-0018).
+   *
+   * This file's own header said so, five lines above the constant that assumed
+   * otherwise. The end-to-end run on a Spanish instance is what found it: every
+   * card rendered "No devices are being tracked yet." against a house with nine
+   * tracked devices (HEA-116).
+   */
+  const aSpanishHass = (attributes) => ({
+    entities: {
+      "sensor.home_energy_advisor_dispositivos": {
+        platform: "home_energy_advisor",
+      },
+      "sensor.otra_integracion_dispositivos": { platform: "somebody_else" },
+    },
+    states: {
+      "sensor.home_energy_advisor_dispositivos": { state: "1", attributes },
+      "sensor.otra_integracion_dispositivos": {
+        state: "1",
+        attributes: { devices: [aRow("not_ours", "Not Ours")] },
+      },
+    },
+  });
+
+  it("reads the devices when the entity id is not the English one", () => {
+    // Given - a Spanish instance, where the English id does not exist
+    const hass = aSpanishHass({ devices: [aRow("aire_acondicionado", "Aire Acondicionado")] });
+
+    // When / Then - the house is found, rather than reported empty
+    expect(readDevices(hass)).toHaveLength(1);
+    expect(readDevices(hass)[0].name).toBe("Aire Acondicionado");
+  });
+
+  it("finds the whole-home row and the labels there too", () => {
+    // Given - the same instance, publishing everything a card reads
+    const hass = aSpanishHass({
+      devices: [aRow("aire_acondicionado", "Aire Acondicionado")],
+      whole_home: aRow("whole_home", "Toda la Casa"),
+      labels: { aircon: "Aire" },
+    });
+
+    // When / Then - every reader resolves the sensor the same way, or a card
+    // finds its devices and loses the total beside them
+    expect(readWholeHome(hass)?.name).toBe("Toda la Casa");
+    expect(readLabelNames(hass)).toEqual({ aircon: "Aire" });
+  });
+
+  it("never reads another integration's devices sensor", () => {
+    // Given - a Spanish instance where something else publishes a `devices`
+    // attribute of its own, which is not a far-fetched thing to do
+    const hass = aSpanishHass({ devices: [aRow("aire_acondicionado", "Aire Acondicionado")] });
+
+    // When / Then - matched on the platform that owns the entity, so a
+    // structural resemblance is never enough to be adopted
+    expect(readDevices(hass).map((device) => device.key)).toEqual(["aire_acondicionado"]);
+  });
+
+  it("still works where the frontend offers no entity registry", () => {
+    // Given - a hass without `entities`, which is what a card gets before the
+    // registry has loaded and in every older frontend
+    const hass = { states: { [DEVICES_SENSOR]: { state: "1", attributes: { devices: [aRow("a", "A")] } } } };
+
+    // When / Then - the English id is still the first place to look, so a card
+    // that renders before the registry arrives is not blank for a beat
+    expect(readDevices(hass)).toHaveLength(1);
   });
 });
