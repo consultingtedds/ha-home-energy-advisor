@@ -40,12 +40,33 @@ jobs:
         with:
           python-version: "3.14"
 
+      # The **first** release is never automatic.
+      #
+      # Everything after it is: once a version is out, the next one is a routine
+      # consequence of what was merged. But the first tag is the moment the
+      # integration becomes installable by strangers, and it should happen when
+      # the maintainer says so - after the brand assets, the supported-version
+      # floor and the install docs, none of which the commit log knows about
+      # (HEA-32). Run this workflow by hand to cut it.
+      #
+      # Expressed as "is there a tag yet" rather than as a switch in GitHub's UI,
+      # so the rule is in the repository where it can be read, and so nobody
+      # later finds releases mysteriously not happening.
       - name: Work out whether this earns a release
         id: version
         run: |
           current=$(python -c "import json; print(json.load(open('custom_components/home_energy_advisor/manifest.json'))['version'])")
-          next=$(python scripts/release_version.py "$current")
           echo "current=$current" >> "$GITHUB_OUTPUT"
+
+          if ! git describe --tags --abbrev=0 --match='v[0-9]*' >/dev/null 2>&1 \
+             && [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            echo "No release has been cut yet, and the first one is deliberate."
+            echo "Run this workflow by hand when HEA-32 is done."
+            echo "next=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          next=$(python scripts/release_version.py "$current")
           echo "next=$next" >> "$GITHUB_OUTPUT"
           if [ -z "$next" ]; then
             echo "Nothing since the last release changes what a household sees."

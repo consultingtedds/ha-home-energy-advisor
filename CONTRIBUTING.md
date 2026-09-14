@@ -117,6 +117,12 @@ The rules are `scripts/release_version.py`, and `tests/test_release_version.py`
 holds them against the table above: adding a type here without deciding whether
 it ships fails the suite.
 
+**The first release is not automatic.** Until a version tag exists, the workflow
+declines to cut one and says so, because the first tag is the moment the
+integration becomes installable by strangers and that should happen when the
+maintainer says so - not as a side effect of merging a feature. Run the Release
+workflow by hand for it. Every release after that is automatic.
+
 **The scope is optional for you.** The maintainer's commits carry the ticket id
 as the scope (`fix(HEA-59): …`), which is why the history looks like that; since
 you have no ticket number, a scope-less commit is correct and CI will not fail
