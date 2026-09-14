@@ -148,7 +148,11 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 def _build_schema(defaults: dict[str, str]) -> vol.Schema:
-    def source(key: str, *, required: bool) -> vol.Marker:
+    # `prefilled` rather than `source`: it was named for the source meters
+    # because they were the only fields the Energy Dashboard could answer. The
+    # import price is not a source and is answered the same way (HEA-118), so
+    # the name had to stop describing what it happened to be used for.
+    def prefilled(key: str, *, required: bool) -> vol.Marker:
         marker = vol.Required if required else vol.Optional
         if key in defaults:
             return marker(key, description={"suggested_value": defaults[key]})
@@ -156,16 +160,16 @@ def _build_schema(defaults: dict[str, str]) -> vol.Schema:
 
     return vol.Schema(
         {
-            vol.Required(CONF_PRICE_ENTITY): _PRICE_SELECTOR,
+            prefilled(CONF_PRICE_ENTITY, required=True): _PRICE_SELECTOR,
             vol.Required(
                 CONF_CURRENCY, default=DEFAULT_CURRENCY
             ): selector.TextSelector(),
-            source(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
-            source(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
-            source(CONF_GENERATION_ENTITY, required=False): _ENERGY_SELECTOR,
-            source(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
-            source(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
-            source(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
+            prefilled(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
+            prefilled(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
+            prefilled(CONF_GENERATION_ENTITY, required=False): _ENERGY_SELECTOR,
+            prefilled(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
+            prefilled(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
+            prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
         }
     )
 
@@ -204,12 +208,14 @@ def _collect_grid_meters(
     source: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
     defaults: dict[str, str],
 ) -> None:
-    """Read a grid source's import and export meters, whichever shape it is in.
+    """Read a grid source's meters and import price, whichever shape it is in.
 
-    Home Assistant holds the pair two ways. From 2026.9 they sit on the source
+    Home Assistant holds these two ways. From 2026.9 they sit on the source
     itself; before that they were lists of flows, and `hacs.json` supports back
     to 2026.7. A stored preference is migrated to the newer shape when it is
-    loaded, so both are live and neither can be assumed.
+    loaded, so both are live and neither can be assumed. The two shapes differ
+    only in where the flow sits, not in what it holds, so each is reduced to the
+    mapping that carries the answers and read the same way after that.
 
     A household can hold more than one grid source - pricing a standing charge
     means declaring one - and only some of them meter imported energy. The first
@@ -217,14 +223,26 @@ def _collect_grid_meters(
     meter is worse than suggesting nothing: it is one of the two fields the
     integration cannot work without, and nothing about a filled-in form invites
     the household to doubt it.
+
+    **The import price is taken from the source the meter came from**, never
+    from whichever source happens to name one (HEA-118). A standing-charge grid
+    carries its own price entity pointing at a daily fee, so collecting the two
+    independently could pair one grid's tariff with another's meter - a wrong
+    answer wearing the shape of a right one. Read as a pair they can disagree
+    about neither.
+
+    A grid priced by a fixed number or tracked as a cost statistic offers no
+    price entity, which is an ordinary configuration and not a fault: the field
+    is simply left empty, as it was before any of this prefilled.
     """
     imports = source.get("flow_from")
-    if (
-        meter := imports[0]["stat_energy_from"]
-        if imports
-        else source.get("stat_energy_from")
+    flow = imports[0] if imports else source
+    if (meter := flow.get("stat_energy_from")) and (
+        CONF_GRID_IMPORT_ENTITY not in defaults
     ):
-        defaults.setdefault(CONF_GRID_IMPORT_ENTITY, meter)
+        defaults[CONF_GRID_IMPORT_ENTITY] = meter
+        if price := flow.get("entity_energy_price"):
+            defaults[CONF_PRICE_ENTITY] = price
 
     exports = source.get("flow_to")
     if (

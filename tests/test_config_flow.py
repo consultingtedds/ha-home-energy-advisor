@@ -358,6 +358,164 @@ async def test_prefill_keeps_the_first_grid_source_and_not_the_last(
     assert suggested[CONF_GRID_EXPORT_ENTITY] == "sensor.grid_export"
 
 
+async def test_prefill_offers_the_import_price_the_energy_dashboard_already_holds(
+    hass: HomeAssistant,
+) -> None:
+    """The price is the one field the household cannot be asked to guess.
+
+    It is one of only two the integration cannot work without, and it is the
+    question on that screen a household is least sure about - so leaving it
+    blank while every meter around it arrives answered is the worst of both.
+    Home Assistant already has it: a grid source names the sensor giving the
+    price per kWh (HEA-118).
+    """
+    # Given - a grid source priced by a live tariff sensor
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.grid_import",
+                "stat_energy_to": "sensor.grid_export",
+                "entity_energy_price": "sensor.import_price",
+            },
+        ],
+    )
+
+    # Then - it arrives answered alongside the meters
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert suggested[CONF_PRICE_ENTITY] == "sensor.import_price"
+
+
+async def test_prefill_finds_the_import_price_in_the_older_flow_arrays(
+    hass: HomeAssistant,
+) -> None:
+    """The price moved with the meters when the shape changed, so both are read.
+
+    `hacs.json` supports instances from 2026.7, whose stored preferences hold
+    the flows - and the price inside them - as arrays until next loaded.
+    """
+    # Given - a household on the older preference shape
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "flow_from": [
+                    {
+                        "stat_energy_from": "sensor.grid_import",
+                        "entity_energy_price": "sensor.import_price",
+                    }
+                ],
+            },
+        ],
+    )
+
+    # Then - the price is found just the same
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert suggested[CONF_PRICE_ENTITY] == "sensor.import_price"
+
+
+async def test_a_fixed_price_offers_nothing_rather_than_something_wrong(
+    hass: HomeAssistant,
+) -> None:
+    """A household pricing with a fixed figure has no entity to offer.
+
+    So does one tracking spend as a cost statistic. Both are ordinary
+    configurations, and an absent price must not become a fault: the flow shows
+    the field empty, exactly as it did before prefill existed.
+    """
+    # Given - a grid source priced by a number, not a sensor
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.grid_import",
+                "entity_energy_price": None,
+                "number_energy_price": 0.2134,
+            },
+        ],
+    )
+
+    # Then - the meters still prefill, and the price field is left alone. A
+    # number cannot be put in a field that names an entity.
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert CONF_PRICE_ENTITY not in suggested
+
+
+async def test_a_standing_charge_never_prefills_as_the_import_tariff(
+    hass: HomeAssistant,
+) -> None:
+    """The trap HEA-117 already met, now reachable through the price.
+
+    Pricing a standing charge means declaring a second grid source, and it
+    carries its own price entity pointing at a daily fee. The reference instance
+    is configured exactly this way. Offering that as the import tariff would be
+    worse than offering nothing - every figure downstream would be wrong, and a
+    filled-in form invites no doubt.
+
+    The price is taken from the same source the import meter came from, rather
+    than from whichever source happens to name one, so the two can never
+    disagree about which grid they describe.
+    """
+    # Given - the real tariff first, and a standing charge declared second
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.grid_import",
+                "entity_energy_price": "sensor.import_price",
+            },
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.daily_standing_charge",
+                "entity_energy_price": "sensor.standing_charge_price",
+            },
+        ],
+    )
+
+    # Then - the tariff belonging to the metered import is the one offered
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+    assert suggested[CONF_PRICE_ENTITY] == "sensor.import_price"
+
+
+async def test_the_price_is_not_taken_from_a_grid_the_meter_did_not_come_from(
+    hass: HomeAssistant,
+) -> None:
+    """Meter and price are read as a pair, or not at all.
+
+    Were they collected independently, a first source naming only a price and a
+    second naming only a meter would prefill both - a tariff from one grid
+    against a meter from another, which is a wrong answer wearing the shape of a
+    right one.
+    """
+    # Given - a standing charge declared first, carrying a price and its own
+    # daily-fee counter, with the real import grid second
+    suggested = await _prefill_from(
+        hass,
+        [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.daily_standing_charge",
+                "entity_energy_price": "sensor.standing_charge_price",
+            },
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.grid_import",
+                "entity_energy_price": "sensor.import_price",
+            },
+        ],
+    )
+
+    # Then - first wins for both, so they still describe one grid. The pairing
+    # is the invariant; which source is first is a separate limitation the
+    # household resolves by correcting one field rather than two mismatched ones.
+    assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.daily_standing_charge"
+    assert suggested[CONF_PRICE_ENTITY] == "sensor.standing_charge_price"
+
+
 async def test_prefill_failure_never_blocks_the_flow(hass: HomeAssistant) -> None:
     # Given - reading the Energy Dashboard configuration fails
     with patch(_PATH, AsyncMock(side_effect=RuntimeError("energy unavailable"))):
