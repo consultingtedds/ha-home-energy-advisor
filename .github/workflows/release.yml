@@ -1,0 +1,121 @@
+name: Release
+
+# Only after CI has gone green on `main`. Releasing straight off a push would
+# tag whatever was pushed, and HACS offers a tag to households as an update -
+# there is no taking one back once somebody's instance has installed it.
+#
+# `workflow_dispatch` is kept for the first release and for anything that has to
+# be cut by hand.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# Never cancel a release in flight. A cancelled one can leave a tag pushed with
+# no release behind it, which is a worse state than a slow queue.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: tag and release
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The whole history and every tag: the version is derived from the
+          # commits since the last release, and a shallow clone has neither.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+
+      - name: Work out whether this earns a release
+        id: version
+        run: |
+          current=$(python -c "import json; print(json.load(open('custom_components/home_energy_advisor/manifest.json'))['version'])")
+          next=$(python scripts/release_version.py "$current")
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          if [ -z "$next" ]; then
+            echo "Nothing since the last release changes what a household sees."
+          else
+            echo "$current -> $next"
+          fi
+
+      # Everything below is skipped when nothing earned a release, which is most
+      # runs: documentation and dependency work do not produce one.
+      - name: Put the version in the manifest
+        if: steps.version.outputs.next != ''
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+
+          manifest = pathlib.Path("custom_components/home_energy_advisor/manifest.json")
+          data = json.loads(manifest.read_text(encoding="utf-8"))
+          data["version"] = "${{ steps.version.outputs.next }}"
+          # Two-space indent and a trailing newline, matching what hassfest and
+          # the repository's own hygiene hooks expect.
+          manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      # Read it back before anything is tagged. This commit is pushed with the
+      # workflow's own token, which by design triggers no workflows - so CI never
+      # runs on it and nothing else would notice a manifest this step had
+      # mangled. A tag, once a household has installed it, cannot be withdrawn.
+      - name: Check the manifest is still valid
+        if: steps.version.outputs.next != ''
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          expected = "${{ steps.version.outputs.next }}"
+          path = pathlib.Path("custom_components/home_energy_advisor/manifest.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          if data.get("version") != expected:
+              sys.exit(f"manifest says {data.get('version')!r}, expected {expected!r}")
+          if not data.get("domain") or not data.get("name"):
+              sys.exit("the manifest lost a required key while being rewritten")
+          print(f"manifest verified at {expected}")
+          PY
+
+      # The manifest is what HACS reads to decide whether a household is behind,
+      # so it has to be inside the tag rather than pushed after it.
+      #
+      # The tag is annotated, and pushed by name. A lightweight tag is invisible
+      # to `--follow-tags`, so the obvious spelling of this pushes the commit,
+      # reports success, and leaves the release with nothing to attach itself to.
+      - name: Commit, tag and push
+        if: steps.version.outputs.next != ''
+        run: |
+          version="v${{ steps.version.outputs.next }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/home_energy_advisor/manifest.json
+          git commit -m "chore(release): $version"
+          git tag -a "$version" -m "$version"
+          git push origin HEAD:main
+          git push origin "$version"
+
+      - name: Create the GitHub release
+        if: steps.version.outputs.next != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.next }}" \
+            --title "v${{ steps.version.outputs.next }}" \
+            --generate-notes \
+            --verify-tag

@@ -378,13 +378,58 @@ Presentation
 > HEA statistics from recorder input history for the current config" -
 > idempotent, re-runnable, overwriting Untracked too.
 
-### Epic 8 - Release
-1. Semver tagging + GitHub release CI
-2. HACS custom-repository install docs + first tagged release
-3. (Backlog) HACS default store submission; community forum post for demand validation
+### Epic 8 - Release (IN PROGRESS - the only epic still open)
+1. Semver tagging + GitHub release CI, keeping `manifest.json` in step with the
+   tag (HEA-31). **First**: HACS installs from tagged releases, and nothing
+   currently produces one. Tagging by hand works once and then rots
+2. First tagged release + HACS custom-repository install docs (HEA-32), in this
+   order:
+   a. `brand/icon.png` in the repository - the longest lead time and no
+      dependencies. It also lets CI stop passing `ignore: brands` to the HACS
+      action, and an ignored check is one nobody sees fail. The separate
+      `home-assistant/brands` pull request fixes the blank tile on Home
+      Assistant's *own* integrations page and can run in parallel
+   b. the supported-version work, in this order and no other: fix
+      `tests/test_dependency_pins.py` so the frontend check compares against the
+      Home Assistant the job is running rather than the one the requirements
+      file names (it fails in an older-version job otherwise, on a mismatch that
+      is not real); add the second matrix entry `2026.7.0` / phacc `0.13.344`;
+      then set `hacs.json` to `2026.7.0`. The README's stated minimum is guarded
+      against it, so the two move together (ADR-0023)
+   c. the install docs and the tag
+3. **Done: how visible the AI workflow should be** (HEA-110). The engineering
+   rules stay committed because they protect the codebase for whoever works on
+   it next; the framing around them does not, and `CLAUDE.md` is no longer
+   committed - `CONTRIBUTING.md` carries the orientation
+4. (Backlog) HACS default store submission; community forum post for demand
+   validation. Deliberately after external validation, not before
 
-Sequencing: 1 → 2 → 3 → 4 → 5 → 6, then 7 and 8 in either order. Epic 3 has no HA
-dependencies and can start as soon as Epic 1 lands.
+> **What is *not* in the way.** Epics 1-6 are closed and Epic 7 is cancelled. The
+> only publish blockers left are HEA-31 and HEA-32. Everything found in the final
+> sweep - the reset crater (HEA-122), the deprecated registry lookup (HEA-113),
+> the Home Assistant version drift (HEA-124), the import-price prefill (HEA-118)
+> and the Spanish dashboard (HEA-126) - is fixed and green.
+
+### Epic 9 - Fixes that belong in Home Assistant, not here
+
+Split out of the MVP project on 2026-09-14 (HEA-125). Each is a defect in Home
+Assistant that this integration runs into, where the decision was to fix it at
+the right layer rather than carry a workaround. An upstream fix runs on someone
+else's review and release schedule, so none of it can gate a release of ours.
+
+1. `utility_meter` adopts its source's unit only when the source *changes*, so a
+   meter created over a still sensor records statistics with no unit and Home
+   Assistant then flags a unit change - up to 30 notifications on a fresh
+   install. Cause traced through the 2026.7 source; a fix and a regression test
+   are written but unpublished (HEA-62). Documented in the README's known issues
+   meanwhile, with the mitigation
+2. View strategies are not offered in the add-view dialog, so a household cannot
+   add HEA's view to a dashboard they already have without two lines of YAML
+   (HEA-108). `docs/dashboard.md` carries those two lines
+
+Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
+start as soon as Epic 1 landed. Epic 7 is cancelled; Epic 9 runs whenever there
+is appetite for it and blocks nothing.
 
 ## Risks and open questions
 

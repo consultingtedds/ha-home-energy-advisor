@@ -93,6 +93,30 @@ Use `feat` only for a commit that completes a user-visible capability - the
 intermediate commits building towards it are `fix`, `refactor`, `test` or
 `chore`. Versioning keys off this.
 
+### Your commit type chooses the version
+
+Releases are cut automatically, and the version comes from the commits since the
+last one rather than from anybody editing a file:
+
+| Commit | Release |
+| --- | --- |
+| `feat:` | minor - `0.4.2` becomes `0.5.0` |
+| `fix:`, `perf:` | patch - `0.4.2` becomes `0.4.3` |
+| anything else | none |
+| `feat!:`, or a `BREAKING CHANGE:` footer | minor while the version is still `0.x`, major after `1.0.0` |
+
+So a week of documentation and dependency work releases nothing, which is the
+intended outcome: an update notification a household learns to ignore is worse
+than no notification.
+
+A breaking change staying inside `0.x` is deliberate. `0.x` already means
+anything here may change, and `1.0.0` is a promise about stability that a
+maintainer makes on purpose - not one a commit subject makes on their behalf.
+
+The rules are `scripts/release_version.py`, and `tests/test_release_version.py`
+holds them against the table above: adding a type here without deciding whether
+it ships fails the suite.
+
 **The scope is optional for you.** The maintainer's commits carry the ticket id
 as the scope (`fix(HEA-59): …`), which is why the history looks like that; since
 you have no ticket number, a scope-less commit is correct and CI will not fail
