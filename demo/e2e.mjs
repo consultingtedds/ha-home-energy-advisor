@@ -38,6 +38,11 @@ import {
 } from "./ha-client.mjs";
 import { DEVICES } from "./house.mjs";
 import { cardText, stepBackOneDay, strandedCards } from "./browser.mjs";
+import {
+  CARD_TOLERANCE,
+  RECONCILIATION_TOLERANCE,
+  engineTotals,
+} from "./engine.mjs";
 
 const DASHBOARD_PATH = "home-energy-advisor";
 const VIEWPORT = { width: 1600, height: 1200 };
@@ -83,6 +88,15 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+/**
+ * Engine mode: assert what the engine computed, not what a seed invented.
+ *
+ * Set by `run-e2e.mjs --engine`, which skips the seed and waits the engine out.
+ * The figure checks below are skipped in that mode - they are written against
+ * the seeded week's shape, and a house an hour old has a much smaller one.
+ */
+const ENGINE_MODE = process.argv.includes("--engine");
+
 async function main() {
   const auth = await freshAuth();
   const tokens = JSON.stringify(browserTokens(auth));
@@ -112,7 +126,11 @@ async function main() {
 
     await dashboardChecks(page);
     await periodChecks(page);
-    await figureChecks(page);
+    if (ENGINE_MODE) {
+      await engineChecks(page, auth.access_token, await engineTotals(auth.access_token));
+    } else {
+      await figureChecks(page);
+    }
     await bundleChecks(page);
     await entityIdChecks(page, auth.access_token, language);
     await cardPickerChecks(page);
@@ -121,6 +139,80 @@ async function main() {
   }
 
   report();
+}
+
+/**
+ * The product's actual claim, asserted against figures the engine computed.
+ *
+ * Runs only in engine mode, where nothing was seeded. See `engine.mjs` for why
+ * it costs an hour and why that cost cannot be removed honestly.
+ */
+async function engineChecks(page, token, totals) {
+  console.log("The engine's own figures, computed in the container:");
+
+  await check("the engine published figures at all", async () => {
+    assert(
+      totals !== null,
+      "no engine figures after the wait - either the demo's meters are not " +
+        "advancing, or the accounting never started",
+    );
+    assert(
+      totals.wholeHome.cost > 0,
+      `the whole home cost ${totals.wholeHome.cost}, so nothing was accounted`,
+    );
+  });
+  // Stop here rather than assert against zeros. Every reconciliation below
+  // holds trivially when nothing has been accounted - 0 equals 0 - so running
+  // them on an engine that published nothing would turn the one failure that
+  // matters into three passes and a failure.
+  if (!totals || totals.wholeHome.cost <= 0) {
+    console.log("        the checks below need figures and were not run");
+    console.log("");
+    return;
+  }
+
+  // The central claim, and the one thing a household would never forgive being
+  // wrong: what the devices cost, plus what was left over, is what the house
+  // cost. "We cannot say 1 + 1 = 3" (ADR-0002). Asserted on the engine's own
+  // sensors rather than on anything a card draws, because it is the engine's
+  // claim and not the dashboard's.
+  await check("device costs plus Untracked reconcile to the whole home", async () => {
+    const summed = totals.devices.reduce((total, device) => total + device.cost, 0);
+    const residual = Math.abs(summed - totals.wholeHome.cost);
+    assert(
+      residual <= RECONCILIATION_TOLERANCE,
+      `devices and Untracked sum to ${summed.toFixed(4)} against a whole-home ` +
+        `figure of ${totals.wholeHome.cost.toFixed(4)}, a residual of ${residual.toFixed(4)}`,
+    );
+  });
+
+  await check("device energy reconciles to the whole home too", async () => {
+    const summed = totals.devices.reduce((total, device) => total + device.energy, 0);
+    const residual = Math.abs(summed - totals.wholeHome.energy);
+    assert(
+      residual <= RECONCILIATION_TOLERANCE,
+      `devices and Untracked sum to ${summed.toFixed(4)} kWh against a whole-home ` +
+        `figure of ${totals.wholeHome.energy.toFixed(4)} kWh`,
+    );
+  });
+
+  // The seam nothing else reaches: engine, sensor, recorder, statistics, card.
+  // The instance was built an hour ago and has no history behind it, so the
+  // engine's lifetime total *is* the figure for today - which is what makes the
+  // two directly comparable.
+  await check("the card shows the figure the engine computed", async () => {
+    const figures = await moneyIn(page, "hea-totals-card");
+    assert(figures.length > 0, "the totals card rendered no figure to compare");
+    const paid = figures[0];
+    const residual = Math.abs(paid - totals.wholeHome.cost);
+    assert(
+      residual <= CARD_TOLERANCE,
+      `the card says ${paid} and the engine says ${totals.wholeHome.cost.toFixed(4)}. ` +
+        "The recorder, the statistics compiler and the card's own totalling are " +
+        "all in that gap",
+    );
+  });
+  console.log("");
 }
 
 /** The instance's own language, which is what decides entity ids (ADR-0018). */
@@ -228,8 +320,16 @@ async function periodChecks(page) {
     );
   });
 
-  await stepBackOneDay(page);
-  console.log("  ok    stepped back to the last complete day");
+  // Only when the figures are the seeded week's. In engine mode the data is
+  // today - the instance is an hour old - and stepping back would land on a day
+  // that has never existed, which would read as the engine having computed
+  // nothing.
+  if (ENGINE_MODE) {
+    console.log("  ok    staying on today, where the engine's figures are");
+  } else {
+    await stepBackOneDay(page);
+    console.log("  ok    stepped back to the last complete day");
+  }
   console.log("");
 }
 

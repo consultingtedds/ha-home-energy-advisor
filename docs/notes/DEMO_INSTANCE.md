@@ -55,13 +55,74 @@ node demo/cold-load.mjs 10 # load the dashboard cold N times and count what rend
 ## The end-to-end checks
 
 ```bash
-node demo/run-e2e.mjs         # both languages, then tear the container down
-node demo/run-e2e.mjs es      # one language
-node demo/run-e2e.mjs --keep  # leave the instance up to poke at
-node demo/e2e.mjs             # assert against a house that already exists
+node demo/run-e2e.mjs          # both languages, then tear the container down
+node demo/run-e2e.mjs es       # one language
+node demo/run-e2e.mjs --keep   # leave the instance up to poke at
+node demo/run-e2e.mjs --engine # no seed: assert what the engine computed
+node demo/e2e.mjs              # assert against a house that already exists
 ```
 
 Ten minutes or so, because each language rebuilds the instance from nothing.
+
+### The two modes, and what each is worth
+
+This matters more than the command list, because the default mode does **not**
+test the accounting at all.
+
+By default the week is **seeded**: figures written straight into statistics,
+which is what lets a container ten minutes old show a dashboard worth asserting
+against. That proves the display path end to end - the strategy, the cards, the
+bundle, the entity ids - and proves nothing about the engine. The cards are
+being checked against numbers we handed them.
+
+`--engine` seeds nothing. The demo's meters advance on their own, the engine
+accounts for them, and every figure on the page is one it computed. It asserts
+the product's central claim, that per-device costs plus the Untracked remainder
+reconcile to the whole home, and then that the card shows the figure the engine
+produced - which is the only check that crosses engine, sensor, recorder,
+statistics compiler and card in one go.
+
+**It costs about an hour, and that cost is not removable.** The engine closes an
+interval only once it is `lateness + BUCKET` behind the clock, fifteen minutes
+plus five, because a counter reporting every half hour is still describing
+energy that arrived earlier. So a fresh install publishes nothing for twenty
+minutes *by design*. The cards then read hourly statistics, which Home Assistant
+compiles at the top of each hour. A test that shortened either would be testing
+a product we do not ship.
+
+One language only, by default. What it asserts is arithmetic, and the same
+arithmetic holds whatever the entity ids are called.
+
+Run the default after a card change. Run `--engine` before a release.
+
+### What engine mode proves, and what it does not
+
+The demo's meters are template sensors built on `now()`, and Home Assistant
+re-renders those every minute, so they genuinely advance: grid import moves
+0.030 kWh in two minutes against a declared 0.90 kWh/hour, which is exact. The
+engine is being fed moving inputs, not a frozen instance.
+
+**But they advance smoothly, and that makes this a shallow test of the
+accounting.** Every counter is linear in wall-clock time. So engine mode proves
+the engine runs in a real container, allocates across real devices, prices
+against a real tariff sensor and reconciles - and it exercises none of the cases
+that have actually produced defects here:
+
+- a coarse counter that reports once every thirty minutes, and the late-arrival
+  reallocation that needs (ADR-0006, HEA-48)
+- a battery whose stored-cost ledger has a meaningful weighted average behind it
+- a price that moves inside the window, rather than stepping twice a day
+- a source going unavailable, resetting, or reporting an implausible jump
+
+Those are covered by the golden-master replays in `tests/` against captured real
+history, and by the validation week in `notes/VALIDATION_WEEK_2026_08.md`. **The
+engine's correctness rests on those.** Engine mode's contribution is narrower
+and still worth having: it is the only check that the whole chain - engine,
+sensor, recorder, statistics compiler, card - carries a figure end to end
+without losing or distorting it.
+
+Do not read a green engine run as "the accounting is right". Read it as "the
+accounting ran, reconciled, and reached the screen intact".
 
 **They are not one of the five gates**, deliberately. They are slow, they need
 Docker, and Home Assistant ships monthly and will break them periodically. Run
