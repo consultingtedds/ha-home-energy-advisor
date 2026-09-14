@@ -105,10 +105,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # The brands check requires an accepted PR against home-assistant/brands,
-          # which is deferred until the integration is submitted to the HACS
-          # default store.
-          ignore: brands
 
   vitest:
     name: vitest

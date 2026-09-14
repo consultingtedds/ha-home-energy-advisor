@@ -108,6 +108,9 @@ KNOWN_HOSTS = {
     # GitHub's own no-reply domain, used for the commit author the release
     # workflow signs its version bump with. It belongs to nobody's house.
     "users.noreply.github.com",
+    # The SVG namespace, which is a constant rather than an address: an `<svg>`
+    # element is not one without it.
+    "www.w3.org",
     "developers.home-assistant.io",
     "fonts.googleapis.com",
     "fonts.gstatic.com",
