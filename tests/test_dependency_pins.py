@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import re
+from importlib import metadata
 from pathlib import Path
 from typing import Any, Final
 
@@ -281,20 +282,26 @@ def test_phacc_pin_in_requirements_is_one_the_ci_matrix_actually_tests() -> None
     assert pinned in matrix_pins
 
 
-def test_frontend_pin_in_requirements_is_the_one_home_assistant_asks_for() -> None:
-    # Given - the frontend contributors install, and the one the pinned Home
-    # Assistant declares for itself
-    requirements = (REPO_ROOT / "requirements_test.txt").read_text(encoding="utf-8")
+def test_the_installed_frontend_is_the_one_this_home_assistant_asks_for() -> None:
+    # Given - the frontend actually importable in this environment, and the one
+    # the Home Assistant actually installed declares for itself
+    installed = metadata.version(FRONTEND)
     manifest = (Path(frontend.__file__).parent / "manifest.json").read_text(
         encoding="utf-8"
     )
-    pinned = requirement_pin(requirements, FRONTEND)
     declared = manifest_requirement(manifest, FRONTEND)
 
     # Then - the card tests boot the real frontend component, so a mismatch runs
-    # them against a build that Home Assistant release never shipped with
-    assert pinned is not None
-    assert pinned == declared
+    # them against a build that Home Assistant release never shipped with.
+    #
+    # Asserted on what is *installed* rather than on what `requirements_test.txt`
+    # pins, because those are the same thing only in the job that installs from
+    # that file alone. The supported-version matrix installs a different Home
+    # Assistant over the top (ADR-0023), and a pin comparison there fails on a
+    # mismatch that is not real while missing the one that is. This holds in
+    # every job, and it is the obligation the card tests actually depend on.
+    assert declared is not None
+    assert installed == declared
 
 
 def test_readme_minimum_ha_reads_the_version_the_requirements_line_states() -> None:

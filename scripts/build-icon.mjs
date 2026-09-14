@@ -3,8 +3,16 @@
  *
  *   node scripts/build-icon.mjs
  *
- * Writes `brand/icon.png` (256) and `brand/icon@2x.png` (512), which is what
- * HACS looks for and what a `home-assistant/brands` submission needs.
+ * Writes `icon.png` (256) and `icon@2x.png` (512) into the integration's own
+ * `brand/` directory, which is where the HACS action looks:
+ *
+ *     custom_components/home_energy_advisor/brand/icon.png
+ *
+ * Inside the integration rather than at the repository root. HACS's own
+ * publishing guide says "a `brand` directory in your repository", which reads
+ * as the root and is not what its validation checks - it names that path
+ * explicitly when the assets are missing. The same files are what a
+ * `home-assistant/brands` submission needs.
  *
  * ## Why this is a script and not an exported file
  *
@@ -33,7 +41,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const BRAND = join(HERE, "..", "brand");
+const BRAND = join(HERE, "..", "custom_components", "home_energy_advisor", "brand");
 
 /**
  * `mdi:home-lightning-bolt`, on a 24x24 grid, copied from
@@ -124,7 +132,7 @@ async function main() {
         omitBackground: true,
         clip: { x: 0, y: 0, width: px, height: px },
       });
-      console.log(`  brand/${file}  ${px}x${px}`);
+      console.log(`  ${file}  ${px}x${px}`);
     }
   } finally {
     await browser.close();

@@ -87,6 +87,13 @@ jobs:
         run: |
           pip install -r requirements_test.txt
           pip install "pytest-homeassistant-custom-component==${{ matrix.phacc }}"
+          # The frontend belongs to the Home Assistant that ends up installed,
+          # not to the requirements file: the pin above replaces Home Assistant
+          # and leaves the frontend where it was. The card tests boot the real
+          # frontend component, so a pair that never shipped together is a suite
+          # running against a build no release ever had.
+          frontend=$(python -c "import json, pathlib; from homeassistant.components import frontend; print(json.loads((pathlib.Path(frontend.__file__).parent / 'manifest.json').read_text())['requirements'][0])")
+          pip install "$frontend"
       - name: Test
         run: pytest --cov --cov-fail-under=90
 
