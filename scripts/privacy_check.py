@@ -105,6 +105,7 @@ KNOWN_HOSTS = {
     "cdn.jsdelivr.net",
     "cdnjs.cloudflare.com",
     "code.jquery.com",
+    "community.home-assistant.io",
     # GitHub's own no-reply domain, used for the commit author the release
     # workflow signs its version bump with. It belongs to nobody's house.
     "users.noreply.github.com",

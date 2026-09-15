@@ -464,6 +464,8 @@ where there is time, with no promised response time.
   Other people can answer there too, and each answer stays findable for the next
   person with the same question, so it is worth searching first.
 - **Bugs** go in [Issues](https://github.com/consultingtedds/ha-home-energy-advisor/issues).
+- **News and general discussion** are in the
+  [community forum thread](https://community.home-assistant.io/t/home-energy-advisor-have-you-ever-wondered-what-each-device-actually-cost-to-run-home-generation-and-battery-taken-into-account/1025192).
 
 For anything to do with a figure being wrong, attach the diagnostics download:
 **Settings** > **Devices & services** > **Home Energy Advisor**, then the

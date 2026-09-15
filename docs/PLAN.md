@@ -182,8 +182,8 @@ Presentation
     within 6, and deprecations run about two years. CI tests the latest *and*
     the floor; `hacs.json` declares the floor and never a version we have not
     run. Measured, not chosen: the integration passes on 2026.7.0 and fails on
-    2026.6.4, on the power-only Integral helper and on the cycle-meter crater.
-    Pre-release the floor is simply the latest (HEA-124)
+    2026.6.4, on the power-only Integral helper and on the cycle-meter crater
+    (HEA-124, HEA-32)
 
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -389,8 +389,12 @@ Presentation
    committed because they protect the codebase for whoever works on it next;
    the framing around them does not, and `CONTRIBUTING.md` carries the
    orientation
-4. (Backlog) HACS default store submission; community forum post for demand
-   validation. Deliberately after external validation, not before
+4. Letting households help themselves before sharing it (HEA-127): a
+   troubleshooting page, Discussions Q&A for questions, and a bug report form
+   that asks for the diagnostics download
+5. Shared on the
+   [community forum](https://community.home-assistant.io/t/home-energy-advisor-have-you-ever-wondered-what-each-device-actually-cost-to-run-home-generation-and-battery-taken-into-account/1025192)
+   and in a Facebook group, 2026-09-15 (HEA-128)
 
 > **v0.1.0 released 2026-09-15.** Every publish blocker is closed. The final
 > sweep - the reset crater (HEA-122), the deprecated registry lookup (HEA-113),
@@ -404,6 +408,10 @@ Presentation
 > page requests `/api/brands/integration/home_energy_advisor/icon.png` and gets
 > it. No `home-assistant/brands` submission is needed, and that repository marks
 > its custom-integration folder as legacy.
+>
+> **Epic 8 and the MVP closed 2026-09-15.** The HACS default store submission
+> (HEA-129) sits outside both. It waits for households other than the reference
+> one to install it successfully, and the forum thread is where that will show.
 
 ### Epic 9 - Fixes that belong in Home Assistant, not here
 
