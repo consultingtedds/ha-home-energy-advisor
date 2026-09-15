@@ -63,10 +63,14 @@ Off-grid homes are not supported: see
 
 ### Without HACS
 
-Download the source, copy the `custom_components/home_energy_advisor` folder
-into your Home Assistant `config/custom_components` folder, and restart Home
-Assistant. Upgrading means repeating the copy, which is the main reason to use
-HACS instead.
+Download the source code archive from the
+[latest release](https://github.com/consultingtedds/ha-home-energy-advisor/releases/latest),
+copy the `custom_components/home_energy_advisor` folder from it into your Home
+Assistant `config/custom_components` folder, and restart Home Assistant.
+
+Take it from a release rather than from the main branch, which carries work
+that has not been released. Upgrading means repeating the copy, which is the
+main reason to use HACS instead.
 
 There is nothing to install for the dashboard and cards. They are part of the
 integration and Home Assistant serves them from it. No frontend repository, no
