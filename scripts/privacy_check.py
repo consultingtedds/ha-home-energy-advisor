@@ -122,6 +122,9 @@ KNOWN_HOSTS = {
     "raw.githubusercontent.com",
     "home-assistant.io",
     "linear.app",
+    # Home Assistant's own redirect service: its buttons open a page on the
+    # reader's instance without the link knowing where that instance is.
+    "my.home-assistant.io",
     "pre-commit.com",
     "python.org",
     "schema.org",
