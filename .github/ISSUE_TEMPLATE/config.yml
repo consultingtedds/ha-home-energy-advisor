@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/consultingtedds/ha-home-energy-advisor/discussions/categories/q-a
+    about: Questions about setting it up or reading the figures. Other people can answer too.
+  - name: Troubleshooting
+    url: https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/troubleshooting.md
+    about: The things that most often look wrong, and what to do about them.

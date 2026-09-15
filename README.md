@@ -9,6 +9,12 @@ your money went.
 
 ![The Home Energy Advisor dashboard: cost summary, cost by device and where the energy came from](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/dashboard.png)
 
+Having a problem? The
+[troubleshooting page](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/troubleshooting.md)
+covers what most often looks wrong, and
+[Troubleshooting and help](#troubleshooting-and-help) says where to ask if yours
+is not there.
+
 ## Why you might want it
 
 You can see on the Energy Dashboard that your house used 34 kWh yesterday. What
@@ -438,9 +444,26 @@ again after a reset.
 A fix belongs in Home Assistant itself rather than here, and is being pursued
 upstream.
 
-## Something looks wrong
+## Troubleshooting and help
 
-Report it on [GitHub Issues](https://github.com/consultingtedds/ha-home-energy-advisor/issues).
+The [troubleshooting page](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/troubleshooting.md)
+covers the things that most often look wrong. The three nearly everyone meets:
+
+- **Nothing shows up at first.** Figures take about twenty minutes to appear, and
+  the dashboard up to about an hour and a half.
+- **Notifications about a unit changing to your currency.** Harmless, and safe to
+  accept - see [Known issues](#known-issues).
+- **A device stays at zero.** Often it simply has not run; if Home Energy Advisor
+  has raised a notification about it, the troubleshooting page explains it.
+
+Home Energy Advisor is currently maintained by one person. It started as a tool
+for one house and is shared in case it is useful for yours, so help is given
+where there is time, with no promised response time.
+
+- **Questions** go in [Discussions](https://github.com/consultingtedds/ha-home-energy-advisor/discussions/categories/q-a).
+  Other people can answer there too, and each answer stays findable for the next
+  person with the same question, so it is worth searching first.
+- **Bugs** go in [Issues](https://github.com/consultingtedds/ha-home-energy-advisor/issues).
 
 For anything to do with a figure being wrong, attach the diagnostics download:
 **Settings** > **Devices & services** > **Home Energy Advisor**, then the

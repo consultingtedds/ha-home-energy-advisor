@@ -6,8 +6,11 @@ accounting engine, where being wrong quietly is worse than failing loudly.
 
 ## Reporting a bug
 
-Use [GitHub Issues](https://github.com/consultingtedds/ha-home-energy-advisor/issues).
-That is the right place, and the only place you need.
+Use [GitHub Issues](https://github.com/consultingtedds/ha-home-energy-advisor/issues),
+after checking [the troubleshooting page](docs/troubleshooting.md). Questions
+rather than bugs go in
+[Discussions](https://github.com/consultingtedds/ha-home-energy-advisor/discussions/categories/q-a),
+where other people can answer them too.
 
 For anything involving wrong figures, please attach the **diagnostics download**
 (Settings → Devices & Services → Home Energy Advisor → ⋮ → Download diagnostics).

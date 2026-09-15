@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in Home Energy Advisor is not working as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this.
+
+        Before you start, check the [troubleshooting page](https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/troubleshooting.md) - figures taking a while to appear, unit notifications and devices at zero are all covered there. If you have a question rather than a bug, [Discussions](https://github.com/consultingtedds/ha-home-energy-advisor/discussions/categories/q-a) is the place, where other people can help too.
+
+        Issues are public, so do not paste anything you would not want others to see.
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Before reporting
+      options:
+        - label: I have checked the troubleshooting page and this is not covered there.
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw. A screenshot helps if it is about the dashboard or a figure.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: What you expected to see instead, and why.
+    validations:
+      required: true
+
+  - type: input
+    id: hea-version
+    attributes:
+      label: Home Energy Advisor version
+      description: Shown in HACS, or on the integration's page under Settings > Devices & services.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+
+  - type: input
+    id: ha-version
+    attributes:
+      label: Home Assistant version
+      description: Shown under Settings > About.
+      placeholder: "2026.9.1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: |
+        Settings > Devices & services > Home Energy Advisor, then the three-dot menu and **Download diagnostics**. Drag the file into this box.
+
+        It records why each reading was counted, held or refused, which is usually enough to explain a figure without any back and forth. Entity ids and device names are redacted.
+
+        If you cannot get it - for example the integration will not load - say so and why.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log entries
+      description: Anything from Settings > System > Logs that mentions home_energy_advisor. Optional.
+      render: text
