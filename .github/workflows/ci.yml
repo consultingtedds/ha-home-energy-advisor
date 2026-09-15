@@ -62,19 +62,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # One entry, because before the first release this integration tracks
-        # Home Assistant's latest and supports nothing older - so the floor and
-        # the ceiling are the same version and a second entry would test a
-        # promise nobody is making. Supporting a range means adding the older
-        # floor here with its matching phacc pin; phacc hard-pins the Home
-        # Assistant version it tests against, so the pin is how the version is
-        # chosen (HEA-124).
+        # The floor and the latest, and nothing in between. `hacs.json` declares
+        # the floor, and ADR-0023's rule is that it is never a version the suite
+        # has not run - so these two entries are what makes that declaration
+        # true rather than a claim.
         #
-        # Letting this fall behind is not a chore, it is a blind spot: at
+        # phacc hard-pins the Home Assistant it tests against, so its version is
+        # how a release is chosen here. The frontend is not pinned per entry: the
+        # install step takes whichever one the resulting Home Assistant declares.
+        #
+        # Letting the latest fall behind is not a chore, it is a blind spot: at
         # 2026.7.2 the suite could not see the deprecation that reached a deploy
         # in HEA-113, and was green the whole time because on that release the
         # call was not deprecated.
         include:
+          - ha-version: "2026.7.0"
+            phacc: "0.13.344"
           - ha-version: "2026.9.1"
             phacc: "0.13.364"
     steps:
