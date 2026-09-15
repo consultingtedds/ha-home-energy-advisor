@@ -378,37 +378,32 @@ Presentation
 > HEA statistics from recorder input history for the current config" -
 > idempotent, re-runnable, overwriting Untracked too.
 
-### Epic 8 - Release (IN PROGRESS - the only epic still open)
+### Epic 8 - Release
 1. Semver tagging + GitHub release CI, keeping `manifest.json` in step with the
-   tag (HEA-31). **First**: HACS installs from tagged releases, and nothing
-   currently produces one. Tagging by hand works once and then rots
-2. First tagged release + HACS custom-repository install docs (HEA-32), in this
-   order:
-   a. `brand/icon.png` in the repository - the longest lead time and no
-      dependencies. It also lets CI stop passing `ignore: brands` to the HACS
-      action, and an ignored check is one nobody sees fail. The separate
-      `home-assistant/brands` pull request fixes the blank tile on Home
-      Assistant's *own* integrations page and can run in parallel
-   b. the supported-version work, in this order and no other: fix
-      `tests/test_dependency_pins.py` so the frontend check compares against the
-      Home Assistant the job is running rather than the one the requirements
-      file names (it fails in an older-version job otherwise, on a mismatch that
-      is not real); add the second matrix entry `2026.7.0` / phacc `0.13.344`;
-      then set `hacs.json` to `2026.7.0`. The README's stated minimum is guarded
-      against it, so the two move together (ADR-0023)
-   c. the install docs and the tag
-3. **Done: how visible the AI workflow should be** (HEA-110). The engineering
-   rules stay committed because they protect the codebase for whoever works on
-   it next; the framing around them does not, and `CLAUDE.md` is no longer
-   committed - `CONTRIBUTING.md` carries the orientation
+   tag (HEA-31). The version is derived from commit types; the first release is
+   cut by hand and every one after it follows a green `main`
+2. First tagged release + HACS custom-repository install docs (HEA-32): brand
+   icon, supported-version floor `2026.7.0` tested beside the latest, install
+   docs taking a release rather than `main`
+3. How visible the AI workflow should be (HEA-110). The engineering rules stay
+   committed because they protect the codebase for whoever works on it next;
+   the framing around them does not, and `CONTRIBUTING.md` carries the
+   orientation
 4. (Backlog) HACS default store submission; community forum post for demand
    validation. Deliberately after external validation, not before
 
-> **What is *not* in the way.** Epics 1-6 are closed and Epic 7 is cancelled. The
-> only publish blockers left are HEA-31 and HEA-32. Everything found in the final
+> **v0.1.0 released 2026-09-15.** Every publish blocker is closed. The final
 > sweep - the reset crater (HEA-122), the deprecated registry lookup (HEA-113),
 > the Home Assistant version drift (HEA-124), the import-price prefill (HEA-118)
-> and the Spanish dashboard (HEA-126) - is fixed and green.
+> and the Spanish dashboard (HEA-126) - landed before the tag.
+>
+> The brand icon lives in `custom_components/home_energy_advisor/brand/`. Since
+> Home Assistant 2026.3 a custom integration's own `brand/` folder takes
+> priority over the brands CDN, so that one folder serves both HACS and Home
+> Assistant's own integrations page - confirmed on the demo instance, where the
+> page requests `/api/brands/integration/home_energy_advisor/icon.png` and gets
+> it. No `home-assistant/brands` submission is needed, and that repository marks
+> its custom-integration folder as legacy.
 
 ### Epic 9 - Fixes that belong in Home Assistant, not here
 

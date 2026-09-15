@@ -4,15 +4,14 @@
  *   node scripts/build-icon.mjs
  *
  * Writes `icon.png` (256) and `icon@2x.png` (512) into the integration's own
- * `brand/` directory, which is where the HACS action looks:
+ * `brand/` directory:
  *
  *     custom_components/home_energy_advisor/brand/icon.png
  *
- * Inside the integration rather than at the repository root. HACS's own
- * publishing guide says "a `brand` directory in your repository", which reads
- * as the root and is not what its validation checks - it names that path
- * explicitly when the assets are missing. The same files are what a
- * `home-assistant/brands` submission needs.
+ * Inside the integration, not at the repository root. That is the path the
+ * HACS action validates, and it is the folder Home Assistant itself serves an
+ * integration's icon from, ahead of the brands CDN - so these two files are the
+ * icon everywhere it appears.
  *
  * ## Why this is a script and not an exported file
  *
@@ -64,7 +63,7 @@ const GLYPH =
  */
 const COLOUR = "#F0A330";
 
-/** What `home-assistant/brands` asks for: 1:1, PNG, transparent. */
+/** Home Assistant's brand image rules: 1:1, PNG, transparent. */
 const SIZES = [
   { file: "icon.png", px: 256 },
   { file: "icon@2x.png", px: 512 },
