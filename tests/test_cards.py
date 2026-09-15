@@ -7,6 +7,7 @@ that omit it are exercising the headless path deliberately.
 
 from __future__ import annotations
 
+import json
 import os
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -129,8 +130,11 @@ async def test_the_url_carries_the_release_so_an_upgrade_refetches_the_set(
     assert url is not None
     assert "?" not in url
     # The release, so an upgrade always moves it, and a digest of the sources,
-    # so a build between two releases moves it too
-    assert url.endswith(f"/0.0.1-{fingerprint(CARDS_DIR)}")
+    # so a build between two releases moves it too. Read from the manifest
+    # rather than written down: the release workflow rewrites that version on
+    # every release, and the claim here is that the url follows it
+    manifest = json.loads((CARDS_DIR.parent / "manifest.json").read_text("utf-8"))
+    assert url.endswith(f"/{manifest['version']}-{fingerprint(CARDS_DIR)}")
 
 
 def test_the_url_moves_when_a_card_changes_under_an_unchanged_version(
