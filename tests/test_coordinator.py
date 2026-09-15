@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -43,11 +44,11 @@ _POWER = {"unit_of_measurement": "W", "device_class": "power"}
 _HISTORY = "custom_components.home_energy_advisor.coordinator.async_has_ever_reported"
 
 
-def _entry() -> MockConfigEntry:
+def _entry(price: str = "sensor.price") -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         data={
-            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_PRICE_ENTITY: price,
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
         },
@@ -97,6 +98,53 @@ async def test_coordinator_accounts_for_a_device_over_an_interval(
     assert aircon.energy_kwh == Decimal("0.6")
     assert aircon.actual_cost == Decimal("0.18")
     assert coordinator.data.untracked.energy_kwh == Decimal("0.4")
+
+
+async def test_a_number_helper_prices_the_interval_like_a_sensor(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A fixed rate typed into a Number helper is priced the same way (HEA-132).
+
+    The helper comes from Home Assistant's own `input_number`, not a state
+    written by hand, so its real state format is what gets read.
+    """
+    # Given - a household whose import price is a Number helper at 0.30
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    assert await async_setup_component(
+        hass,
+        "input_number",
+        {
+            "input_number": {
+                "electricity_rate": {
+                    "min": 0,
+                    "max": 1,
+                    "step": 0.0001,
+                    "initial": 0.30,
+                    "unit_of_measurement": "EUR/kWh",
+                }
+            }
+        },
+    )
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    entry = _entry(price="input_number.electricity_rate")
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the house imports 1 kWh over the interval, the device drawing 0.6,
+    # and the finalisation timer fires past the lateness margin
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - the device is priced at the helper's rate
+    subentry_id = next(iter(entry.subentries))
+    assert entry.runtime_data.data.devices[subentry_id].actual_cost == Decimal("0.18")
 
 
 async def test_unchanged_reports_advance_a_sources_last_seen_time(

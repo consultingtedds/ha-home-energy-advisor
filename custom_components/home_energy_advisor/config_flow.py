@@ -62,8 +62,10 @@ _TITLE = "Home Energy Advisor"
 # Options-flow-internal key for the multi-select of discovered devices to add.
 _CONF_DISCOVERED = "discovered_devices"
 
+#: The domains the Energy Dashboard accepts as a price: a tariff sensor, or a
+#: Number helper holding a fixed rate.
 _PRICE_SELECTOR = selector.EntitySelector(
-    selector.EntitySelectorConfig(domain="sensor")
+    selector.EntitySelectorConfig(domain=["sensor", "input_number"])
 )
 _ENERGY_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor", device_class="energy")

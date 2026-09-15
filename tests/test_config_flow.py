@@ -209,6 +209,38 @@ async def test_user_flow_creates_entry_from_the_required_inputs(
     assert result["data"][CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
 
 
+async def test_a_number_helper_is_accepted_as_the_import_price(
+    hass: HomeAssistant,
+) -> None:
+    """A household on a fixed rate types it into a Number helper.
+
+    The Energy Dashboard takes one as a price, and so does the README, so the
+    form refusing it left the household stuck (HEA-132).
+    """
+    # Given - a fixed-rate household whose price is a Number helper
+    _register_source_sensors(hass)
+    hass.states.async_set(
+        "input_number.electricity_rate", "0.2134", {"unit_of_measurement": "EUR/kWh"}
+    )
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When - it is chosen as the import price
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "input_number.electricity_rate",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+
+    # Then - the entry is created with it
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_PRICE_ENTITY] == "input_number.electricity_rate"
+
+
 async def test_user_flow_records_optional_generation_and_battery_inputs(
     hass: HomeAssistant,
 ) -> None:
@@ -414,6 +446,46 @@ async def test_prefill_finds_the_import_price_in_the_older_flow_arrays(
     # Then - the price is found just the same
     assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
     assert suggested[CONF_PRICE_ENTITY] == "sensor.import_price"
+
+
+async def test_a_number_helper_price_from_the_energy_dashboard_can_be_submitted(
+    hass: HomeAssistant,
+) -> None:
+    """What the form suggests, the form must accept.
+
+    The Energy Dashboard prices a grid source from a sensor or a Number helper.
+    Suggesting a helper the selector then refuses hands the household an error
+    on a field they never touched (HEA-132).
+    """
+    # Given - an Energy Dashboard grid source priced by a Number helper
+    _register_source_sensors(hass)
+    prefs = SimpleNamespace(
+        data={
+            "energy_sources": [
+                {
+                    "type": "grid",
+                    "stat_energy_from": "sensor.grid_import",
+                    "entity_energy_price": "input_number.electricity_rate",
+                },
+            ]
+        }
+    )
+    with patch(_PATH, AsyncMock(return_value=prefs)):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_USER}
+        )
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    suggested = _suggested_values(data_schema)
+
+    # When - the household accepts the suggestions as they stand
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_CURRENCY: "EUR", **suggested}
+    )
+
+    # Then - the entry is created, priced by the helper
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_PRICE_ENTITY] == "input_number.electricity_rate"
 
 
 async def test_a_fixed_price_offers_nothing_rather_than_something_wrong(

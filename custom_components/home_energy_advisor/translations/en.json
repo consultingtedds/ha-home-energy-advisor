@@ -15,7 +15,7 @@
           "house_consumption_entity": "House consumption energy (optional)"
         },
         "data_description": {
-          "price_entity": "The sensor giving the current import price per kWh.",
+          "price_entity": "The sensor or Number helper giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
@@ -39,7 +39,7 @@
           "house_consumption_entity": "House consumption energy (optional)"
         },
         "data_description": {
-          "price_entity": "The sensor giving the current import price per kWh.",
+          "price_entity": "The sensor or Number helper giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
