@@ -422,12 +422,11 @@ async function moneyIn(page, card) {
 }
 
 /**
- * The deploy check, made automatic.
+ * What the page actually fetched from the integration.
  *
- * `CLAUDE.local.md` has a human paste this into a console after every deploy,
- * because a stale copy on the share serves old modules that a screenshot cannot
- * distinguish from a good one. Asking the page what it actually fetched is the
- * only reliable answer, so it belongs here rather than in a procedure.
+ * Stale modules left beside the bundle are still served, and a screenshot cannot
+ * tell them apart from a good load. Asking the page what it fetched is the only
+ * reliable answer, so it is checked here rather than by eye.
  */
 async function bundleChecks(page) {
   console.log("The bundle the integration serves:");

@@ -412,6 +412,13 @@ Presentation
 > **Epic 8 and the MVP closed 2026-09-15.** The HACS default store submission
 > (HEA-129) sits outside both. It waits for households other than the reference
 > one to install it successfully, and the forum thread is where that will show.
+>
+> The same day, v0.1.0 was installed through HACS on a clean instance, byte for
+> byte what the tag holds, and the e2e suite passed against it (HEA-131). The
+> import price was then found to refuse the Number helper the README recommends,
+> fixed as v0.1.1 (HEA-132), the first release cut automatically.
+> The reference home moved onto the HACS install of v0.1.1 without losing a
+> figure, and now updates the way any household does.
 
 ### Epic 9 - Fixes that belong in Home Assistant, not here
 
