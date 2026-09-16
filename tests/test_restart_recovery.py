@@ -9,9 +9,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
+from homeassistant.config_entries import (
+    ConfigEntryState,
+    ConfigSubentry,
+    ConfigSubentryData,
+)
 from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_FINAL_WRITE
 from homeassistant.helpers import restore_state
 from pytest_homeassistant_custom_component.common import (
@@ -142,6 +147,45 @@ async def test_a_restart_carries_the_engine_state_the_sensors_cannot_hold(
     assert restarted.restored is not None
     resumed = {s["entity_id"]: s for s in restarted.diagnostics()["sources"]}
     assert resumed["sensor.coarse_step_energy"]["last_value"] == "0.6"
+
+
+async def test_adding_a_second_device_does_not_rebase_the_first(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Adding a device reloads the entry, and a household adds several in a row.
+
+    A published `total_increasing` figure that dips is not merely a wobble on a
+    chart: Home Assistant's statistics read the fall as a counter starting again,
+    so the energy before it is counted a second time and the dashboard, which
+    sums recorded change, reads high for ever after (HEA-134, GitHub #20).
+    """
+    # Given - a device with a published figure behind it
+    entry = await _accrue_and_publish(hass, freezer)
+    before = _published(hass, _AIRCON_ENERGY)
+    assert before == Decimal("0.6")
+
+    # When - a second device is added, as the options flow does, and the entry
+    # reloads to pick it up
+    hass.states.async_set("sensor.steady_pump_energy", "0", _ENERGY)
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {
+                    CONF_NAME: "Steady Pump",
+                    CONF_ENERGY_ENTITY: "sensor.steady_pump_energy",
+                }
+            ),
+            subentry_type=SUBENTRY_TYPE_DEVICE,
+            title="Steady Pump",
+            unique_id=None,
+        ),
+    )
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - the first device's figure is untouched
+    assert _published(hass, _AIRCON_ENERGY) == before
 
 
 async def test_a_snapshot_the_engine_cannot_read_falls_back_to_a_cold_start(

@@ -56,6 +56,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
     WHOLE_HOME_KEY,
 )
+from .recorded_baseline import async_last_recorded
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -428,14 +429,26 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         reason: whichever store is ahead wins, so a published
         ``total_increasing`` figure never steps backwards into what Home
         Assistant would read as a meter reset.
+
+        Where neither store holds anything, the recorder is asked what this
+        figure last published. Both stores are delayed writes, so a restart soon
+        after setup finds neither and would otherwise send a household's lifetime
+        totals to zero - while the statistics, written on their own schedule,
+        still hold them (HEA-134).
         """
         await super().async_added_to_hass()
         carried = self.coordinator.restored
         already_held = self._running_from(carried) if carried else Decimal(0)
         last = await self.async_get_last_sensor_data()
-        if last is not None and isinstance(last.native_value, Decimal):
-            self._baseline = max(Decimal(0), last.native_value - already_held)
-        self._restored = last is not None or carried is not None
+        held = last.native_value if last is not None else None
+        if not isinstance(held, Decimal):
+            held = await async_last_recorded(self.hass, self.entity_id)
+        if held is not None:
+            self._baseline = max(Decimal(0), held - already_held)
+        # A figure recovered from the recorder has a history too, so it is not
+        # warming up: it has plenty to show, and saying otherwise on a household
+        # that has been running for months would read as a fresh install.
+        self._restored = held is not None or carried is not None
         self._last_reset = await self._async_restored_zero_point()
         self.async_on_remove(
             async_dispatcher_connect(
