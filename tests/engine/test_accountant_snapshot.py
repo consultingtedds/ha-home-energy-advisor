@@ -26,6 +26,7 @@ GRID = "sensor.grid_import"
 GENERATION = "sensor.generation"
 CHARGE = "sensor.battery_charge"
 DISCHARGE = "sensor.battery_discharge"
+EXPORT = "sensor.grid_export"
 COARSE_AIRCON = "sensor.coarse_step_energy"
 STEADY_PUMP = "sensor.steady_pump_energy"
 
@@ -152,6 +153,7 @@ def test_snapshot_restore_reproduces_an_uninterrupted_run_at_every_split() -> No
 # decision that was never made for the battery ledger (HEA-112).
 _PERSISTED = frozenset(
     {
+        "_balance",
         "_battery",
         "_debts",
         "_draws",
@@ -237,6 +239,42 @@ def _battery_run(*, restart_at: int | None, carry_state: bool) -> Totals:
                 acc.observe(entity, at(minute), Decimal(value))
         acc.finalize(at(minute))
     return acc.totals()
+
+
+def _exporting_home() -> Accountant:
+    """A house that exports, which is what the generation branch needs to run."""
+    return Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: GRID,
+            SourceRole.GRID_EXPORT: EXPORT,
+            SourceRole.GENERATION: GENERATION,
+        },
+        device_energy_entities={},
+    )
+
+
+def test_a_carried_house_balance_survives_a_restart() -> None:
+    # Given - a house whose export counter has ticked and whose generation
+    # counter has not caught up, so the balance is holding what it cannot yet
+    # settle - the deficit HEA-133 found
+    acc = _exporting_home()
+    acc.record_price(at(0), Decimal("0.30"))
+    acc.observe(GENERATION, at(0), Decimal(0))
+    acc.observe(EXPORT, at(0), Decimal(0))
+    acc.observe(GENERATION, at(5), Decimal(2))
+    acc.observe(EXPORT, at(10), Decimal(2))
+    acc.finalize(at(70))
+    held = acc.balance_diagnostics()["export_awaiting_generation"]
+    assert held != "0"
+
+    # When - the process restarts, carrying the snapshot
+    restarted = _exporting_home()
+    restarted.restore(json.loads(json.dumps(acc.snapshot())))
+
+    # Then - the carry comes back. Losing it would write the deficit off at every
+    # restart, which is the drift this exists to stop, and a household that
+    # restarts often would never see it settle
+    assert restarted.balance_diagnostics()["export_awaiting_generation"] == held
 
 
 def test_battery_discharge_after_a_restart_is_priced_from_the_carried_ledger() -> None:

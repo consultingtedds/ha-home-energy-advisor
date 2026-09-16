@@ -55,6 +55,7 @@ from .energy_source import (
     EnergyUnit,
     Reading,
 )
+from .house_balance import HouseBalance, HouseReadings, Served
 from .interval_ledger import BUCKET, IntervalBucket, SourceKind, spread_energy
 
 if TYPE_CHECKING:
@@ -267,17 +268,6 @@ class _WindowBucket:
     claimed: dict[str, Decimal]
 
 
-@dataclass(frozen=True)
-class _Served:
-    """House-served energy for one interval, after decomposition."""
-
-    grid: Decimal
-    generation: Decimal
-    battery: Decimal
-    grid_charge: Decimal
-    generation_charge: Decimal
-
-
 @dataclass
 class _Running:
     energy_kwh: Decimal = Decimal(0)
@@ -356,6 +346,10 @@ class Accountant:
         # clears within it, and one that does not is a meter disagreement rather
         # than late reporting (ADR-0015).
         self._debts = DebtLedger(expiry=self._max_quiet_span)
+        # House meters that tick a whole unit at a time leave each interval's
+        # balance half told; what is left over waits here for its counterpart
+        # rather than being floored away (HEA-133).
+        self._balance = HouseBalance(expiry=self._max_quiet_span)
         self._pending_bounds: list[_PendingBound] = []
         # Late corrections awaiting a remainder that can afford to hand them over,
         # oldest first so a device that has waited longest is paid first.
@@ -464,8 +458,10 @@ class Accountant:
         self._retained.clear()
         # Debt outlives nothing: it is a claim against buckets that no longer
         # contribute to any total, and repaying it after the rebase would move
-        # value between figures that no longer share a baseline.
+        # value between figures that no longer share a baseline. A carried
+        # balance is a claim on the same buckets, and goes for the same reason.
         self._debts = DebtLedger(expiry=self._max_quiet_span)
+        self._balance = HouseBalance(expiry=self._max_quiet_span)
 
     def snapshot(self) -> dict[str, Any]:
         """Everything the engine has learned, for carrying across a restart.
@@ -502,6 +498,7 @@ class Accountant:
                 for when, price in self._prices
             ],
             "battery": self._battery.snapshot(),
+            "balance": self._balance.snapshot(),
             "debts": self._debts.snapshot(),
             "pending_bounds": [
                 {
@@ -596,6 +593,8 @@ class Accountant:
             for entry in data["prices"]
         ]
         self._battery.restore(data["battery"])
+        # A snapshot taken before the carries existed simply has none to restore.
+        self._balance.restore(data.get("balance", {}))
         self._debts.restore(data["debts"])
         self._pending_bounds = [
             _PendingBound(
@@ -705,6 +704,15 @@ class Accountant:
             cost_floor=whole_home.actual_cost - actual,
             cost_ceiling=whole_home.actual_cost - actual,
         )
+
+    def balance_diagnostics(self) -> dict[str, str]:
+        """House energy still waiting for the counterpart that explains it.
+
+        A household whose figures run above their own meter is either being
+        told the truth about coarse counters or is meeting a bug; without these
+        two, the download cannot tell one from the other (HEA-133).
+        """
+        return self._balance.diagnostics()
 
     def battery_diagnostics(self) -> dict[str, str]:
         """What the stored-cost ledger holds, for the diagnostics download.
@@ -846,7 +854,7 @@ class Accountant:
             self._note_zero_priced(start)
         raw = self._raw.pop(start, {})
         claimed = self._draws.pop(start, {})
-        served = self._decompose(raw)
+        served = self._decompose(raw, start)
         self._weigh_plausibility(served, claimed)
         draws = self._believable(claimed, start)
         prices, sources = self._price_sources(served, self._price_at(start))
@@ -1066,7 +1074,7 @@ class Accountant:
         newest[device] = newest.get(device, Decimal(0)) + kwh
 
     def _weigh_plausibility(
-        self, served: _Served, claimed: Mapping[str, Decimal]
+        self, served: Served, claimed: Mapping[str, Decimal]
     ) -> None:
         """Record this interval's evidence and re-judge every device against it.
 
@@ -1190,39 +1198,33 @@ class Accountant:
             for role in roles
         )
 
-    def _decompose(self, raw: Mapping[SourceRole, Decimal]) -> _Served:
-        imp = raw.get(SourceRole.GRID_IMPORT, Decimal(0))
-        exp = raw.get(SourceRole.GRID_EXPORT, Decimal(0))
-        gen = raw.get(SourceRole.GENERATION, Decimal(0))
-        charge = raw.get(SourceRole.BATTERY_CHARGE, Decimal(0))
-        discharge = raw.get(SourceRole.BATTERY_DISCHARGE, Decimal(0))
-
-        grid_charge = min(charge, imp)
-        generation_charge = charge - grid_charge
-        grid = imp - grid_charge
-
+    def _decompose(self, raw: Mapping[SourceRole, Decimal], at: datetime) -> Served:
         # The branch follows what is *readable*, not merely what is configured.
         # A failed house meter otherwise reads as a zero, collapsing consumption
         # to grid + battery and discarding generation entirely - while the
         # household may well have the meters for the full-balance model (HEA-67).
-        if self._is_readable(SourceRole.HOUSE_CONSUMPTION):
-            house = raw.get(SourceRole.HOUSE_CONSUMPTION, Decimal(0))
-            generation = max(Decimal(0), house - grid - discharge)
-        elif self._is_readable(SourceRole.GENERATION, SourceRole.GRID_EXPORT):
-            generation = max(Decimal(0), gen - generation_charge - exp)
-        else:
-            generation = Decimal(0)
-
-        return _Served(
-            grid=grid,
-            generation=generation,
-            battery=discharge,
-            grid_charge=grid_charge,
-            generation_charge=generation_charge,
+        metered = self._is_readable(SourceRole.HOUSE_CONSUMPTION)
+        readings = HouseReadings(
+            imported=raw.get(SourceRole.GRID_IMPORT, Decimal(0)),
+            exported=raw.get(SourceRole.GRID_EXPORT, Decimal(0)),
+            generated=raw.get(SourceRole.GENERATION, Decimal(0)),
+            charged=raw.get(SourceRole.BATTERY_CHARGE, Decimal(0)),
+            discharged=raw.get(SourceRole.BATTERY_DISCHARGE, Decimal(0)),
+            # Zero, not absent, when a readable house meter simply did not move:
+            # a quiet house is a reading, and treating it as no meter at all
+            # hands the interval to the full-balance branch, which books
+            # generation the household in fact exported (HEA-67).
+            house=raw.get(SourceRole.HOUSE_CONSUMPTION, Decimal(0))
+            if metered
+            else None,
+            generation_metered=self._is_readable(
+                SourceRole.GENERATION, SourceRole.GRID_EXPORT
+            ),
         )
+        return self._balance.decompose(readings, at)
 
     def _price_sources(
-        self, served: _Served, price: Decimal
+        self, served: Served, price: Decimal
     ) -> tuple[dict[SourceKind, Decimal], dict[SourceKind, Decimal]]:
         if served.grid_charge > 0:
             self._battery.charge_from_grid(served.grid_charge, price)

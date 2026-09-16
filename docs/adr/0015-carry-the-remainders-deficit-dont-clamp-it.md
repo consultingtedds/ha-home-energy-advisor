@@ -210,3 +210,73 @@ The replay reproduces live behaviour to about 2 percentage points (+3.2 % agains
 a live +5.35 %), starting cold with no retention ring and no prior counter state.
 The recovery is therefore better evidenced than the absolute bias, and the true
 bias is likely a little higher than the replayed figure rather than lower.
+
+## Amendment, 2026-09-16: the same rectifier, one layer up
+
+A separate finding, from the first bug report by a household outside the
+reference home (HEA-133, GitHub #19). The decision above stands unchanged; this
+extends it to the other clamp in the engine.
+
+### What was found
+
+The decomposition that turns house meters into served sources (ADR-0005) had two
+clamps of its own, applied per bucket:
+
+```python
+grid_charge = min(charge, imp)
+generation = max(Decimal(0), gen - generation_charge - exp)
+```
+
+The household in question meters an inverter that publishes whole kilowatt-hours
+and reports each figure independently. So a bucket routinely holds export with no
+generation beside it, or a battery charge before the import that supplied it. Both
+clamps then discard the leftover, and both can only discard in the direction that
+*raises* what the house is said to have used. It is the rectifier of the decision
+above, on a different subtraction: they reported 14.972 kWh used against their
+inverter's own 8.0.
+
+The charge clamp is worse than a bias, because it counts one kilowatt-hour twice.
+A charge arriving before its import is booked as generation filling the battery
+for free; the import that follows is then booked as energy the house burned; and
+the same energy is charged for a third time when the battery discharges it.
+
+Reproduced in `tests/engine/test_coarse_house_counters.py` without any of their
+data: 2 kWh generated and exported one bucket later published 1 kWh of phantom
+consumption, and half an hour of an ordinary generating day published 4.5 kWh
+against meters recording 4.
+
+### Decision
+
+Carry both leftovers, as this ADR already carries the remainder's deficit.
+`HouseBalance` holds two: export awaiting the generation it came from, and a
+charge awaiting the supply that filled it. Each is taken off the next bucket that
+can settle it, and each expires on `max_quiet_span`, the same span a suspended
+charge does and for the same reason - beyond it, the household's meters disagree
+rather than merely lag.
+
+### What this does and does not fix
+
+The charge case is settled exactly: the import that arrives later is spent on the
+charge before anything is booked as consumption, so no kilowatt-hour is counted
+twice.
+
+Generation is settled **over a period, not within a bucket**. Energy credited
+before its export tick has already been published, and a published figure is
+never retracted (HEA-85), so the correction lands on the generation that follows
+instead. A house generating through the day converges; one whose last tick before
+a reading is generation stands a fraction of one tick high until the next tick
+arrives.
+
+What is outstanding is therefore a figure in its own right, and
+`balance_diagnostics` publishes both carries in the diagnostics download. A
+household whose total runs above their meter can now be told which of the two it
+is: energy still waiting for its counterpart, or a genuine disagreement between
+their meters.
+
+### Why the reference household never saw it
+
+It has a house consumption meter, so the balance takes the branch that reads
+consumption directly and never runs the generation subtraction. The defect needs
+a house without one - which is the configuration the README calls optional, and
+the first outside household had. Dogfooding one house cannot find a defect that
+lives in the branch that house does not take.

@@ -508,14 +508,16 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         """Assemble the diagnostics download (HEA-24) as JSON-safe primitives.
 
         Joins the entry configuration, the engine's per-source accumulator state
-        and decision log, the battery's stored-cost ledger, and the running
-        totals - everything needed to explain any published figure without a
-        live instance.
+        and decision log, the battery's stored-cost ledger, the house energy
+        still awaiting the counterpart that explains it, and the running totals -
+        everything needed to explain any published figure without a live
+        instance.
         """
         return {
             "config": self._config_diagnostics(),
             "sources": self._source_diagnostics(),
             "battery": self._accountant.battery_diagnostics(),
+            "balance": self._accountant.balance_diagnostics(),
             "snapshot": self._snapshot_diagnostics(),
             "totals": self._totals_diagnostics(),
         }
