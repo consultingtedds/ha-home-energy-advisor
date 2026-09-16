@@ -136,15 +136,11 @@ class DecisionReason(Enum):
     real load can do (HEA-60). ``IMPLAUSIBLE_STEP`` is this class's own refusal:
     a reading implying more power than any household draws, which is a counter
     that has been replaced rather than energy anybody used (HEA-137).
-    ``HELD_AFTER_DROP`` is a reading waiting on the next one: the counter fell
-    past the floor, and whether it restarted or blinked is not knowable until
-    something follows it (HEA-139).
     """
 
     COUNTED = "counted"
     RESET = "reset"
     IMPLAUSIBLE_STEP = "implausible_step"
-    HELD_AFTER_DROP = "held_after_drop"
     FIRST_READING = "first_reading"
     UNAVAILABLE = "unavailable"
     STALE = "stale"
