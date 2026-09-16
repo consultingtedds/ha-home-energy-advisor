@@ -75,6 +75,35 @@ watts, and not a sensor whose value goes up and down. The Energy Dashboard's gri
 meter is the right kind, and if you have set that up the field is usually filled
 in for you.
 
+## My figures are far higher than my meter, or Untracked is enormous
+
+Almost always a source sensor that was **replaced** rather than a fault in your
+house. A new sensor starts its counter at a different number, and the jump from
+the old one is not energy anybody used.
+
+Home Energy Advisor refuses a reading that implies more power than a house can
+draw, and raises a notification naming the input when it does. Figures that were
+already wrong before that refusal stay wrong: they are part of the running
+totals, and only starting those again clears them.
+
+To clear them, once your sensors have settled: **Settings** > **Devices &
+services** > **Home Energy Advisor**, three-dot menu, **Reset all totals**. That
+zeroes every figure and clears the history behind them, which is what you want
+here, because that history is what holds the wrong numbers. It cannot be undone.
+
+If your figures are wrong and you have not changed a sensor, the diagnostics
+download says what every reading was counted as - attach it to an issue.
+
+## A notification says an energy input jumped by more than any house could use
+
+The counter behind that sensor leapt, which is what replacing or rescaling a
+sensor looks like from here, so the jump was not counted as energy. Accounting
+carries on from the new counter's position and nothing needs putting right.
+
+The limit is 100 kW of continuous draw, which is about 1.4 times the largest
+domestic supply. If your site genuinely draws more than that, please open an
+issue: the figure is fixed today and can be made adjustable.
+
 ## Untracked is a large share of the bill
 
 Untracked is everything in the house you have not added as a device, so on most
@@ -91,6 +120,28 @@ Home Energy Advisor counts what the metered energy cost at the price at the time
 Standing charges and payment for exported energy are not included, so the total
 is usually lower than the bill. See
 [What Actual Cost does not include](https://github.com/consultingtedds/ha-home-energy-advisor#what-actual-cost-does-not-include).
+
+## My figures disagree with the Energy Dashboard
+
+Over a day they agree. Inside the current hour they cannot, and that is the
+twenty-minute wait doing its job: Home Energy Advisor holds an interval open so
+that a meter reporting every half hour has its reading placed in the hour it
+belongs to, while the Energy Dashboard settles on the hour.
+
+On the cost-over-time chart the interval still being counted is drawn faded,
+with a note saying so, so a bar that looks short is one that is still filling
+rather than a figure to compare.
+
+## HACS is not offering the update yet
+
+HACS checks repositories it does not carry in its own store - which is all
+custom repositories, including this one - about **every two days**. A new release
+can therefore exist for a while before your instance is told about it, and
+**Check for updates** under Settings > System will not change that, because it
+asks HACS rather than GitHub.
+
+To fetch it now: **HACS** > **Home Energy Advisor** > three-dot menu > **Update
+information**.
 
 ## The dashboard is missing after installing or updating
 
