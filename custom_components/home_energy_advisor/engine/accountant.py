@@ -733,6 +733,22 @@ class Accountant:
         """
         return {entity: source.snapshot() for entity, source in self._sources.items()}
 
+    def settled_until(self) -> datetime | None:
+        """The instant up to which every figure is complete, or ``None``.
+
+        An interval closes on the lateness margin, so at any moment the most
+        recent twenty minutes or so are still accruing: energy for them has been
+        counted, and more of it is still expected. A card drawing that alongside
+        Home Assistant's own hourly figures shows a short bar with nothing to
+        say why, which is how it reached us (HEA-140, GitHub #20).
+
+        The *end* of the last closed interval, not its start: the household's
+        figures are complete up to that instant and provisional after it.
+        """
+        if self._watermark is None:
+            return None
+        return self._watermark + BUCKET
+
     def has_finalised(self) -> bool:
         """Whether any interval has closed, and so whether a figure exists at all.
 

@@ -729,3 +729,79 @@ describe("the card", () => {
     expect(mount(aHass({ devices: AIRCON, response: twoDays })).getCardSize()).toBeGreaterThan(3);
   });
 });
+
+describe("an interval the accounting has not finished with", () => {
+  /** Two hourly buckets, the later of which is still filling. */
+  const twoHours = {
+    "sensor.slow_poll_aircon_energy_used": [
+      { start: DAY_ONE.getTime(), change: 10 },
+      { start: DAY_ONE.getTime() + 3600000, change: 4 },
+    ],
+    "sensor.slow_poll_aircon_actual_cost": [
+      { start: DAY_ONE.getTime(), change: 1 },
+      { start: DAY_ONE.getTime() + 3600000, change: 0.4 },
+    ],
+    "sensor.slow_poll_aircon_cost_at_grid_price": [
+      { start: DAY_ONE.getTime(), change: 3 },
+      { start: DAY_ONE.getTime() + 3600000, change: 1 },
+    ],
+  };
+
+  const anHourlyPeriod = () =>
+    anEnergyCollection(DAY_ONE, new Date(DAY_ONE.getTime() + 2 * 3600000));
+
+  it("draws the accruing bar differently from the finished ones", async () => {
+    // Given - the integration has settled to the end of the first hour, so the
+    // second is still being counted
+    const card = mount(
+      aHass({
+        devices: AIRCON,
+        response: twoHours,
+        collection: anHourlyPeriod(),
+        settledUntil: new Date(DAY_ONE.getTime() + 3600000).toISOString(),
+      }),
+    );
+    await ready(card);
+
+    // Then - the finished bar is drawn plainly and the accruing one is not. A
+    // household comparing the last hour with the Energy Dashboard's otherwise
+    // reads a lag as a disagreement (HEA-140, GitHub #20)
+    const paid = seriesOf(card, "paid").data;
+    expect(paid[0].itemStyle?.opacity).toBeUndefined();
+    expect(paid[1].itemStyle.opacity).toBeLessThan(1);
+  });
+
+  it("says in words that the last interval is still being counted", async () => {
+    // Given - the same period
+    const card = mount(
+      aHass({
+        devices: AIRCON,
+        response: twoHours,
+        collection: anHourlyPeriod(),
+        settledUntil: new Date(DAY_ONE.getTime() + 3600000).toISOString(),
+      }),
+    );
+    await ready(card);
+
+    // Then - the caption says so. The faded bar is the signal; this is what
+    // tells somebody what the signal means
+    expect(text(card)).toContain(LABELS.still_accruing);
+  });
+
+  it("says nothing when every interval on the chart is finished", async () => {
+    // Given - a chart of whole days, all of them settled
+    const card = mount(
+      aHass({
+        devices: AIRCON,
+        response: twoDays,
+        settledUntil: new Date(DAY_TWO.getTime() + 86400000).toISOString(),
+      }),
+    );
+    await ready(card);
+
+    // Then - no note and no fading. A caveat shown always is a caveat nobody
+    // reads
+    expect(text(card)).not.toContain(LABELS.still_accruing);
+    expect(seriesOf(card, "paid").data.every((point) => Array.isArray(point))).toBe(true);
+  });
+});

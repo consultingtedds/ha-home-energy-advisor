@@ -13,7 +13,7 @@
  */
 
 import { subscribeToPeriod } from "./ha-energy-collection.js";
-import { readDevices, readWholeHome } from "./hea-devices.js";
+import { readDevices, readSettledUntil, readWholeHome } from "./hea-devices.js";
 import { filterFor, matchesFilter, subscribeToFilter } from "./hea-filter.js";
 import { formatPeriod, localeFrom } from "./hea-format.js";
 import { fill, labelsFor, loadLabels } from "./hea-labels.js";
@@ -256,8 +256,19 @@ export class HeaCard extends HTMLElement {
       // Both windows at once. The comparison is a second call rather than a new
       // mechanism, and asking for them together means one render rather than a
       // card that shows this period and then shifts when the other lands.
+      // How far the accounting has settled, so a card can draw an interval
+      // still filling as such rather than as a figure to compare (HEA-140). The
+      // earlier period is wholly behind that boundary by construction, so it is
+      // fetched without one.
+      const settledUntil = readSettledUntil(this._hass);
       const [result, comparison] = await Promise.all([
-        fetchDeviceStatistics(this._hass, devices, this._period, wholeHome),
+        fetchDeviceStatistics(
+          this._hass,
+          devices,
+          this._period,
+          wholeHome,
+          settledUntil,
+        ),
         this._period.compare
           ? fetchDeviceStatistics(
               this._hass,

@@ -310,6 +310,7 @@
     "card_editor_devices": "Devices (all, if none are chosen)",
     "card_editor_sort_by": "Order by",
     "card_editor_layout": "Layout",
-    "card_editor_metric": "Measure by"
+    "card_editor_metric": "Measure by",
+    "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report."
   }
 }

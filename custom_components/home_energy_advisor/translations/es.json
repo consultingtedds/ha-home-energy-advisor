@@ -310,6 +310,7 @@
     "card_editor_devices": "Dispositivos (todos, si no eliges ninguno)",
     "card_editor_sort_by": "Ordenar por",
     "card_editor_layout": "Disposición",
-    "card_editor_metric": "Medir por"
+    "card_editor_metric": "Medir por",
+    "card_still_accruing": "El último intervalo aún se está contando, así que su barra crecerá. Las cifras están completas unos veinte minutos por detrás del reloj, que es el tiempo que se da a los contadores para informar."
   }
 }

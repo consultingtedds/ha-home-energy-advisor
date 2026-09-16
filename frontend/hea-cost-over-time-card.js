@@ -70,6 +70,16 @@ const SERIES = {
   saved: { id: "saved", name: "saved", ...SAVED },
 };
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
+
+/**
+ * How faint a bar is while its interval is still being counted.
+ *
+ * Faded rather than hidden: a household watching a device switch on wants to
+ * see it now, and a hidden bar is a figure that does not add up. Faded rather
+ * than hatched, because a hatch on a stacked segment reads as a third series
+ * (HEA-140).
+ */
+const ACCRUING_OPACITY = 0.45;
 /**
  * The earlier period, drawn over the bars rather than inside them.
  *
@@ -120,15 +130,16 @@ class HeaCostOverTimeCard extends HeaChartCard {
     return [
       {
         ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
-        data: rows.map((row) => [row.start.getTime() + offset, row.actualCost]),
+        data: rows.map((row) =>
+          accruing(row, [row.start.getTime() + offset, row.actualCost]),
+        ),
       },
       {
         ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
         data: rows.map((row) => {
           const point = [row.start.getTime() + offset, row.costSavings];
-          return row.costSavings < 0
-            ? { value: point, itemStyle: { color: loss } }
-            : point;
+          const style = row.costSavings < 0 ? { color: loss } : undefined;
+          return accruing(row, point, style);
         }),
       },
       ...(earlier?.length
@@ -174,7 +185,14 @@ class HeaCostOverTimeCard extends HeaChartCard {
    * true of every device to a degree the household can weigh for itself.
    */
   _caption(locale) {
-    return `${super._caption(locale)}${this._accrualNote()}`;
+    return (
+      `${super._caption(locale)}${this._stillAccruingNote()}` + this._accrualNote()
+    );
+  }
+
+  _stillAccruingNote() {
+    if (!(this._result?.series ?? []).some((row) => row.accruing)) return "";
+    return `<div class="hint">${this._labels.still_accruing}</div>`;
   }
 
   _accrualNote() {
@@ -233,6 +251,17 @@ class HeaCostOverTimeCard extends HeaChartCard {
     };
   }
 }
+
+/**
+ * One point, faded where its interval has not finished being counted.
+ *
+ * A plain `[x, y]` where it has, so the common case stays the shape ECharts
+ * reads fastest and the difference is visible in the data a test reads.
+ */
+const accruing = (row, point, style = undefined) => {
+  if (!row.accruing) return style ? { value: point, itemStyle: style } : point;
+  return { value: point, itemStyle: { ...style, opacity: ACCRUING_OPACITY } };
+};
 
 const seriesShape = ({ id, name }, colour, labels) => ({
   id,

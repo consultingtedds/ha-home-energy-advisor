@@ -114,6 +114,10 @@ export const DEFAULTS = Object.freeze({
     "One device's hourly shape is an estimate: each meter reading is spread " +
     "across the hours it spanned, so cost may not land in the hour the energy " +
     "was used.",
+  still_accruing:
+    "The last interval is still being counted, so its bar will grow. Figures " +
+    "are complete about twenty minutes behind the clock, which is how long " +
+    "meters are given to report.",
   statistics_failed: "Statistics could not be loaded.",
   no_picker: "Add an Energy date picker card to choose the range.",
   chart_not_loaded:

@@ -165,6 +165,9 @@ export const aHass = ({
   // What each label is called, keyed by id - published beside the rows because
   // a name belongs to the label rather than to each device wearing it.
   labels,
+  // How far the accounting has settled. Absent by default, which is how every
+  // card behaved before HEA-140 and is still what an older integration says.
+  settledUntil,
   callWS,
 } = {}) => ({
   connection: collection ? { "_energy_hea-costs": collection } : {},
@@ -176,6 +179,7 @@ export const aHass = ({
             devices,
             whole_home: wholeHome ?? undefined,
             labels: labels ?? undefined,
+            settled_until: settledUntil ?? undefined,
           },
         },
       }

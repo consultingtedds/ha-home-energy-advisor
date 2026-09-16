@@ -1348,3 +1348,31 @@ def test_a_rebase_does_not_reopen_the_wait() -> None:
     # installation would announce itself as a fresh one
     assert acc.totals().devices["coarse_step_aircon"] == ZERO_TOTALS
     assert acc.has_finalised() is True
+
+
+def test_settled_until_is_the_end_of_the_last_closed_interval() -> None:
+    """What the cards need to tell a finished hour from one still filling.
+
+    An interval closes on the lateness margin, so at any moment the most recent
+    twenty minutes or so are still accruing. A card drawing them beside Home
+    Assistant's own hourly figures shows a short bar and no way to know why
+    (HEA-140).
+    """
+    # Given - a home with a reading in it, nothing closed yet
+    acc = Accountant(
+        house_sources={SourceRole.GRID_IMPORT: "sensor.grid_import"},
+        device_energy_entities={},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_import", at(0), Decimal(0))
+    assert acc.settled_until() is None
+
+    # When - intervals up to 22:05 close
+    acc.observe("sensor.grid_import", at(5), Decimal("1.0"))
+    acc.finalize(at(30))
+
+    # Then - accounting is settled to the end of the last interval closed, not
+    # to its start and not to now: the household's figures are complete up to
+    # that instant and provisional after it. The reading at :05 revealed energy
+    # for the interval that *began* at :00, so that is the one that closed
+    assert acc.settled_until() == at(5)

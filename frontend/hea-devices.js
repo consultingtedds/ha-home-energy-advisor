@@ -90,6 +90,29 @@ export const readWholeHome = (hass, entityId = undefined) => {
 };
 
 /**
+ * How far the integration's figures are complete, or `null` if it has not said.
+ *
+ * An interval closes on the accounting's lateness margin, so the most recent
+ * twenty minutes or so are always still filling. A card drawing them as
+ * finished puts a short bar beside Home Assistant's own hourly ones, and a
+ * household reads the difference as a disagreement rather than as a lag
+ * (HEA-140, GitHub #20).
+ *
+ * `null` where the sensor carries no such attribute - an older integration, or
+ * a household in its first twenty minutes. Assuming "now" instead would mark
+ * every bucket settled, which is the state this exists to correct.
+ *
+ * @returns {Date|null}
+ */
+export const readSettledUntil = (hass, entityId = undefined) => {
+  const stamp =
+    hass?.states?.[entityId ?? resolveSensor(hass)]?.attributes?.settled_until;
+  if (typeof stamp !== "string") return null;
+  const settled = new Date(stamp);
+  return Number.isNaN(settled.getTime()) ? null : settled;
+};
+
+/**
  * What each label a device carries is called, keyed by its id.
  *
  * The rows carry ids, which is what a filter matches on and what survives a

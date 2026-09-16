@@ -679,8 +679,13 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         ``sensor.whole_home_…``, which a rename would break.
         """
         rows = self._devices()
+        settled = self.coordinator.settled_until
         return {
             "devices": rows,
+            # How far the figures are complete. A card drawing the last hour
+            # beside Home Assistant's own would otherwise show a short bar with
+            # nothing to say it is still filling (HEA-140).
+            "settled_until": settled.isoformat() if settled else None,
             # Beside the rows rather than on them: a name is a property of the
             # label, not of each device wearing it, and repeating it per row
             # would grow with the household rather than with its labels.

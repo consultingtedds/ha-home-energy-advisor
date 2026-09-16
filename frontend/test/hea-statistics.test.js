@@ -665,3 +665,56 @@ describe("fetchDeviceStatistics", () => {
     });
   });
 });
+
+describe("an interval still accruing", () => {
+  const HOUR = 60 * 60 * 1000;
+  const NOON = new Date("2026-05-20T12:00:00Z");
+  const hourly = (start, change) => ({
+    start: start.getTime(),
+    end: start.getTime() + HOUR,
+    change,
+  });
+
+  /** Three hours of one device, with the household's day around them. */
+  const threeHours = () =>
+    aHass({
+      "sensor.slow_poll_aircon_actual_cost": [
+        hourly(NOON, 0.4),
+        hourly(new Date(NOON.getTime() + HOUR), 0.5),
+        hourly(new Date(NOON.getTime() + 2 * HOUR), 0.1),
+      ],
+    });
+
+  const aDay = () => ({
+    start: NOON,
+    end: new Date(NOON.getTime() + 3 * HOUR),
+    fallback: false,
+  });
+
+  it("marks the buckets the accounting has not finished with", async () => {
+    // Given - the integration says it is settled to 14:00, so the 12:00 and
+    // 13:00 hours are complete and the 14:00 hour is still filling
+    const hass = threeHours();
+    const settled = new Date(NOON.getTime() + 2 * HOUR);
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], aDay(), null, settled);
+
+    // Then - each bucket says whether it is done. A card drawing the last hour
+    // as a finished figure puts a short bar beside Home Assistant's own, and
+    // the household reads a lag as a disagreement (HEA-140)
+    expect(result.series.map((row) => row.accruing)).toEqual([false, false, true]);
+  });
+
+  it("treats every bucket as finished when the integration has not said", async () => {
+    // Given - an older integration, or a household in its first twenty minutes
+    const hass = threeHours();
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON], aDay(), null, null);
+
+    // Then - nothing is marked. Guessing at "now" would mark a bucket accruing
+    // on every card, on every instance, whether or not it was
+    expect(result.series.some((row) => row.accruing)).toBe(false);
+  });
+});

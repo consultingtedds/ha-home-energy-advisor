@@ -905,6 +905,40 @@ async def _devices_payload(
     return {device["key"]: device for device in state.attributes["devices"]}
 
 
+async def test_devices_sensor_says_how_far_the_figures_are_complete(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The boundary the cards draw an accruing hour from (HEA-140).
+
+    Every figure is complete up to this instant and still filling after it. A
+    card without it draws the last hour short, beside an Energy Dashboard hour
+    that is not, and a household reads that as a disagreement.
+    """
+    # Given - a running integration with nothing closed yet
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    state = await _devices_state(hass, entry, freezer)
+    assert state.attributes["settled_until"] is None
+
+    # When - readings arrive and the interval holding them closes
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - the sensor says the figures are complete to the end of that
+    # interval, in a form a card can read without knowing the engine's margin
+    closed = await _devices_state(hass, entry, freezer)
+    assert closed.attributes["settled_until"] == "2026-07-08T22:05:00+00:00"
+
+
 async def test_devices_sensor_publishes_the_real_statistic_ids(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

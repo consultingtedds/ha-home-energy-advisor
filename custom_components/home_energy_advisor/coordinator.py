@@ -527,6 +527,16 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         """
         return not self._accountant.has_finalised()
 
+    @property
+    def settled_until(self) -> datetime | None:
+        """The instant up to which every published figure is complete (HEA-140).
+
+        Read by the devices sensor and drawn on by the cards, so a household can
+        tell a finished hour from one still filling rather than reading the
+        difference as a disagreement with the Energy Dashboard.
+        """
+        return self._accountant.settled_until()
+
     def diagnostics(self) -> dict[str, Any]:
         """Assemble the diagnostics download (HEA-24) as JSON-safe primitives.
 

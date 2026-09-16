@@ -69,6 +69,9 @@ const zeroed = () =>
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/** How long a bucket is, for each period the statistics layer asks for. */
+const PERIOD_MS = { hour: 60 * 60 * 1000, day: DAY_MS };
+
 /** Up to this many days, buckets are hourly so a short range still has shape. */
 const HOURLY_DAYS = 2;
 
@@ -187,7 +190,13 @@ export const bucketPeriodFor = ({ start, end }) =>
  * @param period `{start, end, fallback}` from the energy-collection adapter
  * @returns {Promise<{period: object, devices: Array<object>, totals: object}>}
  */
-export const fetchDeviceStatistics = async (hass, devices, period, wholeHome) => {
+export const fetchDeviceStatistics = async (
+  hass,
+  devices,
+  period,
+  wholeHome,
+  settledUntil = null,
+) => {
   const statisticIds = statisticIdsFor(devices, wholeHome);
   // An empty `statistic_ids` is not a request for nothing - it is a request for
   // every statistic in the database.
@@ -208,7 +217,7 @@ export const fetchDeviceStatistics = async (hass, devices, period, wholeHome) =>
     devices: rows,
     totals: sumRows(rows),
     wholeHome: boundsFor(wholeHome, buckets, period),
-    series: seriesFrom(devices, buckets, period),
+    series: seriesFrom(devices, buckets, period, settledUntil),
   };
 };
 
@@ -238,7 +247,7 @@ const boundsFor = (device, buckets, period) => {
  * already in hand. Rows are oldest first, and a bucket is present if any device
  * recorded one - devices need not share bucket boundaries.
  */
-const seriesFrom = (devices, buckets, period) => {
+const seriesFrom = (devices, buckets, period, settledUntil) => {
   const byStart = new Map();
   for (const device of devices) {
     for (const [field, concept] of Object.entries(CONCEPTS)) {
@@ -250,12 +259,17 @@ const seriesFrom = (devices, buckets, period) => {
       }
     }
   }
+  const bucketMs = PERIOD_MS[bucketPeriodFor(period)] ?? 0;
   return [...byStart.entries()]
     .sort(([left], [right]) => left - right)
     .map(([start, row]) => ({
       ...row,
       start: new Date(start),
       costSavings: row.costAtGridPrice - row.actualCost,
+      // A bucket is finished only once the accounting has settled past its
+      // *end*: energy is still being placed inside it until then. Unknown
+      // settles nothing - see `readSettledUntil` (HEA-140).
+      accruing: settledUntil ? start + bucketMs > settledUntil.getTime() : false,
     }));
 };
 

@@ -11,6 +11,7 @@ import {
   DEVICES_SENSOR,
   readDevices,
   readLabelNames,
+  readSettledUntil,
   readWholeHome,
 } from "../hea-devices.js";
 
@@ -276,5 +277,31 @@ describe("finding the sensor on a translated instance", () => {
     // When / Then - the English id is still the first place to look, so a card
     // that renders before the registry arrives is not blank for a beat
     expect(readDevices(hass)).toHaveLength(1);
+  });
+});
+
+describe("readSettledUntil", () => {
+  it("reads how far the integration says its figures are complete", () => {
+    // Given - the sensor published a settled boundary, as it does once an
+    // interval has closed
+    const hass = aHass({
+      devices: [aRow("slow_poll_aircon", "Slow Poll Aircon")],
+      settled_until: "2026-05-20T13:00:00+00:00",
+    });
+
+    // When / Then - a Date the cards can compare bucket starts against
+    expect(readSettledUntil(hass)).toEqual(new Date("2026-05-20T13:00:00+00:00"));
+  });
+
+  it("is null before anything has closed, and on a sensor without it", () => {
+    // Given - a household in its first twenty minutes, and an older
+    // integration whose sensor carries no such attribute
+    const warming = aHass({ devices: [], settled_until: null });
+    const older = aHass({ devices: [] });
+
+    // When / Then - null rather than a guess. A card that assumed "now" would
+    // mark every bucket settled, which is the state this exists to correct
+    expect(readSettledUntil(warming)).toBeNull();
+    expect(readSettledUntil(older)).toBeNull();
   });
 });
