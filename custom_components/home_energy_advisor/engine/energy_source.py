@@ -64,6 +64,14 @@ _WH_PER_KWH = Decimal(1000)
 # large per-device percentages it shifts are all on devices costing pennies.
 MAX_QUIET_SPAN = timedelta(hours=2)
 
+# How far a counter may fall and still be the same counter. Home Assistant's own
+# statistics use this figure: a `total_increasing` sensor counts as reset only
+# below 90 % of what it read before, and a smaller dip is ignored
+# (`components/sensor/recorder.py`). Without it, a sensor jittering downward in
+# its last decimal has its whole value booked as energy on every jitter - which
+# took one household's home total to 1,912 kWh in an hour (HEA-139, GitHub #22).
+_SAME_COUNTER_FLOOR = Decimal("0.9")
+
 # The most power a reading may imply and still be believed. A domestic supply is
 # fused at about 24 kW single-phase and around 69 kW on the largest three-phase
 # connection, so nothing an ordinary household can do reaches this - while the
@@ -128,11 +136,15 @@ class DecisionReason(Enum):
     real load can do (HEA-60). ``IMPLAUSIBLE_STEP`` is this class's own refusal:
     a reading implying more power than any household draws, which is a counter
     that has been replaced rather than energy anybody used (HEA-137).
+    ``HELD_AFTER_DROP`` is a reading waiting on the next one: the counter fell
+    past the floor, and whether it restarted or blinked is not knowable until
+    something follows it (HEA-139).
     """
 
     COUNTED = "counted"
     RESET = "reset"
     IMPLAUSIBLE_STEP = "implausible_step"
+    HELD_AFTER_DROP = "held_after_drop"
     FIRST_READING = "first_reading"
     UNAVAILABLE = "unavailable"
     STALE = "stale"
@@ -166,6 +178,14 @@ class SourceSnapshot:
 
 
 @dataclass(frozen=True)
+class _Drop:
+    """A fall past the floor, and what it was credited with when it arrived."""
+
+    before: _Observation
+    credited: Decimal
+
+
+@dataclass(frozen=True)
 class _Observation:
     """A reading known to carry a value - the only kind worth remembering."""
 
@@ -190,6 +210,10 @@ class CumulativeEnergySource:
     ) -> None:
         self._unit = unit
         self._last: _Observation | None = None
+        # Where the counter stood before it fell past the floor, and what the
+        # fall was credited with, until the next reading says whether it
+        # restarted or merely blinked (HEA-139).
+        self._before_drop: _Drop | None = None
         self._moved_at: datetime | None = None
         self._max_quiet_span = max_quiet_span
         self._decisions: deque[Decision] = deque(maxlen=_DECISION_LOG_SIZE)
@@ -211,21 +235,27 @@ class CumulativeEnergySource:
         if current is None:
             self._log(reading.at, DecisionReason.UNAVAILABLE, None)
             return None
-
         previous = self._last
-        if previous is None:
-            self._last = current
-            self._moved_at = current.at
-            self._log(current.at, DecisionReason.FIRST_READING, None)
-            return None
-        if current.at <= previous.at:
-            self._log(current.at, DecisionReason.STALE, None)
+        if (
+            previous is None
+            or current.at <= previous.at
+            or self._is_a_dip(previous, current)
+        ):
+            self._gate(previous, current)
             return None
 
+        held = self._before_drop
+        self._before_drop = None
         self._last = current
         is_reset = current.value < previous.value
-        kwh = self._to_kwh(self._counted(previous, current))
-        accrued_from = self._accrual_start(previous)
+        if is_reset:
+            # Read as a restart now, because that is what it usually is and a
+            # cycle meter's energy should not wait on its next poll. What it
+            # stood at is kept, so that if the counter comes back above it the
+            # reading turns out to have been a blink (HEA-139).
+            self._before_drop = _Drop(before=previous, credited=current.value)
+        kwh = self._to_kwh(self._revealed(previous, current, held))
+        accrued_from = self._accrual_start(self._anchor(previous, current, held))
         if current.value != previous.value:
             self._moved_at = current.at
         if kwh == 0:
@@ -239,6 +269,41 @@ class CumulativeEnergySource:
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
         self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=accrued_from, end=current.at)
+
+    def _gate(self, previous: _Observation | None, current: _Observation) -> None:
+        """Record a reading that reveals no energy, and why.
+
+        Three of them: the first reading of a counter, whose history is
+        unknowable; one no newer than the last; and a dip small enough to be the
+        same counter wobbling, where the value it really reached is kept so the
+        next genuine step is measured from there (HEA-139).
+        """
+        if previous is None:
+            self._last = current
+            self._moved_at = current.at
+            self._log(current.at, DecisionReason.FIRST_READING, None)
+            return
+        if current.at <= previous.at:
+            self._log(current.at, DecisionReason.STALE, None)
+            return
+        self._last = _Observation(at=current.at, value=previous.value)
+        self._log(current.at, DecisionReason.NO_MOVEMENT, None)
+
+    def _anchor(
+        self,
+        previous: _Observation,
+        current: _Observation,
+        held: _Drop | None,
+    ) -> _Observation:
+        """Which reading the energy accrued from.
+
+        Across a blink it is the one *before* the blink: that is when the energy
+        started accumulating, and anchoring on the blink itself would crush it
+        into the interval the counter happened to come back in.
+        """
+        if held is not None and current.value > held.before.value:
+            return held.before
+        return previous
 
     def _credible(self, kwh: Decimal, previous: datetime, current: datetime) -> bool:
         """Whether a reading could be energy rather than a replaced counter.
@@ -350,6 +415,36 @@ class CumulativeEnergySource:
             msg = f"energy counter reported a negative value: {reading.value}"
             raise ValueError(msg)
         return _Observation(at=reading.at, value=reading.value)
+
+    def _is_a_dip(self, previous: _Observation, current: _Observation) -> bool:
+        """Whether a fall is small enough to be the same counter, wobbling."""
+        return (
+            previous.value > 0
+            and previous.value * _SAME_COUNTER_FLOOR <= current.value < previous.value
+        )
+
+    def _revealed(
+        self,
+        previous: _Observation,
+        current: _Observation,
+        held: _Drop | None,
+    ) -> Decimal:
+        """The energy a reading reveals, settling any drop held before it.
+
+        A counter that comes back *above* where it stood before a drop never
+        restarted: something blinked, and the energy is the rise across the
+        blink, less whatever the drop was already credited with. Read as a rise
+        from the blink instead, it is the whole counter arriving at once, and is
+        refused as implausible - so the household loses everything used across
+        it (HEA-139).
+
+        Clamped at zero. A blink to a *figure* is credited with that figure at
+        the time, and a small return above the old value cannot take it back:
+        published figures never go backwards (HEA-85).
+        """
+        if held is None or current.value <= held.before.value:
+            return self._counted(previous, current)
+        return max(Decimal(0), current.value - held.before.value - held.credited)
 
     def _counted(self, previous: _Observation, current: _Observation) -> Decimal:
         if current.value < previous.value:
