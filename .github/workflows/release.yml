@@ -1,16 +1,18 @@
 name: Release
 
-# Only after CI has gone green on `main`. Releasing straight off a push would
-# tag whatever was pushed, and HACS offers a tag to households as an update -
-# there is no taking one back once somebody's instance has installed it.
+# Run by hand, always. A tag is offered to households as an update and cannot be
+# withdrawn once an instance has installed it, so cutting one is a decision
+# rather than a consequence of a commit landing.
 #
-# `workflow_dispatch` is kept for the first release and for anything that has to
-# be cut by hand.
+# It was automatic - every green build on `main` whose commits earned a version.
+# That shipped four releases in a day, which reads as instability to anyone
+# looking at the release list, gives no time to notice a regression between
+# them, and buys the households almost nothing: HACS only offers custom
+# repositories an update every 48 hours anyway. Fixes are batched now, and an
+# urgent one is still released the same day - by asking for it (2026-09-16).
+#
+# The version still comes from the commits, never from a number typed here.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 # Never cancel a release in flight. A cancelled one can leave a tag pushed with
@@ -21,14 +23,14 @@ concurrency:
 
 permissions:
   contents: write
+  # Reading CI's conclusion for this commit, which is what stops a release being
+  # cut from something that never passed.
+  actions: read
 
 jobs:
   release:
     name: tag and release
     runs-on: ubuntu-latest
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -40,18 +42,20 @@ jobs:
         with:
           python-version: "3.14"
 
-      # The **first** release is never automatic.
-      #
-      # Everything after it is: once a version is out, the next one is a routine
-      # consequence of what was merged. But the first tag is the moment the
-      # integration becomes installable by strangers, and it should happen when
-      # the maintainer says so - after the brand assets, the supported-version
-      # floor and the install docs, none of which the commit log knows about
-      # (HEA-32). Run this workflow by hand to cut it.
-      #
-      # Expressed as "is there a tag yet" rather than as a switch in GitHub's UI,
-      # so the rule is in the repository where it can be read, and so nobody
-      # later finds releases mysteriously not happening.
+      # `main` has to be green before anything is tagged. The workflow is started
+      # by hand now, so nothing else checks: without this, a release could be cut
+      # from a commit whose tests never passed.
+      - name: Check CI is green on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          conclusion=$(gh run list --workflow=CI --branch=main --limit=20             --json headSha,conclusion --jq             "[.[] | select(.headSha == \"$GITHUB_SHA\")] | first | .conclusion")
+          if [ "$conclusion" != "success" ]; then
+            echo "CI on $GITHUB_SHA is ${conclusion:-missing}, not success."
+            echo "Releasing an untested commit is how a household gets a broken update."
+            exit 1
+          fi
+
       - name: Work out whether this earns a release
         id: version
         run: |

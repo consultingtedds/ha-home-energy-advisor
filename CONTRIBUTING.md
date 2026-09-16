@@ -98,8 +98,8 @@ intermediate commits building towards it are `fix`, `refactor`, `test` or
 
 ### Your commit type chooses the version
 
-Releases are cut automatically, and the version comes from the commits since the
-last one rather than from anybody editing a file:
+Releases are cut by hand, and the version comes from the commits since the last
+one rather than from anybody editing a file:
 
 | Commit | Release |
 | --- | --- |
@@ -120,11 +120,11 @@ The rules are `scripts/release_version.py`, and `tests/test_release_version.py`
 holds them against the table above: adding a type here without deciding whether
 it ships fails the suite.
 
-**The first release is not automatic.** Until a version tag exists, the workflow
-declines to cut one and says so, because the first tag is the moment the
-integration becomes installable by strangers and that should happen when the
-maintainer says so - not as a side effect of merging a feature. Run the Release
-workflow by hand for it. Every release after that is automatic.
+**Cutting one is a decision.** The Release workflow runs only when somebody
+starts it, and it refuses to tag a commit CI has not passed. A tag is offered to
+every household as an update and cannot be withdrawn once an instance has taken
+it, so fixes are batched and released when a batch is worth shipping - an urgent
+one still goes the same day, by asking for it rather than by merging it.
 
 **The scope is optional for you.** The maintainer's commits carry the ticket id
 as the scope (`fix(HEA-59): …`), which is why the history looks like that; since
