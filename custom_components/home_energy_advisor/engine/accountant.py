@@ -52,6 +52,7 @@ from .debt_ledger import DebtLedger, Settlement
 from .energy_source import (
     MAX_QUIET_SPAN,
     CumulativeEnergySource,
+    DecisionReason,
     EnergyUnit,
     Reading,
 )
@@ -1059,6 +1060,23 @@ class Accountant:
         every other one.
         """
         return self._implausible
+
+    def refused_steps(self) -> frozenset[str]:
+        """Inputs whose counter leapt, and whose step was refused (HEA-137).
+
+        Read from each source's own decision log, so it says what the diagnostics
+        download says. It clears itself once the refusal has aged out of that
+        log: the energy was never booked, so nothing is left to put right, and
+        what the household needs is to be told rather than chased.
+        """
+        return frozenset(
+            entity
+            for entity, source in self._sources.items()
+            if any(
+                decision.reason is DecisionReason.IMPLAUSIBLE_STEP
+                for decision in source.snapshot().recent_decisions
+            )
+        )
 
     def _claim(self, device: str, kwh: Decimal) -> None:
         """Add late-arriving energy to the newest window entry, as evidence.

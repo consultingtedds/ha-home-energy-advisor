@@ -151,6 +151,8 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._history_probed: set[str] = set()
         self._unreconciled_raised = False
         self._implausible_sources: set[str] = set()
+        # Inputs whose counter leapt, so the Repair is raised once and cleared once.
+        self._refused_steps: frozenset[str] = frozenset()
         self._devices = devices
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
@@ -278,6 +280,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_sources_ever_reported(now)
         self._check_remainder_health()
         self._check_source_plausibility()
+        self._check_refused_steps()
         self.async_set_updated_data(self._accountant.totals())
         self._store.async_schedule_save(
             self._accountant.snapshot, now_func=dt_util.utcnow
@@ -380,6 +383,26 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         for name in self._implausible_sources - implausible:
             issues.async_clear(self.hass, issues.implausible_source_issue_id(name))
         self._implausible_sources = implausible
+
+    def _check_refused_steps(self) -> None:
+        """Name, in Repairs, any input whose counter leapt and was refused.
+
+        The engine has already declined to book it (HEA-137); this is the half
+        that says so. A household who replaced a sensor sees why their figures
+        did not move, and one whose site genuinely draws past the limit learns
+        that it does - which is the only way that case ever reaches us.
+        """
+        refused = self._accountant.refused_steps()
+        for entity in refused - self._refused_steps:
+            issues.async_raise(
+                self.hass,
+                issues.implausible_step_issue_id(entity),
+                issues.ISSUE_IMPLAUSIBLE_STEP,
+                {"entity_id": entity},
+            )
+        for entity in self._refused_steps - refused:
+            issues.async_clear(self.hass, issues.implausible_step_issue_id(entity))
+        self._refused_steps = refused
 
     def _check_input_health(self, now: datetime) -> None:
         """Raise or clear the source/price Repairs from each input's health."""

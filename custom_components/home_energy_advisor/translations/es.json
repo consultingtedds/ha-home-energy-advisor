@@ -147,23 +147,51 @@
   },
   "entity": {
     "sensor": {
-      "energy_used": { "name": "Energía usada" },
-      "actual_cost": { "name": "Coste real" },
-      "cost_at_grid_price": { "name": "Coste a precio de red" },
-      "cost_savings": { "name": "Ahorro de coste" },
-      "energy_from_grid": { "name": "Energía de la red" },
-      "energy_from_generation": { "name": "Energía de generación" },
-      "energy_from_battery": { "name": "Energía de la batería" },
-      "devices": { "name": "Dispositivos" },
-      "unreconciled_energy": { "name": "Energía sin conciliar" },
-      "lowest_possible_cost": { "name": "Coste mínimo posible" },
-      "highest_possible_cost": { "name": "Coste máximo posible" }
+      "energy_used": {
+        "name": "Energía usada"
+      },
+      "actual_cost": {
+        "name": "Coste real"
+      },
+      "cost_at_grid_price": {
+        "name": "Coste a precio de red"
+      },
+      "cost_savings": {
+        "name": "Ahorro de coste"
+      },
+      "energy_from_grid": {
+        "name": "Energía de la red"
+      },
+      "energy_from_generation": {
+        "name": "Energía de generación"
+      },
+      "energy_from_battery": {
+        "name": "Energía de la batería"
+      },
+      "devices": {
+        "name": "Dispositivos"
+      },
+      "unreconciled_energy": {
+        "name": "Energía sin conciliar"
+      },
+      "lowest_possible_cost": {
+        "name": "Coste mínimo posible"
+      },
+      "highest_possible_cost": {
+        "name": "Coste máximo posible"
+      }
     }
   },
   "device": {
-    "untracked": { "name": "Dispositivos de energía sin seguimiento" },
-    "whole_home": { "name": "Casa completa" },
-    "hub": { "name": "Home Energy Advisor" }
+    "untracked": {
+      "name": "Dispositivos de energía sin seguimiento"
+    },
+    "whole_home": {
+      "name": "Casa completa"
+    },
+    "hub": {
+      "name": "Home Energy Advisor"
+    }
   },
   "issues": {
     "source_removed": {
@@ -197,6 +225,10 @@
     "unreconciled_energy": {
       "title": "Estos totales ya no cuadran con tu contador",
       "description": "Los totales de Home Energy Advisor están alrededor de un {share} por encima de lo que registró el contador de tu casa. Los sensores de tus dispositivos y el contador de la casa siempre difieren momento a momento - se leen a ritmos muy distintos - y eso se concilia de forma automática. Esta diferencia no se está corrigiendo, lo que indica que los sensores de dispositivo informan de forma persistente más energía de la que el contador mide en la casa. La causa habitual es que un sensor de dispositivo ya incluya a otro, contando la misma energía dos veces; una entrada de nivel de casa que mide el circuito equivocado también lo provoca. La cifra Energía sin conciliar, en el dispositivo Home Energy Advisor, muestra cuánta energía supone."
+    },
+    "implausible_step": {
+      "title": "Una entrada de energía saltó más de lo que cualquier casa puede consumir",
+      "description": "El contador de `{entity_id}` saltó una cantidad que ningún hogar puede consumir, así que Home Energy Advisor no la contó como energía. Esto es lo que ocurre cuando se sustituye o reescala un sensor: el nuevo contador empieza en otro número, y la diferencia no es energía que nadie haya usado.\n\nNo hay nada que corregir si acabas de cambiar ese sensor: la contabilidad continúa desde la posición del nuevo contador.\n\nSi tu instalación realmente consume tanto, abre una incidencia: el límite está fijado en 100 kW."
     }
   },
   "services": {

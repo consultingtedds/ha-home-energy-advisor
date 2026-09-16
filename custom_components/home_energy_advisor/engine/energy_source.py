@@ -64,6 +64,19 @@ _WH_PER_KWH = Decimal(1000)
 # large per-device percentages it shifts are all on devices costing pennies.
 MAX_QUIET_SPAN = timedelta(hours=2)
 
+# The most power a reading may imply and still be believed. A domestic supply is
+# fused at about 24 kW single-phase and around 69 kW on the largest three-phase
+# connection, so nothing an ordinary household can do reaches this - while the
+# readings that brought it here imply 240 kW and 640 MW (HEA-137, GitHub #19 and
+# #22). Above it, a counter has been replaced or rescaled: its value is somebody
+# else's number, not energy this house used.
+CREDIBLE_POWER_KW = Decimal(100)
+
+# The shortest span a reading is judged over. Two readings a moment apart would
+# otherwise make one step of a coarse counter imply a fortune - a 0.01 kWh step a
+# tenth of a second on is 360 kW - and reporting jitter is not a fault.
+_MIN_JUDGED_SPAN = timedelta(minutes=1)
+
 # How many recent gating decisions each source retains for the diagnostics
 # download (HEA-24). Bounded so a long-running source never grows without limit;
 # 20 is enough to explain a device's most recent behaviour in a support thread.
@@ -112,11 +125,14 @@ class DecisionReason(Enum):
     known, so its energy is costed at zero (logged once per cold-start, HEA-53).
     ``IMPLAUSIBLE`` is the third accountant-level reason: energy refused because
     the device claimed more than the whole house over a full window, which no
-    real load can do (HEA-60).
+    real load can do (HEA-60). ``IMPLAUSIBLE_STEP`` is this class's own refusal:
+    a reading implying more power than any household draws, which is a counter
+    that has been replaced rather than energy anybody used (HEA-137).
     """
 
     COUNTED = "counted"
     RESET = "reset"
+    IMPLAUSIBLE_STEP = "implausible_step"
     FIRST_READING = "first_reading"
     UNAVAILABLE = "unavailable"
     STALE = "stale"
@@ -215,9 +231,26 @@ class CumulativeEnergySource:
         if kwh == 0:
             self._log(current.at, DecisionReason.NO_MOVEMENT, None)
             return None
+        if not self._credible(kwh, previous.at, current.at):
+            # The counter's position is already ``current``, so the replacement
+            # becomes the baseline and everything after it is counted normally.
+            self._log(current.at, DecisionReason.IMPLAUSIBLE_STEP, kwh)
+            return None
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
         self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=accrued_from, end=current.at)
+
+    def _credible(self, kwh: Decimal, previous: datetime, current: datetime) -> bool:
+        """Whether a reading could be energy rather than a replaced counter.
+
+        Weighed as power over the span the reading covers, never as energy in a
+        bucket: a meter that reports once a day delivers a day's energy in one
+        step, and it is telling the truth. The span is the real gap between
+        readings, so a source quiet for three days is judged over three days.
+        """
+        span = max(current - previous, _MIN_JUDGED_SPAN)
+        hours = Decimal(span.total_seconds()) / Decimal(3600)
+        return kwh / hours <= CREDIBLE_POWER_KW
 
     def persisted_state(self) -> dict[str, Any]:
         """The counter's position, so a restart resumes rather than rebaselines.

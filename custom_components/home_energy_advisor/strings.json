@@ -147,23 +147,51 @@
   },
   "entity": {
     "sensor": {
-      "energy_used": { "name": "Energy Used" },
-      "actual_cost": { "name": "Actual Cost" },
-      "cost_at_grid_price": { "name": "Cost at Grid Price" },
-      "cost_savings": { "name": "Cost Savings" },
-      "energy_from_grid": { "name": "Energy From Grid" },
-      "energy_from_generation": { "name": "Energy From Generation" },
-      "energy_from_battery": { "name": "Energy From Battery" },
-      "devices": { "name": "Devices" },
-      "unreconciled_energy": { "name": "Unreconciled Energy" },
-      "lowest_possible_cost": { "name": "Lowest Possible Cost" },
-      "highest_possible_cost": { "name": "Highest Possible Cost" }
+      "energy_used": {
+        "name": "Energy Used"
+      },
+      "actual_cost": {
+        "name": "Actual Cost"
+      },
+      "cost_at_grid_price": {
+        "name": "Cost at Grid Price"
+      },
+      "cost_savings": {
+        "name": "Cost Savings"
+      },
+      "energy_from_grid": {
+        "name": "Energy From Grid"
+      },
+      "energy_from_generation": {
+        "name": "Energy From Generation"
+      },
+      "energy_from_battery": {
+        "name": "Energy From Battery"
+      },
+      "devices": {
+        "name": "Devices"
+      },
+      "unreconciled_energy": {
+        "name": "Unreconciled Energy"
+      },
+      "lowest_possible_cost": {
+        "name": "Lowest Possible Cost"
+      },
+      "highest_possible_cost": {
+        "name": "Highest Possible Cost"
+      }
     }
   },
   "device": {
-    "untracked": { "name": "Untracked Energy Devices" },
-    "whole_home": { "name": "Whole Home" },
-    "hub": { "name": "Home Energy Advisor" }
+    "untracked": {
+      "name": "Untracked Energy Devices"
+    },
+    "whole_home": {
+      "name": "Whole Home"
+    },
+    "hub": {
+      "name": "Home Energy Advisor"
+    }
   },
   "issues": {
     "source_removed": {
@@ -197,6 +225,10 @@
     "unreconciled_energy": {
       "title": "These totals no longer add up to your meter",
       "description": "Home Energy Advisor's totals are sitting about {share} above what your house meter recorded. Your tracked device sensors and your house meter always disagree moment to moment - they are read at very different rates - and that is reconciled automatically. This disagreement is not clearing, which means the device sensors are persistently reporting more energy than the house is metered as using. The usual cause is one device sensor already including another, so the same energy is counted twice; a house-level input measuring the wrong circuit will do it too. The Unreconciled Energy figure on the Home Energy Advisor device shows how much energy is involved."
+    },
+    "implausible_step": {
+      "title": "An energy input jumped by more than any house could use",
+      "description": "The counter behind `{entity_id}` leapt by an amount no household can draw, so Home Energy Advisor did not count it as energy. This is what a replaced or rescaled sensor looks like: the new counter starts at a different number, and the difference is not energy anybody used.\n\nNothing needs putting right if you have just swapped that sensor - accounting carries on from the new counter's position.\n\nIf your site really does draw this much, please open an issue: the limit is currently fixed at 100 kW."
     }
   },
   "services": {

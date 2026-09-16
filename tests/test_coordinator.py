@@ -390,6 +390,33 @@ async def test_price_entity_unavailable_past_the_grace_raises_its_own_repair(
     assert _has_issue(hass, ISSUE_PRICE_UNAVAILABLE)
 
 
+async def test_an_input_whose_counter_leaps_is_named_in_repairs(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The half that tells the household (HEA-137, GitHub #22).
+
+    The engine has already refused the step. Without this, a replaced sensor
+    stops the figures moving and says nothing about why - and a site that really
+    does draw past the limit has no way of finding out that it does.
+    """
+    # Given - a running home whose device counter is then replaced by one
+    # reading thousands of kWh higher, which is what recreating a source sensor
+    # looks like from here
+    await _setup_running_home(hass, freezer)
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "5336.38", _ENERGY)
+    await hass.async_block_till_done()
+
+    # When - the next interval is finalised
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - the input is named in Repairs, so the household can see which
+    # sensor stopped being believed
+    assert _has_issue(
+        hass, issues.implausible_step_issue_id("sensor.coarse_step_energy")
+    )
+
+
 async def test_a_device_sensor_going_unavailable_never_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

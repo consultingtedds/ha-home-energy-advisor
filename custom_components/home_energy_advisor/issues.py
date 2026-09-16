@@ -32,6 +32,7 @@ ISSUE_CYCLE_HELPER_RECREATED = "cycle_helper_recreated"
 # household about is a disagreement that never reconciles (HEA-82).
 ISSUE_UNRECONCILED_ENERGY = "unreconciled_energy"
 ISSUE_IMPLAUSIBLE_SOURCE = "implausible_source"
+ISSUE_IMPLAUSIBLE_STEP = "implausible_step"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -57,6 +58,11 @@ def helper_recreated_issue_id(subentry_id: str) -> str:
 def implausible_source_issue_id(name: str) -> str:
     """Stable issue id for a device whose source claims more than the house."""
     return f"{ISSUE_IMPLAUSIBLE_SOURCE}_{name}"
+
+
+def implausible_step_issue_id(entity_id: str) -> str:
+    """Stable issue id for an input whose counter leapt and was not counted."""
+    return f"{ISSUE_IMPLAUSIBLE_STEP}_{entity_id}"
 
 
 def async_raise(
