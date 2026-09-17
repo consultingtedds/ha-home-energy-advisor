@@ -208,8 +208,13 @@ sits empty. That is a house with no labels, not a broken filter.
 
 The integration's settings menu also carries:
 
-- **Cycle totals** - daily and monthly totals are always created. Weekly,
-  quarterly and yearly are there if you want them.
+- **Cycle totals** - daily, monthly, weekly, quarterly and yearly totals as
+  their own sensors, off until you ask for them. The dashboard does not need
+  them: its cards read long-term statistics and answer any date range without
+  them. Turn one on if you want a period figure for an automation, a template or
+  a card of your own. Each cycle creates three helpers per device, so a house
+  with twenty devices gains about sixty, and turning one off deletes those
+  helpers along with the history recorded against them.
 - **Per-device cost range** - publishes a lowest and highest possible cost for
   each device, not just for the house. See
   [What the figures cannot know](#what-the-figures-cannot-know).

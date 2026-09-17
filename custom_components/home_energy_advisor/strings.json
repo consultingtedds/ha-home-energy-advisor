@@ -77,8 +77,10 @@
       },
       "cycles": {
         "title": "Cycle totals",
-        "description": "Choose which longer-period totals to create for every device. Daily and monthly totals are always created.",
+        "description": "Period totals as their own sensors, for automations, templates and your own cards. The dashboard does not need them: its cards read long-term statistics and can answer any date range without them. Each cycle you turn on creates three helpers per device, so a house with twenty devices gains about sixty. Turning one off deletes those helpers and the history recorded against them.",
         "data": {
+          "cycle_daily": "Daily totals",
+          "cycle_monthly": "Monthly totals",
           "cycle_weekly": "Weekly totals",
           "cycle_quarterly": "Quarterly totals",
           "cycle_yearly": "Yearly totals"

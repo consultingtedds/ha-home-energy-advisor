@@ -14,7 +14,9 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
+    CONF_CYCLE_DAILY,
     CONF_CYCLE_METERS,
+    CONF_CYCLE_MONTHLY,
     CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
@@ -644,10 +646,12 @@ async def test_reconfigure_updates_the_house_level_config(hass: HomeAssistant) -
 
 async def test_reconfigure_preserves_helper_bookkeeping(hass: HomeAssistant) -> None:
     # Given - a running house-only install that has auto-created its cycle meters,
-    # recorded on the entry as HEA-owned (created)
+    # recorded on the entry as HEA-owned (created). Cycle totals are opted into
+    # here because a household without them owns no helpers to preserve
     _register_source_sensors(hass)
     entry = MockConfigEntry(
         domain=DOMAIN,
+        options={CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True},
         data={
             CONF_PRICE_ENTITY: "sensor.electricity_price_import",
             CONF_CURRENCY: "EUR",

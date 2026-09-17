@@ -77,8 +77,10 @@
       },
       "cycles": {
         "title": "Totales por ciclo",
-        "description": "Elige qué totales de periodos más largos crear para cada dispositivo. Los totales diarios y mensuales siempre se crean.",
+        "description": "Totales por periodo como sensores propios, para automatizaciones, plantillas y tus propias tarjetas. El panel no los necesita: sus tarjetas leen las estadísticas a largo plazo y pueden responder a cualquier rango de fechas sin ellos. Cada ciclo que actives crea tres ayudantes por dispositivo, así que una casa con veinte dispositivos suma unos sesenta. Desactivar un ciclo borra esos ayudantes y el histórico registrado en ellos.",
         "data": {
+          "cycle_daily": "Totales diarios",
+          "cycle_monthly": "Totales mensuales",
           "cycle_weekly": "Totales semanales",
           "cycle_quarterly": "Totales trimestrales",
           "cycle_yearly": "Totales anuales"

@@ -52,6 +52,8 @@ SIGNAL_RESET_TOTALS: Final = f"{DOMAIN}_reset_totals_{{entry_id}}"
 
 # Optional cycle totals (options flow). Daily and monthly are always on; these
 # are opt-in to keep the entity count in check (ADR-0004 / PLAN.md).
+CONF_CYCLE_DAILY: Final = "cycle_daily"
+CONF_CYCLE_MONTHLY: Final = "cycle_monthly"
 CONF_CYCLE_WEEKLY: Final = "cycle_weekly"
 CONF_CYCLE_QUARTERLY: Final = "cycle_quarterly"
 CONF_CYCLE_YEARLY: Final = "cycle_yearly"

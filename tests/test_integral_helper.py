@@ -33,6 +33,8 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_CYCLE_DAILY,
+    CONF_CYCLE_MONTHLY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
@@ -121,8 +123,11 @@ async def test_ensuring_a_helper_twice_reuses_the_existing_one(
 
 
 def _power_only_entry() -> MockConfigEntry:
+    # Cycle totals opted in, so uninstalling has both kinds of auto-created
+    # helper to clean up - which is what these tests are about (HEA-145).
     return MockConfigEntry(
         domain=DOMAIN,
+        options={CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True},
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",

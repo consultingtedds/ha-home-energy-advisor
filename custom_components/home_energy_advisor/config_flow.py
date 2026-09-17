@@ -30,6 +30,8 @@ from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
+    CONF_CYCLE_DAILY,
+    CONF_CYCLE_MONTHLY,
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
@@ -85,7 +87,7 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -388,8 +390,10 @@ _STATE_CLASS_ERROR = {
 class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
     """Options: the opt-in toggles and the guided device-discovery step.
 
-    Daily and monthly cycle totals are always created; the longer cycles are
-    opt-in to keep the entity count in check across many devices (ADR-0004). The
+    Cycle totals are opt-in, every cycle of them: the cards read long-term
+    statistics, so nothing the dashboard draws needs a helper, and creating
+    ninety of them for a household that never asked is a cost without a
+    capability (HEA-145, ADR-0008's own revisit condition). The
     per-device cost range is opt-in for the same reason (ADR-0016) - the
     whole-home range is published either way. Discovery (HEA-45) offers untracked
     energy/power sensors to add as devices - it only suggests; the user picks.
@@ -433,13 +437,23 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
     async def async_step_cycles(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Show and store the cycle opt-ins."""
+        """Show and store the cycle opt-ins.
+
+        Every cycle, daily included. The dashboard answers any range from
+        long-term statistics without these, so a household that wants a *live*
+        entity for a template or an automation asks for one - rather than
+        everybody carrying ninety helpers by default (HEA-145).
+        """
         if user_input is not None:
             return self._store(user_input)
         return self.async_show_form(
             step_id="cycles",
             data_schema=self._toggles(
-                CONF_CYCLE_WEEKLY, CONF_CYCLE_QUARTERLY, CONF_CYCLE_YEARLY
+                CONF_CYCLE_DAILY,
+                CONF_CYCLE_MONTHLY,
+                CONF_CYCLE_WEEKLY,
+                CONF_CYCLE_QUARTERLY,
+                CONF_CYCLE_YEARLY,
             ),
         )
 

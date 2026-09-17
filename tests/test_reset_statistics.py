@@ -42,6 +42,8 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_CYCLE_DAILY,
+    CONF_CYCLE_MONTHLY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
@@ -69,8 +71,11 @@ _AIRCON_COST_DAILY = "sensor.coarse_step_aircon_actual_cost_daily"
 
 
 def _entry() -> MockConfigEntry:
+    # Cycle totals opted in: this file is about what a rebase leaves behind in
+    # the statistics, and the cycle meters are half of what it touches.
     return MockConfigEntry(
         domain=DOMAIN,
+        options={CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True},
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",

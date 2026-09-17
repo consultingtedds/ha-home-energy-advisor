@@ -24,7 +24,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_CYCLE_DAILY,
     CONF_CYCLE_METERS,
+    CONF_CYCLE_MONTHLY,
     CONF_CYCLE_WEEKLY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
@@ -41,6 +43,8 @@ from custom_components.home_energy_advisor.helper_ownership import owned_helper
 from custom_components.home_energy_advisor.issues import ISSUE_CYCLE_HELPER_RECREATED
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
@@ -200,13 +204,30 @@ async def test_a_net_consumption_meter_follows_a_savings_figure_that_falls(
     assert Decimal(state.state) == Decimal("1.50")
 
 
-def _entry_with_one_device() -> MockConfigEntry:
+def _entry_with_one_device(
+    *,
+    cycles: bool = True,
+    version: int = 3,
+    owned_meters: dict[str, Any] | None = None,
+) -> MockConfigEntry:
+    """A household tracking one device.
+
+    Cycle totals are opted into by default *here*, because these tests are about
+    what the meters do once a household has asked for them. The integration
+    itself creates none unless asked (HEA-145), which its own test covers.
+
+    ``owned_meters`` is the record an older entry carries of the helpers it
+    created for itself - what the migration reads to know a household had them.
+    """
     return MockConfigEntry(
         domain=DOMAIN,
+        version=version,
+        options={CONF_CYCLE_DAILY: cycles, CONF_CYCLE_MONTHLY: cycles},
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            **({CONF_CYCLE_METERS: owned_meters} if owned_meters else {}),
         },
         subentries_data=[
             ConfigSubentryData(
@@ -231,20 +252,55 @@ async def _set_up(hass: HomeAssistant, entry: MockConfigEntry) -> None:
     await hass.async_block_till_done()
 
 
-async def test_setup_creates_daily_and_monthly_meters_for_every_cost_sensor(
+async def test_a_new_household_gets_no_cycle_meters_at_all(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given / When - a home with one tracked device is set up
-    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
-    await _set_up(hass, _entry_with_one_device())
+    """Off by default (HEA-145, GitHub #19).
 
-    # Then - the device and the Untracked remainder each get a daily and a monthly
-    # meter for their three metered concepts (Energy Used, Actual Cost, Cost
-    # Without Solar): 2 groups x 3 concepts x 2 cycles. Cost Savings is derived by
-    # subtraction (ADR-0007) and the Whole Home aggregate is running-totals-only.
+    ADR-0008 made long-term statistics the substrate for period accounting, and
+    the shipped dashboard answers any range from them. What is left for a cycle
+    meter is a live entity for automations and hand-built cards - worth having,
+    not worth ninety config entries a household never asked for.
+    """
+    # Given / When - a household sets the integration up today
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    await _set_up(hass, _entry_with_one_device(cycles=False))
+
+    # Then - no helpers. Every figure the dashboard draws is still there, because
+    # the cards read statistics rather than these
+    assert hass.config_entries.async_entries("utility_meter") == []
+
+
+async def test_opting_into_daily_and_monthly_creates_them(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household who wants today's and this month's figures as entities
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device()
+
+    # When
+    await _set_up(hass, entry)
+
+    # Then - the device and Untracked each get their three metered concepts on
+    # both cycles: 2 groups x 3 concepts x 2 cycles
     meters = hass.config_entries.async_entries("utility_meter")
     assert len(meters) == 12
     assert {m.options["cycle"] for m in meters} == {"daily", "monthly"}
+
+
+async def test_the_metered_concepts_are_the_three_that_earn_a_meter(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - a household who has opted into both cycles
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device()
+    await _set_up(hass, entry)
+
+    # Then - Energy Used, Actual Cost and Cost at Grid Price, for the device and
+    # for Untracked. Cost Savings is derived by subtraction (ADR-0007) and the
+    # Whole Home aggregate is running-totals-only (HEA-48)
+    meters = hass.config_entries.async_entries("utility_meter")
+    assert len(meters) == 12
     assert not any(m.options["source"].endswith("_cost_savings") for m in meters)
 
 
@@ -288,7 +344,14 @@ async def test_opting_into_weekly_adds_a_weekly_meter_per_sensor(
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     entry = _entry_with_one_device()
     entry.add_to_hass(hass)
-    hass.config_entries.async_update_entry(entry, options={CONF_CYCLE_WEEKLY: True})
+    hass.config_entries.async_update_entry(
+        entry,
+        options={
+            CONF_CYCLE_DAILY: True,
+            CONF_CYCLE_MONTHLY: True,
+            CONF_CYCLE_WEEKLY: True,
+        },
+    )
 
     # When - the integration is set up
     await _set_up(hass, entry)
@@ -326,6 +389,7 @@ async def test_removing_a_device_less_integration_cleans_up_untracked_meters(
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     entry = MockConfigEntry(
         domain=DOMAIN,
+        options={CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True},
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
@@ -467,3 +531,37 @@ async def test_energy_by_source_sensors_are_never_cycle_metered(
     ]
     assert by_source, "the by-source sensors should exist to be excluded at all"
     assert metered_sources.isdisjoint(by_source)
+
+
+async def test_an_existing_household_keeps_the_meters_it_already_has(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The migration that stops an update deleting somebody's history (HEA-145).
+
+    Cycle totals became opt-in, and reconciliation removes meters no longer
+    wanted - so a household that upgraded would have had ninety helpers, and the
+    history on them, quietly taken away by a version bump.
+    """
+    # Given - an entry as a household running the previous version has it: at
+    # that schema version, no cycle options, and its own record of the meters it
+    # created for itself
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device(
+        cycles=False,
+        version=2,
+        owned_meters={
+            "sensor.coarse_step_aircon_actual_cost|daily": owned_helper(
+                "a-helper-from-the-previous-version", created=True
+            )
+        },
+    )
+
+    # When - it is brought up to the current schema and set up
+    await _set_up(hass, entry)
+
+    # Then - the cycles it already had are opted in on its behalf, so its meters
+    # are recreated rather than reconciled away. A household loses helpers and
+    # their history when it says so, never because it updated
+    assert entry.options.get(CONF_CYCLE_DAILY) is True
+    assert entry.options.get(CONF_CYCLE_MONTHLY) is True
+    assert hass.config_entries.async_entries("utility_meter") != []

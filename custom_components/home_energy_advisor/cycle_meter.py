@@ -37,7 +37,9 @@ from homeassistant.helpers import translation
 
 from . import issues
 from .const import (
+    CONF_CYCLE_DAILY,
     CONF_CYCLE_METERS,
+    CONF_CYCLE_MONTHLY,
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
     CONF_CYCLE_YEARLY,
@@ -53,9 +55,19 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-# Daily and monthly are always created; the longer cycles are opt-in (ADR-0004).
-_DEFAULT_CYCLES = ("daily", "monthly")
+# Every cycle is opt-in, daily and monthly included (HEA-145).
+#
+# They were created for every household, which is ninety helpers on a
+# fourteen-device home. ADR-0008 kept them as a convenience and said to revisit
+# that "once the card can render preset ranges" - it does, and the dashboard
+# every household gets answers any range from long-term statistics without
+# touching one of these. What is left is the one thing statistics cannot give: a
+# live entity carrying the current period, for automations, templates and
+# hand-built cards. Worth having when asked for; not worth ninety config entries
+# nobody asked for.
 _OPT_IN_CYCLES = {
+    CONF_CYCLE_DAILY: "daily",
+    CONF_CYCLE_MONTHLY: "monthly",
     CONF_CYCLE_WEEKLY: "weekly",
     CONF_CYCLE_QUARTERLY: "quarterly",
     CONF_CYCLE_YEARLY: "yearly",
@@ -195,11 +207,8 @@ def _key(source: str, cycle: str) -> str:
 
 
 def _enabled_cycles(entry: ConfigEntry) -> list[str]:
-    """The cycles to meter: daily + monthly always, plus any opted-in longer ones."""
-    opted_in = [
-        cycle for flag, cycle in _OPT_IN_CYCLES.items() if entry.options.get(flag)
-    ]
-    return [*_DEFAULT_CYCLES, *opted_in]
+    """The cycles this household asked for, in order. None, by default."""
+    return [cycle for flag, cycle in _OPT_IN_CYCLES.items() if entry.options.get(flag)]
 
 
 def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:

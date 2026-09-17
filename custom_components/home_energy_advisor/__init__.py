@@ -23,7 +23,9 @@ from . import reset
 from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
+    CONF_CYCLE_DAILY,
     CONF_CYCLE_METERS,
+    CONF_CYCLE_MONTHLY,
     CONF_GENERATION_ENTITY,
     CONF_INTEGRAL_HELPERS,
     DOMAIN,
@@ -44,6 +46,12 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 # The pre-ADR-0011 key for the local-generation input, as it still sits in an
 # installed household's .storage. Only the migration below knows this name.
 _LEGACY_GENERATION_KEY = "solar_entity"
+
+# Config entry schema versions, named for what each one got wrong, because a
+# migration reads as arithmetic otherwise.
+_RENAMED_GENERATION_KEY = 1
+_CYCLES_ALWAYS_CREATED = 2
+_CYCLES_OPTED_INTO = 3
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
@@ -70,20 +78,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
-    """Bring an older config entry up to the current schema (ADR-0011).
+    """Bring an older config entry up to the current schema.
 
     Version 1 stored the local-generation input under ``solar_entity``. ADR-0009
     renamed the concept but kept the key; ADR-0011 revises that, so the key moves
-    to ``generation_entity``. Nothing else about the entry changes.
+    to ``generation_entity``.
 
-    This exists for installations that predate the rename. It can go once none
-    remain - pre-release, that is a single household.
+    Version 2 created daily and monthly cycle totals for every household. They
+    are opted into now (HEA-145), and reconciliation removes meters nobody wants
+    - so without this an update would delete ninety helpers, and the history on
+    them, from a household that never asked for either. What they already have
+    is therefore opted in on their behalf, and stays until they say otherwise.
     """
-    if entry.version == 1:
+    if entry.version == _RENAMED_GENERATION_KEY:
         data = {**entry.data}
         if (generation := data.pop(_LEGACY_GENERATION_KEY, None)) is not None:
             data[CONF_GENERATION_ENTITY] = generation
-        hass.config_entries.async_update_entry(entry, data=data, version=2)
+        hass.config_entries.async_update_entry(
+            entry, data=data, version=_CYCLES_ALWAYS_CREATED
+        )
+    if entry.version == _CYCLES_ALWAYS_CREATED:
+        options = {**entry.options}
+        if entry.data.get(CONF_CYCLE_METERS):
+            options = {**options, CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True}
+        hass.config_entries.async_update_entry(
+            entry, options=options, version=_CYCLES_OPTED_INTO
+        )
     return True
 
 

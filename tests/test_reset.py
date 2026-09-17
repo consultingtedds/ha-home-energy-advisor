@@ -29,6 +29,8 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_CYCLE_DAILY,
+    CONF_CYCLE_MONTHLY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
@@ -45,8 +47,11 @@ _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 
 
 def _entry() -> MockConfigEntry:
+    # Cycle totals opted in: a rebase has to reach the helpers it created, and a
+    # household without them has nothing here to test (HEA-145).
     return MockConfigEntry(
         domain=DOMAIN,
+        options={CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True},
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
