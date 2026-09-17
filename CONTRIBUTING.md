@@ -16,7 +16,8 @@ For anything involving wrong figures, please attach the **diagnostics download**
 (Settings → Devices & Services → Home Energy Advisor → ⋮ → Download diagnostics).
 It carries the per-source decision log - why each reading was counted, gated or
 refused - which is usually enough to explain a figure without access to your
-instance. Entity ids and device names are redacted.
+instance. It names the entities and devices behind each figure, which is what
+makes it actionable - have a look before attaching it if that matters to you.
 
 ## What are those `HEA-nn` references?
 

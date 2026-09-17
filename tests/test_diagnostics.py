@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from homeassistant.components.diagnostics import REDACTED
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -49,9 +48,16 @@ def _entry() -> MockConfigEntry:
     )
 
 
-async def test_diagnostics_redacts_entity_ids_and_device_names(
+async def test_diagnostics_name_the_entity_behind_every_figure(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
+    """A masked sensor makes the file unactionable (HEA-147).
+
+    The download exists to answer "which sensor produced this figure". Masking
+    the answer leaves a maintainer asking the household to supply by hand the one
+    thing the file was for - which is what happened on GitHub #22, where three
+    devices were reported as condemned and nothing said which sensor each was.
+    """
     # Given - a configured, running home
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.30")
@@ -65,21 +71,21 @@ async def test_diagnostics_redacts_entity_ids_and_device_names(
     # When - the diagnostics download is produced
     result = await async_get_config_entry_diagnostics(hass, entry)
 
-    # Then - the price and per-source entity ids are redacted, but the non-personal
-    # role labels that make the file useful survive
-    assert result["config"]["price_entity"] == REDACTED
+    # Then - the configuration names the entity behind each house input, and the
+    # price entity, so a figure can be traced to the sensor it came from
+    assert result["config"]["price_entity"] == "sensor.price"
     grid = next(
         source
         for source in result["config"]["house_sources"]
         if source["role"] == "grid_import"
     )
-    assert grid["entity"] == REDACTED
+    assert grid["entity"] == "sensor.grid_import"
 
-    # ...and each observed source keeps its decision log while its entity id and
-    # the user-chosen device name are masked
+    # ...and each observed source carries its decision log alongside the entity
+    # and the device name it belongs to, which is the pairing a report needs
     source = next(item for item in result["sources"] if item["device_id"] is not None)
-    assert source["entity_id"] == REDACTED
-    assert source["device"] == REDACTED
+    assert source["entity_id"] == "sensor.coarse_step_energy"
+    assert source["device"] == "Coarse Step Aircon"
     assert source["role"] is None
     assert "decisions" in source
 
@@ -105,8 +111,8 @@ async def test_diagnostics_expose_the_battery_ledger(
     # import rate can otherwise only infer why (HEA-112).
     assert result["battery"] == {"stored_kwh": "0", "stored_cost": "0"}
 
-    # ...and it carries no entity id or device name, so nothing here needs
-    # redacting on a public bug report
+    # ...and it is the whole ledger: two figures, with nothing else smuggled in
+    # beside them
     assert set(result["battery"]) == {"stored_kwh", "stored_cost"}
 
 

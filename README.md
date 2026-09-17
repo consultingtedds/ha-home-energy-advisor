@@ -483,8 +483,9 @@ For anything to do with a figure being wrong, attach the diagnostics download:
 **Settings** > **Devices & services** > **Home Energy Advisor**, then the
 three-dot menu and **Download diagnostics**. It carries the reasoning behind
 every reading - why each one was counted, held or refused - which is usually
-enough to explain a number without needing access to your system. Entity ids and
-device names are redacted.
+enough to explain a number without needing access to your system. It names the
+entities and devices each figure came from, so have a look before attaching it if
+that matters to you.
 
 ## Contributing
 

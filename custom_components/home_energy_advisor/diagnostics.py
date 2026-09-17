@@ -3,15 +3,25 @@
 Home Assistant discovers this platform automatically and offers the download from
 the config entry's menu. The coordinator assembles the full picture - config,
 per-source accumulator state and gating decision log, and the running totals - as
-JSON-safe primitives; this module only redacts the parts that could identify a
-household before the file is shared.
+JSON-safe primitives, and the file names the entities and devices those figures
+came from.
+
+Naming them is the point (HEA-147). Every figure here is an answer to "which
+sensor did this come from", and a report that masks the sensor cannot be acted on
+without asking the household to unmask it by hand - which is what happened on
+GitHub #22, where three devices were named as condemned and no one could say
+which sensor each one was. Home Assistant's own integrations carry entity ids in
+their diagnostics for the same reason; what they redact is credentials, and there
+are none here.
+
+The file is generated on request and downloaded by the household, who decides
+whether to attach it anywhere. That decision is theirs to make, and it needs a
+file that says something.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-
-from homeassistant.components.diagnostics import async_redact_data
 
 if TYPE_CHECKING:
     from typing import Any
@@ -20,16 +30,10 @@ if TYPE_CHECKING:
 
     from .coordinator import HeaConfigEntry
 
-# Entity ids and user-chosen device names can encode room or person names, and a
-# diagnostics download is routinely pasted into public issues. Roles, cycle flags,
-# decision reasons and the random subentry ids are not personal and stay visible
-# so the file still explains any figure.
-TO_REDACT = {"entity", "entity_id", "device", "name", "price_entity"}
-
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,  # noqa: ARG001 - platform signature; state is on the entry
     entry: HeaConfigEntry,
 ) -> dict[str, Any]:
-    """Return the redacted diagnostics for a config entry."""
-    return async_redact_data(entry.runtime_data.diagnostics(), TO_REDACT)
+    """Return the diagnostics for a config entry."""
+    return entry.runtime_data.diagnostics()
