@@ -205,6 +205,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     async def async_start(self) -> None:
         """Restore, baseline current states, subscribe, and start the timer."""
         await self._async_restore_accounting()
+        self._adopt_standing_accusations()
         for entity_id in self._energy_entities:
             self._feed_energy(entity_id, self.hass.states.get(entity_id))
         self._feed_price(self.hass.states.get(self._price_entity))
@@ -361,6 +362,21 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             },
         )
 
+    def _adopt_standing_accusations(self) -> None:
+        """Take over the Repairs a previous run raised and has not withdrawn.
+
+        Both checks below retract by comparing what they found against what they
+        raised, and both would otherwise start each run believing they had raised
+        nothing - leaving a household who deleted the device or repointed the
+        sensor with a permanent accusation about neither (HEA-146).
+        """
+        self._implausible_sources = issues.async_raised_subjects(
+            self.hass, issues.ISSUE_IMPLAUSIBLE_SOURCE
+        )
+        self._refused_steps = frozenset(
+            issues.async_raised_subjects(self.hass, issues.ISSUE_IMPLAUSIBLE_STEP)
+        )
+
     def _check_source_plausibility(self) -> None:
         """Name, in Repairs, any device whose source is claiming the impossible.
 
@@ -368,10 +384,17 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         half that tells the user, because a device silently frozen at a stale
         figure is exactly the kind of quiet wrongness the product exists to avoid.
         Raised per device so the message can name the one to go and look at.
+
+        A device that is no longer configured is passed over. Deleting one from
+        its device page removes the subentry and reloads the entry asynchronously,
+        so this can run against a device that has already gone - and the only
+        name left to call it by is its subentry id, which means nothing to the
+        household and names nothing they can open (HEA-146).
         """
         implausible = {
             self._device_name(device)
             for device in self._accountant.implausible_devices()
+            if device in self._entry.subentries
         }
         for name in implausible - self._implausible_sources:
             issues.async_raise(

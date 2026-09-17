@@ -65,6 +65,27 @@ def implausible_step_issue_id(entity_id: str) -> str:
     return f"{ISSUE_IMPLAUSIBLE_STEP}_{entity_id}"
 
 
+def async_raised_subjects(hass: HomeAssistant, translation_key: str) -> set[str]:
+    """Every subject this integration is currently accusing under one issue key.
+
+    The subject is whatever the id builders above append - a device name, an
+    entity id. An issue outlives the run that raised it, so a check that retracts
+    only what it raised itself can never withdraw one left standing by an earlier
+    run: the accusation becomes permanent, and a household who has since deleted
+    the device or repointed the sensor has no way to answer it (HEA-146).
+
+    Reading the registry back at startup gives a check the same view of its own
+    outstanding accusations that it had before the restart, so the ordinary
+    clearing path can reach them.
+    """
+    prefix = f"{translation_key}_"
+    return {
+        issue_id.removeprefix(prefix)
+        for domain, issue_id in ir.async_get(hass).issues
+        if domain == DOMAIN and issue_id.startswith(prefix)
+    }
+
+
 def async_raise(
     hass: HomeAssistant,
     issue_id: str,

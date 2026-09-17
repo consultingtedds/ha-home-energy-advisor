@@ -672,6 +672,85 @@ async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
     )
 
 
+async def test_a_repair_left_by_a_previous_run_is_retracted_at_startup(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A Repair outlives the run that raised it, so clearing must too (HEA-146).
+
+    A household on GitHub #22 is looking at two of these: condemnations of
+    devices they have since deleted, raised before a restart and never withdrawn,
+    because the set consulted when clearing is rebuilt empty on every start. The
+    accusation is permanent and there is nothing they can do about it.
+    """
+    # Given - a condemnation standing from a run that has ended, naming a device
+    # this household no longer has
+    departed = issues.implausible_source_issue_id("01M2MH82D41T25TN32G97FBMYS")
+    issues.async_raise(
+        hass, departed, issues.ISSUE_IMPLAUSIBLE_SOURCE, {"name": "Cloud Polled Pump"}
+    )
+    assert _has_issue(hass, departed)
+
+    # When - the integration starts again and accounts an ordinary interval
+    await _setup_running_home(hass, freezer)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - the Repair is withdrawn. Nothing in this run claims the device is
+    # lying, and a Repair nobody is still making is an accusation, not a record
+    assert not _has_issue(hass, departed)
+
+
+async def test_a_refused_step_left_by_a_previous_run_is_retracted_at_startup(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a leapt-counter Repair standing from an earlier run, for a source
+    # this household has since repointed or removed (HEA-146)
+    gone = issues.implausible_step_issue_id("sensor.replaced_water_heater_energy")
+    issues.async_raise(
+        hass,
+        gone,
+        issues.ISSUE_IMPLAUSIBLE_STEP,
+        {"entity_id": "sensor.replaced_water_heater_energy"},
+    )
+
+    # When - the integration starts again and accounts an ordinary interval
+    await _setup_running_home(hass, freezer)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - it is withdrawn, for the same reason
+    assert not _has_issue(hass, gone)
+
+
+async def test_a_device_no_longer_configured_is_never_named_in_repairs(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The other half of HEA-146: what gets raised in the first place.
+
+    Deleting a device from its device page removes the subentry and reloads the
+    entry asynchronously, so the still-live coordinator can condemn a device
+    whose subentry has already gone. The name lookup then falls back to the raw
+    subentry id, and the household is shown a Repair reading
+    "01M2MH82D41T25TN32G97FBMYS is reporting more energy than the whole house".
+    """
+    # Given - a running home
+    entry = await _setup_running_home(hass, freezer)
+    coordinator = entry.runtime_data
+
+    # When - the engine condemns a device that is not in the configuration, which
+    # is what the coordinator sees in the gap between a deletion and its reload
+    departed = "01M2MH82D41T25TN32G97FBMYS"
+    assert departed not in entry.subentries
+    with patch.object(
+        coordinator._accountant,  # noqa: SLF001
+        "implausible_devices",
+        return_value=frozenset({departed}),
+    ):
+        await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - nothing is raised. A device the household cannot open, named by an
+    # id they have never seen, is a Repair they can neither act on nor dismiss
+    assert not _has_issue(hass, issues.implausible_source_issue_id(departed))
+
+
 def _power_only_entry() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
