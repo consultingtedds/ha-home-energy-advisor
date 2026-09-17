@@ -102,6 +102,10 @@ KNOWN_POSSESSIVES = {
 #: to be somebody's house until it is added here deliberately.
 KNOWN_HOSTS = {
     "astral.sh",
+    # Home Assistant's brand CDN. HACS fetches an integration's panel icon from
+    # here rather than from the integration's own `brand/` folder, which is why
+    # this project has to name it at all (HEA-136).
+    "brands.home-assistant.io",
     "cdn.jsdelivr.net",
     "cdnjs.cloudflare.com",
     "code.jquery.com",

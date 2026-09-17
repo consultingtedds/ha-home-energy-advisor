@@ -380,8 +380,10 @@ Presentation
 
 ### Epic 8 - Release
 1. Semver tagging + GitHub release CI, keeping `manifest.json` in step with the
-   tag (HEA-31). The version is derived from commit types; the first release is
-   cut by hand and every one after it follows a green `main`
+   tag (HEA-31). The version is derived from commit types, and cutting a release
+   is a decision somebody makes: the workflow runs on `workflow_dispatch` and
+   checks CI is green before it tags. Four releases in one day taught the
+   lesson - fixes are batched now, and `CONTRIBUTING.md` carries the rules
 2. First tagged release + HACS custom-repository install docs (HEA-32): brand
    icon, supported-version floor `2026.7.0` tested beside the latest, install
    docs taking a release rather than `main`
@@ -403,11 +405,16 @@ Presentation
 >
 > The brand icon lives in `custom_components/home_energy_advisor/brand/`. Since
 > Home Assistant 2026.3 a custom integration's own `brand/` folder takes
-> priority over the brands CDN, so that one folder serves both HACS and Home
-> Assistant's own integrations page - confirmed on the demo instance, where the
-> page requests `/api/brands/integration/home_energy_advisor/icon.png` and gets
-> it. No `home-assistant/brands` submission is needed, and that repository marks
-> its custom-integration folder as legacy.
+> priority over the brands CDN, so that folder serves Home Assistant's own
+> integrations page - confirmed on the demo instance, where the page requests
+> `/api/brands/integration/home_energy_advisor/icon.png` and gets it.
+>
+> It does not serve the HACS panel, which was the claim here and is wrong. HACS
+> lists an integration with an icon fetched straight from
+> `brands.home-assistant.io`, so ours 404s there and shows the "icon not
+> available" placeholder however complete the local folder is. A
+> `home-assistant/brands` submission is needed after all, for that one surface;
+> HEA-136 carries it.
 >
 > **Epic 8 and the MVP closed 2026-09-15.** The HACS default store submission
 > (HEA-129) sits outside both. It waits for households other than the reference
