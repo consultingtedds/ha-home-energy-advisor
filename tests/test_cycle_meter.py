@@ -304,6 +304,91 @@ async def test_the_metered_concepts_are_the_three_that_earn_a_meter(
     assert not any(m.options["source"].endswith("_cost_savings") for m in meters)
 
 
+def _icon_of(hass: HomeAssistant, entity_id: str) -> str | None:
+    entity = er.async_get(hass).async_get(entity_id)
+    assert entity is not None, f"{entity_id} is not registered"
+    return entity.icon
+
+
+async def test_a_cycle_total_wears_the_icon_of_the_figure_it_totals(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Two concepts, two icons, not three (HEA-142).
+
+    Reported on Facebook: some cost figures wear cash and some wear a counter.
+    utility_meter gives every helper it owns `mdi:counter` whatever it is
+    metering, so on one device page Actual Cost is cash and Actual Cost Daily is
+    a counter, for the same money.
+    """
+    # Given / When - a household opts into cycle totals
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    await _set_up(hass, _entry_with_one_device())
+
+    # Then - each cycle total carries its own concept's icon, the same one the
+    # figure it totals is already wearing
+    assert _icon_of(hass, "sensor.coarse_step_aircon_actual_cost_daily") == "mdi:cash"
+    assert (
+        _icon_of(hass, "sensor.coarse_step_aircon_cost_at_grid_price_monthly")
+        == "mdi:cash"
+    )
+    assert (
+        _icon_of(hass, "sensor.coarse_step_aircon_energy_used_daily")
+        == "mdi:lightning-bolt"
+    )
+
+
+async def test_an_icon_a_household_chose_survives_a_reload(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household who has opted in and then picked their own icon for one
+    # of the cycle totals
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    entry = _entry_with_one_device()
+    await _set_up(hass, entry)
+    daily = "sensor.coarse_step_aircon_actual_cost_daily"
+    er.async_get(hass).async_update_entity(daily, icon="mdi:piggy-bank")
+
+    # When - the integration reloads, which is when icons are reconciled
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - their choice stands. Setting it once is a default; setting it again
+    # is overruling somebody who has already said what they want
+    assert _icon_of(hass, daily) == "mdi:piggy-bank"
+
+
+async def test_an_adopted_cycle_meter_is_never_given_an_icon(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household who built their own daily meter over a device figure
+    # before opting in, so HEA adopts it rather than creating it (HEA-52)
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    await _set_up(hass, _entry_with_one_device(cycles=False))
+    source = "sensor.coarse_step_aircon_actual_cost"
+    meter_id = await async_ensure_utility_meter(
+        hass,
+        name="My Own Aircon Meter",
+        source_entity=source,
+        cycle="daily",
+        net_consumption=True,
+    )
+    await hass.async_block_till_done()
+    theirs = utility_meter_output_sensor(hass, meter_id)
+    assert theirs is not None
+    assert _icon_of(hass, theirs) is None
+
+    # When - they then opt into daily totals, and HEA adopts that meter
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_CYCLE_DAILY: True}
+    )
+    await hass.async_block_till_done()
+
+    # Then - their meter is untouched. A helper HEA did not make is the
+    # household's to style, the same way it is theirs to delete
+    assert _icon_of(hass, theirs) is None
+
+
 async def test_a_pre_existing_cost_savings_meter_is_reconciled_away(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

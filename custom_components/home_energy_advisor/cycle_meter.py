@@ -86,7 +86,18 @@ _CYCLE_LABEL_PREFIX = f"component.{UTILITY_METER_DOMAIN}.selector.cycle.options.
 #                    helpers on a 14-device home for no capability the statistics
 #                    path lacks (ADR-0008 §3, firm).
 #   devices        - the hub's diagnostic registry sensor, not a figure at all.
-_METERED_CONCEPTS = frozenset({"energy_used", "actual_cost", "cost_at_grid_price"})
+#
+# Each maps to the icon its own sensor wears, which the cycle total is then given
+# (HEA-142). utility_meter icons every helper it owns `mdi:counter` whatever is
+# being metered, so without this a device page shows Actual Cost as cash and
+# Actual Cost Daily as a counter, for the same money. One map rather than two, so
+# a concept cannot be metered without someone deciding what it looks like.
+_CONCEPT_ICONS = {
+    "energy_used": "mdi:lightning-bolt",
+    "actual_cost": "mdi:cash",
+    "cost_at_grid_price": "mdi:cash",
+}
+_METERED_CONCEPTS = frozenset(_CONCEPT_ICONS)
 
 
 async def async_ensure_utility_meter(
@@ -211,8 +222,11 @@ def _enabled_cycles(entry: ConfigEntry) -> list[str]:
     return [cycle for flag, cycle in _OPT_IN_CYCLES.items() if entry.options.get(flag)]
 
 
-def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
-    """Entity ids of the integration's own per-device and Untracked cost sensors.
+def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]:
+    """The integration's per-device and Untracked figures, each with its icon.
+
+    Keyed by entity id, valued by the icon the cycle totals over it should wear -
+    the one its own sensor already has (HEA-142).
 
     Membership is an explicit allow-list (``_METERED_CONCEPTS``), not "everything
     except the known exceptions". Metering is the expensive default - one helper
@@ -230,17 +244,21 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> list[str]:
     """
     registry = er.async_get(hass)
     whole_home_prefix = f"{entry.entry_id}_{WHOLE_HOME_KEY}_"
-    return sorted(
-        entity.entity_id
-        for entity in er.async_entries_for_config_entry(registry, entry.entry_id)
-        if entity.domain == "sensor"
-        and entity.translation_key in _METERED_CONCEPTS
-        and not (entity.unique_id or "").startswith(whole_home_prefix)
-        and (
-            entity.config_subentry_id is None
-            or entity.config_subentry_id in entry.subentries
-        )
-    )
+    metered = {}
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        concept = entity.translation_key
+        if (
+            entity.domain == "sensor"
+            and concept is not None
+            and concept in _CONCEPT_ICONS
+            and not (entity.unique_id or "").startswith(whole_home_prefix)
+            and (
+                entity.config_subentry_id is None
+                or entity.config_subentry_id in entry.subentries
+            )
+        ):
+            metered[entity.entity_id] = _CONCEPT_ICONS[concept]
+    return dict(sorted(metered.items()))
 
 
 async def _remove_orphaned_meters(
@@ -264,13 +282,13 @@ async def _remove_orphaned_meters(
 
 async def _ensure_meters(
     hass: HomeAssistant,
-    sources: list[str],
+    sources: dict[str, str],
     cycles: list[str],
     labels: dict[str, str],
     owned: dict[str, Any],
 ) -> None:
     """Ensure a meter for each source x cycle, recording ownership in ``owned``."""
-    for source in sources:
+    for source, icon in sources.items():
         state = hass.states.get(source)
         net_consumption = bool(
             state and state.attributes.get(ATTR_STATE_CLASS) == SensorStateClass.TOTAL
@@ -289,9 +307,33 @@ async def _ensure_meters(
                 cycle=cycle,
                 net_consumption=net_consumption,
             )
-            owned[key] = resolve_provenance(
+            record = owned[key] = resolve_provenance(
                 owned.get(key), meter_id, pre_existing=pre_existing
             )
+            if helper_was_created(record):
+                _adopt_source_icon(hass, meter_id, icon)
+
+
+def _adopt_source_icon(hass: HomeAssistant, meter_id: str, icon: str) -> None:
+    """Give a meter HEA created the icon of the figure it totals (HEA-142).
+
+    Only where the household has not chosen one. Setting it on a helper with no
+    icon is supplying a default utility_meter got wrong for this use; setting it
+    on one that has an icon would be overruling somebody who has already said
+    what they want, and a choice that does not survive the next reload is worse
+    than no choice at all.
+
+    Meters HEA merely adopted are not ours to style, for the same reason they are
+    not ours to delete (HEA-52) - the caller checks that.
+    """
+    output = utility_meter_output_sensor(hass, meter_id)
+    if output is None:
+        return
+    registry = er.async_get(hass)
+    entity = registry.async_get(output)
+    if entity is None or entity.icon is not None:
+        return
+    registry.async_update_entity(output, icon=icon)
 
 
 async def _cycle_labels(hass: HomeAssistant) -> dict[str, str]:
