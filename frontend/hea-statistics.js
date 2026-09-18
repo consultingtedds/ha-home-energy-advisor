@@ -183,6 +183,68 @@ export const bucketPeriodFor = ({ start, end }) =>
   end - start > HOURLY_DAYS * DAY_MS ? "day" : "hour";
 
 /**
+ * The bucket this many on from an anchor, on the household's own clock.
+ *
+ * Hours are added as real time, because that is what an hour of energy is. Days
+ * are added as days: stepping by a fixed 24 hours walks the buckets off
+ * midnight the first time the clocks change, and every bar after that sits an
+ * hour out from the axis it is drawn against.
+ */
+const bucketAfter = (anchor, bucketPeriod, count) => {
+  if (bucketPeriod !== "day") return new Date(anchor.getTime() + count * PERIOD_MS.hour);
+  const stepped = new Date(anchor);
+  stepped.setDate(stepped.getDate() + count);
+  return stepped;
+};
+
+/**
+ * Every bucket the period covers, with the ones nothing was recorded in zeroed.
+ *
+ * A chart drawn only from the buckets that arrived misstates two things. ECharts
+ * takes a bar's width from the smallest gap between points, so an hour with no
+ * statistic leaves its neighbours drawn at double width - and a period holding a
+ * single bucket has no gap at all, at which point the axis expands by 40% either
+ * side and ignores the range it was given. Home Assistant fills the same grid
+ * for the same reasons (`generateFillBuckets`).
+ *
+ * Anchored on a real bucket rather than on the period's start, because the
+ * recorder aligns its buckets to UTC: in a half-hour zone they do not sit on
+ * local boundaries, and a grid stepped from the start would be offset from every
+ * bucket in the data.
+ *
+ * A period holding nothing is returned untouched. Filling it would draw a row of
+ * flat zeroes, which says the hours cost nothing - a different statement from
+ * having nothing to say about them.
+ */
+export const bucketsAcross = (rows, period) => {
+  if (!rows.length || !period) return rows;
+  const bucketPeriod = bucketPeriodFor(period);
+  const known = new Map(rows.map((row) => [row.start.getTime(), row]));
+  const anchor = rows[0].start;
+  const filled = [];
+  for (let count = 0; ; count--) {
+    const start = bucketAfter(anchor, bucketPeriod, count);
+    if (start.getTime() < period.start.getTime()) break;
+    filled.push(known.get(start.getTime()) ?? emptyBucket(start));
+  }
+  filled.reverse();
+  for (let count = 1; ; count++) {
+    const start = bucketAfter(anchor, bucketPeriod, count);
+    if (start.getTime() >= period.end.getTime()) break;
+    filled.push(known.get(start.getTime()) ?? emptyBucket(start));
+  }
+  return filled;
+};
+
+/** A bucket nothing was recorded in: present on the chart, worth nothing. */
+const emptyBucket = (start) => ({
+  ...zeroed(),
+  start,
+  costSavings: 0,
+  accruing: false,
+});
+
+/**
  * Fetch and total each device's energy and cost over the period.
  *
  * @param hass the Home Assistant object handed to the card

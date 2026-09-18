@@ -18,7 +18,7 @@ import { HeaChartCard } from "./hea-chart-card.js";
 import { tint } from "./hea-colour.js";
 import { PAID, SAVED } from "./hea-concepts.js";
 import { formatBucketSpan, formatMoney, savingTone } from "./hea-format.js";
-import { bucketPeriodFor } from "./hea-statistics.js";
+import { bucketPeriodFor, bucketsAcross } from "./hea-statistics.js";
 import {
   tooltipHeading,
   tooltipKeyedRow,
@@ -151,7 +151,10 @@ class HeaCostOverTimeCard extends HeaChartCard {
    * must not misread as a gain (HEA-39).
    */
   _series() {
-    const rows = this._result?.series ?? [];
+    // Filled here rather than where the rows are totalled: a period holding no
+    // buckets at all must still read as one with nothing in it, and the card
+    // decides that from what the statistics layer actually found.
+    const rows = bucketsAcross(this._result?.series ?? [], this._result?.period);
     const loss = this._colour(LOSS);
     const labels = this._labels;
     const earlier = this._result?.seriesBefore;
@@ -313,10 +316,44 @@ class HeaCostOverTimeCard extends HeaChartCard {
     return formatBucketSpan(bucket.start, bucketPeriodFor(this._period), locale);
   }
 
+  /**
+   * How far the axis runs, which is not quite how far the period does.
+   *
+   * A bar is centred on its bucket, so the last one reaches only half a bucket
+   * past its own start and an axis drawn to the period's end leaves that much
+   * empty chart. Home Assistant rounds the far end back for the same reason
+   * (`getSuggestedMax`): to the last bucket's midpoint for hours, and to the
+   * start of the last day for days, where the bar sits at the day's own start.
+   */
+  _axisBounds() {
+    if (!this._period) return {};
+    const { start, end } = this._period;
+    // A period ends where the next one begins, so the last bucket is the one
+    // holding the instant before it. Rounding the boundary itself would land
+    // half a bucket past the last bar, which is the padding this avoids.
+    const last = new Date(end.getTime() - 1);
+    if (bucketPeriodFor(this._period) === "hour") {
+      last.setMinutes(30, 0, 0);
+    } else {
+      // Around a clock change the recorder can hand back 00:59 where 23:59 is
+      // meant, which would round forward into a day the household never asked
+      // for.
+      if (last.getHours() === 0) last.setHours(last.getHours() - 1);
+      last.setHours(0, 0, 0, 0);
+    }
+    return { min: start.getTime(), max: last.getTime() };
+  }
+
   _options(locale) {
     const labels = this._labels;
     return {
-      xAxis: { type: "time" },
+      // Pinned to the period rather than left to the data. An axis drawn only
+      // as wide as the buckets that arrived makes a quiet hour look like the
+      // end of the period, and shifts every bar along when one turns up.
+      xAxis: { type: "time", ...this._axisBounds() },
+      // Home Assistant's own grid. Left to ECharts, a tenth of the width is
+      // held back on each side and the plot floats in the middle of the card.
+      grid: { top: 15, bottom: 0, left: 1, right: 1, containLabel: true },
       yAxis: {
         type: "value",
         axisLabel: {

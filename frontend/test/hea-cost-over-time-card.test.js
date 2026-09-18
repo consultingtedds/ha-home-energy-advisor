@@ -174,12 +174,14 @@ describe("the series handed to the chart", () => {
 
     // Then - day one paid 1 of 3, day two paid 2 of 3, each plotted at the
     // middle of the day it covers and carrying the instant that day began, so
-    // a hover can name the span rather than the midpoint (HEA-141)
-    expect(valuesIn(card, "paid")).toEqual([
+    // a hover can name the span rather than the midpoint (HEA-141). The rest
+    // of the range is filled with empty buckets, which have their own test
+    const recorded = (id) => valuesIn(card, id).filter(([, value]) => value !== 0);
+    expect(recorded("paid")).toEqual([
       [middleOf(DAY_ONE), 1, DAY_ONE.getTime()],
       [middleOf(DAY_TWO), 2, DAY_TWO.getTime()],
     ]);
-    expect(valuesIn(card, "saved")).toEqual([
+    expect(recorded("saved")).toEqual([
       [middleOf(DAY_ONE), 2, DAY_ONE.getTime()],
       [middleOf(DAY_TWO), 1, DAY_TWO.getTime()],
     ]);
@@ -616,6 +618,133 @@ describe("the options handed to the chart", () => {
 
     // Then
     expect(chartOf(card).hass).toBe(hass);
+  });
+});
+
+describe("where the plot sits, and what fills it", () => {
+  /** Three hours of window, with the middle one never recorded. */
+  const aGap = {
+    "sensor.slow_poll_aircon_actual_cost": [
+      { start: DAY_ONE.getTime(), change: 1 },
+      { start: DAY_ONE.getTime() + 2 * 3600000, change: 3 },
+    ],
+    "sensor.slow_poll_aircon_cost_at_grid_price": [
+      { start: DAY_ONE.getTime(), change: 2 },
+      { start: DAY_ONE.getTime() + 2 * 3600000, change: 4 },
+    ],
+  };
+
+  const overHours = async (response, hours) => {
+    const collection = anEnergyCollection(
+      DAY_ONE,
+      new Date(DAY_ONE.getTime() + hours * 3600000),
+    );
+    const card = mount(aHass({ devices: AIRCON, response, collection }));
+    await ready(card);
+    return card;
+  };
+
+  it("runs the axis across the period asked for, not the buckets that arrived", async () => {
+    // Given - three hours asked for, with nothing recorded in the last one
+    const card = await overHours(aGap, 3);
+
+    // When / Then - an axis drawn only as wide as the data makes a quiet hour
+    // look like the end of the period, and moves every bar when one arrives.
+    // The far end is the last bucket's midpoint, because that is where its bar
+    // is centred and padding past it is empty chart (Home Assistant's own
+    // `getSuggestedMax`)
+    const { xAxis } = chartOf(card).options;
+    expect(xAxis.min).toBe(DAY_ONE.getTime());
+    expect(xAxis.max).toBe(DAY_ONE.getTime() + 2.5 * 3600000);
+  });
+
+  it("ends a daily axis on the last day, not part-way through it", async () => {
+    // Given - a range wide enough for daily buckets, ending mid-afternoon as
+    // the picker's "today" does
+    const lastDay = new Date(DAY_ONE.getTime() + 3 * 86400000);
+    const collection = anEnergyCollection(
+      DAY_ONE,
+      new Date(lastDay.getTime() + 14 * 3600000),
+    );
+    const card = mount(aHass({ devices: AIRCON, response: twoDays, collection }));
+    await ready(card);
+
+    // When / Then - a daily bar sits at the start of its day, so the axis ends
+    // there too
+    expect(chartOf(card).options.xAxis.max).toBe(lastDay.getTime());
+  });
+
+  it("lets the plot run to the card's own edges", async () => {
+    // Given / When
+    const card = await overHours(aGap, 3);
+
+    // Then - Home Assistant's own grid: the labels are kept inside, and what
+    // is left over is the plot. Left alone, ECharts holds a tenth of the width
+    // back on each side and the chart floats in the middle of the card
+    expect(chartOf(card).options.grid).toEqual({
+      top: 15,
+      bottom: 0,
+      left: 1,
+      right: 1,
+      containLabel: true,
+    });
+  });
+
+  it("fills an hour nothing was recorded in, so the bars keep their width", async () => {
+    // Given - a window of three hours with the middle one missing. ECharts
+    // takes a bar's width from the smallest gap between points, so two hours
+    // two apart draw as two double-width blocks
+    const card = await overHours(aGap, 3);
+
+    // When
+    const paid = valuesIn(card, "paid");
+
+    // Then - three buckets, the middle one worth nothing
+    expect(paid.map((point) => point[2])).toEqual([
+      DAY_ONE.getTime(),
+      DAY_ONE.getTime() + 3600000,
+      DAY_ONE.getTime() + 2 * 3600000,
+    ]);
+    expect(paid[1][1]).toBe(0);
+  });
+
+  it("draws nothing at all for an hour it filled in", async () => {
+    // Given / When
+    const card = await overHours(aGap, 3);
+
+    // Then - no outline either, or an empty hour draws a hairline on the axis
+    // that reads as a bar of nothing rather than as no bar
+    expect(seriesOf(card, "paid").data[1].itemStyle.borderWidth).toBe(0);
+    expect(seriesOf(card, "saved").data[1].itemStyle.borderWidth).toBe(0);
+  });
+
+  it("steps daily buckets on the household's own midnights", async () => {
+    // Given - a fortnight, which is daily buckets
+    const collection = anEnergyCollection(
+      DAY_ONE,
+      new Date(DAY_ONE.getTime() + 14 * 86400000),
+    );
+    const card = mount(aHass({ devices: AIRCON, response: twoDays, collection }));
+    await ready(card);
+
+    // When / Then - stepping by a fixed 24 hours would walk the buckets off
+    // midnight the first time the clocks changed, and every bar after it would
+    // sit an hour out. Only a runner whose own zone has daylight saving can
+    // fail this one
+    for (const [, , start] of valuesIn(card, "paid")) {
+      expect(new Date(start).getHours()).toBe(0);
+    }
+  });
+
+  it("still says a period holds nothing rather than filling it with zeroes", async () => {
+    // Given - a range earlier than any recorded statistic
+    const card = await overHours({}, 3);
+
+    // When / Then - the filling is for gaps between buckets, and a period with
+    // no buckets at all has nothing to fill between. A chart of flat zeroes
+    // would claim the hours cost nothing, which is a different statement
+    expect(card.shadowRoot.textContent).toMatch(/no cost recorded/i);
+    expect(chartOf(card)).toBe(null);
   });
 });
 
