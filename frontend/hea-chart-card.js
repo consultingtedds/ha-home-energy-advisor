@@ -21,6 +21,7 @@
  */
 
 import { HeaCard } from "./hea-card-base.js";
+import { localeFrom } from "./hea-format.js";
 
 export class HeaChartCard extends HeaCard {
   /** Home Assistant's chart component, and a card known to pull it in. */
@@ -199,12 +200,15 @@ export class HeaChartCard extends HeaCard {
     chart.options = this._options(this._chartLocale());
   }
 
-  /** The language and currency the axis and tooltip label themselves with. */
+  /**
+   * The language, currency and clock the axis and tooltip label themselves with.
+   *
+   * The clock matters because `ha-chart-base` labels a time axis from Home
+   * Assistant's own settings, so a tooltip that read only the language would
+   * write "1:00 PM" under an axis reading "13:00" (HEA-141).
+   */
   _chartLocale() {
-    return {
-      language: this._hass?.locale?.language,
-      currency: this._hass?.config?.currency,
-    };
+    return localeFrom(this._hass);
   }
 
   /** A themed colour, resolved from the card's own computed style. */

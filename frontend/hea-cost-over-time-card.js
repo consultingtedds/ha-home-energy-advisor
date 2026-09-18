@@ -15,8 +15,14 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { PAID, SAVED } from "./hea-concepts.js";
-import { formatMoney } from "./hea-format.js";
+import { formatBucketSpan, formatMoney, savingTone } from "./hea-format.js";
 import { bucketPeriodFor } from "./hea-statistics.js";
+import {
+  tooltipHeading,
+  tooltipKeyedRow,
+  tooltipNote,
+  tooltipRow,
+} from "./hea-tooltip.js";
 
 export const TAG = "hea-cost-over-time-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -70,6 +76,24 @@ const SERIES = {
   saved: { id: "saved", name: "saved", ...SAVED },
 };
 const LOSS = { variable: "--error-color", fallback: "#db4437" };
+
+/**
+ * Good news and bad news, as inline colours.
+ *
+ * The cards wear `.gain` / `.loss` from the shared stylesheet; a tooltip cannot
+ * - it is rendered into the chart component's own container, outside this
+ * card's shadow root, so the colour has to travel on the element (HEA-99).
+ */
+const TONE_COLOUR = {
+  gain: { variable: "--success-color", fallback: "#4caf50" },
+  loss: LOSS,
+};
+
+/** What a hovered point is worth, which is the second of its three values. */
+const valueOf = (param) => param.value?.[1] ?? 0;
+
+/** When its bucket began, which a line drawn from another period carries not. */
+const startOf = (param) => param.value?.[2];
 
 /**
  * How faint a bar is while its interval is still being counted.
@@ -130,14 +154,12 @@ class HeaCostOverTimeCard extends HeaChartCard {
     return [
       {
         ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
-        data: rows.map((row) =>
-          accruing(row, [row.start.getTime() + offset, row.actualCost]),
-        ),
+        data: rows.map((row) => accruing(row, pointFor(row, row.actualCost, offset))),
       },
       {
         ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
         data: rows.map((row) => {
-          const point = [row.start.getTime() + offset, row.costSavings];
+          const point = pointFor(row, row.costSavings, offset);
           const style = row.costSavings < 0 ? { color: loss } : undefined;
           return accruing(row, point, style);
         }),
@@ -201,6 +223,85 @@ class HeaCostOverTimeCard extends HeaChartCard {
     return `<div class="hint">${this._labels.hourly_shape_estimate}</div>`;
   }
 
+  /**
+   * The hovered bucket: the span it covers, its segments, and their total.
+   *
+   * Headed by the span rather than by the instant the bar is plotted at, which
+   * is the one thing in this chart that was plainly wrong - "13:30" for the
+   * hour that began at 13:00, when nothing happened at 13:30 and the figure is
+   * the whole hour's (HEA-141).
+   *
+   * The rows keep this project's reading order - what was paid, what that
+   * saved, then the two together - rather than Home Assistant's, which sorts a
+   * stack from the top down. Theirs is six series of unrelated sources where
+   * mirroring the picture is the only order available; ours is three figures
+   * that are one sentence, and every card states them in that order.
+   *
+   * A segment of no height is left out. It is not in the bar, so a row for it
+   * is a line of nothing between the two figures that matter - and a bucket
+   * with neither is no tooltip at all, rather than an empty box against the
+   * cursor.
+   */
+  _tooltipFor(params, locale) {
+    const hovered = (Array.isArray(params) ? params : [params]).filter(
+      (param) => param.componentSubType === "bar",
+    );
+    const rows = hovered.filter((param) => valueOf(param) !== 0);
+    if (!rows.length) return undefined;
+    const bucket = this._bucketAt(hovered.map(startOf).find(Boolean));
+    const box = document.createElement("div");
+    box.append(tooltipHeading(this._spanOf(bucket, locale)));
+    for (const param of rows) box.append(this._tooltipRowFor(param, locale));
+    const total = hovered.reduce((sum, param) => sum + valueOf(param), 0);
+    // Only where the bar has more than one segment: with one, the total would
+    // restate the figure directly above it.
+    if (rows.length > 1) {
+      box.append(
+        tooltipRow(this._labels.would_have_paid, formatMoney(total, locale), undefined, {
+          bold: true,
+        }),
+      );
+    }
+    // The fade says this bar will grow; a hover is where a reader asks what it
+    // means (HEA-140).
+    if (bucket?.accruing) box.append(tooltipNote(this._labels.still_accruing));
+    return box;
+  }
+
+  /** One segment: its colour, what it is called, and what it came to. */
+  _tooltipRowFor(param, locale) {
+    const value = valueOf(param);
+    const losing = param.seriesId === SERIES.saved.id && value < 0;
+    const label = losing ? this._labels.lost : param.seriesName;
+    const tone = param.seriesId === SERIES.saved.id ? savingTone(value) : "";
+    return tooltipKeyedRow(
+      param.color,
+      label,
+      formatMoney(value, locale),
+      tone ? this._colour(TONE_COLOUR[tone]) : undefined,
+    );
+  }
+
+  /**
+   * The row a hovered bar was drawn from, found by the instant it began.
+   *
+   * That instant travels on the point, because the x a bar is drawn at is half
+   * a bucket later. Read from a *bar* rather than from whatever ECharts listed
+   * first: the earlier period's line is plotted on this period's axis and
+   * carries no such instant, and taking one from it would head the tooltip with
+   * a date from a different week.
+   */
+  _bucketAt(start) {
+    if (start === undefined) return undefined;
+    return (this._result?.series ?? []).find((row) => row.start.getTime() === start);
+  }
+
+  /** What that bucket covers - an hour named at both ends, or the day itself. */
+  _spanOf(bucket, locale) {
+    if (!bucket || !this._period) return "";
+    return formatBucketSpan(bucket.start, bucketPeriodFor(this._period), locale);
+  }
+
   _options(locale) {
     const labels = this._labels;
     return {
@@ -222,7 +323,7 @@ class HeaCostOverTimeCard extends HeaChartCard {
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
-        valueFormatter: (value) => formatMoney(value, locale),
+        formatter: (params) => this._tooltipFor(params, locale),
       },
       // Named explicitly, for the same reason the device-costs card does it:
       // `show` alone falls through to ECharts' own in-canvas legend, which
@@ -262,6 +363,22 @@ const accruing = (row, point, style = undefined) => {
   if (!row.accruing) return style ? { value: point, itemStyle: style } : point;
   return { value: point, itemStyle: { ...style, opacity: ACCRUING_OPACITY } };
 };
+
+/**
+ * One point: where to draw it, what it is worth, and when it began.
+ *
+ * The third value is the instant the bucket started, which the x it is drawn at
+ * is deliberately not - a bar is centred on its x, so an hour beginning at
+ * 13:00 is plotted at 13:30. Carried on the point rather than re-derived from
+ * the axis value, because that is where a tooltip can reach it, and it is the
+ * shape Home Assistant's own energy charts use for the same reason
+ * (`EnergyDataPoint`, HEA-141).
+ */
+const pointFor = (row, value, offset) => [
+  row.start.getTime() + offset,
+  value,
+  row.start.getTime(),
+];
 
 const seriesShape = ({ id, name }, colour, labels) => ({
   id,

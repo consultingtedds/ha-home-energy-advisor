@@ -11,6 +11,8 @@ import { describe, expect, it } from "vitest";
 import {
   changeTone,
   escapeText,
+  formatBucketSpan,
+  formatClockTime,
   formatEnergy,
   formatMoney,
   formatMoneyRange,
@@ -28,7 +30,36 @@ describe("localeFrom", () => {
     const hass = { locale: { language: "es" }, config: { currency: "EUR" } };
 
     // When / Then
-    expect(localeFrom(hass)).toEqual({ language: "es", currency: "EUR" });
+    expect(localeFrom(hass)).toMatchObject({ language: "es", currency: "EUR" });
+  });
+
+  it("takes the clock and the zone too, so a time reads as the axis writes it", () => {
+    // Given - a household that has asked for a 24-hour clock and for their
+    // server's zone rather than the browser's (HEA-141)
+    const hass = {
+      locale: { language: "en-US", time_format: "24", time_zone: "server" },
+      config: { currency: "USD", time_zone: "Europe/Madrid" },
+    };
+
+    // When / Then - both are settings of Home Assistant's, and a card that
+    // reads only the language would contradict the chart axis beside it
+    expect(localeFrom(hass)).toEqual({
+      language: "en-US",
+      currency: "USD",
+      timeFormat: "24",
+      timeZone: "Europe/Madrid",
+    });
+  });
+
+  it("leaves the zone to the browser unless the household asked for the server's", () => {
+    // Given - the default, which is the zone of the device being read on
+    const hass = {
+      locale: { language: "en-GB", time_zone: "local" },
+      config: { currency: "EUR", time_zone: "Europe/Madrid" },
+    };
+
+    // When / Then - undefined is how Intl is told "wherever this is"
+    expect(localeFrom(hass).timeZone).toBeUndefined();
   });
 
   it("falls back to the browser's own defaults when either is missing", () => {
@@ -38,11 +69,94 @@ describe("localeFrom", () => {
     expect(localeFrom(undefined)).toEqual({
       language: undefined,
       currency: undefined,
+      timeFormat: undefined,
+      timeZone: undefined,
     });
     expect(localeFrom({ config: {} })).toEqual({
       language: undefined,
       currency: undefined,
+      timeFormat: undefined,
+      timeZone: undefined,
     });
+  });
+});
+
+describe("formatClockTime", () => {
+  const ONE_IN_THE_AFTERNOON = new Date(2026, 8, 17, 13, 0);
+
+  it("obeys the clock Home Assistant was set to, not the language", () => {
+    // Given - the same instant read by two households whose languages would
+    // each imply the opposite of what they asked for
+    const american = { language: "en-US", timeFormat: "24" };
+    const british = { language: "en-GB", timeFormat: "12" };
+
+    // When / Then - the setting wins both ways round, which a single-household
+    // assertion could not show
+    expect(formatClockTime(ONE_IN_THE_AFTERNOON, american)).toBe("13:00");
+    expect(formatClockTime(ONE_IN_THE_AFTERNOON, british)).toMatch(/1:00\s*PM/i);
+  });
+
+  it("follows the language where the household expressed no preference", () => {
+    // Given - "language" is Home Assistant's default, and its own rule is to
+    // ask the language whether ten at night is written "22" or "10"
+    const american = { language: "en-US", timeFormat: "language" };
+    const british = { language: "en-GB", timeFormat: "language" };
+
+    // When / Then
+    expect(formatClockTime(ONE_IN_THE_AFTERNOON, american)).toMatch(/1:00\s*PM/i);
+    expect(formatClockTime(ONE_IN_THE_AFTERNOON, british)).toBe("13:00");
+  });
+
+  it("reads the instant in the zone the household chose", () => {
+    // Given - noon UTC, read by a household on their server's Madrid clock
+    const noonUtc = new Date("2026-09-17T12:00:00Z");
+    const madrid = { language: "en-GB", timeFormat: "24", timeZone: "Europe/Madrid" };
+    const tokyo = { language: "en-GB", timeFormat: "24", timeZone: "Asia/Tokyo" };
+
+    // When / Then - a bucket boundary is an instant, so the zone decides what
+    // hour it is called
+    expect(formatClockTime(noonUtc, madrid)).toBe("14:00");
+    expect(formatClockTime(noonUtc, tokyo)).toBe("21:00");
+  });
+});
+
+describe("formatBucketSpan", () => {
+  it("names both ends of the hour a bar covers", () => {
+    // Given - the bucket a bar drawn at 13:30 actually stands for (HEA-141)
+    const start = new Date(2026, 8, 17, 13, 0);
+
+    // When
+    const label = formatBucketSpan(start, "hour", { ...EURO, timeFormat: "24" });
+
+    // Then - nothing happened at 13:30, and the figure is the whole hour's
+    expect(label).toBe("13:00 – 14:00");
+  });
+
+  it("names the day itself where a bar covers one", () => {
+    // Given - a range wide enough for daily buckets
+    const start = new Date(2026, 8, 17, 0, 0);
+
+    // When
+    const label = formatBucketSpan(start, "day", EURO);
+
+    // Then - midnight to midnight is the day, and saying so twice adds nothing
+    expect(label).toMatch(/Thu/);
+    expect(label).toMatch(/17/);
+    expect(label).toMatch(/Sep/);
+    expect(label).not.toMatch(/00:00/);
+  });
+
+  it("spans the wall clock a bucket really covers when the clocks change", () => {
+    // Given - the bucket Madrid loses an hour in: it begins at 02:00 on the
+    // wall and the next hour of real time is called 04:00
+    const clocksGoForward = new Date("2027-03-28T01:00:00Z");
+    const madrid = { language: "en-GB", timeFormat: "24", timeZone: "Europe/Madrid" };
+
+    // When / Then - an hour of energy is an hour of real time, so the label
+    // follows the clock rather than adding one to the number in front of it.
+    // Unpadded because Home Assistant's own `formatTime` asks for a numeric
+    // hour, and the axis under these bars is labelled by it
+    expect(formatBucketSpan(clocksGoForward, "hour", madrid)).toBe("3:00 – 4:00");
   });
 });
 

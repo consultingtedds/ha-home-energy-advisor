@@ -11,13 +11,88 @@ const NO_FIGURE = "-";
 
 const DATE_FORMAT = { day: "numeric", month: "short", year: "numeric" };
 
-/** The language and currency Home Assistant is configured with. */
+/**
+ * The language, currency and clock Home Assistant is configured with.
+ *
+ * The clock is here because a household sets it in Home Assistant and expects
+ * it everywhere: `time_format` decides whether one in the afternoon is written
+ * "13:00" or "1:00 PM", and `time_zone` whether an instant is named in the
+ * browser's zone or the server's. Both are settings of theirs, not of the
+ * language's - an American household on a 24-hour clock is ordinary, and a card
+ * that asked only the language would contradict the chart axis beside it, which
+ * Home Assistant's own component labels from these two (HEA-141).
+ */
 export const localeFrom = (hass) => ({
   // Undefined lets Intl fall back to the browser's own default, which beats
   // guessing at English or dollars.
   language: hass?.locale?.language || undefined,
   currency: hass?.config?.currency || undefined,
+  timeFormat: hass?.locale?.time_format || undefined,
+  // Resolved here rather than carried raw, because "local" is the absence of a
+  // zone as far as Intl is concerned and only Home Assistant knows the other.
+  timeZone: hass?.locale?.time_zone === "server" ? hass?.config?.time_zone : undefined,
 });
+
+/**
+ * Whether this household writes the afternoon as "1:00 PM" or as "13:00".
+ *
+ * Home Assistant's own rule, reproduced rather than imported: `am_pm` and
+ * `twenty_four` say so outright, and its two deferring settings ask the
+ * language itself by formatting ten at night and looking for a "10". Guessing
+ * from the language alone would be wrong for every household that has set this,
+ * and they are the ones who set it because they care.
+ */
+const usesAmPm = ({ timeFormat, language }) => {
+  if (timeFormat === "language" || timeFormat === "system" || !timeFormat) {
+    const asked = timeFormat === "system" ? undefined : language;
+    return new Date("January 1, 2023 22:00:00").toLocaleString(asked).includes("10");
+  }
+  return timeFormat === "12";
+};
+
+/** An instant on the household's own clock - "13:00" or "1:00 PM". */
+export const formatClockTime = (date, locale) =>
+  new Intl.DateTimeFormat(locale.language, {
+    hour: "numeric",
+    minute: "2-digit",
+    hourCycle: usesAmPm(locale) ? "h12" : "h23",
+    timeZone: locale.timeZone,
+  }).format(date);
+
+/** A day named the way a chart axis names one - "Thu, 17 Sep". */
+const formatBucketDay = (date, locale) =>
+  new Intl.DateTimeFormat(locale.language, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: locale.timeZone,
+  }).format(date);
+
+/** How long a bucket is, for the periods the statistics layer asks for. */
+const BUCKET_MS = { hour: 60 * 60 * 1000 };
+
+/**
+ * The span a bar covers, for the hover that would otherwise name an instant.
+ *
+ * A bar is plotted at its bucket's midpoint, because that is where ECharts
+ * centres it - so the x value a tooltip is handed is 13:30 for the hour that
+ * began at 13:00, and nothing happened at 13:30. Home Assistant's energy charts
+ * name the span, and a household reading both should not have to work out that
+ * the two charts mean the same hour (HEA-141).
+ *
+ * An hour on, rather than the next wall-clock hour: energy accrues in real time,
+ * so the bucket Madrid begins at 02:00 the morning the clocks go forward ends at
+ * 04:00, and that is what its label should say.
+ *
+ * A day is named rather than spanned. Midnight to midnight is the day, and
+ * saying so at both ends is longer without being clearer.
+ */
+export const formatBucketSpan = (start, bucketPeriod, locale) => {
+  const length = BUCKET_MS[bucketPeriod];
+  if (!length) return formatBucketDay(start, locale);
+  const end = new Date(start.getTime() + length);
+  return `${formatClockTime(start, locale)} – ${formatClockTime(end, locale)}`;
+};
 
 /**
  * An amount in the household's currency, or a dash if there is no figure.

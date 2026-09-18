@@ -56,6 +56,7 @@ import {
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
+import { tooltipRow } from "./hea-tooltip.js";
 import { verdictScaleFor, verdictSentence } from "./hea-verdict-scale.js";
 
 export const TAG = "hea-device-costs-card";
@@ -221,22 +222,6 @@ const SEGMENT = /:(?:paid|saved|before)$/;
 const TONE_COLOUR = {
   gain: { variable: "--success-color", fallback: "#4caf50" },
   loss: { variable: "--error-color", fallback: "#db4437" },
-};
-
-/** One line of the tooltip: what it is, and how much of it. */
-const tooltipRow = (label, amount, colour) => {
-  const row = document.createElement("div");
-  row.style.display = "flex";
-  row.style.justifyContent = "space-between";
-  row.style.gap = "16px";
-  const name = document.createElement("span");
-  name.textContent = label;
-  const value = document.createElement("span");
-  value.textContent = amount;
-  value.style.fontVariantNumeric = "tabular-nums";
-  if (colour) value.style.color = colour;
-  row.append(name, value);
-  return row;
 };
 
 /**

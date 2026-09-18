@@ -164,14 +164,15 @@ describe("the series handed to the chart", () => {
     await ready(card);
 
     // Then - day one paid 1 of 3, day two paid 2 of 3, each plotted at the
-    // middle of the day it covers
+    // middle of the day it covers and carrying the instant that day began, so
+    // a hover can name the span rather than the midpoint (HEA-141)
     expect(seriesOf(card, "paid").data).toEqual([
-      [middleOf(DAY_ONE), 1],
-      [middleOf(DAY_TWO), 2],
+      [middleOf(DAY_ONE), 1, DAY_ONE.getTime()],
+      [middleOf(DAY_TWO), 2, DAY_TWO.getTime()],
     ]);
     expect(seriesOf(card, "saved").data).toEqual([
-      [middleOf(DAY_ONE), 2],
-      [middleOf(DAY_TWO), 1],
+      [middleOf(DAY_ONE), 2, DAY_ONE.getTime()],
+      [middleOf(DAY_TWO), 1, DAY_TWO.getTime()],
     ]);
   });
 
@@ -212,7 +213,7 @@ describe("the series handed to the chart", () => {
 
     // Then - negative is how Home Assistant renders exported energy, and
     // ECharts stacks it downwards (ADR-0012 decision 3)
-    expect(point.value).toEqual([middleOf(DAY_ONE), -2]);
+    expect(point.value).toEqual([middleOf(DAY_ONE), -2, DAY_ONE.getTime()]);
   });
 
   it("colours a loss differently from a saving", async () => {
@@ -537,30 +538,6 @@ describe("the options handed to the chart", () => {
     expect(label).toMatch(/3[.,]00/);
   });
 
-  it("formats hovered figures as money, not as raw numbers", async () => {
-    // Given - a bucket whose cost divides into recurring decimals, which is
-    // what an allocated share normally does
-    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
-    await ready(card);
-
-    // Then - the tooltip reads like a price. Unrounded, this shows fourteen
-    // decimal places of a euro, which is unreadable and says nothing true:
-    // money is not accurate to the femto-cent
-    const shown = chartOf(card).options.tooltip.valueFormatter(1.2345678901234);
-    expect(shown).toMatch(/€/);
-    expect(shown).toBe(formatMoney(1.2345678901234, EURO));
-    expect(shown).not.toMatch(/\d[.,]\d{3}/);
-  });
-
-  it("keeps a hovered loss signed, so it is not read as a gain", async () => {
-    // Given / When
-    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
-    await ready(card);
-
-    // Then - the minus survives formatting (HEA-39)
-    expect(chartOf(card).options.tooltip.valueFormatter(-0.5)).toMatch(/-/);
-  });
-
   it("is given the hass object, which the chart needs for theming", async () => {
     // Given / When
     const hass = aHass({ devices: AIRCON, response: twoDays });
@@ -569,6 +546,180 @@ describe("the options handed to the chart", () => {
 
     // Then
     expect(chartOf(card).hass).toBe(hass);
+  });
+});
+
+describe("what a hovered bar says", () => {
+  /** Where an hourly bar sits: half its own bucket on from the hour it covers. */
+  const HALF_HOUR = 30 * 60 * 1000;
+
+  /**
+   * The params ECharts hands a tooltip formatter, built from the card's own
+   * series so a fixture cannot agree with the card by construction.
+   *
+   * Every bar series at one bucket, which is what `trigger: "axis"` collects.
+   * `componentSubType` is how a bar is told from the earlier period's line -
+   * the property ECharts sets, not one invented here.
+   */
+  const hovering = (card, index) =>
+    chartOf(card)
+      .data.map((series, order) => ({ series, order }))
+      .filter(({ series }) => series.data[index] !== undefined)
+      .map(({ series, order }) => {
+        const point = series.data[index];
+        return {
+          seriesId: series.id,
+          seriesName: series.name,
+          componentSubType: series.type,
+          componentIndex: order,
+          value: point.value ?? point,
+          color: series.itemStyle?.color,
+        };
+      });
+
+  const hoverText = (card, index = 0) =>
+    chartOf(card).options.tooltip.formatter(hovering(card, index))?.textContent;
+
+  /** The same two days, read over a window narrow enough for hourly buckets. */
+  const hourly = async (response = twoDays) => {
+    const collection = anEnergyCollection();
+    const card = mount(aHass({ devices: AIRCON, response, collection }));
+    await ready(card);
+    collection.announce(DAY_ONE, new Date(DAY_ONE.getTime() + 2 * 86400000));
+    await vi.waitFor(() =>
+      expect(seriesOf(card, "paid").data[0][0]).toBe(DAY_ONE.getTime() + HALF_HOUR),
+    );
+    return card;
+  };
+
+  it("names the hour a bar covers, not an instant inside it", async () => {
+    // Given - a bar is drawn at its bucket's midpoint, because that is where
+    // ECharts centres it. Nothing happened at 00:30, and the figure is the
+    // whole hour's - so the hover naming that midpoint was the one thing in
+    // this chart that was actually wrong (HEA-141)
+    const card = await hourly();
+
+    // When / Then - the span, as Home Assistant's own energy charts name it
+    expect(hoverText(card)).toContain("0:00 – 1:00");
+  });
+
+  it("names the day itself where a bar covers one", async () => {
+    // Given - a range wide enough for daily buckets
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // When / Then - midnight to midnight is the day, and a time of day here
+    // would claim the bar was about some moment within it
+    const shown = hoverText(card);
+    expect(shown).toMatch(/Wed/);
+    expect(shown).toMatch(/20 May/);
+    expect(shown).not.toMatch(/12:00/);
+  });
+
+  it("names each segment and what it came to", async () => {
+    // Given - day one paid 1 of 3
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // When
+    const shown = hoverText(card);
+
+    // Then - as money, because an allocated share divides into a long
+    // recurring decimal and a raw hover reads out fourteen places of a euro
+    expect(shown).toContain(LABELS.paid);
+    expect(shown).toContain(formatMoney(1, EURO));
+    expect(shown).toContain(LABELS.saved);
+    expect(shown).toContain(formatMoney(2, EURO));
+  });
+
+  it("totals the stack as what the hour would have cost at grid price", async () => {
+    // Given - the two segments sum to Would have paid by construction
+    // (ADR-0012), which is the figure the whole bar's height means
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // When / Then - stated rather than left to be added up
+    const shown = hoverText(card);
+    expect(shown).toContain(LABELS.would_have_paid);
+    expect(shown).toContain(formatMoney(3, EURO));
+  });
+
+  it("calls a negative saving a loss, and keeps its sign", async () => {
+    // Given - battery arbitrage that cost more than the grid would have
+    const card = mount(aHass({ devices: AIRCON, response: aLoss }));
+    await ready(card);
+
+    // When
+    const shown = hoverText(card);
+
+    // Then - "Saved -€2.00" reads as a gain of some kind; the word is what
+    // carries the verdict (HEA-102)
+    expect(shown).toContain(LABELS.lost);
+    expect(shown).not.toContain(LABELS.saved);
+    expect(shown).toContain(formatMoney(-2, EURO));
+  });
+
+  it("leaves out a segment that is not there", async () => {
+    // Given - an hour covered entirely by generation: nothing was paid for it
+    const freeHour = {
+      "sensor.slow_poll_aircon_energy_used": [{ start: DAY_ONE.getTime(), change: 4 }],
+      "sensor.slow_poll_aircon_actual_cost": [{ start: DAY_ONE.getTime(), change: 0 }],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: DAY_ONE.getTime(), change: 1.14 },
+      ],
+    };
+    const card = mount(aHass({ devices: AIRCON, response: freeHour }));
+    await ready(card);
+
+    // When / Then - a segment of no height is not in the bar, so a row for it
+    // is a line of nothing between the two figures that matter
+    const shown = hoverText(card);
+    expect(shown).not.toContain(LABELS.paid);
+    expect(shown).toContain(LABELS.saved);
+  });
+
+  it("says nothing at all where the bucket holds nothing", async () => {
+    // Given - a bucket with neither spend nor saving in it
+    const emptyHour = {
+      "sensor.slow_poll_aircon_actual_cost": [{ start: DAY_ONE.getTime(), change: 0 }],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: DAY_ONE.getTime(), change: 0 },
+      ],
+    };
+    const card = mount(aHass({ devices: AIRCON, response: emptyHour }));
+    await ready(card);
+
+    // When / Then - undefined suppresses the tooltip, where a half-built one
+    // would render an empty box against the cursor
+    expect(chartOf(card).options.tooltip.formatter(hovering(card, 0))).toBeUndefined();
+  });
+
+  it("warns that the interval being hovered is still being counted", async () => {
+    // Given - the trailing bucket, which will still grow (HEA-140)
+    const card = mount(
+      aHass({
+        devices: AIRCON,
+        response: twoDays,
+        settledUntil: new Date(DAY_ONE.getTime() + 3600000).toISOString(),
+      }),
+    );
+    await ready(card);
+
+    // When / Then - the bar is faded, and a hover is where a reader asks what
+    // the fade means
+    expect(hoverText(card, 1)).toContain(LABELS.still_accruing);
+  });
+
+  it("takes the span from the bar, not from the earlier period beside it", async () => {
+    // Given - a bucket carries the instant it began, because the x it is
+    // plotted at is half a bucket later. The earlier period's line is drawn on
+    // this period's axis, so its own dates must not be read as the header
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // When / Then
+    const [point] = seriesOf(card, "paid").data;
+    expect(point[2]).toBe(DAY_ONE.getTime());
   });
 });
 
