@@ -13,6 +13,8 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { tint } from "../hea-colour.js";
+import { PAID } from "../hea-concepts.js";
 import { TAG, register } from "../hea-cost-over-time-card.js";
 import { resetFilters, setFilter } from "../hea-filter.js";
 import { formatMoney, formatPeriod } from "../hea-format.js";
@@ -73,6 +75,13 @@ const mount = (hass, config) => mountCard(TAG, hass, config);
 const ready = (card) => settled(expect, card);
 const chartOf = (card) => card.shadowRoot.querySelector("ha-chart-base");
 const seriesOf = (card, id) => chartOf(card).data.find((s) => s.id === id);
+
+/**
+ * A point's `[x, y, start]`, whichever of the two shapes ECharts accepts it
+ * arrived in - a bare triple, or one wrapped with a style of its own.
+ */
+const valuesOf = (point) => (Array.isArray(point) ? point : point.value);
+const valuesIn = (card, id) => seriesOf(card, id).data.map(valuesOf);
 
 beforeAll(() => {
   // Home Assistant's component, stood in for so the card will render its chart.
@@ -166,11 +175,11 @@ describe("the series handed to the chart", () => {
     // Then - day one paid 1 of 3, day two paid 2 of 3, each plotted at the
     // middle of the day it covers and carrying the instant that day began, so
     // a hover can name the span rather than the midpoint (HEA-141)
-    expect(seriesOf(card, "paid").data).toEqual([
+    expect(valuesIn(card, "paid")).toEqual([
       [middleOf(DAY_ONE), 1, DAY_ONE.getTime()],
       [middleOf(DAY_TWO), 2, DAY_TWO.getTime()],
     ]);
-    expect(seriesOf(card, "saved").data).toEqual([
+    expect(valuesIn(card, "saved")).toEqual([
       [middleOf(DAY_ONE), 2, DAY_ONE.getTime()],
       [middleOf(DAY_TWO), 1, DAY_TWO.getTime()],
     ]);
@@ -188,7 +197,7 @@ describe("the series handed to the chart", () => {
     await ready(card);
 
     // Then - half a day on, so the bar spans the day it is about
-    const [[first], [second]] = seriesOf(card, "paid").data;
+    const [[first], [second]] = valuesIn(card, "paid");
     expect(first).toBe(DAY_ONE.getTime() + HALF_DAY);
     expect(second - first).toBe(DAY_TWO.getTime() - DAY_ONE.getTime());
   });
@@ -225,6 +234,62 @@ describe("the series handed to the chart", () => {
     const [point] = seriesOf(card, "saved").data;
     expect(point.itemStyle.color).toBeTruthy();
     expect(point.itemStyle.color).not.toBe(seriesOf(card, "saved").itemStyle.color);
+  });
+
+  it("fills a segment at half strength and outlines it in the colour itself", async () => {
+    // Given - how Home Assistant draws its own energy bars: the fill is the
+    // series colour at half alpha and the edge is that colour solid, which is
+    // what stops a stack of pale blocks losing its boundaries (HEA-141)
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // When / Then - the hue is still the concept's own (ADR-0019); only its
+    // rendering has changed
+    const paid = seriesOf(card, "paid").itemStyle;
+    expect(paid.borderColor).toBe(PAID.fallback);
+    expect(paid.color).not.toBe(paid.borderColor);
+    expect(paid.color).toBe(tint(PAID.fallback, 0.5));
+    expect(paid.borderWidth).toBe(1);
+  });
+
+  it("rounds the top of a bar, and leaves the segment under it square", async () => {
+    // Given - a cap belongs to the bar, not to each of its parts. Rounding
+    // every segment would draw a stack of lozenges with gaps down the middle
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // When / Then - the top of this stack is Saved, so it carries the cap
+    expect(seriesOf(card, "saved").data[0].itemStyle.borderRadius).toEqual([4, 4, 0, 0]);
+    expect(seriesOf(card, "paid").data[0].itemStyle?.borderRadius).toBeUndefined();
+  });
+
+  it("rounds a loss at the bottom, where it hangs below the axis", async () => {
+    // Given - battery arbitrage: paid 5 where the grid would have cost 3, so
+    // the saving stacks downwards (HEA-39)
+    const card = mount(aHass({ devices: AIRCON, response: aLoss }));
+    await ready(card);
+
+    // When / Then - the bar now has two ends, and each is the outermost
+    // segment in its own direction
+    expect(seriesOf(card, "saved").data[0].itemStyle.borderRadius).toEqual([0, 0, 4, 4]);
+    expect(seriesOf(card, "paid").data[0].itemStyle.borderRadius).toEqual([4, 4, 0, 0]);
+  });
+
+  it("draws no outline on a segment of no height", async () => {
+    // Given - an hour covered entirely by generation, so nothing was paid
+    const freeHour = {
+      "sensor.slow_poll_aircon_energy_used": [{ start: DAY_ONE.getTime(), change: 4 }],
+      "sensor.slow_poll_aircon_actual_cost": [{ start: DAY_ONE.getTime(), change: 0 }],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [
+        { start: DAY_ONE.getTime(), change: 1.14 },
+      ],
+    };
+    const card = mount(aHass({ devices: AIRCON, response: freeHour }));
+    await ready(card);
+
+    // When / Then - a border on a segment of zero height is a hairline drawn
+    // across the axis, which reads as a bar that is not there
+    expect(seriesOf(card, "paid").data[0].itemStyle.borderWidth).toBe(0);
   });
 
   it("names its series for the legend", async () => {
@@ -381,9 +446,9 @@ describe("comparing against an earlier period", () => {
     const card = await comparing(repeatedWeek);
 
     // Then - the bars' height is Paid plus Saved, and the line is on it
-    const [[, paid]] = seriesOf(card, "paid").data;
-    const [[, saved]] = seriesOf(card, "saved").data;
-    const [[, line]] = seriesOf(card, "before").data;
+    const [[, paid]] = valuesIn(card, "paid");
+    const [[, saved]] = valuesIn(card, "saved");
+    const [[, line]] = valuesIn(card, "before");
     expect(line).toBe(paid + saved);
   });
 
@@ -467,17 +532,22 @@ describe("the legend", () => {
     ]);
   });
 
-  it("swatches each entry in its series colour", async () => {
+  it("swatches each entry in its series colour, at full strength", async () => {
     // Given - the swatch is the key to the bar. The saved series recolours an
     // individual losing point to the error colour, so the entry must carry the
     // series colour rather than inherit whatever the last point happened to be
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then
-    const entries = legendOf(card).data;
-    for (const entry of entries) {
-      expect(entry.itemStyle.color).toBe(seriesOf(card, entry.id).itemStyle.color);
+    // Then - the outline's colour, not the half-strength fill inside it. Home
+    // Assistant keys its own legend to the fill, which at this alpha is a tick
+    // barely there; both colours are in the bar, and this is the legible one
+    for (const entry of legendOf(card).data) {
+      const series = seriesOf(card, entry.id);
+      expect(entry.itemStyle.color).toBe(
+        series.itemStyle.borderColor ?? series.itemStyle.color,
+      );
+      expect(entry.itemStyle.color).not.toMatch(/rgba/);
     }
   });
 });
@@ -587,7 +657,7 @@ describe("what a hovered bar says", () => {
     await ready(card);
     collection.announce(DAY_ONE, new Date(DAY_ONE.getTime() + 2 * 86400000));
     await vi.waitFor(() =>
-      expect(seriesOf(card, "paid").data[0][0]).toBe(DAY_ONE.getTime() + HALF_HOUR),
+      expect(valuesIn(card, "paid")[0][0]).toBe(DAY_ONE.getTime() + HALF_HOUR),
     );
     return card;
   };
@@ -953,6 +1023,10 @@ describe("an interval the accounting has not finished with", () => {
     // Then - no note and no fading. A caveat shown always is a caveat nobody
     // reads
     expect(text(card)).not.toContain(LABELS.still_accruing);
-    expect(seriesOf(card, "paid").data.every((point) => Array.isArray(point))).toBe(true);
+    expect(
+      seriesOf(card, "paid").data.every(
+        (point) => point.itemStyle?.opacity === undefined,
+      ),
+    ).toBe(true);
   });
 });

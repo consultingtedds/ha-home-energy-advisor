@@ -11,9 +11,11 @@
  * stacks it below the axis (ADR-0012 decision 3).
  */
 
+import { withRoundedCaps } from "./hea-bars.js";
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
+import { tint } from "./hea-colour.js";
 import { PAID, SAVED } from "./hea-concepts.js";
 import { formatBucketSpan, formatMoney, savingTone } from "./hea-format.js";
 import { bucketPeriodFor } from "./hea-statistics.js";
@@ -38,6 +40,13 @@ const PERIOD_MS = { hour: 60 * 60 * 1000, day: 24 * 60 * 60 * 1000 };
  * kind of chart rather than as a sparse one.
  */
 const BAR_MAX_WIDTH = 50;
+
+/**
+ * How strongly a bar is filled, against the outline that carries its edge.
+ *
+ * Half, which is what Home Assistant's energy bars use (`7F` on the hex).
+ */
+const FILL_ALPHA = 0.5;
 
 /**
  * Half a bucket, because ECharts centres a bar on its x value.
@@ -152,18 +161,20 @@ class HeaCostOverTimeCard extends HeaChartCard {
     // against.
     const offset = midpointOffset(rows, this._result?.period);
     return [
-      {
-        ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
-        data: rows.map((row) => accruing(row, pointFor(row, row.actualCost, offset))),
-      },
-      {
-        ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
-        data: rows.map((row) => {
-          const point = pointFor(row, row.costSavings, offset);
-          const style = row.costSavings < 0 ? { color: loss } : undefined;
-          return accruing(row, point, style);
-        }),
-      },
+      ...withRoundedCaps([
+        {
+          ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
+          data: rows.map((row) => accruing(row, pointFor(row, row.actualCost, offset))),
+        },
+        {
+          ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
+          data: rows.map((row) => {
+            const point = pointFor(row, row.costSavings, offset);
+            const style = row.costSavings < 0 ? barStyle(loss) : undefined;
+            return accruing(row, point, style);
+          }),
+        },
+      ]),
       ...(earlier?.length
         ? [
             {
@@ -387,7 +398,25 @@ const seriesShape = ({ id, name }, colour, labels) => ({
   // One stack, so the segments sit on each other and sum to the whole bar.
   stack: "cost",
   barMaxWidth: BAR_MAX_WIDTH,
-  itemStyle: { color: colour },
+  itemStyle: barStyle(colour),
+});
+
+/**
+ * A segment: the concept's colour at half strength, edged in the colour itself.
+ *
+ * How Home Assistant draws its own energy bars, and worth copying rather than
+ * inventing: a solid fill of a strong hue dominates the card, while a wash of
+ * one loses its boundary against the segment above it. The outline keeps the
+ * edge exactly where the arithmetic puts it, and the fill stays light enough
+ * that a gridline behind the bar still reads.
+ *
+ * The hue is untouched - it is the concept's own (ADR-0019), and a household
+ * who learned that blue means Paid on one card still reads it here.
+ */
+const barStyle = (colour) => ({
+  color: tint(colour, FILL_ALPHA),
+  borderColor: colour,
+  borderWidth: 1,
 });
 
 /** Nothing beyond the shared fields; the chart has no options of its own yet. */
