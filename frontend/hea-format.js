@@ -242,6 +242,28 @@ const MINOR_UNITS = {
   GBP: { symbol: "p", per: 100 },
 };
 
+/**
+ * A tick on a value axis measured in money - the figure alone.
+ *
+ * The currency is named once at the head of the axis instead of on every tick,
+ * which is how Home Assistant labels its own energy axes and what a
+ * phone-width card has room for (HEA-103, HEA-141).
+ *
+ * Zero is written as zero. The axis crosses at nothing, and "0.00" claims a
+ * precision the one tick standing for "none" has no use for.
+ */
+export const formatAxisMoney = (value, { language }) => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
+  return new Intl.NumberFormat(language, {
+    minimumFractionDigits: value === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+};
+
+/** What that axis is measured in, or nothing where the instance never said. */
+export const currencyLabel = ({ language, currency }) =>
+  currency ? currencySymbol(language, currency) : "";
+
 /** The currency's own symbol, as Intl writes it. */
 const currencySymbol = (language, currency) =>
   new Intl.NumberFormat(language, { style: "currency", currency })

@@ -15,7 +15,7 @@
 import { subscribeToPeriod } from "./ha-energy-collection.js";
 import { readDevices, readSettledUntil, readWholeHome } from "./hea-devices.js";
 import { filterFor, matchesFilter, subscribeToFilter } from "./hea-filter.js";
-import { formatPeriod, localeFrom } from "./hea-format.js";
+import { escapeText, formatPeriod, localeFrom } from "./hea-format.js";
 import { fill, labelsFor, loadLabels } from "./hea-labels.js";
 import { fetchDeviceStatistics, withComparison } from "./hea-statistics.js";
 
@@ -52,6 +52,19 @@ const BASE_STYLE = `
     font-size: 0.8em;
   }
   .message { margin: 0; color: var(--secondary-text-color); }
+  /* Home Assistant's own energy-graph chip, reproduced rather than used: that
+     element is registered by their energy cards, so a dashboard carrying only
+     ours may never have loaded it. */
+  .chip {
+    font-size: var(--ha-font-size-m, 14px);
+    font-weight: var(--ha-font-weight-medium, 500);
+    line-height: normal;
+    white-space: nowrap;
+    padding: var(--ha-space-1, 4px) var(--ha-space-2, 8px);
+    border-radius: var(--ha-border-radius-md, 8px);
+    border: 1px solid var(--divider-color);
+  }
+  .chip:empty { display: none; }
 `;
 
 /**
@@ -308,8 +321,50 @@ export class HeaCard extends HTMLElement {
     // header, for a user stacking cards under a heading of their own - so the
     // two cases are distinguished rather than both treated as "unset".
     const title = this._config?.title ?? this._labels[this._titleKey()];
-    if (title) this.shadowRoot.querySelector("ha-card").setAttribute("header", title);
+    if (title) this._writeHeader(title, locale);
     this._afterRender();
+  }
+
+  /**
+   * The heading, drawn by `ha-card` unless this card has a figure to sit beside
+   * it.
+   *
+   * A card carrying a chip draws the heading itself, because `ha-card` renders
+   * its own header from a string and has nowhere to put anything else. What
+   * makes that safe is that the same component styles a *slotted* `.card-header`
+   * exactly as it styles the one it makes - so the heading keeps the typography
+   * of every other card on the dashboard, and cannot drift from it when that
+   * changes (HEA-141).
+   *
+   * The layout is written on the element rather than in the stylesheet: an
+   * inline declaration is the only one that reliably beats `::slotted` from the
+   * component's own shadow root, which sets `display: block`.
+   */
+  _writeHeader(title, locale) {
+    const card = this.shadowRoot.querySelector("ha-card");
+    const chip = this._headerChip(locale);
+    if (chip === undefined) {
+      card.setAttribute("header", title);
+      return;
+    }
+    card.insertAdjacentHTML(
+      "afterbegin",
+      `<div class="card-header" style="display: flex; justify-content: space-between;
+         align-items: center; gap: var(--hea-space-s); padding-bottom: 0;">
+        <span class="title">${escapeText(title)}</span>
+        <span class="chip">${escapeText(chip)}</span>
+      </div>`,
+    );
+  }
+
+  /**
+   * A figure to sit at the right of the heading, or `undefined` for no chip.
+   *
+   * An empty string is a card that has one to give and nothing to put in it
+   * yet, which keeps the heading from changing shape when the figures arrive.
+   */
+  _headerChip() {
+    return undefined;
   }
 
   /**

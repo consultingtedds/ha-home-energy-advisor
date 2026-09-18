@@ -118,8 +118,23 @@ describe("registration", () => {
 });
 
 describe("the card header", () => {
-  const headerOf = (card) =>
-    card.shadowRoot.querySelector("ha-card").getAttribute("header");
+  /**
+   * The title, wherever this card is carrying it.
+   *
+   * Most cards hand `ha-card` a header attribute and let it draw the heading.
+   * This one draws its own, because a figure sits beside the title - and Home
+   * Assistant styles a slotted `.card-header` exactly as it styles the one it
+   * makes itself, so the heading still matches every other card on the
+   * dashboard (HEA-141).
+   */
+  const headerOf = (card) => {
+    const card_ = card.shadowRoot.querySelector("ha-card");
+    const own = card_.querySelector(".card-header .title");
+    return own ? own.textContent : card_.getAttribute("header");
+  };
+
+  const chipOf = (card) =>
+    card.shadowRoot.querySelector("ha-card .card-header .chip")?.textContent;
 
   it("names itself, so a chart on a dashboard says what it shows", async () => {
     // Given - a card added with no configuration at all, which is how the
@@ -150,8 +165,33 @@ describe("the card header", () => {
     });
     await ready(card);
 
-    // Then - absent means "use the default"; empty means "show nothing"
+    // Then - absent means "use the default"; empty means "show nothing", and
+    // the figure that rides beside the title goes with it
     expect(headerOf(card)).toBe(null);
+    expect(chipOf(card)).toBeUndefined();
+  });
+
+  it("carries the period's spend beside the title", async () => {
+    // Given - the two days, of which 3 was paid
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then - what the household actually paid, which is what a figure on a
+    // card titled "Cost over time" is read as. The bars' own total is Would
+    // have paid, and a bare counterfactual in the corner would be read as the
+    // bill (ADR-0019)
+    expect(chipOf(card)).toBe(formatMoney(3, EURO));
+  });
+
+  it("holds the figure back until there is one", async () => {
+    // Given - a period with nothing recorded in it
+    const card = mount(aHass({ devices: AIRCON, response: {} }));
+    await ready(card);
+
+    // Then - the chip is where a total goes, and "€0.00" is a claim about the
+    // period rather than an admission that nothing is known about it
+    expect(chipOf(card)).toBe("");
+    expect(headerOf(card)).toBe("Cost over time");
   });
 });
 
@@ -599,15 +639,43 @@ describe("the options handed to the chart", () => {
     expect(styles).toContain("--chart-max-height");
   });
 
-  it("labels the value axis in the household's currency", async () => {
+  it("names the currency once, at the top of the value axis", async () => {
     // Given / When
     const card = mount(aHass({ devices: AIRCON, response: twoDays }));
     await ready(card);
 
-    // Then
-    const label = chartOf(card).options.yAxis.axisLabel.formatter(3);
-    expect(label).toMatch(/€/);
+    // Then - as Home Assistant heads its own energy axis "kWh". A symbol on
+    // every tick is the same word five times over, in the column where a
+    // phone-width card has least room to spare (HEA-103)
+    const { yAxis } = chartOf(card).options;
+    expect(yAxis.name).toBe("€");
+    const label = yAxis.axisLabel.formatter(3);
     expect(label).toMatch(/3[.,]00/);
+    expect(label).not.toMatch(/€/);
+  });
+
+  it("writes the zero tick as zero, not as a sum of money", async () => {
+    // Given / When
+    const card = mount(aHass({ devices: AIRCON, response: twoDays }));
+    await ready(card);
+
+    // Then - the axis crosses at nothing, and "0.00" claims a precision that
+    // the one tick standing for "none" does not need. Home Assistant's own
+    // rule (HEA-141)
+    expect(chartOf(card).options.yAxis.axisLabel.formatter(0)).toBe("0");
+  });
+
+  it("still labels the axis where the instance has no currency set", async () => {
+    // Given - an instance that never filled the currency in
+    const hass = aHass({ devices: AIRCON, response: twoDays });
+    hass.config = {};
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - bare numbers and no heading, rather than a guessed symbol
+    const { yAxis } = chartOf(card).options;
+    expect(yAxis.name).toBe("");
+    expect(yAxis.axisLabel.formatter(3)).toMatch(/3[.,]00/);
   });
 
   it("is given the hass object, which the chart needs for theming", async () => {

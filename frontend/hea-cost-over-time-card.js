@@ -17,7 +17,13 @@ import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { tint } from "./hea-colour.js";
 import { PAID, SAVED } from "./hea-concepts.js";
-import { formatBucketSpan, formatMoney, savingTone } from "./hea-format.js";
+import {
+  currencyLabel,
+  formatAxisMoney,
+  formatBucketSpan,
+  formatMoney,
+  savingTone,
+} from "./hea-format.js";
 import { bucketPeriodFor, bucketsAcross } from "./hea-statistics.js";
 import {
   tooltipHeading,
@@ -317,6 +323,24 @@ class HeaCostOverTimeCard extends HeaChartCard {
   }
 
   /**
+   * What the period cost, beside the title - as the Energy Dashboard heads its
+   * own graph with the total it draws.
+   *
+   * What was *paid*, where theirs is the total of the bars. The stack's own
+   * total is Would have paid, and a bare sum of money in the corner of a card
+   * titled "Cost over time" is read as the bill - so the counterfactual would
+   * be the one figure here a household could take for what they owe. It is on
+   * the chart already, as the height of every bar.
+   *
+   * Empty rather than absent before the figures arrive, so the heading does not
+   * change shape under the reader when they do.
+   */
+  _headerChip(locale) {
+    const paid = this._result?.totals?.actualCost;
+    return Number.isFinite(paid) && !this._isEmpty() ? formatMoney(paid, locale) : "";
+  }
+
+  /**
    * How far the axis runs, which is not quite how far the period does.
    *
    * A bar is centred on its bucket, so the last one reaches only half a bucket
@@ -356,9 +380,19 @@ class HeaCostOverTimeCard extends HeaChartCard {
       grid: { top: 15, bottom: 0, left: 1, right: 1, containLabel: true },
       yAxis: {
         type: "value",
+        // The currency named once, as Home Assistant heads its own energy axis
+        // "kWh" - rather than a symbol repeated down every tick, in the column
+        // where a phone-width card has least room to spare (HEA-103).
+        name: currencyLabel(locale),
+        nameGap: 2,
+        nameTextStyle: { align: "left" },
+        // Anchored at zero, so the bars stand on the axis rather than floating
+        // above a gap ECharts would otherwise leave beneath them.
+        boundaryGap: [0, 0],
+        splitNumber: 5,
+        splitLine: { show: true },
         axisLabel: {
-          formatter: (value) => formatMoney(value, locale),
-          // Money labels are wide and a phone-width card is not (HEA-103).
+          formatter: (value) => formatAxisMoney(value, locale),
           hideOverlap: true,
         },
       },
