@@ -280,3 +280,68 @@ consumption directly and never runs the generation subtraction. The defect needs
 a house without one - which is the configuration the README calls optional, and
 the first outside household had. Dogfooding one house cannot find a defect that
 lives in the branch that house does not take.
+
+## Amendment, 2026-09-18: the discharge side of the same clamp
+
+A second finding, on a house exporting battery energy with no PV production and
+low load. The two decisions above stand unchanged; this closes the remaining gap
+in the export carry, on the source the 2026-09-16 amendment did not reach.
+
+### What was found
+
+The 2026-09-16 amendment settled export against generation, and carried what
+generation could not explain. It did not consider the battery. A house
+discharging straight out to the grid - no sun, little or no load - ticks export
+with no generation anywhere near it, and the carry that amendment added holds
+the whole export waiting for a generation tick that a battery-only house may
+never produce. Meanwhile the full raw discharge was still booked as consumption
+through the residual branch, and priced from the ledger through
+`_price_sources`, whichever source actually served the house.
+
+Both paths - the full-balance branch's `_split_export` and the residual
+branch's `decompose` - treated a battery discharging for the grid as a battery
+discharging for the house. Reproduced without any customer data: 4 kWh
+discharged and exported in the same interval, with no generation at all,
+published 4 kWh of consumption the house never drew.
+
+### Decision
+
+Export is taken off generation first, then off the battery's own discharge, in
+both branches:
+
+- In the full-balance branch, `_split_export` nets export against spare
+  generation as before, then nets whatever export remains against the
+  interval's discharge, before carrying only what neither source can explain.
+- In the residual branch, the house's own residual need (consumption less
+  grid) is what discharge is capped at - `battery = min(discharged, residual)`
+  - rather than booking the discharge in full; the remainder of the residual is
+  attributed to generation exactly as it already was.
+- `Served` now carries the battery's raw discharge (`discharged`) alongside the
+  house-billed share (`battery`), because the two can differ and the ledger
+  needs the former: `_price_sources` withdraws the full physical discharge from
+  the stored-cost ledger regardless of how much of it the house is billed for,
+  since energy that left the battery is gone from its inventory whether or not
+  the house paid for it.
+
+### What this does and does not fix
+
+Settled exactly within the interval that reveals it, the same way the charge
+carry is: a discharge and its export ticking in the same bucket no longer needs
+a generation reading to explain itself. What is left over - export neither
+generation nor this interval's discharge can cover - is carried and taken off
+the next generation or discharge to arrive, same as before.
+
+Cross-bucket timing between a discharge and its export is not newly solved: if
+the discharge ticks in one interval and the matching export ticks several
+buckets later, after the carry has already been taken off an intervening
+generation tick, the two can still talk past each other. That is the same
+accepted limit the 2026-09-16 amendment already described for generation and
+export, not a new one.
+
+### Why the earlier reports never saw it
+
+The reference household has a house consumption meter and negligible export
+overall. The first outside household (HEA-133) has no house meter and no
+battery. This defect needed a house with a battery discharging faster than it
+is used - a battery-heavy, self-consumption-light setup - which neither
+household is.

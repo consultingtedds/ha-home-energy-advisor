@@ -21,19 +21,27 @@ HEA-133).
 
 Two things are carried, each until the counterpart arrives:
 
-- **Export waiting for its generation.** Export that exceeds the generation seen
-  so far suppresses the generation that follows, rather than being floored at
-  zero and forgotten.
+- **Export waiting for a source.** Export is taken off generation first, then
+  off the battery's own discharge - a house with no battery can only ever
+  export what it made, and a house with one can export what it discharged
+  instead of, or as well as, what it generated. What neither can cover yet
+  suppresses the generation that follows, rather than being floored at zero and
+  forgotten.
 - **A charge waiting for its import.** Battery charging only counts as charged
   from the grid up to the import measured alongside it; the rest waits, and a
   later import that arrives is spent on the charge before it is booked as
   something the house burned. Without that, the same kilowatt-hour is counted
   twice: once on its way into the battery, once on its way out.
 
-Both expire, on the same span a suspended charge does. A house that exports
-energy from its battery generates less than it exports by design, and a carry
-kept for ever would suppress its generation for ever. What expires is written
+Both expire, on the same span a suspended charge does. What expires is written
 off, which is the trade ADR-0015 already made.
+
+A house that exports straight from its battery - discharging for the grid
+rather than for itself, with little or no generation beside it - is not an edge
+case this gives up on: the export is charged to the discharge before it is
+booked as consumption, the same way it is charged to generation. What is left
+over after both is what genuinely cannot be explained yet, and that is what the
+carry holds.
 """
 
 from __future__ import annotations
@@ -68,11 +76,20 @@ class HouseReadings:
 
 @dataclass(frozen=True)
 class Served:
-    """House-served energy for one interval, after decomposition."""
+    """House-served energy for one interval, after decomposition.
+
+    ``battery`` is the share of discharge that served the house - what
+    consumption and cost are built from. ``discharged`` is the battery's own
+    raw meter delta for the interval, kept alongside it because the battery
+    ledger's inventory must fall by what physically left the battery, whether
+    or not the house is the one billed for it: a discharge that went straight
+    to export is gone from the battery regardless of who paid for it.
+    """
 
     grid: Decimal
     generation: Decimal
     battery: Decimal
+    discharged: Decimal
     grid_charge: Decimal
     generation_charge: Decimal
 
@@ -132,16 +149,27 @@ class HouseBalance:
         grid = readings.imported - grid_charge
 
         if readings.house is not None:
-            generation = max(Decimal(0), readings.house - grid - readings.discharged)
+            # What the battery discharged beyond the house's own residual need
+            # left the same way surplus generation does: out. Capping it here,
+            # rather than booking the full raw discharge, is what keeps a house
+            # that empties its battery into the grid from being told it burned
+            # every kWh the battery gave up (HEA-133's counterpart on discharge).
+            residual = max(Decimal(0), readings.house - grid)
+            battery = min(readings.discharged, residual)
+            generation = residual - battery
         elif readings.generation_metered:
-            generation = self._generation_used(spare_generation, readings.exported, at)
+            generation, battery = self._split_export(
+                spare_generation, readings.discharged, readings.exported, at
+            )
         else:
             generation = Decimal(0)
+            battery = readings.discharged
 
         return Served(
             grid=grid,
             generation=generation,
-            battery=readings.discharged,
+            battery=battery,
+            discharged=readings.discharged,
             grid_charge=grid_charge,
             generation_charge=generation_charge,
         )
@@ -163,19 +191,36 @@ class HouseBalance:
         self._charge.hold(waiting, at)
         return grid_charge, generation_charge, generated - generation_charge
 
-    def _generation_used(
-        self, generated: Decimal, exported: Decimal, at: datetime
-    ) -> Decimal:
-        """Generation the house itself used: what was made, less what left.
+    def _split_export(
+        self,
+        generated: Decimal,
+        discharged: Decimal,
+        exported: Decimal,
+        at: datetime,
+    ) -> tuple[Decimal, Decimal]:
+        """What left as export, taken off generation first and the battery next.
 
-        Export beyond the generation seen so far is not nothing. It is
-        generation already credited to the house in an earlier interval, or about
-        to be in a later one, so it is carried and taken off the next.
+        Export is generation's own surplus before it is anything else's - a
+        house with no battery can only ever export what it made, which is the
+        one-source case this reduces to. What generation cannot account for is
+        charged to the battery's discharge instead, because between the two
+        there is nowhere else it could have come from: a battery that never
+        discharged cannot have exported, and export attributed to the battery is
+        export that must not also be booked as the battery serving the house.
+
+        Only what neither can cover is carried, waiting for a generation tick -
+        or a discharge - still to come, the same carry the charge side keeps and
+        for the same reason.
+
+        Returns ``(generation served, battery served)``.
         """
         leaving = exported + self._export.available(at, self._expiry)
-        used = generated - leaving
-        self._export.hold(-used, at)
-        return max(Decimal(0), used)
+        generation_to_export = min(generated, leaving)
+        leaving -= generation_to_export
+        battery_to_export = min(discharged, leaving)
+        leaving -= battery_to_export
+        self._export.hold(leaving, at)
+        return generated - generation_to_export, discharged - battery_to_export
 
     def diagnostics(self) -> dict[str, str]:
         """What is still waiting for its counterpart, for the download."""

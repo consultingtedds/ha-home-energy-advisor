@@ -131,6 +131,55 @@ def test_an_export_still_waiting_for_its_generation_is_held_not_dropped() -> Non
     assert acc.balance_diagnostics()["export_awaiting_generation"] == "1"
 
 
+def test_battery_discharged_straight_to_export_is_not_booked_as_consumption() -> None:
+    # Given - a house with no generation and low load, discharging its battery
+    # straight out to the grid. Nothing generated, so the old export clamp had
+    # no source to take the export from except a floor at zero
+    acc = a_generating_home()
+
+    # When - the battery discharges 4 kWh and all 4 are exported in the same
+    # interval, with no generation and negligible import
+    acc.observe(BATTERY_DISCHARGE, at(5), Decimal(4))
+    acc.observe(GRID_EXPORT, at(5), Decimal(4))
+    acc.finalize(at(60))
+
+    # Then - the house is not billed for energy that went straight through it.
+    # Charging the export to the discharge before it is booked as consumption
+    # is what stops a house that empties its battery into the grid from being
+    # told it burned every kWh the battery gave up
+    assert acc.totals().whole_home.energy_kwh == Decimal(0)
+
+
+def test_only_the_share_of_a_discharge_not_exported_is_booked_as_consumption() -> None:
+    # Given - the same house, discharging more than it exports: some of the
+    # battery served the house, the rest left as export
+    acc = a_generating_home()
+
+    # When - 4 kWh discharged, only 3 kWh of it exported
+    acc.observe(BATTERY_DISCHARGE, at(5), Decimal(4))
+    acc.observe(GRID_EXPORT, at(5), Decimal(3))
+    acc.finalize(at(60))
+
+    # Then - only the 1 kWh that stayed in the house is booked, not the full 4
+    assert acc.totals().whole_home.energy_kwh == Decimal(1)
+
+
+def test_export_unexplained_by_generation_and_discharge_is_held_not_dropped() -> None:
+    # Given - a house whose export outruns both what it generated and what its
+    # battery discharged this interval - the counterpart is still to come
+    acc = a_generating_home()
+
+    # When - export ticks 5 kWh, while generation and discharge together only
+    # explain 4 of it so far
+    acc.observe(GENERATION, at(5), Decimal(2))
+    acc.observe(BATTERY_DISCHARGE, at(5), Decimal(2))
+    acc.observe(GRID_EXPORT, at(5), Decimal(5))
+    acc.finalize(at(60))
+
+    # Then - what neither could cover is carried, not forgotten
+    assert acc.balance_diagnostics()["export_awaiting_generation"] == "1"
+
+
 def test_a_days_worth_of_quantised_counters_matches_the_meters() -> None:
     # Given - an ordinary generating hour, every counter quantised to whole kWh
     # and none of them ticking in the same interval as another. The meters
