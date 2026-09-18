@@ -1265,9 +1265,16 @@ class Accountant:
         if served.generation_charge > 0:
             self._battery.charge_from_generation(served.generation_charge)
 
+        # The ledger falls by the full physical discharge - `served.discharged`,
+        # not `served.battery` - whether or not the house is the one billed for
+        # it: energy that left the battery straight to export is gone from the
+        # battery's inventory regardless of who paid for it. Pricing the
+        # house-billed share off the same withdrawal keeps its cost anchored to
+        # what was actually taken out, not to a share the house happened to keep.
         battery_price = Decimal(0)
-        if served.battery > 0:
-            battery_price = self._battery.discharge(served.battery) / served.battery
+        if served.discharged > 0:
+            withdrawn = self._battery.discharge(served.discharged)
+            battery_price = withdrawn / served.discharged
 
         prices = {
             SourceKind.IMPORT: price,
