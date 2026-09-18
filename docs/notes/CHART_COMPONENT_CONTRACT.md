@@ -118,3 +118,165 @@ documented ECharts recipe for error bars over grouped bars. It stays inside the
 component ADR-0013 requires, but it re-derives bar geometry ECharts owns and is
 coupled to the number of bar groups, which changes whenever a device is added
 or removed. HEA-84 measured the trade and put the range in the tooltip instead.
+
+## How the Energy Dashboard draws its own charts (2026-09-18)
+
+> Read the same way, from `hui-energy-usage-graph-card.ts`,
+> `common/energy-chart-options.ts`, `common/color.ts` and
+> `components/chart/round-caps.ts`, and checked against the option object of a
+> live electricity graph on core-2026.9.2.
+>
+> The section above is the component's contract - what it requires. This one is
+> a *house style*: what Home Assistant does with that component, and the
+> mechanisms behind the parts of the look that cannot be guessed from a
+> screenshot. HEA-141 applied it to the cost-over-time chart; the device-costs
+> chart has not had it yet.
+
+### A bar's fill is its colour at half alpha, and the border is the colour
+
+`getEnergyColor(styles, darkMode, background, compare, property, idx)` appends
+an alpha to the hex it resolves: `7F` for a fill, nothing for the border, and
+`32` for a compare period's fill. So each series carries
+
+```js
+color: "#ff98007F",              // 50% - the fill
+itemStyle: { borderColor: "#ff9800" }   // solid - the edge
+```
+
+A solid fill of a strong hue dominates a card and a wash of one loses its
+boundary against the segment above it. The outline keeps the edge where the
+arithmetic puts it, and the fill stays light enough that a gridline behind the
+bar still reads.
+
+### Only the ends of a stack are rounded, and zero segments lose their border
+
+`fillDataGapsAndRoundCaps` walks each bucket's column from the top of the stack
+down and marks the points themselves:
+
+- the first positive segment it meets gets `borderRadius: [4, 4, 0, 0]`
+- the first negative gets `[0, 0, 4, 4]`
+- any segment whose value is `0` gets `borderWidth: 0`
+
+Nothing in a stacked chart knows which segment is the *bar's* top, so rounding
+every series draws a column of lozenges; and a border on a segment of no height
+draws a hairline across the axis that reads as a bar that is not there. They key
+the walk by `stack`, which is what a chart drawing a stack per device needs -
+ours (`hea-bars.js`) treats everything handed to it as one stack.
+
+### A point carries the instant its bucket began, as a third value
+
+```ts
+type EnergyDataPoint = [displayX, value, originalStart];
+```
+
+`displayX` is the bucket's midpoint for sub-daily periods, because ECharts
+centres a bar on its x. `originalStart` exists so a tooltip can name the span
+rather than the midpoint it is drawn at. Extra dimensions on a cartesian bar
+point are ignored by the plot and come back on `params.value`, which is what
+makes this work at all.
+
+### Time and dates come from the household's settings, not the language
+
+`formatTime` asks `useAmPm(locale)`, which honours `time_format` (`12` / `24`)
+and, for its two deferring values, formats ten at night in the language and
+looks for a "10". `resolveTimeZone(locale.time_zone, config.time_zone)` picks
+the browser's zone or the server's. The same helpers label the time axis inside
+`ha-chart-base`, so anything we write beside that axis has to read both settings
+or it will contradict the axis under it. The hour is `hour: "numeric"`, so a
+24-hour clock renders "3:00" rather than "03:00".
+
+### The grid, the axis bounds, and what they switch on
+
+```js
+grid: { top: 15, bottom: 0, left: 1, right: 1, containLabel: true }
+xAxis: { type: "time", min: start, max: getSuggestedMax(period, end) }
+yAxis: { name: unit, nameGap: 2, nameTextStyle: { align: "left" },
+         splitLine: { show: true }, boundaryGap: [0, 0], splitNumber: 5 }
+```
+
+Left to itself ECharts holds a tenth of the width back on each side, and the
+plot floats in the middle of the card. `getSuggestedMax` rounds the far end back
+to where the last bar is *centred* - the bucket's midpoint at hourly, the day's
+own start at daily - because an axis drawn to the period's end leaves half a
+bucket of empty chart.
+
+Setting `xAxis.min` also has an effect nothing in the option says: `ha-chart-base`
+derives `minInterval` from `max - min`, and only when `min` is present. Without
+it a chart gets none, so tick density on a multi-day range differs from theirs
+for a reason that is invisible in both option objects.
+
+The unit is named once at the head of the axis rather than repeated down every
+tick, which is what a phone-width card has room for (HEA-103).
+
+### Sparse data has to be zero-filled, or the bars lie about their width
+
+`generateFillBuckets` builds the expected bucket grid and `fillDataGapsAndRoundCaps`
+inserts `{ value: [bucket, 0], itemStyle: { borderWidth: 0 } }` wherever a series
+has no point. Two failures make it necessary: ECharts derives the bar band width
+from the *smallest gap* between points, so one missing hour draws its neighbours
+at double width; and a single lone point makes it expand the time axis by ±40%
+either side, ignoring the configured `min`/`max` entirely.
+
+The grid is anchored on a real bucket rather than on the period's start, because
+the recorder aligns buckets to UTC and they do not sit on local boundaries in a
+half-hour zone. Days are stepped as days, not as 86,400,000 ms, or the grid walks
+off midnight the first time the clocks change.
+
+### The tooltip is a heading, rows, and a bold total
+
+`formatTooltip` heads the tooltip with the span (`13:00 – 14:00`, or the date at
+daily buckets), lists one row per series with a `ha-chart-tooltip-marker` dot,
+**skips any row whose formatted value is zero**, and adds a bold total when more
+than one positive bar is in the hover. It returns `nothing` when no row survives,
+which is how a tooltip is suppressed rather than drawn empty.
+
+Their rows are sorted positives-first and then from the top of the stack down.
+That is right for six unrelated sources where mirroring the picture is the only
+order available; ours are three figures that make one sentence, so the
+cost-over-time chart keeps its own order (HEA-141).
+
+`ha-chart-tooltip-marker` is a 10px round span with a 4px inline-end margin. It
+is registered by their energy cards, so a dashboard carrying only ours may never
+have loaded it and an unknown tag renders as nothing - `hea-tooltip.js`
+reproduces it rather than using it.
+
+### The legend swatch takes the *fill* colour
+
+`_renderLegend` resolves `{ color: dataset.color, ...dataset.itemStyle,
+...item.itemStyle }` and paints a `mdiCheckCircle` with it. With their 50% fills
+that tick is drawn at half alpha. An entry's own `itemStyle` still wins, which is
+how a card keeps a solid key over a faded bar (which is what ours does).
+
+### `ha-card` styles a *slotted* `.card-header` exactly like its own
+
+`ha-card` renders `<h1 class="card-header">` from its `header` property and has
+nowhere to put anything beside it - but its stylesheet also carries
+`:host ::slotted(.card-header)`, with the same typography. So a card that needs a
+figure next to its title writes its own header element and keeps the dashboard's
+heading style, without copying any values that could then drift. Their energy
+cards do this to carry a chip of the period's total:
+
+```css
+.chip {
+  font-size: var(--ha-font-size-m);
+  font-weight: var(--ha-font-weight-medium);
+  padding: var(--ha-space-1) var(--ha-space-2);
+  border-radius: var(--ha-border-radius-md);
+  border: 1px solid var(--divider-color);
+}
+```
+
+One catch: `::slotted` from the component's shadow root beats an ordinary rule of
+ours on specificity, so the layout that turns that heading into a row has to be
+written on the element.
+
+### The axis tooltip's heading can be set without replacing the tooltip
+
+Worth knowing even though HEA-141 did not need it in the end. For
+`trigger: "axis"`, ECharts builds the heading with
+`getValueLabel(..., axisItem.valueLabelOpt)`, and `valueLabelOpt.formatter` comes
+from `axisPointer.label.formatter`. `ha-chart-base` wraps only
+`tooltip.formatter` and `series[].tooltip.formatter`, spreading the rest of the
+tooltip through untouched - so `tooltip.axisPointer.label.formatter` reaches
+ECharts intact and can relabel the heading while leaving their rows, markers and
+`valueFormatter` alone.
