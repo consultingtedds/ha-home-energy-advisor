@@ -11,6 +11,7 @@ import {
   BOUNDS,
   CONCEPTS,
   bucketPeriodFor,
+  bucketsAcross,
   fetchDeviceStatistics,
   statisticIdsFor,
   withComparison,
@@ -261,6 +262,80 @@ describe("bucketPeriodFor", () => {
         aPeriod(new Date("2020-01-01T00:00:00Z"), new Date("2026-01-01T00:00:00Z")),
       ),
     ).toBe("day");
+  });
+});
+
+describe("bucketsAcross", () => {
+  const aRow = (start, actualCost) => ({
+    start,
+    actualCost,
+    costAtGridPrice: actualCost,
+    costSavings: 0,
+    energyUsed: 1,
+    accruing: false,
+  });
+
+  it("puts back an hour nothing was recorded in", () => {
+    // Given - three hours asked for, with the middle one never recorded
+    const start = new Date("2026-08-09T00:00:00Z");
+    const third = new Date("2026-08-09T02:00:00Z");
+    const period = aPeriod(start, new Date("2026-08-09T03:00:00Z"));
+
+    // When
+    const filled = bucketsAcross([aRow(start, 1), aRow(third, 3)], period);
+
+    // Then - a chart takes a bar's width from the smallest gap between points,
+    // so the hole has to be present and worth nothing rather than absent
+    expect(filled.map((row) => row.start.toISOString())).toEqual([
+      "2026-08-09T00:00:00.000Z",
+      "2026-08-09T01:00:00.000Z",
+      "2026-08-09T02:00:00.000Z",
+    ]);
+    expect(filled[1].actualCost).toBe(0);
+    expect(filled[1].costSavings).toBe(0);
+  });
+
+  it("keeps the grid on the buckets' own boundaries, not the period's", () => {
+    // Given - the recorder aligns its buckets to UTC, so on a half-hour zone
+    // they sit at half past the local hour. A grid stepped from the period's
+    // own start would be offset from every bucket in the data, and every gap
+    // would be filled at a time no bucket could ever land on
+    const period = aPeriod(
+      new Date("2026-08-09T00:00:00Z"),
+      new Date("2026-08-09T04:00:00Z"),
+    );
+    const recorded = new Date("2026-08-09T01:30:00Z");
+
+    // When
+    const filled = bucketsAcross([aRow(recorded, 1)], period);
+
+    // Then - anchored on the bucket that exists, and stepped from there in
+    // both directions
+    expect(filled.map((row) => row.start.toISOString())).toEqual([
+      "2026-08-09T00:30:00.000Z",
+      "2026-08-09T01:30:00.000Z",
+      "2026-08-09T02:30:00.000Z",
+      "2026-08-09T03:30:00.000Z",
+    ]);
+  });
+
+  it("leaves a period with nothing in it exactly as empty as it was", () => {
+    // Given - a range earlier than any recorded statistic
+    // When / Then - a row of flat zeroes says those hours cost nothing, which
+    // is a different statement from having nothing to say about them. There is
+    // no bucket to anchor a grid on either
+    expect(bucketsAcross([], aPeriod())).toEqual([]);
+  });
+
+  it("carries a recorded bucket through untouched", () => {
+    // Given - the figures are the point; filling must not round, re-key or
+    // re-derive one
+    const start = new Date("2026-08-09T00:00:00Z");
+    const row = aRow(start, 1.23);
+    const period = aPeriod(start, new Date("2026-08-09T01:00:00Z"));
+
+    // When / Then - the same object, not a copy that could drift from it
+    expect(bucketsAcross([row], period)[0]).toBe(row);
   });
 });
 

@@ -268,7 +268,9 @@ class HeaCostOverTimeCard extends HeaChartCard {
     );
     const rows = hovered.filter((param) => valueOf(param) !== 0);
     if (!rows.length) return undefined;
-    const bucket = this._bucketAt(hovered.map(startOf).find(Boolean));
+    const bucket = this._bucketAt(
+      hovered.map(startOf).find((instant) => instant !== undefined),
+    );
     const box = document.createElement("div");
     box.append(tooltipHeading(this._spanOf(bucket, locale)));
     for (const param of rows) box.append(this._tooltipRowFor(param, locale));

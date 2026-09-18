@@ -39,6 +39,13 @@ const styled = (point, style) => {
  * The series are returned rebuilt rather than marked in place: a card hands its
  * data to a component that may hold onto it, and a point quietly gaining a
  * style after the fact is the kind of change nothing would catch.
+ *
+ * **One stack.** Every series handed in is treated as part of the same bar, so a
+ * chart drawing a stack per device would cap the first and leave the rest
+ * square. Home Assistant keys the same walk by `stack` for exactly that case;
+ * ours has one stack, and a caller with more needs that key adding rather than
+ * this called per device - the walk has to see a bucket's whole column to know
+ * which segment ends it.
  */
 export const withRoundedCaps = (series) => {
   const buckets = Math.max(...series.map(({ data }) => data.length), 0);
