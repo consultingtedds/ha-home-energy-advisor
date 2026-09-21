@@ -42,8 +42,8 @@ figures sit at zero because there is nothing to save against.
 - **A grid connection**, with a sensor giving your current import price per kWh.
   Dynamic tariff integrations provide one. On a fixed rate, create a Number
   helper and type your rate into it.
-- **A cumulative grid import energy sensor**, in kWh. If you have set up the
-  Energy Dashboard you already have one.
+- **A cumulative grid import energy sensor**, in kWh or Wh. If you have set up
+  the Energy Dashboard you already have one.
 - **An energy or power sensor for each device you want to track.** Smart plugs,
   clamp meters and many appliances provide one. You do not need to track
   everything, or even most things - whatever you do not track is grouped into a
@@ -107,7 +107,7 @@ Energy Dashboard, most of them are filled in for you already.
 | --- | --- | --- |
 | Import price | Yes | The sensor holding your current price per kWh |
 | Currency | Yes | The currency your cost sensors report in, such as GBP or EUR |
-| Grid import energy | Yes | Your cumulative import meter, in kWh |
+| Grid import energy | Yes | Your cumulative import meter, in kWh or Wh |
 | Grid export energy | No | Your cumulative export meter |
 | Local generation energy | No | Cumulative generation of your own, whatever the source |
 | Battery charge energy | No | Cumulative energy charged into a home battery |
@@ -164,7 +164,8 @@ give it a name, and pick the one sensor that measures it.
 
 That sensor can be either:
 
-- **an energy sensor**, a cumulative kWh counter, or
+- **an energy sensor**, a cumulative counter in kWh or Wh - either is fine, and
+  a house with some of each is fine, or
 - **a power sensor** reading in watts, in which case Home Assistant's own
   Integral helper is created for you to turn it into energy. You do not have to
   set that up or maintain it.

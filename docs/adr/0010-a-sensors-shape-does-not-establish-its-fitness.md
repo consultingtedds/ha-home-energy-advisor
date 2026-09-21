@@ -123,3 +123,83 @@ prevent.
   standardised liveness signal). Several filters here reconstruct by inference
   what the platform could state outright, and would be better delegated than
   maintained.
+
+## Update, 2026-09-21: the unit joins the shape, and ingest gains two checks
+
+Four incidents from outside households, in one week. The decision above stands
+unchanged; what follows fills in both of the gates it names, because each was
+described by a single implemented instance and each now has more than one.
+
+### Add time also asks what the sensor counts in
+
+Section 2 said the config flow rejects a present-but-wrong `state_class` and
+allows an absent one. It now applies the identical rule to the **unit**: a
+present-but-uncountable unit is rejected, an absent one allowed (HEA-161).
+
+The engine counts in kWh and Wh and converts between them from every reading, so
+a mixture of the two is correct and is not flagged - two households lost time
+believing a Wh sensor was their own mistake, and it was not
+([issue 24](https://github.com/consultingtedds/ha-home-energy-advisor/issues/24),
+[issue 27](https://github.com/consultingtedds/ha-home-energy-advisor/issues/27)).
+Telling somebody their working setup is wrong would have them swap the entity,
+which re-baselines the counter and loses accounting for nothing.
+
+Anything the engine cannot convert - megawatt hours, joules - is a different
+matter: it is refused at ingest, so the source would contribute nothing at all.
+Refusing it while somebody is still choosing is the same asymmetry section 2
+already draws, applied to a second property of the same pick.
+
+**The absent case is the load-bearing half.** A cloud meter reconnecting
+publishes no unit for several seconds, and treating that silence as a fact about
+the sensor is exactly the defect HEA-149 was raised to fix - so the leniency here
+is not politeness, it is correctness.
+
+### Ingest time has three implemented instances, not one
+
+Section 3 described the principle and then named one instance: no device can
+consume more than the whole house over a full window. Two more now stand beside
+it, and the three are deliberately at different scales.
+
+| What is refused | Scale | Raised by |
+| --- | --- | --- |
+| A device's total above the whole house's | A full 12-bucket window | HEA-60 |
+| One reading above what the house was metered over its own span | A single delta | HEA-157 |
+| A reading whose unit is unknown, or has changed since the last one | A single reading | HEA-149 |
+
+The middle one exists because the first cannot act in time. `_judge` needs a full
+window of evidence before it will condemn anything - deliberately, so one
+interval cannot condemn a coarse counter - and a single catastrophic delta lands
+long before that verdict arrives. A vendor firmware update rescaled a plug's
+counter by ten, which read as a cycle reset, and its whole new value was booked:
+119 kWh to a water heater that had run four hours.
+
+Two properties of that middle check are worth recording, because both are easy to
+get wrong and neither is obvious from the code:
+
+- **It is floored at one window.** Judged over its own span, every ordinary
+  reading fails: a coarse counter's step exceeds what the house was metered in
+  the twenty seconds it was reported over, which is the spreading approximation
+  ADR-0006 is built on rather than a fault.
+- **It measures the house over the delta's span, it does not extrapolate a
+  rate.** An EV charger quiet while the house drew heavily, then honest about all
+  of it at once, would be refused if it were judged against a rate taken from an
+  idle hour. The house meter saw the same span the device did, so it is asked
+  about that span.
+
+### A refused reading is still claimed
+
+This is the sharpest lesson of the four incidents and it qualifies the
+"every refusal must be explainable" consequence above with a mechanism.
+
+`_judge` is computed from what devices **claimed**, not from what was booked, and
+it is what raises the Repair naming a faulty device. The first implementation of
+HEA-157 refused a delta and dropped it - which silently removed the evidence, so
+a counter that lied steadily became quietly uncounted instead of reported. The
+project's own replay test caught it.
+
+So a refusal at any of these gates must leave the claim behind it. The cost is
+accepted openly: a rescaled device stays condemned until its claim ages out of
+the window, about an hour, and its energy falls to Untracked in the meantime. The
+house total stays right; what is lost is knowing which device spent it. That is
+the correct trade, because the household is **told** - which is the whole of the
+consequence this ADR already states.
