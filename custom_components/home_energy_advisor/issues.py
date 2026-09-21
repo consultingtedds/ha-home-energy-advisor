@@ -40,6 +40,12 @@ ISSUE_IMPLAUSIBLE_STEP = "implausible_step"
 # it is given the same grace an unavailable input gets (HEA-156).
 ISSUE_SOURCE_UNIT_UNSUPPORTED = "source_unit_unsupported"
 ISSUE_SOURCE_UNIT_MISSING = "source_unit_missing"
+# A refused step whose size looks like the counter's scale moving rather than
+# energy (HEA-159). Deliberately separate from the step Repair beside it: that
+# one says a counter was replaced, this one says the same counter is now
+# reporting in a different size of unit, and they send a household to different
+# places.
+ISSUE_RESCALED_SOURCE = "rescaled_source"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -82,6 +88,11 @@ def source_unit_missing_issue_id(entity_id: str) -> str:
     return f"{ISSUE_SOURCE_UNIT_MISSING}_{entity_id}"
 
 
+def rescaled_source_issue_id(entity_id: str) -> str:
+    """Stable issue id for an input whose counter changed the scale it reports in."""
+    return f"{ISSUE_RESCALED_SOURCE}_{entity_id}"
+
+
 def async_raised_subjects(hass: HomeAssistant, translation_key: str) -> set[str]:
     """Every subject this integration is currently accusing under one issue key.
 
@@ -108,8 +119,15 @@ def async_raise(
     issue_id: str,
     translation_key: str,
     placeholders: dict[str, str] | None = None,
+    learn_more_url: str | None = None,
 ) -> None:
-    """Raise (or refresh) an informational Repairs issue. Idempotent per id."""
+    """Raise (or refresh) an informational Repairs issue. Idempotent per id.
+
+    ``learn_more_url`` is for a fix too long to live in a notification. A Repair
+    describing a several-line template sensor would be pasted without being
+    read, and on a scale problem that means getting the direction wrong - so the
+    detail belongs on a page where it can take its time (HEA-159).
+    """
     ir.async_create_issue(
         hass,
         DOMAIN,
@@ -118,6 +136,7 @@ def async_raise(
         severity=ir.IssueSeverity.WARNING,
         translation_key=translation_key,
         translation_placeholders=placeholders,
+        learn_more_url=learn_more_url,
     )
 
 

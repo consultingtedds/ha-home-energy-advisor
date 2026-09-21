@@ -90,6 +90,19 @@ _MIN_JUDGED_SPAN = timedelta(minutes=1)
 # 20 is enough to explain a device's most recent behaviour in a support thread.
 _DECISION_LOG_SIZE = 20
 
+# The scale changes worth naming. A vendor that moves a counter between watt
+# hours and kilowatt hours shifts it by a thousand; one that fixes a decimal
+# place shifts it by ten. Nothing here is special to ten, which is only the
+# factor the reference instance happened to meet (HEA-159).
+_SCALE_FACTORS = (Decimal(10), Decimal(100), Decimal(1000), Decimal(10000))
+
+# How far from a clean power of ten a ratio may sit and still be called one.
+# The reference instance's two heaters gave 10.0002 and 9.9672 - the second is
+# 0.33 % out, because a counter keeps moving across the discontinuity. Two per
+# cent covers that with room to spare while leaving a ratio like 54x, which is a
+# counter that was *replaced* rather than rescaled, comfortably outside.
+_SCALE_TOLERANCE = Decimal("0.02")
+
 
 class EnergyUnit(Enum):
     """The unit a device's counter reports in, normalised to kWh on the way in.
@@ -194,6 +207,23 @@ class Decision:
 
 
 @dataclass(frozen=True)
+class ScaleChange:
+    """A refused step whose size looks like the counter's scale moving.
+
+    ``factor`` is the magnitude, always at least one, and ``shrank`` says which
+    way the counter went. Both are needed and neither is enough: a counter that
+    grew by ten is now over-reporting, one that shrank by ten may equally have
+    just been *corrected* by the same vendor who broke it - which is exactly
+    what happened on the reference instance four days apart. Nothing here says
+    which scale is the true one, because nothing here can (HEA-159).
+    """
+
+    at: datetime
+    factor: Decimal
+    shrank: bool
+
+
+@dataclass(frozen=True)
 class SourceSnapshot:
     """A source's diagnostics state: its unit, last reading, and decision log.
 
@@ -206,6 +236,9 @@ class SourceSnapshot:
     last_value: Decimal | None
     last_at: datetime | None
     recent_decisions: tuple[Decision, ...]
+    # Set only while a refused step still looks like a rescale, and dropped as
+    # soon as the counter reports something the house can account for.
+    scale_change: ScaleChange | None = None
 
 
 @dataclass(frozen=True)
@@ -253,6 +286,10 @@ class CumulativeEnergySource:
         self._moved_at: datetime | None = None
         self._max_quiet_span = max_quiet_span
         self._decisions: deque[Decision] = deque(maxlen=_DECISION_LOG_SIZE)
+        # A refused step that looked like a rescale, and one the accountant has
+        # not ruled on yet. Diagnostics only: nothing here changes a figure.
+        self._scale_change: ScaleChange | None = None
+        self._pending_scale: ScaleChange | None = None
 
     def observe(self, reading: Reading) -> EnergyDelta | None:
         """Records a reading and returns the energy it revealed, if any.
@@ -300,11 +337,22 @@ class CumulativeEnergySource:
         if not self._credible(kwh, previous.at, current.at):
             # The counter's position is already ``current``, so the replacement
             # becomes the baseline and everything after it is counted normally.
+            self._note_scale_change(previous, current)
             self._log(current.at, DecisionReason.IMPLAUSIBLE_STEP, kwh)
             return None
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
+        # Held rather than recorded: the accountant has the last word on this
+        # delta, and only if *it* refuses does the step become evidence of a
+        # rescale. A step the house can account for is not one (HEA-159).
+        self._pending_scale = _scale_change(previous, current)
+        self._scale_change = None
         self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=accrued_from, end=current.at)
+
+    def _note_scale_change(self, previous: _Observation, current: _Observation) -> None:
+        """Record a refused step whose size looks like the counter's scale moving."""
+        self._scale_change = _scale_change(previous, current)
+        self._pending_scale = None
 
     def _countable(self, reading: Reading) -> _Observation | None:
         """The reading as something to count from, or ``None`` with the reason logged.
@@ -476,6 +524,11 @@ class CumulativeEnergySource:
         """
         self._log(at, DecisionReason.IMPLAUSIBLE, kwh)
 
+    def _promote_pending_scale(self) -> None:
+        """Take up the step the accountant has just refused, if it looked like one."""
+        self._scale_change = self._pending_scale
+        self._pending_scale = None
+
     def note_beyond_the_house(self, at: datetime, kwh: Decimal) -> None:
         """Record one delta refused for claiming more than the house was served.
 
@@ -486,6 +539,7 @@ class CumulativeEnergySource:
         its scale changes, and it is followed by ordinary readings rather than by
         more of the same (HEA-157).
         """
+        self._promote_pending_scale()
         self._log(at, DecisionReason.BEYOND_THE_HOUSE, kwh)
 
     def note_zero_priced(self, at: datetime) -> None:
@@ -504,6 +558,7 @@ class CumulativeEnergySource:
     def snapshot(self) -> SourceSnapshot:
         """The source's current diagnostics state (HEA-24)."""
         return SourceSnapshot(
+            scale_change=self._scale_change,
             unit=self._last.unit if self._last else EnergyUnit.UNKNOWN,
             last_value=self._last.value if self._last else None,
             last_at=self._last.at if self._last else None,
@@ -565,3 +620,28 @@ class CumulativeEnergySource:
         if unit is EnergyUnit.WH:
             return value / _WH_PER_KWH
         return value
+
+
+def _scale_change(previous: _Observation, current: _Observation) -> ScaleChange | None:
+    """Whether a step looks like the counter's scale moving, and by how much.
+
+    The ratio between the two sides of a discontinuity *is* the factor, to three
+    or four figures, because a counter barely moves across one. So this is a
+    measurement rather than an inference - and a ratio nowhere near a power of
+    ten is itself evidence: that counter was replaced, not rescaled, and saying
+    "your scale changed by 54x" would be a guess wearing a measurement's clothes.
+
+    ``None`` where either side is zero, which is a counter starting or restarting
+    rather than changing what it counts in.
+    """
+    if previous.value <= 0 or current.value <= 0:
+        return None
+    larger = max(previous.value, current.value)
+    smaller = min(previous.value, current.value)
+    ratio = larger / smaller
+    for factor in _SCALE_FACTORS:
+        if abs(ratio - factor) <= factor * _SCALE_TOLERANCE:
+            return ScaleChange(
+                at=current.at, factor=factor, shrank=current.value < previous.value
+            )
+    return None

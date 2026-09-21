@@ -241,6 +241,10 @@
     "source_unit_missing": {
       "title": "An energy input does not say what unit it is counting in",
       "description": "`{entity_id}` has been reporting numbers without saying what they measure. Home Energy Advisor will not assume kWh, because assuming wrongly would be out by a factor of a thousand - so it is not counting this input.\n\nWhile that lasts, this input contributes nothing. If it is a device, that device will read zero and its energy will be included in Untracked instead, so your whole-home total stays right.\n\nA sensor briefly has no unit while its integration is starting up, which is normal and is not reported here. This one has stayed that way, so it is worth looking at the integration that provides it, or choosing a different sensor."
+    },
+    "rescaled_source": {
+      "title": "An energy input's counter changed the scale it reports in",
+      "description": "`{entity_id}` jumped by a factor of about {factor} in a single step, and the reading was not counted as energy.\n\nA clean factor of ten, a hundred or a thousand is what a firmware update looks like when it changes the size of unit a device counts in without changing the label on it - the numbers move, the unit still says the same thing.\n\n**We cannot tell you which of the two scales is the correct one.** Both are plausible from here: an update can break a counter, and a later update can put it back. Check the device itself - its rated wattage, or its own power sensor if it has one - against what it is now reporting, and you will know which way it should read.\n\nUntil the counter and the device agree, this input is not being counted. Its energy is included in Untracked instead, so your whole-home total stays right; what you lose is seeing which device spent it.\n\nSelect **Learn more** for how to correct it. Please read it rather than copying from it - the correction has a direction, and applying it the wrong way round leaves you out by the square of this factor rather than putting it right."
     }
   },
   "services": {

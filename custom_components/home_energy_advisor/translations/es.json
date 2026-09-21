@@ -241,6 +241,10 @@
     "source_unit_missing": {
       "title": "Una entrada de energía no dice en qué unidad cuenta",
       "description": "`{entity_id}` lleva tiempo informando números sin decir qué miden. Home Energy Advisor no va a suponer que son kWh, porque suponerlo mal se equivocaría por un factor de mil: así que no está contabilizando esta entrada.\n\nMientras eso dure, esta entrada no aporta nada. Si es un dispositivo, marcará cero y su energía se incluirá en Sin seguimiento, de modo que el total de tu casa sigue siendo correcto.\n\nUn sensor se queda un momento sin unidad mientras su integración arranca, lo cual es normal y no se avisa aquí. Este ha seguido así, de modo que conviene mirar la integración que lo proporciona, o elegir otro sensor."
+    },
+    "rescaled_source": {
+      "title": "El contador de una entrada de energía cambió la escala en la que informa",
+      "description": "`{entity_id}` saltó un factor de unas {factor} veces en un solo paso, y esa lectura no se contabilizó como energía.\n\nUn factor exacto de diez, cien o mil es lo que parece una actualización de firmware cuando cambia el tamaño de la unidad en la que cuenta un dispositivo sin cambiar la etiqueta: los números se mueven, la unidad sigue diciendo lo mismo.\n\n**No podemos decirte cuál de las dos escalas es la correcta.** Desde aquí las dos son plausibles: una actualización puede romper un contador, y otra posterior puede devolverlo a su sitio. Compara el propio dispositivo - su potencia nominal, o su sensor de potencia si lo tiene - con lo que informa ahora, y sabrás en qué sentido debería leer.\n\nHasta que el contador y el dispositivo concuerden, esta entrada no se contabiliza. Su energía se incluye en Sin seguimiento, así que el total de tu casa sigue siendo correcto; lo que pierdes es ver qué dispositivo la gastó.\n\nPulsa **Más información** para saber cómo corregirlo. Léelo en lugar de copiar de ahí: la corrección tiene un sentido, y aplicarla al revés te deja equivocado por el cuadrado de este factor en vez de arreglarlo."
     }
   },
   "services": {

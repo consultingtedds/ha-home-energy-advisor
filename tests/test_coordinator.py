@@ -417,6 +417,89 @@ async def test_an_input_whose_counter_leaps_is_named_in_repairs(
     )
 
 
+async def test_a_counter_whose_scale_changed_is_named_with_the_factor(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The half that tells the household (HEA-159).
+
+    HEA-157 refuses the step, which protects the figures and says nothing. The
+    household is left with a device that has stopped counting and a Repair that
+    blames their sensor, when what happened is that somebody's firmware changed
+    the scale their counter reports in.
+    """
+    # Given - a running home whose device counter is then multiplied by ten,
+    # exactly as two of the reference instance's plugs were by an update
+    await _setup_running_home(hass, freezer)
+    # The counter has to stand somewhere before a ratio means anything - a
+    # counter rising from zero has no scale to have changed
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "114.29", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 2, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "1142.87", _ENERGY)
+    await hass.async_block_till_done()
+
+    # When - the next interval is finalised
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - named, and the factor is carried so the message can state it
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, issues.rescaled_source_issue_id("sensor.coarse_step_energy")
+    )
+    assert issue is not None
+    assert issue.translation_placeholders is not None
+    assert issue.translation_placeholders["factor"] == "10"
+
+
+async def test_a_counter_that_settles_at_its_new_scale_is_forgiven(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a counter that changed scale and was named for it
+    await _setup_running_home(hass, freezer)
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "114.29", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 2, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "1142.87", _ENERGY)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    issue_id = issues.rescaled_source_issue_id("sensor.coarse_step_energy")
+    assert _has_issue(hass, issue_id)
+
+    # When - it carries on counting in ordinary steps from its new position
+    freezer.move_to(datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "1143.47", _ENERGY)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
+
+    # Then - withdrawn. A reading the house can account for is the evidence
+    # that whatever happened is over, and an accusation nobody is still making
+    # is noise (HEA-146)
+    assert not _has_issue(hass, issue_id)
+
+
+async def test_a_replaced_counter_is_not_accused_of_changing_scale(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a running home whose device sensor is recreated, so its counter
+    # reads from somewhere else entirely. That is HEA-137's case
+    await _setup_running_home(hass, freezer)
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "5336.38", _ENERGY)
+    await hass.async_block_till_done()
+
+    # When
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - the step Repair, not the scale one. A ratio nowhere near a power
+    # of ten means the counter was replaced, and telling somebody their scale
+    # changed by 54x would send them to fix the wrong thing
+    assert _has_issue(
+        hass, issues.implausible_step_issue_id("sensor.coarse_step_energy")
+    )
+    assert not _has_issue(
+        hass, issues.rescaled_source_issue_id("sensor.coarse_step_energy")
+    )
+
+
 async def test_a_source_counting_in_a_unit_the_engine_cannot_use_is_named(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

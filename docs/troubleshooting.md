@@ -134,10 +134,65 @@ from wherever the counter now stands. Its energy for that period is not lost
 from your house total - it goes to Untracked instead, so the totals still add
 up. What is lost is knowing which device used it.
 
-If a device pauses and *stays* paused for longer than a day, its counter has
-probably settled at the new scale and is now permanently out of step with the
-rest of your setup. Please open an issue - that case is not yet handled
-automatically, and it is worth us knowing which device and which integration.
+You may also get a notification saying **"An energy input's counter changed the
+scale it reports in"**, naming the device and the factor - ten, a hundred or a
+thousand. That is the same event, measured: the two sides of the jump differ by
+a clean power of ten, which energy never does but a change of unit always does.
+
+### Correcting it, if the counter does not put itself right
+
+**First, work out which way is wrong.** This is the part nobody can do for you,
+and it is why the notification does not offer to fix it. A counter that changed
+by ten might have been broken by an update, or *repaired* by one - both have
+happened here, four days apart, and they look identical from the outside.
+
+Compare the device against itself:
+
+- What is the appliance rated at? A 2 kW heater running half an hour is about
+  1 kWh. If its counter moved by 10 kWh, the counter is reading ten times high.
+- Does the device publish its own power sensor? Watch it while the appliance
+  runs. Power in watts, over the hours it ran, should roughly equal the energy
+  its counter gained.
+- What did it read before the update? If you know it was sensible then, the
+  side that matches it is the right one.
+
+**Only once you are sure**, create a template sensor that scales the reading and
+point Home Energy Advisor at that instead. Read this rather than copying it: the
+`/ 10` below is an example, and using the wrong operator or the wrong factor
+leaves you further out than you started.
+
+```yaml
+template:
+  - sensor:
+      - name: Corrected Plug Energy
+        unique_id: corrected_plug_energy
+        state: "{{ states('sensor.YOUR_SENSOR') | float(0) / 10 }}"
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total_increasing
+```
+
+Three things that matter more than they look:
+
+- **`/ 10` is a guess until you have checked.** Multiply instead if the counter
+  is reading low, and use the factor the notification named, not this one.
+- **Keep all three of `unit_of_measurement`, `device_class` and
+  `state_class`.** Without them the sensor will be refused when you choose it.
+- **`state_class: total_increasing` must stay**, because the original is a
+  counter that only climbs. A corrected sensor that reports a measurement
+  instead would be misread as energy on every reading.
+
+Then repoint the device: **Settings > Devices & services > Home Energy Advisor**,
+the device, **Configure**. Counting restarts from the new sensor's position;
+figures already recorded are not rewritten.
+
+**This fixes our figures only.** Your Energy Dashboard, and anything else using
+the original sensor, is still reading the uncorrected one - so repoint those too
+if you rely on them.
+
+**Please open an issue either way.** A counter that settles permanently at a new
+scale is worth us knowing about: which device, which integration, and which
+direction it went.
 
 ## Untracked is a large share of the bill
 

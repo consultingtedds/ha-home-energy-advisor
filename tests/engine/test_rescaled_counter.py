@@ -286,6 +286,88 @@ def test_nothing_is_judged_before_the_window_has_filled() -> None:
     assert DecisionReason.BEYOND_THE_HOUSE not in reasons(home)
 
 
+def test_a_refused_step_records_the_factor_its_counter_moved_by() -> None:
+    # Given - the discontinuity measures itself. Both sides of it are in hand at
+    # the moment of refusal, and their ratio *is* the scale change, so nothing
+    # has to be inferred statistically (HEA-159)
+    home = a_rescaled_plug()
+    when = at(home.minute)
+
+    # When
+    scale = home.acc.source_diagnostics()[PLUG].scale_change
+
+    # Then - a clean factor of ten, and which way it went. 1193.38 became
+    # 119.34, which is what a firmware update looks like when it changes the
+    # scale a counter reports in without changing the label on it
+    assert scale is not None
+    assert scale.factor == Decimal(10)
+    assert scale.shrank is True
+    assert scale.at == when
+
+
+def test_a_counter_that_grows_by_ten_records_the_same_factor_the_other_way() -> None:
+    # Given - the same vendor error seen from the other side: the update that
+    # multiplied the counter, rather than the revert four days later that put it
+    # back. Both directions cost this project real energy, so both are recorded
+    home = a_settled_home(plug=Decimal("114.29"))
+
+    # When - the counter is multiplied by ten, which the house cannot explain
+    home.plug_reports(Decimal("1142.87"))
+
+    # Then - the same factor, recorded as having grown
+    scale = home.acc.source_diagnostics()[PLUG].scale_change
+    assert scale is not None
+    assert scale.factor == Decimal(10)
+    assert scale.shrank is False
+
+
+def test_a_thousandfold_change_is_recognised_as_readily_as_a_tenfold_one() -> None:
+    # Given - nothing about this is special to ten. A vendor moving a counter
+    # between watt hours and kilowatt hours shifts it by a thousand, and that
+    # is the commoner mistake
+    home = a_settled_home(plug=Decimal("2.5"))
+
+    # When - taken from where the counter actually stands, not from where it
+    # started: the settling hour moves it, and a ratio measured against the
+    # wrong end is not the factor
+    home.plug_reports(home.plug * 1000)
+
+    # Then
+    scale = home.acc.source_diagnostics()[PLUG].scale_change
+    assert scale is not None
+    assert scale.factor == Decimal(1000)
+
+
+def test_an_ordinary_refusal_is_not_read_as_a_scale_change() -> None:
+    # Given - a counter replaced by one reading from somewhere else entirely,
+    # which is HEA-137's case: refused, but its ratio means nothing
+    home = a_settled_home(plug=Decimal(100))
+
+    # When - the new sensor's first reading is 5436.38, a ratio of 54.4
+    home.plug_reports(Decimal("5436.38"))
+
+    # Then - refused, and *not* claimed as a scale change. A ratio nowhere near
+    # a power of ten is evidence the counter was replaced rather than rescaled,
+    # and "your scale changed by 54x" would be a guess dressed as a measurement
+    assert home.acc.source_diagnostics()[PLUG].scale_change is None
+
+
+def test_a_counter_telling_the_truth_again_stops_claiming_a_scale_change() -> None:
+    # Given - a rescale, recorded
+    home = a_rescaled_plug()
+    assert home.acc.source_diagnostics()[PLUG].scale_change is not None
+
+    # When - the counter carries on at its new scale, and the house can account
+    # for what it reports
+    home.run(buckets=14, house_step="0.15", plug_reports=False)
+    home.plug_reports(home.plug + Decimal("0.20"))
+
+    # Then - withdrawn. A reading the house agrees with is the evidence that
+    # whatever happened is over, and HEA-146 settled that an accusation nobody
+    # is still making should not be left standing.
+    assert home.acc.source_diagnostics()[PLUG].scale_change is None
+
+
 def test_a_silent_house_meter_is_no_evidence_against_a_device() -> None:
     # Given - a settled hour in which the house meter reported nothing at all.
     # A silent house meter is its own fault, reported elsewhere (HEA-24)

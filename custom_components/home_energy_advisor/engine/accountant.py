@@ -55,6 +55,7 @@ from .energy_source import (
     DecisionReason,
     EnergyUnit,
     Reading,
+    ScaleChange,
 )
 from .house_balance import HouseBalance, HouseReadings, Served
 from .interval_ledger import (
@@ -1180,6 +1181,19 @@ class Accountant:
                 for decision in source.snapshot().recent_decisions
             )
         )
+
+    def rescaled_sources(self) -> dict[str, ScaleChange]:
+        """Inputs whose refused step looked like their scale moving (HEA-159).
+
+        Read straight from each source, so it says what the diagnostics download
+        says, and it empties itself the moment a counter reports something the
+        house can account for again.
+        """
+        return {
+            entity: snapshot.scale_change
+            for entity, source in self._sources.items()
+            if (snapshot := source.snapshot()).scale_change is not None
+        }
 
     def _claim(self, device: str, kwh: Decimal) -> None:
         """Add late-arriving energy to the newest window entry, as evidence.

@@ -85,6 +85,16 @@ _UNAVAILABLE_GRACE = timedelta(hours=1)
 # nobody can act on has to clear (HEA-69, HEA-82).
 _UNRECONCILED_SHARE_LIMIT = Decimal("0.01")
 
+# Where the scale-change Repair sends a household for the full instructions.
+# The Repair itself stays short: the fix is a template sensor, and a YAML
+# snippet inside a notification is a thing people paste without reading - which
+# on a scale problem means getting the direction wrong and being out by a
+# hundred rather than by ten (HEA-159).
+_SCALE_HELP_URL = (
+    "https://github.com/consultingtedds/ha-home-energy-advisor"
+    "/blob/main/docs/troubleshooting.md#a-device-paused-after-its-firmware-updated"
+)
+
 _ROLE_BY_CONF: dict[str, SourceRole] = {
     CONF_GRID_IMPORT_ENTITY: SourceRole.GRID_IMPORT,
     CONF_GRID_EXPORT_ENTITY: SourceRole.GRID_EXPORT,
@@ -158,6 +168,8 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._unsupported_units: set[str] = set()
         self._missing_units: set[str] = set()
         self._unitless_since: dict[str, datetime] = {}
+        # Inputs whose counter changed the size of unit it reports in.
+        self._rescaled_sources: set[str] = set()
         self._devices = devices
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
@@ -286,6 +298,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_remainder_health()
         self._check_source_plausibility()
         self._check_refused_steps()
+        self._check_rescaled_sources()
         self._check_source_units(now)
         self.async_set_updated_data(self._accountant.totals())
         self._store.async_schedule_save(
@@ -431,6 +444,41 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         for entity in self._refused_steps - refused:
             issues.async_clear(self.hass, issues.implausible_step_issue_id(entity))
         self._refused_steps = refused
+
+    def _check_rescaled_sources(self) -> None:
+        """Name an input whose counter changed the scale it reports in (HEA-159).
+
+        The engine has refused the step, so the figures are safe; this says what
+        happened, because the Repair beside it - "reporting more energy than the
+        whole house" - is true and sends the household to look at the wrong
+        thing. What they need to know is that a firmware update changed the size
+        of the unit their counter reports in.
+
+        It says the factor and **not** which way to correct it. The direction is
+        not the answer: the reference instance's plugs were multiplied by ten on
+        one day and divided by ten four days later, and the second change was the
+        vendor putting it *right*. Identical evidence, opposite conclusions - so
+        the household, who can see the appliance and its rating, decides.
+        """
+        rescaled = self._accountant.rescaled_sources()
+        for entity, change in rescaled.items():
+            if entity in self._rescaled_sources:
+                continue
+            issues.async_raise(
+                self.hass,
+                issues.rescaled_source_issue_id(entity),
+                issues.ISSUE_RESCALED_SOURCE,
+                {
+                    "entity_id": entity,
+                    # Whole, because every factor worth naming is a power of
+                    # ten. Trimming trailing zeros instead turns "10" into "1".
+                    "factor": f"{change.factor:.0f}",
+                },
+                learn_more_url=_SCALE_HELP_URL,
+            )
+        for entity in self._rescaled_sources - set(rescaled):
+            issues.async_clear(self.hass, issues.rescaled_source_issue_id(entity))
+        self._rescaled_sources = set(rescaled)
 
     def _check_source_units(self, now: datetime) -> None:
         """Name, in Repairs, an input whose unit stops it being counted (HEA-156).
