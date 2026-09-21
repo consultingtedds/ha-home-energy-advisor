@@ -36,6 +36,17 @@ Energy Advisor, or see the next entry.
   house".** That sensor is faulty, so Home Energy Advisor has stopped counting it
   to protect your other figures. It starts again by itself once the readings make
   sense. If the device offers another energy sensor, choose that one instead.
+- **Its sensor does not say what unit it is in.** Home Energy Advisor counts in
+  kWh and Wh. A sensor reporting something else - MWh, or no unit at all - is
+  left uncounted rather than guessed at, because a number whose size is unknown
+  is worse than no number. Its energy goes to Untracked, so your house total
+  stays right. Choose a sensor that reports in kWh or Wh.
+- **It is a power-only device and the integration behind it has stopped.** Where
+  a device is tracked by a power sensor, Home Energy Advisor builds its energy
+  from that sensor. An integration that reports zero watts when it has actually
+  lost contact - a cloud device that needs signing in again, say - looks exactly
+  like a device that is switched off. Check whether that integration is asking
+  you to reauthenticate.
 
 ## Notifications about a unit changing to your currency
 
@@ -103,6 +114,30 @@ carries on from the new counter's position and nothing needs putting right.
 The limit is 100 kW of continuous draw, which is about 1.4 times the largest
 domestic supply. If your site genuinely draws more than that, please open an
 issue: the figure is fixed today and can be made adjustable.
+
+## A device paused after its firmware updated
+
+A firmware update can change what a device's counter counts in without changing
+what it calls it - the same energy written as a number ten or a thousand times
+larger, still labelled kWh. From the outside that is indistinguishable from a
+device that has suddenly used a great deal of energy, or, if the number goes
+down, from a counter that has restarted.
+
+Home Energy Advisor compares each reading against what your house meter says the
+whole house used over the same period. A device cannot use more than the house
+it sits in, so a reading that claims to is not counted, and the device pauses.
+You may get the "reporting more energy than the whole house" notification while
+that lasts.
+
+**It recovers on its own**, usually within the hour, and carries on counting
+from wherever the counter now stands. Its energy for that period is not lost
+from your house total - it goes to Untracked instead, so the totals still add
+up. What is lost is knowing which device used it.
+
+If a device pauses and *stays* paused for longer than a day, its counter has
+probably settled at the new scale and is now permanently out of step with the
+rest of your setup. Please open an issue - that case is not yet handled
+automatically, and it is worth us knowing which device and which integration.
 
 ## Untracked is a large share of the bill
 
