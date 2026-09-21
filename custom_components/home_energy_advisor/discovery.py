@@ -293,6 +293,27 @@ def source_state_class(hass: HomeAssistant, entity_id: str) -> str | None:
     return None
 
 
+def source_unit(hass: HomeAssistant, entity_id: str) -> str | None:
+    """A sensor's unit, from its live state, else the entity registry.
+
+    The same two places :func:`source_state_class` looks, and for the same
+    reason - an entity that is unavailable, or not yet in the state machine, is
+    still a legitimate thing to choose. The unit lives on the registry entry
+    itself rather than in ``capabilities``.
+
+    ``None`` means the sensor has not said, which is different from saying
+    something we cannot use.
+    """
+    if (state := hass.states.get(entity_id)) is not None:
+        live = state.attributes.get("unit_of_measurement")
+        if isinstance(live, str) and live.strip():
+            return live
+    entity = er.async_get(hass).async_get(entity_id)
+    if entity is not None and isinstance(entity.unit_of_measurement, str):
+        return entity.unit_of_measurement or None
+    return None
+
+
 def _energy_or_power(hass: HomeAssistant, entity: RegistryEntry) -> str | None:
     device_class = entity.original_device_class
     if device_class is None and (state := hass.states.get(entity.entity_id)):

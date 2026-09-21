@@ -51,6 +51,7 @@ from .discovery import (
     REQUIRED_STATE_CLASS,
     async_discover_candidates,
     source_state_class,
+    source_unit,
 )
 from .reset import async_reset_totals
 
@@ -342,15 +343,51 @@ def _validate_house_sources(
     checked = [*_ALWAYS_READ]
     if not user_input.get(CONF_HOUSE_CONSUMPTION_ENTITY):
         checked += _FULL_BALANCE_ONLY
-    return {
-        key: _HOUSE_STATE_CLASS_ERROR
-        for key in checked
-        if (entity_id := user_input.get(key))
-        and _wrong_state_class_error(hass, entity_id, CONF_ENERGY_ENTITY)
-    }
+    errors: dict[str, str] = {}
+    for key in checked:
+        entity_id = user_input.get(key)
+        if not entity_id:
+            continue
+        if _wrong_state_class_error(hass, entity_id, CONF_ENERGY_ENTITY):
+            errors[key] = _HOUSE_STATE_CLASS_ERROR
+        elif _uncountable_unit_error(hass, entity_id):
+            errors[key] = _UNIT_ERROR
+    return errors
 
 
 _HOUSE_STATE_CLASS_ERROR = "house_not_total_increasing"
+_UNIT_ERROR = "unit_not_energy"
+
+
+def _uncountable_unit_error(hass: HomeAssistant, entity_id: str) -> str | None:
+    """Reject an energy source reporting in a unit the engine cannot count in.
+
+    The engine works in kWh and Wh and converts between them from each reading
+    (HEA-149), so a mixture of the two is correct and is deliberately *not*
+    flagged: telling a household their working setup is wrong would have them
+    swap the entity, which re-baselines the counter and loses accounting for
+    nothing. Two households have already lost time believing a Wh sensor was
+    their fault (GitHub #24, #27) - it is not.
+
+    Anything else is a different matter. A megawatt-hour counter is not
+    converted and not counted, so the device sits at zero for ever and its
+    energy falls into Untracked with nothing saying why. Refusing it while
+    somebody is still choosing beats a Repair a week later (HEA-161).
+
+    A sensor that reports *no* unit is allowed through, exactly as an absent
+    state_class is (ADR-0010 section 2). A cloud meter reconnecting publishes no
+    unit for a few seconds, and reading that silence as a fact about the sensor
+    is the mistake HEA-149 exists to correct.
+    """
+    unit = source_unit(hass, entity_id)
+    if unit is None or unit.strip().lower() in _COUNTABLE_UNITS:
+        return None
+    return _UNIT_ERROR
+
+
+# Lowered, because a household's integration may write "WH", "Wh" or "wh" and
+# all three are the same unit.
+_COUNTABLE_UNITS = frozenset({"kwh", "wh"})
 
 
 def _validate_device_sources(
@@ -369,7 +406,13 @@ def _validate_device_sources(
     if bool(energy) == bool(power):
         return "select_one_sensor"
     source_key = CONF_ENERGY_ENTITY if energy else CONF_POWER_ENTITY
-    return _wrong_state_class_error(hass, energy or power, source_key)
+    wrong_class = _wrong_state_class_error(hass, energy or power, source_key)
+    if wrong_class is not None:
+        return wrong_class
+    # Only the energy source: a power sensor is read by the Integral helper HA
+    # creates for it (ADR-0004), and the helper derives its own output unit from
+    # whatever that sensor reports.
+    return _uncountable_unit_error(hass, energy) if energy else None
 
 
 def _wrong_state_class_error(

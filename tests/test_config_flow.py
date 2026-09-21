@@ -85,6 +85,102 @@ def _set_state_class(hass: HomeAssistant, entity_id: str, state_class: str) -> N
     )
 
 
+def _set_unit(hass: HomeAssistant, entity_id: str, unit: str | None) -> None:
+    """Re-publish a house meter reporting in a different unit, or in none."""
+    attributes = {"device_class": "energy", "state_class": "total_increasing"}
+    if unit is not None:
+        attributes["unit_of_measurement"] = unit
+    hass.states.async_set(entity_id, "100", attributes)
+
+
+async def test_a_house_input_in_a_unit_the_engine_cannot_count_is_rejected(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a grid meter reporting megawatt hours. The engine counts in kWh
+    # and Wh; anything else is left uncounted rather than guessed at, so this
+    # would silently contribute nothing to every figure derived from it
+    _register_source_sensors(hass)
+    _set_unit(hass, "sensor.grid_import", "MWh")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When - it is submitted
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+        },
+    )
+
+    # Then - refused here, while somebody is looking at the screen and can pick
+    # another entity. The alternative is a house that quietly accounts for
+    # nothing and a Repair a week later
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_GRID_IMPORT_ENTITY: "unit_not_energy"}
+
+
+async def test_a_watt_hour_house_input_is_accepted_beside_kilowatt_hour_ones(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the shape that cost a household a day (GitHub #27): a grid meter
+    # in Wh beside kWh everywhere else. It is *not* a fault - the engine reads
+    # the unit from every reading and converts (HEA-149) - and refusing it would
+    # teach people to "fix" a working setup by swapping the entity, which
+    # re-baselines the counter and loses accounting for nothing
+    _register_source_sensors(hass)
+    _set_unit(hass, "sensor.grid_import", "Wh")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+        },
+    )
+
+    # Then - accepted
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_a_house_input_that_reports_no_unit_yet_is_accepted(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a sensor that has not said what it counts in. On an explicit
+    # manual pick that is not evidence of anything: a cloud meter reconnecting
+    # publishes no unit for a few seconds, and refusing it here would repeat
+    # HEA-149's mistake of reading a moment's silence as a fact about the sensor
+    _register_source_sensors(hass)
+    _set_unit(hass, "sensor.grid_import", None)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+        },
+    )
+
+    # Then - accepted, exactly as an absent state_class is (ADR-0010 section 2).
+    # A unit that never arrives is caught at runtime instead
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
 async def test_a_net_counter_is_rejected_for_an_input_the_model_reads(
     hass: HomeAssistant,
 ) -> None:

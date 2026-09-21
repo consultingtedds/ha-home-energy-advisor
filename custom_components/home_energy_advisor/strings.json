@@ -51,7 +51,8 @@
       }
     },
     "error": {
-      "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong house-level input makes every device's figure wrong."
+      "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong house-level input makes every device's figure wrong.",
+      "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at, which would leave this input contributing nothing."
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
@@ -143,7 +144,8 @@
       "error": {
         "select_one_sensor": "Choose exactly one: an energy sensor or a power sensor, not both.",
         "energy_not_total_increasing": "This energy sensor must be a total-increasing counter. A net or measurement sensor would be misread as usage and inflate the cost.",
-        "power_not_measurement": "This power sensor must report an instantaneous measurement. A total sensor cannot be integrated into energy correctly."
+        "power_not_measurement": "This power sensor must report an instantaneous measurement. A total sensor cannot be integrated into energy correctly.",
+        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine. Anything else is left uncounted rather than guessed at, which would leave this device sitting at zero."
       }
     }
   },

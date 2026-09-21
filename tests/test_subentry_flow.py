@@ -187,6 +187,73 @@ async def test_adding_a_net_energy_counter_is_rejected(hass: HomeAssistant) -> N
     assert result["errors"] == {"base": "energy_not_total_increasing"}
 
 
+async def test_adding_a_device_in_a_unit_the_engine_cannot_count_is_rejected(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a plug whose counter reports megawatt hours. The engine counts in
+    # kWh and Wh; anything else is left uncounted rather than guessed at, so
+    # this device would sit at zero for ever and its energy would land in
+    # Untracked with nothing saying why
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    hass.states.async_set(
+        "sensor.industrial_meter_energy",
+        "4.2",
+        {
+            "device_class": "energy",
+            "state_class": "total_increasing",
+            "unit_of_measurement": "MWh",
+        },
+    )
+    flow_id = await _start_add(hass, entry)
+
+    # When
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {
+            CONF_NAME: "Industrial Meter",
+            CONF_ENERGY_ENTITY: "sensor.industrial_meter_energy",
+        },
+    )
+
+    # Then - refused while the household is still choosing, rather than
+    # discovered as a device that never costs anything
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {"base": "unit_not_energy"}
+
+
+async def test_adding_a_device_that_counts_in_watt_hours_is_accepted(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a plug in Wh, which is ordinary and correctly converted (HEA-149).
+    # Two households have now lost time believing this was their fault; it is
+    # not, and the flow must not imply it is
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    hass.states.async_set(
+        "sensor.watt_hour_plug_energy",
+        "2750",
+        {
+            "device_class": "energy",
+            "state_class": "total_increasing",
+            "unit_of_measurement": "Wh",
+        },
+    )
+    flow_id = await _start_add(hass, entry)
+
+    # When
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {
+            CONF_NAME: "Watt Hour Plug",
+            CONF_ENERGY_ENTITY: "sensor.watt_hour_plug_energy",
+        },
+    )
+
+    # Then - added without complaint
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
 async def test_adding_an_energy_sensor_reporting_measurement_is_rejected(
     hass: HomeAssistant,
 ) -> None:
