@@ -233,6 +233,14 @@
     "implausible_step": {
       "title": "An energy input jumped by more than any house could use",
       "description": "The counter behind `{entity_id}` leapt by an amount no household can draw, so Home Energy Advisor did not count it as energy. This is what a replaced or rescaled sensor looks like: the new counter starts at a different number, and the difference is not energy anybody used.\n\nNothing needs putting right if you have just swapped that sensor - accounting carries on from the new counter's position.\n\nIf your site really does draw this much, please open an issue: the limit is currently fixed at 100 kW."
+    },
+    "source_unit_unsupported": {
+      "title": "An energy input is counting in a unit that cannot be used",
+      "description": "`{entity_id}` reports its energy in {unit}. Home Energy Advisor counts in kWh and Wh, and converts between them, but it cannot convert {unit} - so rather than guess at what the numbers mean, it is not counting this input at all.\n\nWhile that lasts, this input contributes nothing. If it is a device, that device will read zero and its energy will be included in Untracked instead, so your whole-home total stays right.\n\nChoose a sensor for it that reports in kWh or Wh. Many integrations offer both. If this sensor changed unit on its own after a firmware update, its integration is the place to look."
+    },
+    "source_unit_missing": {
+      "title": "An energy input does not say what unit it is counting in",
+      "description": "`{entity_id}` has been reporting numbers without saying what they measure. Home Energy Advisor will not assume kWh, because assuming wrongly would be out by a factor of a thousand - so it is not counting this input.\n\nWhile that lasts, this input contributes nothing. If it is a device, that device will read zero and its energy will be included in Untracked instead, so your whole-home total stays right.\n\nA sensor briefly has no unit while its integration is starting up, which is normal and is not reported here. This one has stayed that way, so it is worth looking at the integration that provides it, or choosing a different sensor."
     }
   },
   "services": {

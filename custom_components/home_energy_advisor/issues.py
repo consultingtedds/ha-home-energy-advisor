@@ -33,6 +33,13 @@ ISSUE_CYCLE_HELPER_RECREATED = "cycle_helper_recreated"
 ISSUE_UNRECONCILED_ENERGY = "unreconciled_energy"
 ISSUE_IMPLAUSIBLE_SOURCE = "implausible_source"
 ISSUE_IMPLAUSIBLE_STEP = "implausible_step"
+# Two ways an input's unit stops it being counted, kept apart because the
+# remedies differ and so does the timing. A stated unit the engine cannot
+# convert is knowable at once and will never improve on its own; a sensor that
+# reports numbers without saying what they are may simply be reconnecting, so
+# it is given the same grace an unavailable input gets (HEA-156).
+ISSUE_SOURCE_UNIT_UNSUPPORTED = "source_unit_unsupported"
+ISSUE_SOURCE_UNIT_MISSING = "source_unit_missing"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -63,6 +70,16 @@ def implausible_source_issue_id(name: str) -> str:
 def implausible_step_issue_id(entity_id: str) -> str:
     """Stable issue id for an input whose counter leapt and was not counted."""
     return f"{ISSUE_IMPLAUSIBLE_STEP}_{entity_id}"
+
+
+def source_unit_unsupported_issue_id(entity_id: str) -> str:
+    """Stable issue id for an input counting in a unit the engine cannot use."""
+    return f"{ISSUE_SOURCE_UNIT_UNSUPPORTED}_{entity_id}"
+
+
+def source_unit_missing_issue_id(entity_id: str) -> str:
+    """Stable issue id for an input that never says what it is counting in."""
+    return f"{ISSUE_SOURCE_UNIT_MISSING}_{entity_id}"
 
 
 def async_raised_subjects(hass: HomeAssistant, translation_key: str) -> set[str]:

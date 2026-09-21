@@ -417,6 +417,128 @@ async def test_an_input_whose_counter_leaps_is_named_in_repairs(
     )
 
 
+async def test_a_source_counting_in_a_unit_the_engine_cannot_use_is_named(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The half that tells the household (HEA-156).
+
+    Since HEA-149 the engine refuses a reading whose unit it cannot convert,
+    which is safe and silent. A device whose counter reports megawatt hours
+    therefore sits at zero for ever, its energy lands in Untracked, and nothing
+    anywhere says why - the quiet wrongness this project exists to avoid.
+    """
+    # Given - a running home whose device counter then starts reporting MWh.
+    # Setup would refuse this today (HEA-161), but a sensor can change after it
+    # was chosen, and an install predating that check may already carry one
+    await _setup_running_home(hass, freezer)
+    megawatt_hours = {"unit_of_measurement": "MWh", "device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "0.004", megawatt_hours)
+    await hass.async_block_till_done()
+
+    # When - the next interval is finalised
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - named at once. The unit is knowable the moment it is reported and
+    # will never improve on its own, so waiting would be an hour of silence for
+    # nothing
+    assert _has_issue(
+        hass, issues.source_unit_unsupported_issue_id("sensor.coarse_step_energy")
+    )
+
+
+async def test_a_source_that_starts_reporting_a_usable_unit_again_is_forgiven(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a source that reported MWh and was named for it
+    await _setup_running_home(hass, freezer)
+    megawatt_hours = {"unit_of_measurement": "MWh", "device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "0.004", megawatt_hours)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    issue_id = issues.source_unit_unsupported_issue_id("sensor.coarse_step_energy")
+    assert _has_issue(hass, issue_id)
+
+    # When - its integration is fixed and it reports kWh again
+    freezer.move_to(datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "4.0", _ENERGY)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
+
+    # Then - withdrawn. An accusation nobody is still making is noise, and a
+    # household who fixed the thing deserves to see it clear (HEA-146)
+    assert not _has_issue(hass, issue_id)
+
+
+async def test_a_source_reporting_no_unit_is_not_named_straight_away(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a running home whose device sensor republishes with no unit at
+    # all. Every source looks like this for a moment while its integration
+    # reconnects, which is the case HEA-149 exists to tolerate
+    await _setup_running_home(hass, freezer)
+    unitless = {"device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", unitless)
+    await hass.async_block_till_done()
+
+    # When - an interval finalises well inside the grace period
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - nothing said yet. A Repair that fires on every reconnection is a
+    # Repair a household learns to dismiss (HEA-24)
+    assert not _has_issue(
+        hass, issues.source_unit_missing_issue_id("sensor.coarse_step_energy")
+    )
+
+
+async def test_a_source_that_never_says_its_unit_is_named_in_the_end(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - the same sensor, still reporting numbers and still not saying what
+    # they are, long past any reconnection
+    await _setup_running_home(hass, freezer)
+    unitless = {"device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "0.6", unitless)
+    await hass.async_block_till_done()
+    # The first tick to see it is what starts the clock, the same way a removed
+    # entity's grace runs from when it was noticed rather than from when it went
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # When - the grace period passes
+    await _tick(hass, freezer, datetime(2026, 7, 9, 0, 30, tzinfo=UTC))
+
+    # Then - named. Its energy is not being counted and the household's figures
+    # are short by it, which they can only act on if they are told
+    assert _has_issue(
+        hass, issues.source_unit_missing_issue_id("sensor.coarse_step_energy")
+    )
+
+
+async def test_a_sensor_that_is_merely_unavailable_is_never_named_for_its_unit(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a running home whose device sensor goes unavailable and stays
+    # that way. An unavailable state carries no unit, so a naive check would
+    # accuse it of a fault it does not have
+    await _setup_running_home(hass, freezer)
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "unavailable")
+    await hass.async_block_till_done()
+
+    # When - well past the grace period
+    await _tick(hass, freezer, datetime(2026, 7, 9, 0, 30, tzinfo=UTC))
+
+    # Then - not accused of a unit problem. Device unavailability never raises
+    # a Repair at all (HEA-24), and a silent sensor is not a mislabelled one
+    assert not _has_issue(
+        hass, issues.source_unit_missing_issue_id("sensor.coarse_step_energy")
+    )
+    assert not _has_issue(
+        hass, issues.source_unit_unsupported_issue_id("sensor.coarse_step_energy")
+    )
+
+
 async def test_a_device_sensor_going_unavailable_never_raises_a_repair(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

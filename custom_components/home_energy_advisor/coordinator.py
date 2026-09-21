@@ -153,6 +153,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._implausible_sources: set[str] = set()
         # Inputs whose counter leapt, so the Repair is raised once and cleared once.
         self._refused_steps: frozenset[str] = frozenset()
+        # Inputs the engine cannot count because of their unit, and when each
+        # first went unit-less, so a reconnection is not mistaken for a fault.
+        self._unsupported_units: set[str] = set()
+        self._missing_units: set[str] = set()
+        self._unitless_since: dict[str, datetime] = {}
         self._devices = devices
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
@@ -281,6 +286,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_remainder_health()
         self._check_source_plausibility()
         self._check_refused_steps()
+        self._check_source_units(now)
         self.async_set_updated_data(self._accountant.totals())
         self._store.async_schedule_save(
             self._accountant.snapshot, now_func=dt_util.utcnow
@@ -425,6 +431,87 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         for entity in self._refused_steps - refused:
             issues.async_clear(self.hass, issues.implausible_step_issue_id(entity))
         self._refused_steps = refused
+
+    def _check_source_units(self, now: datetime) -> None:
+        """Name, in Repairs, an input whose unit stops it being counted (HEA-156).
+
+        The engine has already refused those readings (HEA-149), which is safe
+        and entirely silent: the device sits at zero for ever, its energy falls
+        into the Untracked remainder, and the household's figures are short by
+        it with nothing anywhere saying why. This is the half that says so.
+
+        Two situations, told apart because their remedies and their timing
+        differ:
+
+        * **A stated unit the engine cannot convert** - megawatt hours, joules.
+          Knowable the moment it is reported and it will never improve on its
+          own, so waiting would be an hour of silence for nothing.
+        * **No unit at all.** Every source looks like this while its integration
+          reconnects, which is precisely the case HEA-149 exists to tolerate, so
+          it gets the same grace an unavailable input gets. A Repair that fires
+          on every reconnection is one a household learns to dismiss (HEA-24).
+
+        An *unavailable* sensor is passed over entirely. It carries no unit
+        either, but silence is not a mislabelled unit, and device unavailability
+        never raises a Repair at all (HEA-24).
+        """
+        unsupported: set[str] = set()
+        missing: set[str] = set()
+        for entity in self._energy_entities:
+            fault = self._unit_fault(entity, now)
+            if fault is issues.ISSUE_SOURCE_UNIT_UNSUPPORTED:
+                unsupported.add(entity)
+            elif fault is issues.ISSUE_SOURCE_UNIT_MISSING:
+                missing.add(entity)
+        self._reconcile_unit_issues(unsupported, missing)
+
+    def _unit_fault(self, entity: str, now: datetime) -> str | None:
+        """Which unit fault this input warrants now, or ``None`` for none.
+
+        Also keeps the unit-less clock: it starts when a reading is first *seen*
+        without one and is dropped the moment the sensor recovers, so a source
+        that flaps in and out never accumulates its way to an accusation.
+        """
+        state = self.hass.states.get(entity)
+        if state is None or state.state in _UNAVAILABLE:
+            self._unitless_since.pop(entity, None)
+            return None
+        if _unit_of(state) is not EnergyUnit.UNKNOWN:
+            self._unitless_since.pop(entity, None)
+            return None
+        if _stated_unit(state):
+            self._unitless_since.pop(entity, None)
+            return issues.ISSUE_SOURCE_UNIT_UNSUPPORTED
+        since = self._unitless_since.setdefault(entity, now)
+        if now - since < _UNAVAILABLE_GRACE:
+            return None
+        return issues.ISSUE_SOURCE_UNIT_MISSING
+
+    def _reconcile_unit_issues(self, unsupported: set[str], missing: set[str]) -> None:
+        """Raise what is newly true and withdraw what no longer is (HEA-146)."""
+        for entity in unsupported - self._unsupported_units:
+            state = self.hass.states.get(entity)
+            issues.async_raise(
+                self.hass,
+                issues.source_unit_unsupported_issue_id(entity),
+                issues.ISSUE_SOURCE_UNIT_UNSUPPORTED,
+                {"entity_id": entity, "unit": _stated_unit(state) if state else ""},
+            )
+        for entity in self._unsupported_units - unsupported:
+            issues.async_clear(
+                self.hass, issues.source_unit_unsupported_issue_id(entity)
+            )
+        for entity in missing - self._missing_units:
+            issues.async_raise(
+                self.hass,
+                issues.source_unit_missing_issue_id(entity),
+                issues.ISSUE_SOURCE_UNIT_MISSING,
+                {"entity_id": entity},
+            )
+        for entity in self._missing_units - missing:
+            issues.async_clear(self.hass, issues.source_unit_missing_issue_id(entity))
+        self._unsupported_units = unsupported
+        self._missing_units = missing
 
     def _check_input_health(self, now: datetime) -> None:
         """Raise or clear the source/price Repairs from each input's health."""
@@ -661,6 +748,18 @@ def _to_decimal(raw: str) -> Decimal | None:
         return Decimal(raw)
     except InvalidOperation, ValueError:
         return None
+
+
+def _stated_unit(state: State) -> str:
+    """The unit the sensor claims, or the empty string if it claims none.
+
+    Distinct from :func:`_unit_of`, which answers what the engine can *count*
+    in. A sensor reporting megawatt hours and one reporting nothing at all are
+    both uncountable, but only the first has said something - and a household
+    can act on being told which unit was refused (HEA-156).
+    """
+    unit = state.attributes.get("unit_of_measurement")
+    return unit.strip() if isinstance(unit, str) else ""
 
 
 def _unit_of(state: State) -> EnergyUnit:

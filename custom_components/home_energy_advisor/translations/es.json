@@ -233,6 +233,14 @@
     "implausible_step": {
       "title": "Una entrada de energía saltó más de lo que cualquier casa puede consumir",
       "description": "El contador de `{entity_id}` saltó una cantidad que ningún hogar puede consumir, así que Home Energy Advisor no la contó como energía. Esto es lo que ocurre cuando se sustituye o reescala un sensor: el nuevo contador empieza en otro número, y la diferencia no es energía que nadie haya usado.\n\nNo hay nada que corregir si acabas de cambiar ese sensor: la contabilidad continúa desde la posición del nuevo contador.\n\nSi tu instalación realmente consume tanto, abre una incidencia: el límite está fijado en 100 kW."
+    },
+    "source_unit_unsupported": {
+      "title": "Una entrada de energía cuenta en una unidad que no se puede usar",
+      "description": "`{entity_id}` informa su energía en {unit}. Home Energy Advisor cuenta en kWh y Wh, y convierte entre ambas, pero no puede convertir {unit}: así que, en lugar de adivinar qué significan esos números, no está contabilizando esta entrada en absoluto.\n\nMientras eso dure, esta entrada no aporta nada. Si es un dispositivo, marcará cero y su energía se incluirá en Sin seguimiento, de modo que el total de tu casa sigue siendo correcto.\n\nElige para ella un sensor que informe en kWh o Wh. Muchas integraciones ofrecen ambos. Si este sensor cambió de unidad por sí solo tras una actualización de firmware, conviene mirar su integración."
+    },
+    "source_unit_missing": {
+      "title": "Una entrada de energía no dice en qué unidad cuenta",
+      "description": "`{entity_id}` lleva tiempo informando números sin decir qué miden. Home Energy Advisor no va a suponer que son kWh, porque suponerlo mal se equivocaría por un factor de mil: así que no está contabilizando esta entrada.\n\nMientras eso dure, esta entrada no aporta nada. Si es un dispositivo, marcará cero y su energía se incluirá en Sin seguimiento, de modo que el total de tu casa sigue siendo correcto.\n\nUn sensor se queda un momento sin unidad mientras su integración arranca, lo cual es normal y no se avisa aquí. Este ha seguido así, de modo que conviene mirar la integración que lo proporciona, o elegir otro sensor."
     }
   },
   "services": {
