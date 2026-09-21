@@ -183,7 +183,6 @@ _CONFIG_DERIVED = frozenset(
         "_retention",
         "_role_of",
         "_strategy",
-        "_units",
         "_windows",
     }
 )

@@ -18,9 +18,18 @@ from custom_components.home_energy_advisor.engine.energy_source import (
 MADRID = ZoneInfo("Europe/Madrid")
 
 
-def reading(at: str, value: str | None, day: str = "2026-07-11") -> Reading:
+def reading(
+    at: str,
+    value: str | None,
+    day: str = "2026-07-11",
+    unit: EnergyUnit = EnergyUnit.KWH,
+) -> Reading:
     moment = datetime.fromisoformat(f"{day}T{at}:00").replace(tzinfo=MADRID)
-    return Reading(at=moment, value=None if value is None else Decimal(value))
+    return Reading(
+        at=moment,
+        value=None if value is None else Decimal(value),
+        unit=unit,
+    )
 
 
 def moment(at: str, day: str = "2026-07-11") -> datetime:
@@ -141,17 +150,138 @@ def test_cumulative_source_repeated_timestamp_is_ignored() -> None:
 
 
 def test_cumulative_source_watt_hour_counter_is_normalised_to_kilowatt_hours() -> None:
-    # Given - a source whose sensor reports in Wh, not kWh
-    source = CumulativeEnergySource(unit=EnergyUnit.WH)
-    source.observe(reading(at="02:14", value="2750"))
+    # Given - a source whose readings say they are in Wh, not kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.WH))
 
     # When - the counter climbs by 250 Wh
-    delta = source.observe(reading(at="02:19", value="3000"))
+    delta = source.observe(reading(at="02:19", value="3000", unit=EnergyUnit.WH))
 
     # Then - the engine speaks only in kWh
     assert delta == EnergyDelta(
         kwh=Decimal("0.250"), start=moment("02:14"), end=moment("02:19")
     )
+
+
+def test_a_reading_whose_unit_is_unknown_reveals_nothing() -> None:
+    # Given - a plug that has not finished reconnecting, so its state carries a
+    # number and no unit at all. GitHub #24: the unit was read once at startup,
+    # a plug that missed that instant defaulted to kWh, and 700 Wh was published
+    # as 700 kWh for the rest of the runtime
+    source = CumulativeEnergySource()
+
+    # When - two readings arrive before the unit does
+    first = source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.UNKNOWN))
+    second = source.observe(reading(at="02:19", value="3000", unit=EnergyUnit.UNKNOWN))
+
+    # Then - nothing is counted. 250 of an unknown unit is not a quantity, and
+    # guessing is how the wrong one gets published
+    assert first is None
+    assert second is None
+
+
+def test_a_unit_that_arrives_late_counts_from_the_reading_that_carried_it() -> None:
+    # Given - the same plug, which then finishes reconnecting
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.UNKNOWN))
+
+    # When - it reports its unit, and the counter climbs by 250 Wh after that
+    source.observe(reading(at="02:19", value="2750", unit=EnergyUnit.WH))
+    delta = source.observe(reading(at="02:24", value="3000", unit=EnergyUnit.WH))
+
+    # Then - counted in the unit the sensor named, exactly as if it had been
+    # there from the start
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.250"), start=moment("02:19"), end=moment("02:24")
+    )
+
+
+def test_a_counter_changing_unit_starts_again_rather_than_booking_the_leap() -> None:
+    # Given - a counter reading 0.5 kWh, whose firmware update switches it to
+    # watt hours: the same half kilowatt hour is now written as 500
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="0.5", unit=EnergyUnit.KWH))
+
+    # When - the first reading in the new unit arrives
+    delta = source.observe(reading(at="02:19", value="500", unit=EnergyUnit.WH))
+
+    # Then - nothing. The baseline is denominated in the unit it was taken in,
+    # so 500 Wh minus 0.5 kWh is not a quantity - and 499.5 of either is energy
+    # nobody used
+    assert delta is None
+
+    # And - the new reading is the baseline, so counting resumes in its unit
+    assert source.observe(reading(at="02:24", value="700", unit=EnergyUnit.WH)) == (
+        EnergyDelta(kwh=Decimal("0.200"), start=moment("02:19"), end=moment("02:24"))
+    )
+
+
+def test_a_unit_change_is_told_apart_from_a_reset_in_the_decision_log() -> None:
+    # Given - a counter that changes unit downwards, which looks exactly like a
+    # cycle reset from the value alone: 500 Wh becomes 0.5 kWh
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="500", unit=EnergyUnit.WH))
+
+    # When
+    source.observe(reading(at="02:19", value="0.5", unit=EnergyUnit.KWH))
+
+    # Then - the log says which it was. Read as a reset, the household would be
+    # billed for half a kilowatt hour of a fresh cycle that never ran; the
+    # diagnostics have to be able to explain the missing figure (HEA-24)
+    assert [decision.reason for decision in source.recent_decisions()] == [
+        DecisionReason.FIRST_READING,
+        DecisionReason.UNIT_CHANGED,
+    ]
+
+
+def test_a_restored_baseline_keeps_the_unit_it_was_taken_in() -> None:
+    # Given - a Wh counter at 2750, persisted across a restart
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.WH))
+    carried = source.persisted_state()
+
+    # When - a new run restores it and the counter climbs by 250 Wh
+    restarted = CumulativeEnergySource()
+    restarted.restore(carried)
+    delta = restarted.observe(reading(at="02:19", value="3000", unit=EnergyUnit.WH))
+
+    # Then - counted as a rise, not as a unit change. A baseline restored
+    # without its unit would be compared against a reading in another one, and
+    # the restart would look like the firmware had changed under it
+    assert delta == EnergyDelta(
+        kwh=Decimal("0.250"), start=moment("02:14"), end=moment("02:19")
+    )
+
+
+def test_a_restored_baseline_with_no_unit_is_not_used_as_one() -> None:
+    # Given - a snapshot from a run that never resolved the source's unit
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.UNKNOWN))
+    carried = source.persisted_state()
+
+    # When - restored, and the counter then reports properly in Wh
+    restarted = CumulativeEnergySource()
+    restarted.restore(carried)
+    delta = restarted.observe(reading(at="02:19", value="3000", unit=EnergyUnit.WH))
+
+    # Then - that reading is the first one this source can use, so it baselines
+    # rather than revealing 3000 of anything
+    assert delta is None
+    assert restarted.snapshot().unit is EnergyUnit.WH
+
+
+def test_a_source_that_has_never_carried_a_unit_says_so_in_its_snapshot() -> None:
+    # Given - a plug whose readings have arrived without a unit throughout
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.UNKNOWN))
+
+    # When
+    snapshot = source.snapshot()
+
+    # Then - the diagnostics say the unit is unknown rather than naming one it
+    # never saw, which is what made this take a household a source dive to find
+    assert snapshot.unit is EnergyUnit.UNKNOWN
+    assert snapshot.recent_decisions[-1].reason is DecisionReason.UNIT_UNKNOWN
 
 
 def test_cumulative_source_daily_counter_reset_at_midnight_spans_the_boundary() -> None:
@@ -300,9 +430,9 @@ def test_cumulative_source_decision_log_keeps_only_the_most_recent_entries() -> 
 
 def test_cumulative_source_snapshot_exposes_last_reading_and_decisions() -> None:
     # Given - a Wh counter seen twice
-    source = CumulativeEnergySource(unit=EnergyUnit.WH)
-    source.observe(reading(at="02:14", value="2750"))
-    source.observe(reading(at="02:19", value="3000"))
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value="2750", unit=EnergyUnit.WH))
+    source.observe(reading(at="02:19", value="3000", unit=EnergyUnit.WH))
 
     # When - a diagnostics snapshot is taken
     snapshot = source.snapshot()
@@ -332,7 +462,7 @@ def quiet(source: CumulativeEnergySource, value: str, first: str, last: str) -> 
     at = datetime.fromisoformat(f"2026-07-11T{first}:00").replace(tzinfo=MADRID)
     end = datetime.fromisoformat(f"2026-07-11T{last}:00").replace(tzinfo=MADRID)
     while at <= end:
-        source.observe(Reading(at=at, value=Decimal(value)))
+        source.observe(Reading(at=at, value=Decimal(value), unit=EnergyUnit.KWH))
         at += timedelta(minutes=1)
 
 
@@ -395,7 +525,7 @@ def test_cumulative_source_reporting_gap_is_never_capped() -> None:
     at = datetime.fromisoformat("2026-07-08T19:01:00").replace(tzinfo=MADRID)
     end = datetime.fromisoformat("2026-07-08T22:00:00").replace(tzinfo=MADRID)
     while at <= end:
-        source.observe(Reading(at=at, value=Decimal("3377.00")))
+        source.observe(Reading(at=at, value=Decimal("3377.00"), unit=EnergyUnit.KWH))
         at += timedelta(minutes=1)
 
     # When - it returns three days later having counted throughout

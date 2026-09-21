@@ -30,6 +30,7 @@ import pytest
 from custom_components.home_energy_advisor.engine.energy_source import (
     CumulativeEnergySource,
     EnergyDelta,
+    EnergyUnit,
     Reading,
 )
 
@@ -69,7 +70,11 @@ def _states(filename: str, entity_id: str) -> list[dict[str, str]]:
 def _reading(state: dict[str, str]) -> Reading:
     raw = state["state"]
     value = None if raw in _UNAVAILABLE else Decimal(raw)
-    return Reading(at=datetime.fromisoformat(state["last_changed"]), value=value)
+    return Reading(
+        at=datetime.fromisoformat(state["last_changed"]),
+        value=value,
+        unit=EnergyUnit.KWH,
+    )
 
 
 def _deltas(filename: str, entity_id: str) -> list[EnergyDelta]:

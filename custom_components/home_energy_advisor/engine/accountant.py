@@ -321,10 +321,8 @@ class Accountant:
         *,
         house_sources: Mapping[SourceRole, str],
         device_energy_entities: Mapping[str, str],
-        units: Mapping[str, EnergyUnit] | None = None,
         windows: AccountingWindows | None = None,
     ) -> None:
-        self._units = dict(units or {})
         self._windows = windows or AccountingWindows()
         self._lateness = self._windows.lateness
         self._retention = self._windows.retention
@@ -371,16 +369,31 @@ class Accountant:
         """Records the import price active from ``at``."""
         self._prices.append((at, price))
 
-    def observe(self, entity_id: str, at: datetime, value: Decimal | None) -> None:
-        """Records a meter reading, spreading its delta into the interval buckets."""
+    def observe(
+        self,
+        entity_id: str,
+        at: datetime,
+        value: Decimal | None,
+        unit: EnergyUnit = EnergyUnit.KWH,
+    ) -> None:
+        """Records a meter reading, spreading its delta into the interval buckets.
+
+        The unit belongs to the reading rather than to the source, so a sensor
+        that was not readable when this accountant was built is still counted in
+        its own unit once it reports, and one that changes unit is not counted
+        across the change (HEA-149).
+
+        It defaults to kWh for a caller whose counters simply are kilowatt hours.
+        The integration layer never relies on that: it reads the unit off each
+        state, and says ``UNKNOWN`` where the state does not carry one - which is
+        a different instruction from this default, and the distinction is the
+        whole of GitHub #24.
+        """
         source = self._sources.get(entity_id)
         if source is None:
-            source = CumulativeEnergySource(
-                unit=self._units.get(entity_id, EnergyUnit.KWH),
-                max_quiet_span=self._max_quiet_span,
-            )
+            source = CumulativeEnergySource(max_quiet_span=self._max_quiet_span)
             self._sources[entity_id] = source
-        delta = source.observe(Reading(at=at, value=value))
+        delta = source.observe(Reading(at=at, value=value, unit=unit))
         role = self._role_of.get(entity_id)
         if role is not None:
             self._note_role_health(role, reporting=value is not None)
@@ -568,10 +581,7 @@ class Accountant:
         for entity, source_data in data["sources"].items():
             if entity not in known:
                 continue
-            source = CumulativeEnergySource(
-                unit=self._units.get(entity, EnergyUnit.KWH),
-                max_quiet_span=self._max_quiet_span,
-            )
+            source = CumulativeEnergySource(max_quiet_span=self._max_quiet_span)
             source.restore(source_data)
             self._sources[entity] = source
 

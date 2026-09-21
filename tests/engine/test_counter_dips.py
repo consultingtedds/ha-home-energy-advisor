@@ -23,6 +23,7 @@ from decimal import Decimal
 
 from custom_components.home_energy_advisor.engine.energy_source import (
     CumulativeEnergySource,
+    EnergyUnit,
     Reading,
 )
 
@@ -36,13 +37,15 @@ def at(minutes: int) -> datetime:
 def a_meter(value: str = "104") -> CumulativeEnergySource:
     """A counter already reading, so the next reading is compared to something."""
     source = CumulativeEnergySource()
-    source.observe(Reading(at=at(0), value=Decimal(value)))
+    source.observe(Reading(at=at(0), value=Decimal(value), unit=EnergyUnit.KWH))
     return source
 
 
 def counted(source: CumulativeEnergySource, minutes: int, value: str) -> Decimal:
     """The energy one reading revealed, or zero where it revealed none."""
-    delta = source.observe(Reading(at=at(minutes), value=Decimal(value)))
+    delta = source.observe(
+        Reading(at=at(minutes), value=Decimal(value), unit=EnergyUnit.KWH)
+    )
     return delta.kwh if delta is not None else Decimal(0)
 
 

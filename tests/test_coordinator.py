@@ -852,6 +852,87 @@ async def test_a_watt_hour_device_is_normalised_to_kwh(
     assert aircon.energy_kwh == Decimal("0.6")
 
 
+async def test_a_device_sensor_that_is_late_back_is_counted_in_its_own_unit(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a cloud-polled plug that has not reconnected when the integration
+    # is set up, so Home Assistant holds no state for it at all and nothing can
+    # be known about what unit it counts in. Ordinary, a few seconds into a
+    # restart, and how GitHub #24 was reported: the source's unit was read once
+    # at construction and a plug that missed that instant was counted in kWh
+    # for the rest of the runtime - 70.7 kWh where the truth was under 1
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the plug comes back, reporting watt hours, and climbs by 600 of them
+    watt_hours = {"unit_of_measurement": "Wh", "device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "0", watt_hours)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "600", watt_hours)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - 0.6 kWh, the same as if it had been there all along. A unit is a
+    # property of each reading, not a snapshot of the instant the integration
+    # happened to start
+    aircon = entry.runtime_data.data.devices[next(iter(entry.subentries))]
+    assert aircon.energy_kwh == Decimal("0.6")
+
+
+async def test_a_counter_that_changes_unit_is_not_booked_across_the_change(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a plug counting kWh, which has been running long enough to have a
+    # baseline
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0.5", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - a firmware update switches the same counter to watt hours, so the
+    # number leaps from 0.5 to 500 while nothing at all was consumed
+    watt_hours = {"unit_of_measurement": "Wh", "device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "500", watt_hours)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - nothing is booked. The baseline is denominated in the unit it was
+    # taken in, so the difference between 0.5 kWh and 500 Wh is not energy: it
+    # is two unrelated numbers, and 499.5 of anything is not what happened
+    aircon = entry.runtime_data.data.devices[next(iter(entry.subentries))]
+    assert aircon.energy_kwh == Decimal(0)
+
+    # And - counting resumes from the new baseline, in the new unit
+    freezer.move_to(datetime(2026, 7, 8, 22, 35, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "2.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "700", watt_hours)
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    aircon = entry.runtime_data.data.devices[next(iter(entry.subentries))]
+    assert aircon.energy_kwh == Decimal("0.2")
+
+
 async def test_the_coordinator_reports_warming_up_until_an_interval_closes(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

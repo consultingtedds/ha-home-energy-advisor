@@ -25,6 +25,7 @@ from decimal import Decimal
 from custom_components.home_energy_advisor.engine.energy_source import (
     CumulativeEnergySource,
     DecisionReason,
+    EnergyUnit,
     Reading,
 )
 
@@ -35,10 +36,15 @@ def at(seconds: int) -> datetime:
     return BASE + timedelta(seconds=seconds)
 
 
+def kwh(when: datetime, value: Decimal | str) -> Reading:
+    """A reading of a plain kilowatt-hour counter, which these all are."""
+    return Reading(at=when, value=Decimal(value), unit=EnergyUnit.KWH)
+
+
 def a_meter() -> CumulativeEnergySource:
     """A counter already reading, so the next reading is weighed rather than first."""
     source = CumulativeEnergySource()
-    source.observe(Reading(at=at(0), value=Decimal(100)))
+    source.observe(kwh(at(0), Decimal(100)))
     return source
 
 
@@ -52,7 +58,7 @@ def test_a_counter_that_leaps_is_not_counted_as_energy() -> None:
     source = a_meter()
 
     # When - the new sensor's first reading arrives thirty seconds later
-    delta = source.observe(Reading(at=at(30), value=Decimal("5436.38")))
+    delta = source.observe(kwh(at(30), "5436.38"))
 
     # Then - nothing is counted. 5,336 kWh in thirty seconds is around 640 MW,
     # which is not a house; booking it puts energy in the lifetime totals that
@@ -64,10 +70,10 @@ def test_a_counter_that_leaps_is_not_counted_as_energy() -> None:
 def test_the_replaced_counter_becomes_the_new_baseline() -> None:
     # Given - a counter that has just leapt, and been refused
     source = a_meter()
-    source.observe(Reading(at=at(30), value=Decimal("5436.38")))
+    source.observe(kwh(at(30), "5436.38"))
 
     # When - the new sensor reports again, having genuinely used 0.2 kWh
-    delta = source.observe(Reading(at=at(330), value=Decimal("5436.58")))
+    delta = source.observe(kwh(at(330), "5436.58"))
 
     # Then - that 0.2 is counted, from the new counter's position. Refusing the
     # step without adopting the value would refuse everything after it too
@@ -81,7 +87,7 @@ def test_a_device_stepping_beyond_any_domestic_load_is_refused() -> None:
     source = a_meter()
 
     # When
-    delta = source.observe(Reading(at=at(60), value=Decimal(104)))
+    delta = source.observe(kwh(at(60), Decimal(104)))
 
     # Then - refused. The existing guard only condemns a device claiming more
     # than the *whole house* over a full hour, which this passes
@@ -95,7 +101,7 @@ def test_a_quiet_meter_telling_the_truth_about_a_quiet_day_is_believed() -> None
 
     # When - it reports a day's worth of an ordinary house: 60 kWh, which is
     # 2.5 kW averaged over the day it covers
-    delta = source.observe(Reading(at=at(86400), value=Decimal(160)))
+    delta = source.observe(kwh(at(86400), Decimal(160)))
 
     # Then - counted in full. Judging the step against a bucket rather than
     # against the span it covers would refuse every coarse meter in the world
@@ -111,7 +117,7 @@ def test_two_readings_a_moment_apart_do_not_imply_a_fortune() -> None:
     # When - the second reading is a tenth of a second later, one step of a
     # 0.01 kWh counter on from the first
     moments_later = BASE + timedelta(milliseconds=100)
-    delta = source.observe(Reading(at=moments_later, value=Decimal("100.01")))
+    delta = source.observe(kwh(moments_later, "100.01"))
 
     # Then - counted. Taken literally that step is 360 kW; the span is floored
     # at a minute precisely so that reporting jitter is not read as a fault
@@ -125,7 +131,7 @@ def test_a_reset_to_an_implausible_value_is_refused_too() -> None:
     source = a_meter()
 
     # When - the replacement reads 150 kWh, thirty seconds on
-    delta = source.observe(Reading(at=at(30), value=Decimal(150)))
+    delta = source.observe(kwh(at(30), Decimal(150)))
 
     # Then - refused as well. A reset books the new value as energy, so a
     # replaced sensor poisons the totals through this path just as readily
@@ -139,7 +145,7 @@ def test_an_ordinary_reset_still_counts_what_followed_it() -> None:
     source = a_meter()
 
     # When - it restarts and reports 0.4 kWh five minutes later
-    delta = source.observe(Reading(at=at(300), value=Decimal("0.4")))
+    delta = source.observe(kwh(at(300), "0.4"))
 
     # Then - the 0.4 is counted. The guard must not turn every legitimate reset
     # into a refusal

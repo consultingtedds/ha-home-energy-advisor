@@ -92,10 +92,18 @@ _DECISION_LOG_SIZE = 20
 
 
 class EnergyUnit(Enum):
-    """The unit a device's counter reports in, normalised to kWh on the way in."""
+    """The unit a device's counter reports in, normalised to kWh on the way in.
+
+    ``UNKNOWN`` is a unit in its own right here, and deliberately not ``None``:
+    "the sensor did not say" is a state a reading is genuinely in - while a
+    plug is reconnecting, or where an integration publishes a unit this engine
+    does not count in - and it has to be as sayable as the other two. Modelling
+    it as an absence is what let it be quietly read as kWh (GitHub #24).
+    """
 
     KWH = "kWh"
     WH = "Wh"
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -105,10 +113,17 @@ class Reading:
     A ``value`` of ``None`` means the source had no reading - Home Assistant's
     ``unavailable`` and ``unknown`` states, mapped by the integration layer so
     that the engine never learns Home Assistant's vocabulary.
+
+    ``unit`` travels with the reading rather than with the source, because it is
+    a property of the number in hand. A sensor that has not reconnected yet
+    publishes no unit, and one whose firmware is updated can start publishing a
+    different one; a source told its unit once, at construction, is wrong in
+    both cases and cannot find out (GitHub #24, HEA-149).
     """
 
     at: datetime
     value: Decimal | None
+    unit: EnergyUnit
 
 
 @dataclass(frozen=True)
@@ -136,6 +151,12 @@ class DecisionReason(Enum):
     real load can do (HEA-60). ``IMPLAUSIBLE_STEP`` is this class's own refusal:
     a reading implying more power than any household draws, which is a counter
     that has been replaced rather than energy anybody used (HEA-137).
+
+    The two unit reasons are what a household reading the diagnostics needs when
+    a figure is missing rather than wrong. ``UNIT_UNKNOWN`` is a reading whose
+    sensor published no unit, so there is no saying what its number means;
+    ``UNIT_CHANGED`` is a counter that has started reporting in a different one,
+    where the baseline and the new reading are no longer comparable (HEA-149).
     """
 
     COUNTED = "counted"
@@ -143,6 +164,8 @@ class DecisionReason(Enum):
     IMPLAUSIBLE_STEP = "implausible_step"
     FIRST_READING = "first_reading"
     UNAVAILABLE = "unavailable"
+    UNIT_UNKNOWN = "unit_unknown"
+    UNIT_CHANGED = "unit_changed"
     STALE = "stale"
     NO_MOVEMENT = "no_movement"
     DROPPED_LATE = "dropped_late"
@@ -165,7 +188,12 @@ class Decision:
 
 @dataclass(frozen=True)
 class SourceSnapshot:
-    """A source's diagnostics state: its unit, last reading, and decision log."""
+    """A source's diagnostics state: its unit, last reading, and decision log.
+
+    ``unit`` is the one its last reading carried, and ``UNKNOWN`` where no
+    reading has carried a usable one yet - which is the difference between a
+    source counting in kWh and a source nobody can count at all.
+    """
 
     unit: EnergyUnit
     last_value: Decimal | None
@@ -183,10 +211,17 @@ class _Drop:
 
 @dataclass(frozen=True)
 class _Observation:
-    """A reading known to carry a value - the only kind worth remembering."""
+    """A reading known to carry a value and a unit - the only kind worth keeping.
+
+    The unit is held with the value because the two only mean anything together:
+    a baseline of 0.5 is half a kilowatt hour or half a watt hour depending on
+    it, and the next reading can only be subtracted from it if both are counted
+    in the same one.
+    """
 
     at: datetime
     value: Decimal
+    unit: EnergyUnit
 
 
 class CumulativeEnergySource:
@@ -200,11 +235,9 @@ class CumulativeEnergySource:
 
     def __init__(
         self,
-        unit: EnergyUnit = EnergyUnit.KWH,
         *,
         max_quiet_span: timedelta = MAX_QUIET_SPAN,
     ) -> None:
-        self._unit = unit
         self._last: _Observation | None = None
         # Where the counter stood before it fell past the floor, and what the
         # fall was credited with, until the next reading says whether it
@@ -219,17 +252,17 @@ class CumulativeEnergySource:
 
         Returns ``None`` when the reading yields no energy to account for: the
         first reading of a counter (its history is unknowable), an unavailable
-        source, a reading that is stale or contemporaneous with the last one, or
-        a counter that simply has not moved. Every reading leaves one entry in
-        the decision log (HEA-24), whether or not it produced energy.
+        source, a reading whose unit is unknown or has changed, a reading that is
+        stale or contemporaneous with the last one, or a counter that simply has
+        not moved. Every reading leaves one entry in the decision log (HEA-24),
+        whether or not it produced energy.
 
         Raises:
             ValueError: if the counter reports a negative value, which a
                 ``total_increasing`` energy counter cannot legitimately do.
         """
-        current = self._observation(reading)
+        current = self._countable(reading)
         if current is None:
-            self._log(reading.at, DecisionReason.UNAVAILABLE, None)
             return None
         previous = self._last
         if (
@@ -250,7 +283,7 @@ class CumulativeEnergySource:
             # stood at is kept, so that if the counter comes back above it the
             # reading turns out to have been a blink (HEA-139).
             self._before_drop = _Drop(before=previous, credited=current.value)
-        kwh = self._to_kwh(self._revealed(previous, current, held))
+        kwh = self._to_kwh(self._revealed(previous, current, held), current.unit)
         accrued_from = self._accrual_start(self._anchor(previous, current, held))
         if current.value != previous.value:
             self._moved_at = current.at
@@ -265,6 +298,46 @@ class CumulativeEnergySource:
         reason = DecisionReason.RESET if is_reset else DecisionReason.COUNTED
         self._log(current.at, reason, kwh)
         return EnergyDelta(kwh=kwh, start=accrued_from, end=current.at)
+
+    def _countable(self, reading: Reading) -> _Observation | None:
+        """The reading as something to count from, or ``None`` with the reason logged.
+
+        Three ways a reading is not that, all of them about whether its number
+        means anything rather than about what it reveals:
+
+        * the source had no reading at all - ``unavailable`` or ``unknown``;
+        * its unit is unknown, so the number is of unknown size. Nothing is
+          remembered from it either: taking it as the baseline would silently
+          discard whatever the counter climbs before the unit turns up, the same
+          reasoning that has an unavailable span spanned rather than skipped;
+        * its unit differs from the baseline's, which is neither a reset nor a
+          step. 0.5 kWh followed by 500 Wh is one quantity renamed, and their
+          difference is not a quantity at all - so the new reading becomes the
+          baseline in its own unit and counting resumes from there (HEA-149).
+        """
+        position = self._position(reading)
+        if position is None:
+            self._log(reading.at, DecisionReason.UNAVAILABLE, None)
+            return None
+        if reading.unit is EnergyUnit.UNKNOWN:
+            self._log(reading.at, DecisionReason.UNIT_UNKNOWN, None)
+            return None
+        current = _Observation(at=reading.at, value=position, unit=reading.unit)
+        if self._last is not None and self._last.unit is not current.unit:
+            self._rebaseline(current)
+            self._log(current.at, DecisionReason.UNIT_CHANGED, None)
+            return None
+        return current
+
+    def _rebaseline(self, current: _Observation) -> None:
+        """Start again from this reading, keeping none of the old position.
+
+        A held drop goes with it: what the counter stood at before it fell is a
+        figure in the unit it has stopped counting in.
+        """
+        self._last = current
+        self._before_drop = None
+        self._moved_at = current.at
 
     def _gate(self, previous: _Observation | None, current: _Observation) -> None:
         """Record a reading that reveals no energy, and why.
@@ -282,7 +355,11 @@ class CumulativeEnergySource:
         if current.at <= previous.at:
             self._log(current.at, DecisionReason.STALE, None)
             return
-        self._last = _Observation(at=current.at, value=previous.value)
+        # The value it really reached, carried forward at the new reading's
+        # time - and in the unit the reading that reached it was counted in.
+        self._last = _Observation(
+            at=current.at, value=previous.value, unit=previous.unit
+        )
         self._log(current.at, DecisionReason.NO_MOVEMENT, None)
 
     def _anchor(
@@ -322,10 +399,14 @@ class CumulativeEnergySource:
         The decision log is excluded: it is the diagnostics ring, and restoring
         it would present readings this run never saw.
 
+        The unit is the baseline's own, and has to come back with it: a position
+        restored without one would be subtracted from whatever the next reading
+        happens to be counted in (HEA-149).
+
         Distinct from :meth:`snapshot`, which builds the diagnostics view.
         """
         return {
-            "unit": self._unit.value,
+            "unit": None if self._last is None else self._last.unit.value,
             "last": None
             if self._last is None
             else {"at": self._last.at.isoformat(), "value": str(self._last.value)},
@@ -333,13 +414,22 @@ class CumulativeEnergySource:
         }
 
     def restore(self, data: Mapping[str, Any]) -> None:
-        """Reinstates state captured by :meth:`persisted_state`."""
+        """Reinstates state captured by :meth:`persisted_state`.
+
+        A snapshot written before the unit travelled with the reading carries the
+        unit the source was constructed with, which is the one its baseline was
+        taken in - so it restores the same way. One with no unit at all has no
+        usable baseline either, and starts again.
+        """
         last = data["last"]
+        unit = data.get("unit")
         self._last = (
             None
-            if last is None
+            if last is None or unit is None
             else _Observation(
-                at=datetime.fromisoformat(last["at"]), value=Decimal(last["value"])
+                at=datetime.fromisoformat(last["at"]),
+                value=Decimal(last["value"]),
+                unit=EnergyUnit(unit),
             )
         )
         moved_at = data["moved_at"]
@@ -395,7 +485,7 @@ class CumulativeEnergySource:
     def snapshot(self) -> SourceSnapshot:
         """The source's current diagnostics state (HEA-24)."""
         return SourceSnapshot(
-            unit=self._unit,
+            unit=self._last.unit if self._last else EnergyUnit.UNKNOWN,
             last_value=self._last.value if self._last else None,
             last_at=self._last.at if self._last else None,
             recent_decisions=self.recent_decisions(),
@@ -404,13 +494,18 @@ class CumulativeEnergySource:
     def _log(self, at: datetime, reason: DecisionReason, kwh: Decimal | None) -> None:
         self._decisions.append(Decision(at=at, reason=reason, kwh=kwh))
 
-    def _observation(self, reading: Reading) -> _Observation | None:
+    def _position(self, reading: Reading) -> Decimal | None:
+        """Where the counter stands, or ``None`` where the source had nothing.
+
+        Validated before the unit is considered, so a counter reporting a
+        negative value is refused whether or not its unit can be read.
+        """
         if reading.value is None:
             return None
         if reading.value < 0:
             msg = f"energy counter reported a negative value: {reading.value}"
             raise ValueError(msg)
-        return _Observation(at=reading.at, value=reading.value)
+        return reading.value
 
     def _is_a_dip(self, previous: _Observation, current: _Observation) -> bool:
         """Whether a fall is small enough to be the same counter, wobbling."""
@@ -447,7 +542,7 @@ class CumulativeEnergySource:
             return current.value
         return current.value - previous.value
 
-    def _to_kwh(self, value: Decimal) -> Decimal:
-        if self._unit is EnergyUnit.WH:
+    def _to_kwh(self, value: Decimal, unit: EnergyUnit) -> Decimal:
+        if unit is EnergyUnit.WH:
             return value / _WH_PER_KWH
         return value

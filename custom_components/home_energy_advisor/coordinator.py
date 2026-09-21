@@ -164,7 +164,6 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         return Accountant(
             house_sources=self._house_sources,
             device_energy_entities=self._devices,
-            units=self._read_units(),
         )
 
     @property
@@ -521,7 +520,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # ``last_reported`` (every write), not ``last_updated`` (only on change), so
         # an unchanged re-report still advances the source's last-seen time and
         # shrinks the next delta's span (HEA-48). They coincide on a real change.
-        self._accountant.observe(entity_id, state.last_reported, value)
+        self._accountant.observe(entity_id, state.last_reported, value, _unit_of(state))
 
     def _feed_price(self, state: State | None) -> None:
         if state is None or state.state in _UNAVAILABLE:
@@ -529,15 +528,6 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         price = _to_decimal(state.state)
         if price is not None:
             self._accountant.record_price(state.last_updated, price)
-
-    def _read_units(self) -> dict[str, EnergyUnit]:
-        units: dict[str, EnergyUnit] = {}
-        for entity_id in self._energy_entities:
-            state = self.hass.states.get(entity_id)
-            unit = state and state.attributes.get("unit_of_measurement", "")
-            if isinstance(unit, str) and unit.lower() == "wh":
-                units[entity_id] = EnergyUnit.WH
-        return units
 
     def is_warming_up(self) -> bool:
         """Whether the engine is counting but has not yet closed an interval.
@@ -671,6 +661,32 @@ def _to_decimal(raw: str) -> Decimal | None:
         return Decimal(raw)
     except InvalidOperation, ValueError:
         return None
+
+
+def _unit_of(state: State) -> EnergyUnit:
+    """What this reading counts in, or ``UNKNOWN`` where the state cannot say.
+
+    Read from every state rather than once at startup. A sensor that has not
+    reconnected yet carries no unit at all, and a counter whose firmware changed
+    carries a different one from the day before - a source told its unit once
+    is wrong in both cases and has no way of finding out (GitHub #24, HEA-149).
+
+    Anything other than the two units the engine counts in reads as unknown, so
+    a source reporting megawatt hours is left uncounted rather than counted as a
+    thousandth of itself. Both are silent; only one of them is wrong.
+    """
+    unit = state.attributes.get("unit_of_measurement")
+    if not isinstance(unit, str):
+        return EnergyUnit.UNKNOWN
+    return _ENERGY_UNITS.get(unit.strip().lower(), EnergyUnit.UNKNOWN)
+
+
+# Keyed on the lowered unit, because a household's integration may write "WH",
+# "Wh" or "wh" and all three are the same unit.
+_ENERGY_UNITS = {
+    "wh": EnergyUnit.WH,
+    "kwh": EnergyUnit.KWH,
+}
 
 
 def _stringify(value: Decimal | None) -> str | None:
