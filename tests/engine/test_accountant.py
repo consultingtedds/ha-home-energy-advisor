@@ -229,6 +229,74 @@ def test_charge_split_attributes_charging_to_grid_up_to_what_was_imported() -> N
     assert aircon.actual_cost == Decimal("0.10")
 
 
+def test_residual_model_battery_export_is_not_booked_as_consumption() -> None:
+    # Given - a residual-model home (house consumption metered directly), whose
+    # battery discharges straight out to the grid with no generation and low
+    # load: the export leaves no room to also book the discharge as consumption
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={},
+    )
+    acc.record_price(at(0), PEAK)
+    for entity in (
+        "sensor.grid_import",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the battery discharges 4 kWh, but the house's own meter says only
+    # 1 kWh was actually consumed - the rest passed straight through to export
+    acc.observe("sensor.battery_discharge", at(5), Decimal("4.0"))
+    acc.observe("sensor.house_load", at(5), Decimal("1.0"))
+    acc.finalize(at(40))
+
+    # Then - only the house's own residual need is booked, not the full
+    # physical discharge
+    assert acc.totals().whole_home.energy_kwh == Decimal("1.0")
+
+
+def test_residual_model_battery_export_is_not_priced_as_untracked_cost() -> None:
+    # Given - the same shape, but pricing it too: a battery charged from the
+    # grid at peak, then discharged straight through to export with no house
+    # load to book it against
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.BATTERY_CHARGE: "sensor.battery_charge",
+            SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={},
+    )
+    acc.record_price(at(0), Decimal("0.10"))
+    for entity in (
+        "sensor.grid_import",
+        "sensor.battery_charge",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe("sensor.grid_import", at(5), Decimal("4.0"))
+    acc.observe("sensor.battery_charge", at(5), Decimal("4.0"))
+    acc.observe("sensor.house_load", at(5), Decimal(0))
+    acc.record_price(at(5), PEAK)
+    acc.observe("sensor.battery_discharge", at(10), Decimal("4.0"))
+    acc.observe("sensor.house_load", at(10), Decimal(0))
+    acc.finalize(at(40))
+
+    # Then - nothing is booked and nothing is costed to Untracked: the ledger
+    # still falls by the physical discharge (so it cannot be double-spent
+    # later), but the house owes nothing for energy it never used
+    result = acc.totals()
+    assert result.whole_home.energy_kwh == Decimal(0)
+    assert result.untracked.actual_cost == Decimal(0)
+
+
 def test_buckets_are_not_finalised_until_past_the_lateness_margin() -> None:
     # Given - an interval's readings are in
     acc = Accountant(
