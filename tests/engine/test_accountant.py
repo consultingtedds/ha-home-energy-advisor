@@ -242,7 +242,11 @@ def test_residual_model_battery_export_is_not_booked_as_consumption() -> None:
         device_energy_entities={},
     )
     acc.record_price(at(0), PEAK)
-    for entity in ("sensor.grid_import", "sensor.battery_discharge", "sensor.house_load"):
+    for entity in (
+        "sensor.grid_import",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+    ):
         acc.observe(entity, at(0), Decimal(0))
 
     # When - the battery discharges 4 kWh, but the house's own meter says only
