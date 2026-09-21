@@ -67,7 +67,17 @@ class IntervalBucket:
     device_draws: Mapping[str, Decimal]
 
 
-def _bucket_start(moment: datetime) -> datetime:
+def bucket_start(moment: datetime) -> datetime:
+    """The start of the aligned interval a moment falls in.
+
+    Aligned to a fixed epoch rather than to the caller's clock, so every source
+    and every device land on the same grid however their readings are timed -
+    which is what lets one interval's draws be compared with each other at all.
+
+    Public because the accountant asks the same question of a span it did not
+    create, weighing a delta against what the house was metered over the buckets
+    it covers (HEA-157).
+    """
     index = (moment.astimezone(UTC) - _EPOCH) // BUCKET
     return _EPOCH + index * BUCKET
 
@@ -89,7 +99,7 @@ def spread_energy(delta: EnergyDelta) -> list[BucketPortion]:
     widest_index = 0
     widest_overlap = -1
 
-    start = _bucket_start(delta.start)
+    start = bucket_start(delta.start)
     while start < delta.end:
         end = start + BUCKET
         overlap = _micros(min(end, delta.end) - max(start, delta.start))

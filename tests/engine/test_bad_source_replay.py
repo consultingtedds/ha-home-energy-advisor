@@ -105,11 +105,16 @@ def test_the_runaway_counter_is_caught_and_its_energy_refused() -> None:
     booked = accountant.totals().devices["utility_plug"].energy_kwh
     assert booked < claimed / 20, f"booked {booked} of a claimed {claimed}"
 
-    # And - the refusal is on the record rather than a silent gap
+    # And - the refusal is on the record rather than a silent gap. Either reason
+    # satisfies that: a counter inflated this far is refused per delta for
+    # claiming more than the house was served (HEA-157) before the window
+    # verdict that condemns the device as a whole (HEA-60) has the evidence to
+    # arrive. The guards sit one layer apart and this source trips both
+    refusals = {DecisionReason.IMPLAUSIBLE, DecisionReason.BEYOND_THE_HOUSE}
     decisions = accountant.source_diagnostics()[
         "sensor.utility_plug_energy"
     ].recent_decisions
-    assert any(d.reason is DecisionReason.IMPLAUSIBLE for d in decisions)
+    assert any(d.reason in refusals for d in decisions)
 
 
 def test_the_same_plugs_honest_counter_is_left_alone() -> None:

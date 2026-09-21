@@ -57,7 +57,13 @@ from .energy_source import (
     Reading,
 )
 from .house_balance import HouseBalance, HouseReadings, Served
-from .interval_ledger import BUCKET, IntervalBucket, SourceKind, spread_energy
+from .interval_ledger import (
+    BUCKET,
+    IntervalBucket,
+    SourceKind,
+    bucket_start,
+    spread_energy,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -786,6 +792,16 @@ class Accountant:
     def _spread_device(
         self, device: str, delta: EnergyDelta, source: CumulativeEnergySource
     ) -> None:
+        if not self._within_the_house(delta):
+            # Refused, but still *claimed*. What the source said is evidence
+            # whether or not it was booked, and `_judge` is what turns a run of
+            # these into a Repair that names the device (HEA-60). Dropping the
+            # claim here would make a counter that lies steadily silently
+            # uncounted instead of reported - the failure this guard exists to
+            # prevent, reintroduced one layer down.
+            self._claim(device, delta.kwh)
+            source.note_beyond_the_house(delta.end, delta.kwh)
+            return
         portions = spread_energy(delta)
         # The whole delta is one question - "where in this span did the energy
         # happen" - so it is bounded as a whole, over every slice it touched,
@@ -805,6 +821,67 @@ class Accountant:
                 self._correct(device, retained, portion.kwh, portion.start)
             else:
                 source.note_dropped_late(portion.start, portion.kwh)
+
+    def _within_the_house(self, delta: EnergyDelta) -> bool:
+        """Whether one delta claims less energy than the house was served.
+
+        A device cannot draw more than the whole house, which is ADR-0002's
+        invariant - but `_judge` can only apply it to a device's *total* across a
+        full window, so a single enormous delta lands long before that verdict
+        arrives. That is how a rescaled counter's reset credit booked 119 kWh to
+        a water heater (HEA-157).
+
+        The span is floored at one plausibility window, and that floor is the
+        whole design rather than a detail. A coarse counter's step legitimately
+        exceeds what the house was metered in the seconds it was reported over -
+        the spreading approximation ADR-0006 is built on - so judged over its own
+        span every ordinary reading would be refused. Over an hour the artefact
+        cancels; a rescale does not. It is the same reasoning, and the same
+        constant, as `_PLAUSIBILITY_WINDOW`.
+
+        Measured over the span rather than extrapolated from a rate: an EV
+        charger quiet while the house drew heavily, then honest about all of it
+        at once, would be refused if it were judged against an idle hour. The
+        house meter saw the same span the device did, so it is asked about that
+        span.
+
+        Three ways it declines to judge, each erring towards booking:
+        before the window has filled, because a fresh start condemns nothing on
+        one interval's evidence; where the house metered nothing, because a
+        silent meter is its own fault and no evidence against a device; and
+        where the span reaches past what is still retained, because a source
+        silent for three days really did meter those three days and there is
+        nothing left to compare it with. In that last case `CREDIBLE_POWER_KW`
+        stands alone, which is the case it was written for.
+        """
+        if len(self._window) < _PLAUSIBILITY_WINDOW:
+            return True
+        served = self._served_between(delta.start, delta.end)
+        return served is None or delta.kwh <= served
+
+    def _served_between(self, start: datetime, end: datetime) -> Decimal | None:
+        """What the house was metered as consuming over a span, or ``None``.
+
+        ``None`` where the question cannot be answered: a bucket the span covers
+        that is no longer retained, or a house that metered nothing at all.
+
+        The span is widened to a full window before it is measured, never
+        narrowed - a delta covering three hours is judged over its own three
+        hours, and one covering twenty seconds over the hour ending when it did.
+        """
+        first = bucket_start(min(start, end - _PLAUSIBILITY_WINDOW * BUCKET))
+        served = Decimal(0)
+        moment = first
+        last = bucket_start(end)
+        while moment <= last:
+            bucket = self._retained.get(moment)
+            if bucket is None:
+                # Either older than retention, or not yet finalised. Neither is
+                # evidence, and neither may be read as the house using nothing.
+                return None if moment < (self._watermark or moment) else served
+            served += bucket.consumption
+            moment += BUCKET
+        return served or None
 
     def _is_finalised(self, start: datetime) -> bool:
         return self._watermark is not None and start <= self._watermark

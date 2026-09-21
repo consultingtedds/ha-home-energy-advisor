@@ -151,6 +151,12 @@ class DecisionReason(Enum):
     real load can do (HEA-60). ``IMPLAUSIBLE_STEP`` is this class's own refusal:
     a reading implying more power than any household draws, which is a counter
     that has been replaced rather than energy anybody used (HEA-137).
+    ``BEYOND_THE_HOUSE`` is its near neighbour and deliberately distinct: *one*
+    delta claiming more energy than the house was metered as consuming over the
+    span it covers, which is what a rescaled counter's reset credit looks like
+    (HEA-157). A device over-claiming for an hour and a single reading that
+    cannot be true have different remedies, so the log does not call them the
+    same thing.
 
     The two unit reasons are what a household reading the diagnostics needs when
     a figure is missing rather than wrong. ``UNIT_UNKNOWN`` is a reading whose
@@ -171,6 +177,7 @@ class DecisionReason(Enum):
     DROPPED_LATE = "dropped_late"
     ZERO_PRICED = "zero_priced"
     IMPLAUSIBLE = "implausible"
+    BEYOND_THE_HOUSE = "beyond_the_house"
 
 
 @dataclass(frozen=True)
@@ -468,6 +475,18 @@ class CumulativeEnergySource:
         download can explain a device whose figures have stopped moving (HEA-60).
         """
         self._log(at, DecisionReason.IMPLAUSIBLE, kwh)
+
+    def note_beyond_the_house(self, at: datetime, kwh: Decimal) -> None:
+        """Record one delta refused for claiming more than the house was served.
+
+        Also the accountant's judgement, and for the same reason - only it holds
+        the house meter. Distinct from :meth:`note_implausible` because it says
+        something narrower: not that this source has been lying, but that this
+        *one* reading cannot be true. It is what a counter looks like the moment
+        its scale changes, and it is followed by ordinary readings rather than by
+        more of the same (HEA-157).
+        """
+        self._log(at, DecisionReason.BEYOND_THE_HOUSE, kwh)
 
     def note_zero_priced(self, at: datetime) -> None:
         """Record that a bucket finalised before any import price was known (HEA-53).
