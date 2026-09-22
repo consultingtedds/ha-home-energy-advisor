@@ -56,10 +56,17 @@ class BatteryLedger:
         return self._stored_cost / self._stored_kwh
 
     def charge_from_grid(self, kwh: Decimal, price_per_kwh: Decimal) -> None:
-        """Adds grid-charged energy at the import price of the moment."""
-        if price_per_kwh < 0:
-            msg = f"import price cannot be negative: {price_per_kwh}"
-            raise ValueError(msg)
+        """Adds grid-charged energy at the import price of the moment.
+
+        The price may be **negative**, and that is not an error to guard: on a
+        wholesale tariff a negative spot price is an ordinary market state, and
+        a household whose automation charges the battery because the price went
+        below zero was paid to store that energy. Carrying the sign is what the
+        rest of the engine already does - a negative price reaches
+        ``SourceKind.IMPORT`` unaltered for energy served straight to the house -
+        and it is what the reconciliation invariant requires, since what is
+        allocated must equal the real grid bill, which was negative (HEA-165).
+        """
         self._charge(kwh, kwh * price_per_kwh)
 
     def charge_from_generation(self, kwh: Decimal) -> None:

@@ -187,6 +187,60 @@ def test_battery_discharge_is_priced_at_its_stored_cost() -> None:
     assert _total_actual(result) == Decimal("0.20")
 
 
+def test_battery_charged_at_a_negative_price_discharges_as_a_credit() -> None:
+    # Given - a household on a wholesale tariff (Amber, Nordpool, Agile) whose
+    # spot price has gone negative at midday, and an automation that charges the
+    # battery from the grid exactly because it has. They are *paid* to import
+    acto = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.BATTERY_CHARGE: "sensor.battery_charge",
+            SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={"coarse_step_aircon": "sensor.coarse_step_energy"},
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
+    )
+    acto.record_price(at(0), Decimal("-0.08"))
+    for entity in (
+        "sensor.grid_import",
+        "sensor.battery_charge",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+        "sensor.coarse_step_energy",
+    ):
+        acto.observe(entity, at(0), Decimal(0))
+
+    # When - 2 kWh imported straight into the battery while the price is below
+    # zero, then discharged to the device that evening at peak
+    acto.observe("sensor.grid_import", at(5), Decimal("2.0"))
+    acto.observe("sensor.battery_charge", at(5), Decimal("2.0"))
+    acto.observe("sensor.battery_discharge", at(5), Decimal(0))
+    acto.observe("sensor.house_load", at(5), Decimal(0))
+    acto.observe("sensor.coarse_step_energy", at(5), Decimal(0))
+    acto.record_price(at(5), PEAK)
+    acto.observe("sensor.grid_import", at(10), Decimal("2.0"))
+    acto.observe("sensor.battery_discharge", at(10), Decimal("2.0"))
+    acto.observe("sensor.house_load", at(10), Decimal("2.0"))
+    acto.observe("sensor.coarse_step_energy", at(10), Decimal("2.0"))
+    acto.finalize(at(40))
+
+    # Then - the stored energy cost less than nothing, and the device carries
+    # that. Clamping the price at zero here would say the energy was free when
+    # the household was paid for it, and would break the invariant asserted
+    # below, since what is allocated has to equal a grid bill that was itself
+    # below zero. HEA-165 decided which invariant yields; ADR-0002 records it
+    result = acto.totals()
+    aircon = result.devices["coarse_step_aircon"]
+    assert aircon.energy_kwh == Decimal("2.0")
+    assert aircon.actual_cost == Decimal("-0.16")
+    # Naive still values it at the peak they avoided, so the saving is larger
+    # than the bill they would have paid - which is the truth on this tariff
+    assert aircon.naive_cost == Decimal("0.60")
+    assert aircon.cost_savings == Decimal("0.76")
+    assert _total_actual(result) == Decimal("-0.16")
+
+
 def test_charge_split_attributes_charging_to_grid_up_to_what_was_imported() -> None:
     # Given - a solar+battery home on the residual model
     acc = Accountant(

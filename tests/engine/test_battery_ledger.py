@@ -9,6 +9,9 @@ from custom_components.home_energy_advisor.engine.battery_ledger import BatteryL
 # Predbat charges the an inverter battery cheaply overnight and discharges at peak.
 OVERNIGHT = Decimal("0.093")
 PEAK = Decimal("0.234")
+# A wholesale spot price below zero - routine on Amber, Nordpool and Agile, where
+# a household is paid to consume and automates charging to take advantage of it.
+NEGATIVE_SPOT = Decimal("-0.08")
 
 
 def test_battery_grid_charge_is_returned_at_the_price_it_was_bought() -> None:
@@ -153,13 +156,47 @@ def test_battery_rejects_a_negative_charge() -> None:
         ledger.charge_from_grid(Decimal(-1), OVERNIGHT)
 
 
-def test_battery_rejects_a_negative_price() -> None:
-    # Given - a ledger
+def test_battery_charged_at_a_negative_price_discharges_as_a_credit() -> None:
+    # Given - 5 kWh charged from the grid while the spot price was below zero.
+    # On a wholesale tariff this is ordinary, not nonsense: the household was
+    # paid to take the energy, which is why their automation took it
     ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(5), NEGATIVE_SPOT)
 
-    # When / Then - a negative import price cannot price a charge
-    with pytest.raises(ValueError, match="negative"):
-        ledger.charge_from_grid(Decimal(1), Decimal("-0.05"))
+    # When - it is discharged later
+    cost = ledger.discharge(Decimal(5))
+
+    # Then - the credit is carried to where the energy is used, exactly as a
+    # cost would be. Refusing the price, or flooring it at zero, would say the
+    # energy was free when it was better than free (HEA-165)
+    assert cost == Decimal("-0.40")
+
+
+def test_battery_blends_a_paid_charge_with_a_credited_one() -> None:
+    # Given - a battery topped up at a normal overnight rate and again while the
+    # price was negative, which is a single day on a wholesale tariff
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(5), OVERNIGHT)
+    ledger.charge_from_grid(Decimal(5), NEGATIVE_SPOT)
+
+    # When / Then - the blend is the weighted average of the two, so the credit
+    # offsets the cost rather than being discarded: (0.465 - 0.40) / 10
+    assert ledger.unit_cost == Decimal("0.0065")
+
+
+def test_battery_credit_can_take_the_blend_below_zero() -> None:
+    # Given - more energy taken at a negative price than at a positive one
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(1), OVERNIGHT)
+    ledger.charge_from_grid(Decimal(9), NEGATIVE_SPOT)
+
+    # When - a partial discharge draws on that blend
+    cost = ledger.discharge(Decimal(2))
+
+    # Then - it is a credit, and the ledger says so rather than flooring at zero.
+    # (0.093 - 0.72) / 10 = -0.0627 per kWh
+    assert ledger.unit_cost == Decimal("-0.0627")
+    assert cost == Decimal("-0.1254")
 
 
 def test_battery_rejects_a_negative_discharge() -> None:
