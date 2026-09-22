@@ -203,3 +203,47 @@ the window, about an hour, and its energy falls to Untracked in the meantime. Th
 house total stays right; what is lost is knowing which device spent it. That is
 the correct trade, because the household is **told** - which is the whole of the
 consequence this ADR already states.
+
+## Update, 2026-09-22: the class is a permission, not a description
+
+One exception to the `state_class` rule above, and it is worth recording because
+the way it was found says more than the fix does.
+
+**Home Assistant's Riemann sum helper declares `total`, unconditionally.**
+`IntegrationSensor._attr_state_class` is set on the class, so no configuration
+produces a `total_increasing` one. Sections 1 and 2 required exactly
+`total_increasing` of an energy source, so every integral helper in Home
+Assistant was refused - as a house-level input and as a device source alike.
+
+That is the sensor a household builds to turn watts into energy, and it is **the
+helper this integration creates for itself** on every power-only device
+(ADR-0004). The coordinator reads its output directly, so the engine has been
+accounting from a `total` Riemann sum since HEA-34 while the flow told households
+the same sensor would be "misread". The rule was not protecting anything there;
+it was refusing our own work.
+
+The exception is drawn on the helper's **domain**, not on its class: an entity
+published by an `integration`-domain config entry may declare `total`, and
+nothing else may. A net meter is still refused, because no helper of that kind
+publishes one. `discovery.py` already walked config entries to find what a helper
+derives from, so the fact was to hand; what was missing was asking for it.
+
+### The part worth keeping
+
+The test that should have caught this **existed and was green**. This ADR's own
+Consequences section demands it - *"a legitimate appliance whose source is itself
+a helper, e.g. a Riemann integral over a plug's power sensor"* - and
+`test_discovery_offers_an_integral_the_user_built_over_a_plug` asserted exactly
+that. Its fixture gave the integral the class its `device_class` made eligible,
+which Home Assistant never does. The fixture was written from the same belief as
+the code, so it could only ever agree with it.
+
+Changing that one fixture to say what Home Assistant says turned the test red
+with no change to the production code at all. A fixture that cannot disagree with
+the implementation is not evidence, and a structural check is only as good as the
+structure the tests claim the platform has.
+
+It reached a household before it reached us
+([discussion 18](https://github.com/consultingtedds/ha-home-energy-advisor/discussions/18)),
+who concluded the problem was his units, answered his own question wrongly, and
+closed it - so the record said the rule worked (HEA-162).
