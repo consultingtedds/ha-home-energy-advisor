@@ -33,7 +33,7 @@ reference, not as target outputs.
 | Remainder bucket | House consumption minus tracked devices = an "Untracked" pseudo-device with the same cost sensors | Answers "which devices drive my bill" honestly (shows the unexplained share) and doubles as a live reconciliation check |
 | Build on native foundations | Prefer existing HA machinery over reimplementation: config flow pre-fills from **Energy Dashboard preferences**; daily/weekly/monthly/quarterly/yearly totals via **auto-created native `utility_meter` helpers** (PowerCalc-style); power-only devices via **auto-created native Integral helper** | "Don't rebuild what exists." Default cycles: daily + monthly; weekly/quarterly/yearly as a global opt-in (entity-count discipline: all-on would create ~200+ helper entities across 14 devices). Lifetime totals are the integration's own sensors. Feasibility of programmatic helper creation validated early in Epic 4; internal implementation is the recorded fallback. **Amended by ADR-0008 (2026-07-28):** cycle helpers are a day-to-day *convenience*, not the mechanism for period accounting - a `utility_meter` is a fixed-period accumulator and cannot answer an arbitrary range. Long-term statistics, which the integration's own sensors already emit, are the substrate for "what did this cost between any two dates" |
 | Export opportunity cost | **Deferred, post-MVP** - explicitly documented | Solar-covered energy forgoes export revenue, so MVP Solar Saving is knowingly optimistic; documented in ADR-0002 and README, tracked as a backlog issue |
-| i18n | **Day one**: `strings.json` + `translations/` (en, es) | Same discipline as the retirement platform; retrofitting translations is worse than starting with them |
+| i18n | **Day one**: `strings.json` + `translations/` (en, es; ru added 2026-09-22 on a household's request) | Same discipline as the retirement platform; retrofitting translations is worse than starting with them. Parity between the files is test-enforced, because a key missing from one is invisible on an instance running another |
 | Quality gates | ruff (strict) + mypy (strict) + pytest coverage ≥90% enforced in CI; **SonarQube as a local pre-commit gate** (existing local server, same `sonar-check.sh` workflow as the retirement repos), never a CI-blocking step | Revised 2026-07-12: with the server and workflow already in place the marginal cost is near zero, and Sonar adds what ruff+mypy don't - cognitive-complexity enforcement (the mechanism behind the "orchestrators read as linear steps" rule), cross-file duplication detection, and the new-code quality-gate ratchet. CI stays green without it so external contributors are never blocked; revisit SonarCloud (free for OSS) if the project attracts contributors |
 | Local dev environment | **WSL (Ubuntu-24.04) + uv**, Python 3.14, venv at `~/.venvs/hea` - not Windows | Discovered 2026-07-12 while building the CI pipeline: Home Assistant imports `fcntl` (Unix-only) and `pytest-homeassistant-custom-component` loads as a pytest plugin, so on Windows `pytest` dies at collection even for tests with no HA imports. Windows is not a supported HA platform and never will be. WSL also makes the local pre-commit gate byte-identical to CI (same Linux, Python and HA versions), so the gate genuinely predicts CI rather than approximating it. ruff and mypy do still run natively on Windows - they never execute the code - but the split is not worth maintaining |
 | Workflow | TDD, conventional commits with ticket scope (`fix(HEA-nn):`), direct-to-main, append-only ADRs, a standing checklist of project rules | Carried over from the maintainer's other projects and tuned for Python/HA; `docs/CRITICAL_INSTRUCTIONS.md` is the checklist |
@@ -198,7 +198,7 @@ Presentation
 3. Runtime wiring: listeners/coordinator connecting engine to HA state machine. On unload the coordinator flushes in-flight buckets so a reload/restart banks up to ~20 min of accounting into the sensors' restore baseline rather than dropping it; the engine prunes superseded prices and logs a `ZERO_PRICED` decision for cold-start buckets finalised before any price (HEA-53)
 4. Per-device + Untracked remainder sensors (×4) with restore-on-restart. Untracked is derived (whole-home − Σ devices) and a monotonic whole-home aggregate is exposed (running totals only); late-arriving coarse-device energy is reallocated into a retained-context ring rather than dropped (HEA-48 / ADR-0006)
 5. Cycle totals via auto-created utility_meter helpers (daily + monthly default; weekly/quarterly/yearly global opt-in)
-6. i18n: strings.json + translations (en, es) for config flow, entities, Repairs
+6. i18n: strings.json + translations (en, es, ru) for config flow, entities, Repairs
 7. Diagnostics + Repairs (source sensor unavailable/renamed, price unavailable policy, helper-creation failures)
 8. Guided device discovery (HEA-45): scan for untracked energy/power sensors and offer them for the user to add - multi-select, never auto-onboarded (false-friend rule); candidates with an ineligible `state_class` are excluded outright (HEA-54). Added during dogfooding, alongside first-install fixes: clean uninstall via `async_remove_entry` (HEA-42), Integrations-tab visibility - dropped `integration_type: helper` (HEA-43), and Untracked device naming (HEA-44 / HEA-46)
 9. Pre-release hygiene arising from the 2026-07-28 review of the live instance:
@@ -427,12 +427,18 @@ Presentation
 > The reference home moved onto the HACS install of v0.1.1 without losing a
 > figure, and now updates the way any household does.
 
-### Epic 9 - Fixes that belong in Home Assistant, not here
+### Epic 9 - Fixes that belong below us, not here
 
-Split out of the MVP project on 2026-09-14 (HEA-125). Each is a defect in Home
-Assistant that this integration runs into, where the decision was to fix it at
-the right layer rather than carry a workaround. An upstream fix runs on someone
-else's review and release schedule, so none of it can gate a release of ours.
+Split out of the MVP project on 2026-09-14 (HEA-125). Each is a defect *below*
+this integration - in Home Assistant itself, or in an integration we consume -
+where the decision was to fix it at the right layer rather than carry a
+workaround. An upstream fix runs on someone else's review and release schedule,
+so none of it can gate a release of ours.
+
+The rule for admitting work here, which is also the reason the epic exists:
+**building around someone else's bug leaves our own application worse.** Every
+detection rule drafted for item 3 had a plausible innocent explanation, so each
+would have fired on households with nothing wrong.
 
 1. `utility_meter` adopts its source's unit only when the source *changes*, so a
    meter created over a still sensor records statistics with no unit and Home
@@ -443,10 +449,41 @@ else's review and release schedule, so none of it can gate a release of ours.
 2. View strategies are not offered in the add-view dialog, so a household cannot
    add HEA's view to a dashboard they already have without two lines of YAML
    (HEA-108). `docs/dashboard.md` carries those two lines
+3. An integration that publishes `0` W rather than `unavailable` when its backend
+   is failing makes a dead device indistinguishable from one that is switched
+   off, and every health check we have is satisfied (HEA-158). Moved here
+   2026-09-21: the defect is the integration's, and the reference case cannot be
+   re-examined until that integration is fixed
+
+### Epic 10 - Respect nested/upstream devices in cost allocation
+
+Raised 2026-09-19 (HEA-150), after Home Assistant 2025.12 gave the Energy
+Dashboard a way to say that one tracked device sits *downstream* of another - a
+circuit, a power strip on it, an appliance on the strip. Before that, every
+level was an independent consumer and the same energy counted once per level.
+
+HEA has the same gap, and it matters more here: allocation is proportional, so a
+device counted twice does not produce one wrong figure, it shifts every other
+device's share (ADR-0002).
+
+1. Exclude a nested device's energy from its upstream device's figures, keeping
+   **gross and net** per upstream device rather than silently correcting one -
+   a breaker really did carry that energy, and a household will expect to see it
+   (HEA-151)
+2. Derive whole-home and Untracked from root-level gross readings only, or the
+   remainder double-counts everything nested (HEA-152)
+3. Render the hierarchy in the flow view and the dashboard, so the picture does
+   not contradict the corrected numbers (HEA-153)
+4. Open question: a circuit's HA area is the cupboard it is installed in, not
+   the rooms it feeds, so electrical topology and the area registry disagree
+   about where a nested circuit's untracked residual belongs (HEA-154)
+
+Nothing here is started, and none of it blocks a release.
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
-start as soon as Epic 1 landed. Epic 7 is cancelled; Epic 9 runs whenever there
-is appetite for it and blocks nothing.
+start as soon as Epic 1 landed. Epic 7 is cancelled. Epics 9 and 10 run whenever
+there is appetite for them and block nothing - Epic 9 because it is not ours to
+schedule, Epic 10 because it is new capability rather than a fix.
 
 ## Risks and open questions
 
