@@ -51,6 +51,15 @@ if TYPE_CHECKING:
 
 
 _ELIGIBLE_STATE_CLASS = {"energy": "total_increasing", "power": "measurement"}
+# What a helper's output actually declares, where it differs from the eligible
+# class for its device_class. Home Assistant's Riemann sum is `total` on the
+# class itself - `IntegrationSensor._attr_state_class` - however monotonic the
+# output is, while `utility_meter` returns `total_increasing` for a non-net
+# energy meter and `derivative` is a `measurement`. A fixture that gave the
+# integral the eligible class would be asserting a shape Home Assistant never
+# produces, which is how the awkward case ADR-0010 names stayed green while it
+# was in fact refused (HEA-162).
+_HELPER_STATE_CLASS = {INTEGRATION_DOMAIN: "total"}
 
 
 def _register(  # noqa: PLR0913 - a test fixture builder; each kwarg is a distinct axis
@@ -117,6 +126,9 @@ def _helper_output(  # noqa: PLR0913 - a test fixture builder; each kwarg is a d
     Models how a native `utility_meter` / Integral / Derivative helper records its
     input - ``options["source"]`` on its own config entry - which is the only
     declaration of provenance Home Assistant offers and what discovery walks.
+
+    The output carries the state_class that helper domain really publishes, not
+    the one its device_class makes eligible; see ``_HELPER_STATE_CLASS``.
     """
     helper = MockConfigEntry(domain=helper_domain, options={CONF_SOURCE: source})
     helper.add_to_hass(hass)
@@ -126,6 +138,7 @@ def _helper_output(  # noqa: PLR0913 - a test fixture builder; each kwarg is a d
         device_class,
         name=name,
         device_id=device_id,
+        state_class=_HELPER_STATE_CLASS.get(helper_domain, "eligible"),
         config_entry=helper,
     )
 

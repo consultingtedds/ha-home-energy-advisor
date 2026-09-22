@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from homeassistant.components.integration.const import (
+    CONF_SOURCE_SENSOR,
+    CONF_UNIT_TIME,
+    METHOD_TRAPEZOIDAL,
+)
+from homeassistant.components.integration.const import DOMAIN as INTEGRATION_DOMAIN
 from homeassistant.config_entries import (
     SOURCE_RECONFIGURE,
     SOURCE_USER,
     ConfigSubentryData,
 )
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_METHOD, CONF_NAME, UnitOfTime
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
@@ -76,6 +83,43 @@ def _register_device_sensors(hass: HomeAssistant) -> None:
         "7.0",
         {"device_class": "energy"},
     )
+
+
+def _a_riemann_sum(hass: HomeAssistant, object_id: str) -> str:
+    """Add Home Assistant's own integral helper over a power sensor; its output id.
+
+    Both halves are what Home Assistant really does. The output declares `total`,
+    unconditionally, and what distinguishes it from a net meter is the domain of
+    the config entry that owns it - which is what the registry records and the
+    only place the difference is stated.
+    """
+    helper = MockConfigEntry(
+        domain=INTEGRATION_DOMAIN,
+        title="Dehumidifier Energy",
+        options={
+            CONF_SOURCE_SENSOR: "sensor.dehumidifier_plug_power",
+            CONF_METHOD: METHOD_TRAPEZOIDAL,
+            CONF_UNIT_TIME: UnitOfTime.HOURS,
+        },
+    )
+    helper.add_to_hass(hass)
+    entity = er.async_get(hass).async_get_or_create(
+        "sensor",
+        INTEGRATION_DOMAIN,
+        object_id,
+        suggested_object_id=object_id,
+        config_entry=helper,
+    )
+    hass.states.async_set(
+        entity.entity_id,
+        "3.4",
+        {
+            "device_class": "energy",
+            "state_class": "total",
+            "unit_of_measurement": "kWh",
+        },
+    )
+    return entity.entity_id
 
 
 async def _start_add(hass: HomeAssistant, entry: MockConfigEntry) -> str:
@@ -185,6 +229,32 @@ async def test_adding_a_net_energy_counter_is_rejected(hass: HomeAssistant) -> N
     # Then - it is rejected with a translated error naming the required class
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {"base": "energy_not_total_increasing"}
+
+
+async def test_adding_a_device_tracked_by_a_riemann_integral_is_accepted(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a plug tracked through the household's own Riemann integral over
+    # its power sensor, which is how anybody with watts and no counter gets
+    # energy. It declares `total` exactly as the net counter above does, because
+    # `IntegrationSensor._attr_state_class` says so on the class whatever the
+    # output does - and it is the helper this integration builds for itself on
+    # every power-only device, so refusing it here refuses our own work (HEA-162)
+    entry = _parent_entry(hass)
+    _register_device_sensors(hass)
+    integral = _a_riemann_sum(hass, "dehumidifier_energy")
+    flow_id = await _start_add(hass, entry)
+
+    # When - the device is added by that helper's output
+    result = await hass.config_entries.subentries.async_configure(
+        flow_id,
+        {CONF_NAME: "Dehumidifier", CONF_ENERGY_ENTITY: integral},
+    )
+
+    # Then - accepted, where a `total` sensor with no helper behind it is not
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    subentry = next(iter(entry.subentries.values()))
+    assert subentry.data[CONF_ENERGY_ENTITY] == integral
 
 
 async def test_adding_a_device_in_a_unit_the_engine_cannot_count_is_rejected(

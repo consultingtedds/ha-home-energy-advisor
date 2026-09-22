@@ -6,8 +6,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import voluptuous as vol
+from homeassistant.components.integration.const import (
+    CONF_SOURCE_SENSOR,
+    CONF_UNIT_TIME,
+    METHOD_TRAPEZOIDAL,
+)
+from homeassistant.components.integration.const import DOMAIN as INTEGRATION_DOMAIN
 from homeassistant.config_entries import SOURCE_RECONFIGURE, SOURCE_USER
+from homeassistant.const import CONF_METHOD, UnitOfTime
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
@@ -83,6 +91,39 @@ def _set_state_class(hass: HomeAssistant, entity_id: str, state_class: str) -> N
             "unit_of_measurement": "kWh",
         },
     )
+
+
+def _as_a_riemann_sum(hass: HomeAssistant, entity_id: str) -> None:
+    """Re-publish a house meter as Home Assistant's own Riemann sum helper.
+
+    Two halves, and both are what Home Assistant really does.
+    ``IntegrationSensor._attr_state_class`` is ``total`` on the class, so every
+    integral helper declares a net counter's class however monotonic its output
+    is; what marks one as a Riemann sum rather than a net meter is the domain of
+    the config entry that owns it, which is where the registry records it.
+    """
+    helper = MockConfigEntry(
+        domain=INTEGRATION_DOMAIN,
+        title="Grid Import",
+        options={
+            CONF_SOURCE_SENSOR: "sensor.mains_clamp_power",
+            CONF_METHOD: METHOD_TRAPEZOIDAL,
+            CONF_UNIT_TIME: UnitOfTime.HOURS,
+        },
+    )
+    helper.add_to_hass(hass)
+    # The registry allocates around whatever is already in the state machine, so
+    # the meter has to leave it for the helper's own entry to land on that id.
+    hass.states.async_remove(entity_id)
+    object_id = entity_id.removeprefix("sensor.")
+    er.async_get(hass).async_get_or_create(
+        "sensor",
+        INTEGRATION_DOMAIN,
+        object_id,
+        suggested_object_id=object_id,
+        config_entry=helper,
+    )
+    _set_state_class(hass, entity_id, "total")
 
 
 def _set_unit(hass: HomeAssistant, entity_id: str, unit: str | None) -> None:
@@ -268,6 +309,37 @@ async def test_a_net_grid_import_counter_is_always_rejected(
     # Then - rejected
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_GRID_IMPORT_ENTITY: "house_not_total_increasing"}
+
+
+async def test_a_riemann_sum_is_accepted_where_a_net_counter_is_not(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a household whose grid import is a Riemann integral over a clamp's
+    # power sensor, which is how anybody with watts and no kWh meter gets one.
+    # It declares `total` like the net counter above, and the two are refused or
+    # accepted on the same attribute - but this one only ever climbs, and it is
+    # the helper this integration creates for itself on every power-only device
+    _register_source_sensors(hass)
+    _as_a_riemann_sum(hass, "sensor.grid_import")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When - it is submitted
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+        },
+    )
+
+    # Then - accepted. Refusing it while reading one ourselves is the asymmetry,
+    # not the safety (HEA-162)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
 
 
 async def test_user_flow_shows_the_configuration_form(hass: HomeAssistant) -> None:

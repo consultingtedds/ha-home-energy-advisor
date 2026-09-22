@@ -48,8 +48,8 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
 )
 from .discovery import (
-    REQUIRED_STATE_CLASS,
     async_discover_candidates,
+    is_eligible_source,
     source_state_class,
     source_unit,
 )
@@ -418,8 +418,16 @@ def _validate_device_sources(
 def _wrong_state_class_error(
     hass: HomeAssistant, entity_id: str, source_key: str
 ) -> str | None:
-    state_class = source_state_class(hass, entity_id)
-    if state_class is None or state_class == REQUIRED_STATE_CLASS[source_key]:
+    """The error for a class the engine cannot account in, else ``None``.
+
+    An absent class is allowed here and refused by discovery, which is the
+    asymmetry ADR-0010 section 2 draws. What counts as present-and-right is
+    `discovery.is_eligible_source`, so the flow and the suggestions can never
+    disagree about a sensor - the defect HEA-162 closed was exactly that.
+    """
+    if source_state_class(hass, entity_id) is None:
+        return None
+    if is_eligible_source(hass, entity_id, source_key):
         return None
     return _STATE_CLASS_ERROR[source_key]
 

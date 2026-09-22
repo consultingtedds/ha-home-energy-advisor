@@ -110,6 +110,16 @@ REQUIRED_STATE_CLASS = {
     CONF_ENERGY_ENTITY: "total_increasing",
     CONF_POWER_ENTITY: "measurement",
 }
+# The one energy class accepted beside it, and only from Home Assistant's own
+# Riemann sum helper. `IntegrationSensor._attr_state_class` is `total` on the
+# class, so every integral in Home Assistant declares a net counter's class
+# however monotonic its output is - and the integral over a power sensor is both
+# how a household turns watts into energy and the helper this integration builds
+# for itself on every power-only device (ADR-0004). Refusing it while reading one
+# ourselves was an asymmetry, not a safeguard (HEA-162). What makes the exception
+# safe to draw is that the *domain* says what the class cannot: a net meter is
+# still refused, because no helper of this kind publishes it.
+_RIEMANN_SUM_CLASS = "total"
 # Trailing words trimmed from a suggested device name - the concept, not the device.
 _NAME_SUFFIXES = (" energy", " power", " consumption")
 # Substrings that mark a sensor as a likely non-device; offered, but sorted last.
@@ -235,15 +245,22 @@ def _declared_source(
     hass: HomeAssistant, registry: er.EntityRegistry, entity_id: str
 ) -> str | None:
     """The sensor a helper derives this one from, per its own config entry."""
-    entity = registry.async_get(entity_id)
-    if entity is None or entity.config_entry_id is None:
-        return None
-    helper = hass.config_entries.async_get_entry(entity.config_entry_id)
+    helper = _owning_helper(hass, registry, entity_id)
     if helper is None:
         return None
     key = _DERIVED_SOURCE_KEYS.get(helper.domain)
     source = helper.options.get(key) if key is not None else None
     return source if isinstance(source, str) else None
+
+
+def _owning_helper(
+    hass: HomeAssistant, registry: er.EntityRegistry, entity_id: str
+) -> ConfigEntry | None:
+    """The config entry that publishes this sensor, where the registry names one."""
+    entity = registry.async_get(entity_id)
+    if entity is None or entity.config_entry_id is None:
+        return None
+    return hass.config_entries.async_get_entry(entity.config_entry_id)
 
 
 def _candidate(
@@ -265,13 +282,29 @@ def _candidate(
 
 
 def is_eligible_source(hass: HomeAssistant, entity_id: str, source_key: str) -> bool:
-    """Whether a sensor's state_class exactly matches its source's requirement.
+    """Whether a sensor's state_class is one the engine can account an input in.
+
+    The required class for the source, or `total` from a Riemann sum helper - see
+    :data:`_RIEMANN_SUM_CLASS`, which is the whole of the exception.
 
     Strict - an absent state_class fails too. Discovery uses it so it never
     *suggests* a source the engine would mis-account; the add flow is more lenient
     on an absent class, where the pick is an explicit user choice (HEA-54).
     """
-    return source_state_class(hass, entity_id) == REQUIRED_STATE_CLASS[source_key]
+    state_class = source_state_class(hass, entity_id)
+    if state_class == REQUIRED_STATE_CLASS[source_key]:
+        return True
+    return (
+        source_key == CONF_ENERGY_ENTITY
+        and state_class == _RIEMANN_SUM_CLASS
+        and _is_a_riemann_sum(hass, entity_id)
+    )
+
+
+def _is_a_riemann_sum(hass: HomeAssistant, entity_id: str) -> bool:
+    """Whether Home Assistant's integral helper is what publishes this sensor."""
+    helper = _owning_helper(hass, er.async_get(hass), entity_id)
+    return helper is not None and helper.domain == INTEGRATION_DOMAIN
 
 
 def source_state_class(hass: HomeAssistant, entity_id: str) -> str | None:
