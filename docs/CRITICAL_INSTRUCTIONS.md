@@ -51,7 +51,7 @@ documents. `CONTRIBUTING.md` is the friendlier way in.
 | Editing `.storage`, or YAML instructions for UI-managed config | Config flow / options flow / HA APIs |
 | Auto-onboarding devices that merely match `device_class` | Explicit user selection (false friends: cycling FTP watts, phone battery power) |
 | Entities without `unique_id` or `translation_key` | Both, always |
-| Hardcoded user-facing strings (flow text, entity names, Repairs) | `strings.json` + `translations/en.json`, `es.json` |
+| Hardcoded user-facing strings (flow text, entity names, Repairs) | `strings.json` + every file in `translations/` - `en`, `es`, `ru` |
 | `suggested_area` on `DeviceInfo`, or assigning an area to HEA's own devices | Nothing - read the *source* device's area and expose it as data (ADR-0009 / HEA-58). `suggested_area` is removed in HA **2026.9**, and an area changes entity ids |
 
 ### Money and accounting
@@ -133,7 +133,10 @@ deliberately made otherwise - treat it that way by default.
 - Full patterns: `docs/TESTING_STANDARDS.md`
 
 ### i18n
-- All user-facing strings in `strings.json` + `translations/` (en, es) from day one
+- All user-facing strings in `strings.json` + `translations/` (en, es, ru) from
+  day one. A key added to one file and not the others is **invisible** on an
+  English instance and shows as English elsewhere, so check parity mechanically:
+  every key present, every `{placeholder}` identical (ADR-0018)
 
 ### Privacy
 - Before committing any example, table or fixture, ask: *does this describe a real
