@@ -404,6 +404,11 @@ zero, when in truth it could have been sold.
 - **Cost Savings can go negative, and that is real.** Energy stored when
   electricity was expensive and used when it was cheap cost more than buying it
   at the time would have. It is shown as a loss rather than hidden at zero.
+- **Actual Cost can go negative too, if your tariff goes below zero.** On a
+  wholesale tariff - Amber, Nordpool, Octopus Agile - the price is sometimes
+  negative and you are paid to use electricity. Energy used or stored in those
+  hours is carried at what it really cost, which is less than nothing, so a
+  device that ran on it shows a credit rather than a zero.
 - **Today's cost catches up rather than going backwards.** Energy a device
   reports before the house meter has accounted for it is held back until its
   real price is known. A figure read mid-hour can sit a little low and rise

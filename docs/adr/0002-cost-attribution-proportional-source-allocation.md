@@ -115,3 +115,47 @@ full source balance. Held in reserve, not implemented.
 - Revisit if: dogfooding shows the proportional model diverges materially from
   metered reality, a hard blocker forces the deficit-capped fallback, or the
   export-aware variant (HEA-38) supersedes the solar-at-zero pricing.
+
+## Update, 2026-09-22: a negative import price, and which invariant yields
+
+The Decision above states two invariants together: **Σ allocations equal the
+interval's real cost exactly**, and **no allocation is negative**. On a wholesale
+tariff those are not both satisfiable, and this records which one gives way.
+
+A wholesale spot price goes below zero regularly - Amber in Australia, Nordpool
+across Europe, Octopus Agile in the UK - and when it does the household is *paid*
+to consume. Their automation charges the battery precisely because the price went
+negative, which is what such automations are for. The interval's real cost is
+then a negative number, and no set of non-negative allocations can sum to it.
+
+**Reconciliation wins.** This is not a new preference; it is the hierarchy the
+project already runs on - attribution error is disclosed, reconciliation error is
+never acceptable - and `CRITICAL_INSTRUCTIONS.md` enforces only the summation
+invariant in its checklist. So "no allocation is negative" is narrowed rather
+than abandoned: **it holds whenever the import price is non-negative**, which is
+every fixed and every time-of-use tariff, and it was written against the binary
+gate's *modelling artefacts*, which it still excludes.
+
+Nothing else changes. Grid charge is priced "at the import rate of the moment"
+exactly as the Pricing section already says; the rate is simply allowed to be
+below zero, and the credit is carried to where the energy is used, as a cost
+would be. Flooring it at zero would claim the energy was free when it was better
+than free, understating the saving and breaking the summation.
+
+Two distinctions worth keeping straight, because both involve a negative figure
+and neither is this one:
+
+- **ADR-0015's non-negativity is about the carried deficit**, an artefact of the
+  house meter and the device counters being read at wildly different rates. That
+  is internal, it is not a price, and it is unchanged.
+- **HEA-85's negative hours were artefacts too** - a charge published and then
+  refunded, so a household saw an hour that cost less than nothing when it had
+  not. The rule that came out of it, publish late rather than retract, is about
+  figures we expect to correct. A negative price is not a figure we expect to
+  correct; it is what happened.
+
+The guard that raised on a negative price is removed. It never protected the
+model - a negative price already reached `SourceKind.IMPORT` unaltered for energy
+served straight to the house - so it only made the battery path raise where the
+direct path quietly carried on, and it raised inside the settle path where a
+household gets a traceback instead of a figure (HEA-165).
