@@ -243,3 +243,130 @@ def test_the_unreconciled_share_is_that_gap_as_a_fraction_of_the_total() -> None
 def test_an_accountant_that_has_published_nothing_reports_no_share() -> None:
     # Given / When / Then - a share of nothing is not an error to divide by
     assert a_home().unreconciled_share() == Decimal(0)
+
+
+CIRCUIT = "sensor.kitchen_circuit_energy"
+APPLIANCE = "sensor.coarse_step_aircon_energy"
+
+
+def _nested(devices: dict[str, str], nesting: dict[str, str]) -> Accountant:
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: GRID,
+            SourceRole.HOUSE_CONSUMPTION: HOUSE,
+        },
+        device_energy_entities=devices,
+        nested_devices=nesting,
+    )
+    acc.record_price(at(0), TARIFF)
+    return acc
+
+
+def test_a_nested_device_is_not_counted_twice_against_its_circuit() -> None:
+    # Given - a house that used 1.0 kWh, of which a circuit clamp carried 0.6
+    # and the aircon on that circuit used 0.4. The clamp's 0.6 *includes* the
+    # aircon, because that is what measuring a breaker means - so counted
+    # naively the two claim 1.0 between them and Untracked reads zero
+    acc = _nested(
+        {"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE},
+        {"aircon": "kitchen_circuit"},
+    )
+    for entity in (GRID, HOUSE, CIRCUIT, APPLIANCE):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When
+    acc.observe(GRID, at(5), Decimal("1.0"))
+    acc.observe(HOUSE, at(5), Decimal("1.0"))
+    acc.observe(CIRCUIT, at(5), Decimal("0.6"))
+    acc.observe(APPLIANCE, at(5), Decimal("0.4"))
+    acc.finalize(at(60))
+
+    # Then - the circuit is booked for what it used itself, 0.6 - 0.4 = 0.2,
+    # and the aircon keeps its own 0.4
+    totals = acc.totals()
+    assert totals.devices["kitchen_circuit"].energy_kwh == Decimal("0.2")
+    assert totals.devices["aircon"].energy_kwh == Decimal("0.4")
+    # And the 0.4 the house drew off other circuits is Untracked rather than
+    # swallowed by the double count, which is what it read before nesting
+    assert totals.untracked.energy_kwh == Decimal("0.4")
+    assert totals.whole_home.energy_kwh == Decimal("1.0")
+
+
+def test_nesting_telescopes_through_a_chain_of_any_depth() -> None:
+    # Given - breaker -> fuse -> smart plug -> the appliance's own counter.
+    # Four levels, each physically containing the next, which is unusual but
+    # buildable. A rule that only subtracted one level would pass the test
+    # above and be wrong here, so the depth is the point
+    acc = _nested(
+        {
+            "breaker": "sensor.breaker_energy",
+            "fuse": "sensor.fuse_energy",
+            "plug": "sensor.plug_energy",
+            "appliance": "sensor.appliance_energy",
+        },
+        {"fuse": "breaker", "plug": "fuse", "appliance": "plug"},
+    )
+    meters = {
+        "sensor.breaker_energy": Decimal("1.0"),
+        "sensor.fuse_energy": Decimal("0.6"),
+        "sensor.plug_energy": Decimal("0.4"),
+        "sensor.appliance_energy": Decimal("0.3"),
+    }
+    for entity in (GRID, HOUSE, *meters):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the house used 1.0, all of it through the breaker
+    acc.observe(GRID, at(5), Decimal("1.0"))
+    acc.observe(HOUSE, at(5), Decimal("1.0"))
+    for entity, reading in meters.items():
+        acc.observe(entity, at(5), reading)
+    acc.finalize(at(60))
+
+    # Then - each level keeps only what it did not pass on. The intermediate
+    # terms cancel in pairs, so the four sum to the breaker's own 1.0 and
+    # nothing is left over for Untracked
+    totals = acc.totals()
+    assert totals.devices["breaker"].energy_kwh == Decimal("0.4")
+    assert totals.devices["fuse"].energy_kwh == Decimal("0.2")
+    assert totals.devices["plug"].energy_kwh == Decimal("0.1")
+    assert totals.devices["appliance"].energy_kwh == Decimal("0.3")
+    assert totals.untracked.energy_kwh == Decimal(0)
+    assert totals.whole_home.energy_kwh == Decimal("1.0")
+
+
+def test_a_parent_subtracts_its_children_gross_not_their_net() -> None:
+    # Given / When - the same chain, asserted as the one arithmetic that
+    # distinguishes a correct implementation from a plausible wrong one.
+    # Netting a parent against its child's *net* would give the breaker
+    # 1.0 - (0.6 - 0.4) = 0.8 instead of 0.4, and the four would sum to 1.6
+    acc = _nested(
+        {
+            "breaker": "sensor.breaker_energy",
+            "fuse": "sensor.fuse_energy",
+            "plug": "sensor.plug_energy",
+            "appliance": "sensor.appliance_energy",
+        },
+        {"fuse": "breaker", "plug": "fuse", "appliance": "plug"},
+    )
+    meters = {
+        "sensor.breaker_energy": Decimal("1.0"),
+        "sensor.fuse_energy": Decimal("0.6"),
+        "sensor.plug_energy": Decimal("0.4"),
+        "sensor.appliance_energy": Decimal("0.3"),
+    }
+    for entity in (GRID, HOUSE, *meters):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("1.0"))
+    acc.observe(HOUSE, at(5), Decimal("1.0"))
+    for entity, reading in meters.items():
+        acc.observe(entity, at(5), reading)
+    acc.finalize(at(60))
+
+    # Then - the devices and the remainder still sum to the metered house,
+    # exactly, which is the invariant ADR-0002 will not trade for anything
+    totals = acc.totals()
+    booked = sum(
+        (device.energy_kwh for device in totals.devices.values()),
+        start=totals.untracked.energy_kwh,
+    )
+    assert booked == totals.whole_home.energy_kwh == Decimal("1.0")

@@ -174,6 +174,7 @@ _PERSISTED = frozenset(
 # stale snapshot silently override a household's reconfiguration.
 _CONFIG_DERIVED = frozenset(
     {
+        "_children",
         "_configured",
         "_device_of",
         "_entity_of",
@@ -183,6 +184,7 @@ _CONFIG_DERIVED = frozenset(
         "_retention",
         "_role_of",
         "_strategy",
+        "_upstream",
         "_windows",
     }
 )

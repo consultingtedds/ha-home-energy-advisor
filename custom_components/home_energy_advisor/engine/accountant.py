@@ -328,6 +328,7 @@ class Accountant:
         *,
         house_sources: Mapping[SourceRole, str],
         device_energy_entities: Mapping[str, str],
+        nested_devices: Mapping[str, str] | None = None,
         windows: AccountingWindows | None = None,
     ) -> None:
         self._windows = windows or AccountingWindows()
@@ -338,6 +339,14 @@ class Accountant:
         self._device_of = {
             entity: device for device, entity in device_energy_entities.items()
         }
+        # Which device physically contains which, child -> its direct parent.
+        # A clamp on a breaker measures everything downstream of it, so a
+        # tracked appliance on a tracked circuit is inside both counters and
+        # would otherwise be booked twice (HEA-151).
+        self._upstream = dict(nested_devices or {})
+        self._children: dict[str, list[str]] = {}
+        for child, parent in self._upstream.items():
+            self._children.setdefault(parent, []).append(child)
         self._configured = set(house_sources)
         self._import_entity = house_sources.get(SourceRole.GRID_IMPORT)
         self._cold_start_logged = False
@@ -961,7 +970,7 @@ class Accountant:
         claimed = self._draws.pop(start, {})
         served = self._decompose(raw, start)
         self._weigh_plausibility(served, claimed)
-        draws = self._believable(claimed, start)
+        draws = self._own_draws(self._believable(claimed, start))
         prices, sources = self._price_sources(served, self._price_at(start))
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
@@ -1262,6 +1271,44 @@ class Accountant:
             else:
                 believable[device] = kwh
         return believable
+
+    def _own_draws(self, draws: dict[str, Decimal]) -> dict[str, Decimal]:
+        """Each device's draw less its direct children's, for a nested fleet.
+
+        A clamp on a circuit measures everything downstream of it, so a tracked
+        appliance on a tracked circuit sits inside both counters. Left alone the
+        pair claims its energy twice, which inflates their share of every bucket
+        and shrinks the remainder that is derived by subtracting them - the
+        double count Home Assistant's own `included_in_stat` exists to remove.
+
+        Each parent subtracts its **direct children's gross**, never their net.
+        That is what makes it telescope: on breaker -> fuse -> plug -> appliance
+        the intermediate terms cancel in pairs, so however deep the chain runs
+        the devices still sum to the roots' own readings. Subtracting a child's
+        *net* instead would leave the grandchild's energy counted twice, which
+        looks almost right and is not, so the whole map is read before anything
+        is written - no parent is ever netted against an already-netted child.
+
+        Only children that were **booked** are subtracted. One condemned by the
+        plausibility guard is absent from `draws`, and its energy really is in
+        its parent's counter, so removing it would take away energy nobody
+        counted. Skipping it keeps the two consistent.
+        """
+        if not self._children:
+            return draws
+        gross = dict(draws)
+        return {
+            device: kwh - self._booked_children(gross, device)
+            for device, kwh in gross.items()
+        }
+
+    def _booked_children(self, gross: Mapping[str, Decimal], device: str) -> Decimal:
+        """What this device's direct children drew, of those actually booked."""
+        children = self._children.get(device, ())
+        return sum(
+            (gross[child] for child in children if child in gross),
+            start=Decimal(0),
+        )
 
     def _note_implausible(self, device: str, at: datetime, kwh: Decimal) -> None:
         entity = self._entity_of.get(device)
