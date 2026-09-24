@@ -156,6 +156,7 @@ _PERSISTED = frozenset(
         "_balance",
         "_battery",
         "_debts",
+        "_nesting_carry",
         "_draws",
         "_held",
         "_house",

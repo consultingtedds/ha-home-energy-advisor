@@ -370,3 +370,127 @@ def test_a_parent_subtracts_its_children_gross_not_their_net() -> None:
         start=totals.untracked.energy_kwh,
     )
     assert booked == totals.whole_home.energy_kwh == Decimal("1.0")
+
+
+def test_a_parent_outrun_by_a_coarse_child_publishes_zero_not_a_negative() -> None:
+    # Given - a circuit clamp reporting every bucket, and a coarse counter on
+    # that circuit reporting once for a span it covered. Over the span the
+    # clamp necessarily read at least what the appliance did; inside a single
+    # bucket it need not, because the coarse step is spread evenly while the
+    # clamp's own reading is not (ADR-0006). This is ordinary, not a fault
+    acc = _nested(
+        {"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE},
+        {"aircon": "kitchen_circuit"},
+    )
+    for entity in (GRID, HOUSE, CIRCUIT, APPLIANCE):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the house and the circuit move 0.1 in the first bucket and 0.5 in
+    # the second, while the aircon reports 0.4 all at once against the first
+    acc.observe(GRID, at(5), Decimal("0.6"))
+    acc.observe(HOUSE, at(5), Decimal("0.6"))
+    acc.observe(CIRCUIT, at(5), Decimal("0.1"))
+    acc.observe(APPLIANCE, at(5), Decimal("0.4"))
+    acc.observe(GRID, at(10), Decimal("0.6"))
+    acc.observe(HOUSE, at(10), Decimal("0.6"))
+    acc.observe(CIRCUIT, at(10), Decimal("0.6"))
+    acc.observe(APPLIANCE, at(10), Decimal("0.4"))
+    acc.finalize(at(60))
+
+    # Then - the circuit is never published below zero. Its first bucket owed
+    # 0.3 more than it drew; that is carried and taken out of the bucket where
+    # its own counter catches up, so across the span it books 0.6 - 0.4 = 0.2
+    totals = acc.totals()
+    assert totals.devices["kitchen_circuit"].energy_kwh == Decimal("0.2")
+    assert totals.devices["kitchen_circuit"].actual_cost >= Decimal(0)
+    assert totals.devices["aircon"].energy_kwh == Decimal("0.4")
+
+    # And the invariant holds over the span, which is the level ADR-0015 says
+    # it is owed at - a bucket that overdraws is settled by the one that repays
+    booked = sum(
+        (device.energy_kwh for device in totals.devices.values()),
+        start=totals.untracked.energy_kwh,
+    )
+    assert booked == totals.whole_home.energy_kwh
+
+
+def test_a_carry_the_parent_never_repays_expires_instead_of_lasting_for_ever() -> None:
+    # Given - a child declared under a parent it is not actually on, which is
+    # what a wrong upstream link looks like from here: the child reports and the
+    # parent never accounts for it, so the debt is never repaid
+    acc = _nested(
+        {"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE},
+        {"aircon": "kitchen_circuit"},
+    )
+    for entity in (GRID, HOUSE, CIRCUIT, APPLIANCE):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("0.5"))
+    acc.observe(HOUSE, at(5), Decimal("0.5"))
+    acc.observe(CIRCUIT, at(5), Decimal("0.1"))
+    acc.observe(APPLIANCE, at(5), Decimal("0.4"))
+
+    # When - the parent reports again only after the carry's span has passed.
+    # `MAX_QUIET_SPAN` is the same window ADR-0015 gives the remainder's
+    # deficit, for the same reason: a gap caused by spreading clears inside it,
+    # and one that does not is a claim that was wrong
+    late = 60 * 5
+    acc.observe(GRID, at(late), Decimal("1.0"))
+    acc.observe(HOUSE, at(late), Decimal("1.0"))
+    acc.observe(CIRCUIT, at(late), Decimal("0.6"))
+    acc.finalize(at(late + 120))
+
+    # Then - what it still owed is forgiven rather than chased for ever, and
+    # the parent is never published below zero on the way there. Forgiving errs
+    # towards a figure that is too high, never towards losing energy
+    circuit = acc.totals().devices["kitchen_circuit"]
+    assert circuit.energy_kwh > Decimal("0.2")
+    assert circuit.actual_cost >= Decimal(0)
+
+
+def test_a_carry_survives_a_restart_and_is_still_repaid() -> None:
+    # Given - a parent outrun by its coarse child, snapshotted mid-debt. This is
+    # the restart that used to re-introduce the double count the carry removes:
+    # forget what the parent owed and its catch-up bucket books the lot
+    acc = _nested(
+        {"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE},
+        {"aircon": "kitchen_circuit"},
+    )
+    for entity in (GRID, HOUSE, CIRCUIT, APPLIANCE):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("0.6"))
+    acc.observe(HOUSE, at(5), Decimal("0.6"))
+    acc.observe(CIRCUIT, at(5), Decimal("0.1"))
+    acc.observe(APPLIANCE, at(5), Decimal("0.4"))
+    # Far enough on for that bucket to finalise - nothing is netted until one
+    # does, so a snapshot taken sooner would have no debt in it to lose
+    acc.finalize(at(40))
+    carried = acc.snapshot()
+    assert carried["nesting_carry"], "the parent should owe its child here"
+
+    # When - the host restarts and the parent's counter catches up afterwards
+    resumed = _nested(
+        {"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE},
+        {"aircon": "kitchen_circuit"},
+    )
+    resumed.restore(carried)
+    resumed.observe(GRID, at(45), Decimal("1.2"))
+    resumed.observe(HOUSE, at(45), Decimal("1.2"))
+    resumed.observe(CIRCUIT, at(45), Decimal("0.6"))
+    resumed.observe(APPLIANCE, at(45), Decimal("0.4"))
+    resumed.finalize(at(90))
+
+    # Then - the debt is still taken out of the catch-up bucket, so the circuit
+    # books what it used itself rather than its child's energy a second time
+    circuit = resumed.totals().devices["kitchen_circuit"]
+    assert circuit.energy_kwh == Decimal("0.2")
+    assert circuit.actual_cost >= Decimal(0)
+
+
+def test_a_fleet_with_no_nesting_never_carries_anything() -> None:
+    # Given / When - the path every existing household is on
+    acc = a_home()
+    overdraw_then_repay(acc)
+
+    # Then - netting is not merely a no-op, it is never reached, so a snapshot
+    # taken here has no nesting state to restore
+    assert acc.snapshot()["nesting_carry"] == []

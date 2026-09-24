@@ -347,6 +347,10 @@ class Accountant:
         self._children: dict[str, list[str]] = {}
         for child, parent in self._upstream.items():
             self._children.setdefault(parent, []).append(child)
+        # What a parent's children reported ahead of the parent itself, waiting
+        # for the bucket its own counter catches up in. Keyed by parent, held as
+        # the amount still owed and the instant it was first owed (HEA-169).
+        self._nesting_carry: dict[str, tuple[Decimal, datetime]] = {}
         self._configured = set(house_sources)
         self._import_entity = house_sources.get(SourceRole.GRID_IMPORT)
         self._cold_start_logged = False
@@ -530,6 +534,13 @@ class Accountant:
             "battery": self._battery.snapshot(),
             "balance": self._balance.snapshot(),
             "debts": self._debts.snapshot(),
+            # What a parent still owes its children. Carried for the same reason
+            # the debts are: losing it would let the first buckets after a
+            # restart book a double count the carry exists to remove (HEA-169).
+            "nesting_carry": [
+                {"device": device, "kwh": str(owed), "since": since.isoformat()}
+                for device, (owed, since) in self._nesting_carry.items()
+            ],
             "pending_bounds": [
                 {
                     "device": bound.device,
@@ -623,6 +634,17 @@ class Accountant:
         # A snapshot taken before the carries existed simply has none to restore.
         self._balance.restore(data.get("balance", {}))
         self._debts.restore(data["debts"])
+        # Filtered by `tracked` like every other per-device figure here: a
+        # device the household removed while the host was down must not have a
+        # carry restored against it.
+        self._nesting_carry = {
+            entry["device"]: (
+                Decimal(entry["kwh"]),
+                datetime.fromisoformat(entry["since"]),
+            )
+            for entry in data.get("nesting_carry", [])
+            if entry["device"] in tracked
+        }
         self._pending_bounds = [
             _PendingBound(
                 device=bound["device"],
@@ -970,7 +992,7 @@ class Accountant:
         claimed = self._draws.pop(start, {})
         served = self._decompose(raw, start)
         self._weigh_plausibility(served, claimed)
-        draws = self._own_draws(self._believable(claimed, start))
+        draws = self._own_draws(self._believable(claimed, start), start)
         prices, sources = self._price_sources(served, self._price_at(start))
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
@@ -1272,7 +1294,9 @@ class Accountant:
                 believable[device] = kwh
         return believable
 
-    def _own_draws(self, draws: dict[str, Decimal]) -> dict[str, Decimal]:
+    def _own_draws(
+        self, draws: dict[str, Decimal], start: datetime
+    ) -> dict[str, Decimal]:
         """Each device's draw less its direct children's, for a nested fleet.
 
         A clamp on a circuit measures everything downstream of it, so a tracked
@@ -1298,9 +1322,60 @@ class Accountant:
             return draws
         gross = dict(draws)
         return {
-            device: kwh - self._booked_children(gross, device)
+            device: self._own_draw(gross, device, kwh, start)
             for device, kwh in gross.items()
         }
+
+    def _own_draw(
+        self,
+        gross: Mapping[str, Decimal],
+        device: str,
+        kwh: Decimal,
+        start: datetime,
+    ) -> Decimal:
+        """One device's own draw, clamped at zero, carrying what it still owes.
+
+        Over any span both meters have reported, a parent's counter is at least
+        the sum of its children's - it physically contains them. **Inside one
+        bucket it need not be.** A coarse child's step is spread evenly across
+        the buckets it covered (ADR-0006) while the parent's own reading is not,
+        so a bucket where the child's share exceeds the parent's is ordinary.
+
+        Publishing the difference would put a *negative* draw into the
+        allocation, and a negative draw takes a negative share of the bucket's
+        cost - a household shown a circuit breaker that was paid to run. That is
+        HEA-85's lesson, and it is why this clamps rather than subtracts freely.
+
+        So the excess is carried and taken out of the bucket where the parent's
+        counter catches up, which is ADR-0015's answer to the same disagreement
+        between two streams sampled thousands of times apart. It expires on the
+        same span for the same reason: a deficit caused by spreading clears
+        within it, and one that does not is a hierarchy that is wrong rather
+        than a reading that is late.
+
+        The clock is deliberately **not** reset while a carry persists. A
+        parent outrun every bucket is not catching up, and renewing its clock
+        would let one wrong upstream link suppress a device indefinitely.
+        """
+        owed = self._owed_by(device, start)
+        net = kwh - self._booked_children(gross, device) - owed
+        if net < 0:
+            since = self._nesting_carry.get(device, (Decimal(0), start))[1]
+            self._nesting_carry[device] = (-net, since)
+            return Decimal(0)
+        self._nesting_carry.pop(device, None)
+        return net
+
+    def _owed_by(self, device: str, start: datetime) -> Decimal:
+        """What this parent still owes its children, or zero once that expired."""
+        carried = self._nesting_carry.get(device)
+        if carried is None:
+            return Decimal(0)
+        owed, since = carried
+        if start - since > self._max_quiet_span:
+            del self._nesting_carry[device]
+            return Decimal(0)
+        return owed
 
     def _booked_children(self, gross: Mapping[str, Decimal], device: str) -> Decimal:
         """What this device's direct children drew, of those actually booked."""
