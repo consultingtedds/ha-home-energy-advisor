@@ -184,6 +184,20 @@ Presentation
     run. Measured, not chosen: the integration passes on 2026.7.0 and fails on
     2026.6.4, on the power-only Integral helper and on the cycle-meter crater
     (HEA-124, HEA-32)
+24. ADR-0024: Staleness is a disclosure of its own, not a hole in the figures. A
+    device source that goes quiet freezes every figure over it at a plausible
+    value, and the household's own tooling cannot see it - Spook and Watchman
+    look for *missing* entities, and ours are present and perfectly healthy.
+    Propagating `unavailable` from the source, which is what Home Assistant's own
+    derived sensors do, was written and then rejected: a sensor that dies while
+    its device runs on and a device unplugged with its sensor are
+    indistinguishable from here, and in the second the figure is *correct* - a
+    radiator that ran all week really did cost what it says, so withdrawing it
+    until spring would answer a rare fault by degrading the ordinary case. Each
+    tracked device instead publishes **Last Reading**, a diagnostic timestamp
+    that withdraws itself past a thirty-minute grace: its value answers a person,
+    its availability answers an unavailable-entity check, and nothing is raised
+    for anybody to dismiss (HEA-176)
 
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)
@@ -466,19 +480,33 @@ HEA has the same gap, and it matters more here: allocation is proportional, so a
 device counted twice does not produce one wrong figure, it shifts every other
 device's share (ADR-0002).
 
-1. Exclude a nested device's energy from its upstream device's figures, keeping
-   **gross and net** per upstream device rather than silently correcting one -
-   a breaker really did carry that energy, and a household will expect to see it
-   (HEA-151)
+1. Exclude a nested device's energy from its upstream device's figures (HEA-151).
+   **The netting shipped**; the *gross* half - publishing what a breaker really
+   carried alongside what it used itself - is shelved pending anyone asking for
+   it, so the ticket stays open on that alone
 2. Derive whole-home and Untracked from root-level gross readings only, or the
-   remainder double-counts everything nested (HEA-152)
-3. Render the hierarchy in the flow view and the dashboard, so the picture does
+   remainder double-counts everything nested (HEA-152) - **shipped**, and pinned
+   by an invariant test rather than an example
+3. Supply the hierarchy from the Energy Dashboard rather than storing a second
+   copy of it (HEA-168) - **shipped**. A household describes their wiring where
+   Home Assistant already asks, and editing it there reaches the engine live,
+   without a restart and without rebuilding the accounting state
+4. Carry what a nested parent owes rather than publishing a negative draw
+   (HEA-169) - **shipped**. A child reporting before its parent would otherwise
+   show the parent as having used less than nothing
+5. Say plainly that tracking a circuit and its appliances double counts unless
+   the hierarchy is declared, and that where it stays below the house meter
+   *nothing detects it* (HEA-170) - **shipped**, in the README, the
+   troubleshooting page and the unreconciled-energy Repair
+6. Render the hierarchy in the flow view and the dashboard, so the picture does
    not contradict the corrected numbers (HEA-153)
-4. Open question: a circuit's HA area is the cupboard it is installed in, not
+7. Open question: a circuit's HA area is the cupboard it is installed in, not
    the rooms it feeds, so electrical topology and the area registry disagree
    about where a nested circuit's untracked residual belongs (HEA-154)
 
-Nothing here is started, and none of it blocks a release.
+**The accounting is complete; what is left is presentation.** Items 1-5 shipped
+between 2026-09-19 and 2026-09-25 and are in 0.4.0. Items 6 and 7 are the
+dashboard's, and neither blocks a release.
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled. Epics 9 and 10 run whenever
