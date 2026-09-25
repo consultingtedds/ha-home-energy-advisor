@@ -1168,3 +1168,109 @@ async def test_the_coordinator_reports_warming_up_until_an_interval_closes(
 
     # Then - it is warming up no longer
     assert coordinator.is_warming_up() is False
+
+
+CIRCUIT_ENTITY = "sensor.kitchen_circuit_energy"
+
+
+def _nested_entry() -> MockConfigEntry:
+    """A household tracking a circuit and one appliance sitting on it."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title="Kitchen Circuit",
+                data={CONF_NAME: "Kitchen Circuit", CONF_ENERGY_ENTITY: CIRCUIT_ENTITY},
+                unique_id=None,
+            ),
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title="Coarse Step Aircon",
+                data={
+                    CONF_NAME: "Coarse Step Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
+                },
+                unique_id=None,
+            ),
+        ],
+    )
+
+
+def _energy_prefs(included_in_stat: str | None) -> MagicMock:
+    """An energy manager whose device list optionally declares the hierarchy."""
+    aircon: dict[str, str] = {"stat_consumption": "sensor.coarse_step_energy"}
+    if included_in_stat is not None:
+        aircon["included_in_stat"] = included_in_stat
+    manager = MagicMock()
+    manager.data = {
+        "energy_sources": [],
+        "device_consumption": [{"stat_consumption": CIRCUIT_ENTITY}, aircon],
+    }
+    return manager
+
+
+async def _run_nested(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, manager: MagicMock
+) -> MockConfigEntry:
+    """One interval where the circuit carries 0.6 and the aircon 0.4 of it."""
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    for entity in ("sensor.grid_import", CIRCUIT_ENTITY, "sensor.coarse_step_energy"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    entry = _nested_entry()
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+        hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+        hass.states.async_set(CIRCUIT_ENTITY, "0.6", _ENERGY)
+        hass.states.async_set("sensor.coarse_step_energy", "0.4", _ENERGY)
+        await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+        async_fire_time_changed(hass, fire_all=True)
+        await hass.async_block_till_done()
+    return entry
+
+
+async def test_the_energy_dashboards_hierarchy_reaches_the_engine(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the Energy Dashboard says the aircon's energy is already
+    # inside the kitchen circuit's counter, which is what a clamp on a breaker
+    # measures
+    entry = await _run_nested(hass, freezer, _energy_prefs(CIRCUIT_ENTITY))
+
+    # Then - the circuit books what it used itself, 0.6 - 0.4, and the aircon is
+    # not counted against it a second time
+    coordinator = entry.runtime_data
+    circuit, aircon = (coordinator.data.devices[sub] for sub in entry.subentries)
+    assert circuit.energy_kwh == Decimal("0.2")
+    assert aircon.energy_kwh == Decimal("0.4")
+    assert coordinator.data.untracked.energy_kwh == Decimal("0.4")
+
+
+async def test_a_household_that_declares_no_hierarchy_is_accounted_flat(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the same two devices, and an Energy Dashboard that says
+    # nothing about how they relate. This is the path every household without
+    # nesting is on, and it must be untouched
+    entry = await _run_nested(hass, freezer, _energy_prefs(None))
+
+    # Then - both book their own counters. The circuit genuinely contains the
+    # aircon here and is double counting it, which is the household's to declare
+    # rather than ours to infer
+    coordinator = entry.runtime_data
+    circuit, aircon = (coordinator.data.devices[sub] for sub in entry.subentries)
+    assert circuit.energy_kwh == Decimal("0.6")
+    assert aircon.energy_kwh == Decimal("0.4")

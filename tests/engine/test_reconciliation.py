@@ -486,6 +486,70 @@ def test_a_carry_survives_a_restart_and_is_still_repaid() -> None:
     assert circuit.actual_cost >= Decimal(0)
 
 
+def test_nesting_can_change_at_runtime_without_losing_what_was_accounted() -> None:
+    # Given - a fleet accounted flat, because the household has not described
+    # their wiring yet. The circuit's counter already contains the aircon's, so
+    # this first period is genuinely double counted and stays that way: figures
+    # already published are never rewritten
+    acc = _nested({"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE}, {})
+    for entity in (GRID, HOUSE, CIRCUIT, APPLIANCE):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("1.0"))
+    acc.observe(HOUSE, at(5), Decimal("1.0"))
+    acc.observe(CIRCUIT, at(5), Decimal("0.6"))
+    acc.observe(APPLIANCE, at(5), Decimal("0.4"))
+    acc.finalize(at(40))
+    flat = acc.totals().devices["kitchen_circuit"].energy_kwh
+    assert flat == Decimal("0.6"), "un-nested, the circuit books its whole counter"
+
+    # When - they declare it in the Energy Dashboard and the mirror tells the
+    # engine, mid-run. Rebuilding the accountant here would be the easy way and
+    # the wrong one: it would throw away the battery ledger, the open buckets
+    # and the retained ring along with the old hierarchy (ADR-0021)
+    acc.set_nesting({"aircon": "kitchen_circuit"})
+    acc.observe(GRID, at(45), Decimal("2.0"))
+    acc.observe(HOUSE, at(45), Decimal("2.0"))
+    acc.observe(CIRCUIT, at(45), Decimal("1.2"))
+    acc.observe(APPLIANCE, at(45), Decimal("0.8"))
+    acc.finalize(at(90))
+
+    # Then - the second period nets, the first is untouched, and the total is
+    # the two added rather than either recomputed
+    circuit = acc.totals().devices["kitchen_circuit"]
+    assert circuit.energy_kwh == flat + Decimal("0.2")
+    assert acc.totals().devices["aircon"].energy_kwh == Decimal("0.8")
+
+
+def test_nesting_removed_at_runtime_stops_netting_and_drops_what_was_owed() -> None:
+    # Given - a parent mid-debt to its child, which is the state a household
+    # can leave behind by un-nesting in the Energy Dashboard at any moment
+    acc = _nested(
+        {"kitchen_circuit": CIRCUIT, "aircon": APPLIANCE},
+        {"aircon": "kitchen_circuit"},
+    )
+    for entity in (GRID, HOUSE, CIRCUIT, APPLIANCE):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("0.6"))
+    acc.observe(HOUSE, at(5), Decimal("0.6"))
+    acc.observe(CIRCUIT, at(5), Decimal("0.1"))
+    acc.observe(APPLIANCE, at(5), Decimal("0.4"))
+    acc.finalize(at(40))
+    assert acc.snapshot()["nesting_carry"], "the circuit should owe here"
+
+    # When - the link is removed
+    acc.set_nesting({})
+
+    # Then - what it owed goes with it. Keeping the debt would let a hierarchy
+    # the household has deleted carry on suppressing a device, which is the
+    # orphan state nesting must not be able to leave behind
+    assert acc.snapshot()["nesting_carry"] == []
+    acc.observe(GRID, at(45), Decimal("1.2"))
+    acc.observe(HOUSE, at(45), Decimal("1.2"))
+    acc.observe(CIRCUIT, at(45), Decimal("0.6"))
+    acc.finalize(at(90))
+    assert acc.totals().devices["kitchen_circuit"].energy_kwh == Decimal("0.5")
+
+
 def test_a_fleet_with_no_nesting_never_carries_anything() -> None:
     # Given / When - the path every existing household is on
     acc = a_home()

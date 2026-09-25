@@ -497,6 +497,34 @@ class Accountant:
         self._debts = DebtLedger(expiry=self._max_quiet_span)
         self._balance = HouseBalance(expiry=self._max_quiet_span)
 
+    def set_nesting(self, nested_devices: Mapping[str, str]) -> None:
+        """Replaces which device contains which, without disturbing anything else.
+
+        A household can re-wire their hierarchy in the Energy Dashboard at any
+        moment, and the mirror tells the engine as soon as they do. Rebuilding
+        the accountant to take the new map would be the easy way and the wrong
+        one: it would discard the battery's stored-cost ledger, the open buckets
+        and the retained ring along with the old hierarchy, turning a config
+        edit into lost accounting (ADR-0021).
+
+        Netting is applied per bucket at finalise time rather than held as
+        state, so the map is all there is to replace.
+
+        A carry belongs to a link that existed. Dropping the carries of devices
+        that are no longer parents is what stops a hierarchy the household has
+        deleted from going on suppressing a device - the orphan state this must
+        not be able to leave behind (HEA-168).
+        """
+        self._upstream = dict(nested_devices)
+        self._children = {}
+        for child, parent in self._upstream.items():
+            self._children.setdefault(parent, []).append(child)
+        self._nesting_carry = {
+            device: owed
+            for device, owed in self._nesting_carry.items()
+            if device in self._children
+        }
+
     def snapshot(self) -> dict[str, Any]:
         """Everything the engine has learned, for carrying across a restart.
 

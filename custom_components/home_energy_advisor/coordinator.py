@@ -17,7 +17,8 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.components.energy.data import async_get_manager
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
@@ -54,6 +55,7 @@ from .engine.energy_source import EnergyUnit
 from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from datetime import datetime
     from typing import Any
 
@@ -177,6 +179,47 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._snapshot_status = SnapshotStatus.ABSENT
         self._snapshot_age: timedelta | None = None
 
+    async def _async_follow_nesting(self) -> None:
+        """Take the device hierarchy from the Energy Dashboard, and keep taking it.
+
+        A household describes their wiring once, where Home Assistant already
+        asks for it: a device-consumption entry naming the device whose total
+        already contains it. Holding a second copy here would be a maintenance
+        burden with no case behind it - there is no hierarchy somebody would
+        want only in this integration.
+
+        Subscribed rather than read once, so re-nesting in the Energy Dashboard
+        reaches the engine without a restart. `async_listen_updates` has **no
+        unsubscribe**, so the callback cannot be handed to `async_on_unload` and
+        guards on the entry's state instead.
+
+        Failure is swallowed for the same reason the config flow's prefill
+        swallows it: a household with no Energy Dashboard configured is
+        ordinary, and nesting is an improvement on the figures rather than a
+        precondition for them.
+        """
+        try:
+            manager = await async_get_manager(self.hass)
+        except Exception:  # noqa: BLE001 - nesting is optional; never block setup
+            return
+        self._apply_nesting(manager.data)
+        manager.async_listen_updates(self._async_nesting_changed)
+
+    async def _async_nesting_changed(self) -> None:
+        """Re-read the hierarchy after the household edited the Energy Dashboard."""
+        if self._entry.state is not ConfigEntryState.LOADED:
+            # The listener outlives the entry, so a reloaded or removed
+            # household would otherwise be accounted by a dead coordinator.
+            return
+        try:
+            manager = await async_get_manager(self.hass)
+        except Exception:  # noqa: BLE001 - as above; a failed re-read changes nothing
+            return
+        self._apply_nesting(manager.data)
+
+    def _apply_nesting(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
+        self._accountant.set_nesting(_nesting_of(prefs, self._device_of_entity))
+
     def _new_accountant(self) -> Accountant:
         return Accountant(
             house_sources=self._house_sources,
@@ -221,6 +264,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     async def async_start(self) -> None:
         """Restore, baseline current states, subscribe, and start the timer."""
         await self._async_restore_accounting()
+        await self._async_follow_nesting()
         self._adopt_standing_accusations()
         for entity_id in self._energy_entities:
             self._feed_energy(entity_id, self.hass.states.get(entity_id))
@@ -789,6 +833,33 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _device_name(self, sub_id: str) -> str:
         subentry = self._entry.subentries.get(sub_id)
         return subentry.title if subentry is not None else sub_id
+
+
+def _nesting_of(prefs: Any, device_of_entity: Mapping[str, str]) -> dict[str, str]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    """Which tracked device sits inside which, per the Energy Dashboard.
+
+    A `device_consumption` entry carries `included_in_stat`: the statistic id of
+    the device whose total already contains this one. For an entity-backed
+    sensor a statistic id *is* the entity id, which is what lets it be matched
+    to our own devices at all.
+
+    Both ends have to be tracked by us. A child whose parent we do not track has
+    no double count to remove - its energy is inside a counter nobody is
+    reading - and a link to a device we have never heard of is simply not ours
+    to act on. Either way the pair is skipped, which leaves today's behaviour
+    rather than a guess.
+
+    A device declared inside itself is dropped too: nothing in Home Assistant
+    forbids it through the websocket API, and netting a device against itself
+    would erase it.
+    """
+    nesting: dict[str, str] = {}
+    for entry in prefs.get("device_consumption", []) if prefs else []:
+        parent = device_of_entity.get(entry.get("included_in_stat"))
+        child = device_of_entity.get(entry.get("stat_consumption"))
+        if parent is not None and child is not None and parent != child:
+            nesting[child] = parent
+    return nesting
 
 
 def _to_decimal(raw: str) -> Decimal | None:
