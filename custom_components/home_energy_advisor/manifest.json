@@ -20,5 +20,5 @@
   "documentation": "https://github.com/consultingtedds/ha-home-energy-advisor",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/consultingtedds/ha-home-energy-advisor/issues",
-  "version": "0.3.1"
+  "version": "0.4.0"
 }
