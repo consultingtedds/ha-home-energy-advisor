@@ -52,11 +52,18 @@ Energy Advisor, or see the next entry.
 
 Every device has a **Last Reading** sensor, under Diagnostic on its device page.
 It says when the sensor you chose for that device last reported something Home
-Energy Advisor could count, and that is the figure to check first when a device
-looks stuck: while it keeps up with the clock, the figures beside it are live.
+Energy Advisor could count, which is the first thing to look at when a device
+looks stuck.
 
 If it says **Unavailable**, that sensor has reported nothing for at least half an
 hour - it has gone unavailable itself, or it has left Home Assistant altogether.
+
+**An old time on its own is not a fault.** Many sensors report only when their
+reading changes, so a device switched off at the wall sends nothing at all, and
+this can read hours or days old while nothing whatever is wrong. On a device
+like that the time often reflects the last Home Assistant restart rather than
+anything the device did. Read it as when that device's figures last moved, and
+treat **Unavailable** as the signal that nobody is counting.
 
 - **The cost figures stay exactly as they are.** They are not wrong: they are what
   that device has cost so far, and they are still counted in your house totals and

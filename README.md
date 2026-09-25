@@ -345,11 +345,16 @@ Each tracked device also carries one sensor that is not a figure:
 | Last Reading | a time | When the sensor you chose for that device last reported something we could count |
 
 It is a diagnostic, and it is there because a cost that has stopped moving looks
-exactly like a cost. While it keeps up with the clock, the figures beside it are
-live; if it says **Unavailable**, that device's sensor has reported nothing for
-at least half an hour and its figures have been standing still ever since. The
-figures themselves are never withdrawn - what a device has cost so far stays
-true, and stays visible, however long it has been unplugged.
+exactly like a cost. If it says **Unavailable**, that device's sensor has
+reported nothing for at least half an hour and its figures have been standing
+still ever since. The figures themselves are never withdrawn - what a device has
+cost so far stays true, and stays visible, however long it has been unplugged.
+
+**It is the Unavailable that means something is wrong, not the age.** Many
+sensors report only when their reading changes, so a device that is switched off
+sends nothing at all, and this can then read hours or days old with nothing
+whatever wrong. Read the time as when that device's figures last moved. The
+sensor going **Unavailable** is the part that says nobody is counting.
 
 Three more devices are created alongside them:
 

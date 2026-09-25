@@ -667,6 +667,13 @@ class HeaLastReadingSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
     raised, so there is nothing to dismiss - a device offline for a season goes
     quiet here and says nothing else, which is what HEA-24 settled and what makes
     this cheap enough to be on by default.
+
+    **The age alone carries less than it looks like, and the documentation says
+    so.** Many sources write only when their reading changes, so a device
+    switched off at the wall produces nothing at all and this reads however long
+    ago that source was last disturbed - which on the reference instance turned
+    out to be the previous restart rather than anything the device did. The
+    withdrawal is the signal; the timestamp is context.
     """
 
     _attr_has_entity_name = True
