@@ -413,6 +413,19 @@ zero, when in truth it could have been sold.
   reports before the house meter has accounted for it is held back until its
   real price is known. A figure read mid-hour can sit a little low and rise
   later. It never falls.
+- **Nothing tells us which of your devices are plugged into which.** If you
+  track a circuit *and* an appliance on that circuit, the appliance's energy is
+  inside both counters and gets counted twice. The same goes for a smart plug
+  and the thing plugged into it. Home Assistant has somewhere to record this:
+  **Settings > Dashboards > Energy**, edit the inner device, and set the device
+  that already includes it. Home Energy Advisor follows that and stops
+  double-counting, with no setup of its own.
+
+  **If you do not record it, we cannot tell.** Where the double count pushes
+  your tracked devices above what your house meter read, you get a notification
+  about the totals not adding up. Where it stays below that, nothing detects it
+  and nothing warns you - the figures will simply be too high for those two
+  devices.
 
 ## What it does not do
 

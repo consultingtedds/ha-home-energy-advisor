@@ -65,12 +65,41 @@ explains why they appear and what to choose.
 
 Your device sensors are reporting more energy than your house meter recorded,
 and it is not correcting itself. The usual cause is one device sensor that
-already includes another, so the same energy is counted twice - for example, a
-smart plug and the appliance plugged into it both tracked. A house-level input
-measuring the wrong circuit does the same.
+already includes another, so the same energy is counted twice - a smart plug and
+the appliance plugged into it, or a circuit and an appliance on that circuit. A
+house-level input measuring the wrong circuit does the same.
 
 The **Unreconciled Energy** figure on the Home Energy Advisor device shows how
 much energy is involved.
+
+### If one device really is inside another
+
+This is common on houses metered at the breaker: a clamp on a circuit measures
+everything downstream of it, so an appliance you also track separately is inside
+both counters.
+
+Tell Home Assistant, and Home Energy Advisor follows it:
+
+1. **Settings** > **Dashboards** > **Energy**
+2. Edit the **inner** device - the appliance, not the circuit
+3. Set the device that already includes it
+
+Nothing to configure here, and no restart. Your figures start accounting for it
+from the next interval; figures already recorded are not rewritten.
+
+Depth does not matter. A breaker containing a sub-circuit containing a plug
+containing an appliance works the same way - each one names the device directly
+above it.
+
+### What we cannot see
+
+**If you do not record it, nothing detects it.** The notification above only
+appears when the double count pushes your tracked devices past what your house
+meter read. A circuit and its appliances that together stay *under* your house
+total raise nothing at all, because nothing has overflowed - the two figures are
+simply too high, and no check we have can tell.
+
+So it is worth setting, even if nothing appears to be wrong.
 
 ## A notification says an energy input or the price has been unavailable
 
