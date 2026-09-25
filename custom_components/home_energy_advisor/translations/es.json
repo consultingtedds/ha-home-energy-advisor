@@ -178,6 +178,9 @@
       "unreconciled_energy": {
         "name": "Energía sin conciliar"
       },
+      "last_reading": {
+        "name": "Última lectura"
+      },
       "lowest_possible_cost": {
         "name": "Coste mínimo posible"
       },

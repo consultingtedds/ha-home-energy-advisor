@@ -48,6 +48,37 @@ Energy Advisor, or see the next entry.
   like a device that is switched off. Check whether that integration is asking
   you to reauthenticate.
 
+## A device's figures have stopped moving
+
+Every device has a **Last Reading** sensor, under Diagnostic on its device page.
+It says when the sensor you chose for that device last reported something Home
+Energy Advisor could count, and that is the figure to check first when a device
+looks stuck: while it keeps up with the clock, the figures beside it are live.
+
+If it says **Unavailable**, that sensor has reported nothing for at least half an
+hour - it has gone unavailable itself, or it has left Home Assistant altogether.
+
+- **The cost figures stay exactly as they are.** They are not wrong: they are what
+  that device has cost so far, and they are still counted in your house totals and
+  your history. Only this one diagnostic entity is withdrawn.
+- **Nothing is raised and nothing needs dismissing.** A heater unplugged for the
+  summer will sit like this until you plug it back in, and it will not ask you
+  anything in the meantime.
+- **Your house totals stay right.** While the device is silent, the energy it uses
+  - if it is using any - is counted under Untracked instead.
+- **A device switched off does not do this.** A plug that is still reporting, at
+  zero watts, is reporting. This only happens when the sensor itself has nothing
+  to say.
+
+If you watch for unavailable entities with Spook or a similar add-on, these
+sensors are how a failed device sensor reaches it: the cost figures never go
+unavailable, so they can never be flagged. Watchman only reports on entities you
+reference in your own YAML or dashboards, so add the Last Reading sensors to it
+if you want them covered there.
+
+To fix it, check the integration that provides the sensor - it may need
+reauthenticating, or the device may be off the network.
+
 ## Notifications about a unit changing to your currency
 
 For example:

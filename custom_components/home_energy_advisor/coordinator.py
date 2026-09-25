@@ -78,6 +78,16 @@ _UNAVAILABLE = {"unavailable", "unknown"}
 # this long before a Repair is raised - long enough to ride out restarts and brief
 # outages, short enough to surface a genuinely dead sensor the same day.
 _UNAVAILABLE_GRACE = timedelta(hours=1)
+# ADR-0024. How long the reading that moves a device's figures may be unavailable,
+# or absent, before that device's Last Reading sensor withdraws itself to say so
+# (HEA-176). The figures themselves never follow: what a device has cost so far
+# stays true however long its meter has been quiet. Longer than the engine's own
+# settle window - three buckets of lateness plus the bucket - so a figure is never
+# called stale while its last real energy is still being published; long enough to
+# ride out a restart or an integration reload; and half the hour a critical input
+# gets before a Repair, because an unavailable entity clears itself while a Repair
+# has to be dismissed by hand.
+_SOURCE_STALE_GRACE = timedelta(minutes=30)
 # How far the published totals may sit above the metered house before the
 # household is told. Calibrated rather than chosen: replaying 72 h of real
 # readings forgives nothing at all, and drifting those same readings through a
@@ -160,6 +170,12 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._device_sources = set(self._device_of_entity)
         self._reporting_seen: set[str] = set()
         self._silent_since: dict[str, datetime] = {}
+        # ADR-0024. When each device's reading last arrived, which have said
+        # nothing since when, and so which devices' Last Reading sensor is
+        # withdrawn rather than published.
+        self._stale_since: dict[str, datetime] = {}
+        self._stale_devices: frozenset[str] = frozenset()
+        self._last_reading: dict[str, datetime] = {}
         self._history_probed: set[str] = set()
         self._unreconciled_raised = False
         self._implausible_sources: set[str] = set()
@@ -291,6 +307,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._entry.async_on_unload(
             async_track_time_interval(self.hass, self._handle_tick, _FINALIZE_INTERVAL)
         )
+        # Before the first publication rather than at the first tick, so a restart
+        # does not report every device's last reading as unknown for a minute.
+        self._refresh_source_health(dt_util.utcnow())
         self.async_set_updated_data(self._accountant.totals())
 
     @callback
@@ -344,6 +363,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_refused_steps()
         self._check_rescaled_sources()
         self._check_source_units(now)
+        self._refresh_source_health(now)
         self.async_set_updated_data(self._accountant.totals())
         self._store.async_schedule_save(
             self._accountant.snapshot, now_func=dt_util.utcnow
@@ -605,6 +625,51 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._unsupported_units = unsupported
         self._missing_units = missing
 
+    def _refresh_source_health(self, now: datetime) -> None:
+        """Take each device's last reading, and say whose has stopped (ADR-0024).
+
+        Both halves of what the Last Reading sensor publishes: the moment itself,
+        and whether it is old enough that the figures beside it have stopped
+        moving. Recomputed on the same tick that publishes, so a household sees
+        this change within one publication rather than on a clock of its own.
+
+        Judged on the entity that feeds the engine, which for a power-only device
+        is the auto-created Integral helper rather than the power sensor the
+        household chose. That is the reading whose silence freezes the figures,
+        and the helper propagates its own source's unavailability, so both kinds
+        of device are covered by watching one entity each.
+        """
+        readings = self._accountant.last_reading_at()
+        self._last_reading = {
+            device: readings[entity]
+            for device, entity in self._devices.items()
+            if entity in readings
+        }
+        self._stale_devices = frozenset(
+            device
+            for device, entity in self._devices.items()
+            if self._is_stale(entity, now)
+        )
+
+    def _is_stale(self, entity: str, now: datetime) -> bool:
+        """Whether this reading has been gone long enough to withdraw."""
+        since = self._silence_began(entity, now)
+        return since is not None and now - since >= _SOURCE_STALE_GRACE
+
+    def _silence_began(self, entity: str, now: datetime) -> datetime | None:
+        """When this reading stopped saying anything, or ``None`` while it speaks.
+
+        A state that is present dates its own onset, so a missed tick or a restart
+        cannot start the clock again. One that is absent from Home Assistant has
+        no timestamp to offer, so it is timed from the first tick that found it
+        missing - which can only ever delay a withdrawal, never hasten one.
+        """
+        state = self.hass.states.get(entity)
+        if state is None:
+            return self._stale_since.setdefault(entity, now)
+        self._stale_since.pop(entity, None)
+        return state.last_changed if state.state in _UNAVAILABLE else None
+
     def _check_input_health(self, now: datetime) -> None:
         """Raise or clear the source/price Repairs from each input's health."""
         for entity in self._monitored_entities:
@@ -718,6 +783,25 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         their own restored baseline to tell the two apart (HEA-47).
         """
         return not self._accountant.has_finalised()
+
+    @property
+    def stale_devices(self) -> frozenset[str]:
+        """The devices whose readings have stopped arriving, by subentry id.
+
+        Read by each device's Last Reading sensor, which withdraws itself rather
+        than keep offering a timestamp as though it were current (ADR-0024). The
+        cost figures never consult this: what a device has cost so far stays true
+        however long its meter has been quiet.
+        """
+        return self._stale_devices
+
+    def last_reading_at(self, device_key: str) -> datetime | None:
+        """When this device's source last produced a reading the engine counted.
+
+        ``None`` where it never has - a device configured minutes ago, or one
+        whose source has never reported at all (HEA-69).
+        """
+        return self._last_reading.get(device_key)
 
     @property
     def settled_until(self) -> datetime | None:

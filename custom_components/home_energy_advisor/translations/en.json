@@ -178,6 +178,9 @@
       "unreconciled_energy": {
         "name": "Unreconciled Energy"
       },
+      "last_reading": {
+        "name": "Last Reading"
+      },
       "lowest_possible_cost": {
         "name": "Lowest Possible Cost"
       },

@@ -178,6 +178,9 @@
       "unreconciled_energy": {
         "name": "Несведённая энергия"
       },
+      "last_reading": {
+        "name": "Последнее показание"
+      },
       "lowest_possible_cost": {
         "name": "Наименьшая возможная стоимость"
       },

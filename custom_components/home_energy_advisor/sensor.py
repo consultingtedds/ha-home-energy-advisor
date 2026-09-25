@@ -13,6 +13,11 @@ restart (see ``engine/accountant.py``). Each sensor is therefore a
 and adds the runtime's running total on top, so ``total_increasing`` stays
 continuous across restarts without the engine persisting anything.
 
+Beside those figures each tracked device carries one diagnostic sensor that is
+not a figure at all: Last Reading, which says when its source last reported and
+withdraws itself when that stops, so a household can tell a device that costs
+nothing from one nobody is counting any more (ADR-0024).
+
 This module is also where a figure stops being an accumulator and becomes a
 recorded Home Assistant state, so it is where rounding belongs - see
 ``HeaCostSensor.native_value`` (HEA-59).
@@ -386,14 +391,19 @@ async def async_setup_entry(
         )
         async_add_entities(
             (
-                HeaCostSensor(
-                    coordinator,
-                    concept,
-                    device_key=subentry_id,
-                    device_info=device_info,
-                    currency=currency,
-                )
-                for concept in device_concepts
+                *(
+                    HeaCostSensor(
+                        coordinator,
+                        concept,
+                        device_key=subentry_id,
+                        device_info=device_info,
+                        currency=currency,
+                    )
+                    for concept in device_concepts
+                ),
+                HeaLastReadingSensor(
+                    coordinator, device_key=subentry_id, device_info=device_info
+                ),
             ),
             config_subentry_id=subentry_id,
         )
@@ -630,6 +640,72 @@ class HeaCostSensor(_HeaRestoringSensor):
         if self._device_key == _WHOLE_HOME_KEY:
             return totals.whole_home
         return totals.devices.get(self._device_key)
+
+
+class HeaLastReadingSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
+    """When a tracked device's source last reported, and nothing if it has stopped.
+
+    A cumulative figure that stops being fed does not go blank - it holds its last
+    value for ever - so a household sees a plausible number that has quietly
+    stopped moving, and nothing anywhere says so. Their own tooling cannot help
+    either: Spook and Watchman look for *missing* entities, and every figure here
+    is present and perfectly healthy. It is simply no longer being added to
+    (HEA-176).
+
+    This is the entity that says so, and it carries the whole disclosure so that
+    none of the figures has to. The cost sensors keep publishing throughout,
+    because what a device has cost so far remains exactly true while it is
+    unplugged - a radiator that ran all week and was then put away really did cost
+    what it says, and withdrawing that figure for the eight months until it comes
+    back would be answering a rare fault by degrading the ordinary case
+    (ADR-0024).
+
+    Two readings, for two audiences. Its value answers a person: a timestamp on
+    the device page, rendered as how long ago, needing no tooling at all. Its
+    *availability* answers a machine: past the grace it withdraws, which is the
+    one vocabulary an unavailable-entity check already understands. Nothing is
+    raised, so there is nothing to dismiss - a device offline for a season goes
+    quiet here and says nothing else, which is what HEA-24 settled and what makes
+    this cheap enough to be on by default.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "last_reading"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(
+        self,
+        coordinator: HeaCoordinator,
+        *,
+        device_key: str,
+        device_info: DeviceInfo,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_device_info = device_info
+        entry = cast("HeaConfigEntry", coordinator.config_entry)
+        self._attr_unique_id = f"{entry.entry_id}_{device_key}_last_reading"
+        self._device_key = device_key
+
+    @property
+    def native_value(self) -> datetime | None:
+        """The moment of the last reading, or ``None`` if there has never been one."""
+        return self.coordinator.last_reading_at(self._device_key)
+
+    @property
+    def available(self) -> bool:
+        """False once the readings have stopped arriving (ADR-0024).
+
+        The signal itself. A timestamp that simply grew older would say the same
+        thing to a person and nothing at all to the checks a household already
+        runs, and those checks are what the report asked for.
+
+        The moment it last held is not lost by this: it is in the entity's own
+        history, and the source sensor beside it is saying the same thing.
+        """
+        return (
+            super().available and self._device_key not in self.coordinator.stale_devices
+        )
 
 
 class HeaUnreconciledSensor(_HeaRestoringSensor):

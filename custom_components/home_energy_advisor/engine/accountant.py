@@ -1241,6 +1241,24 @@ class Accountant:
             )
         )
 
+    def last_reading_at(self) -> dict[str, datetime]:
+        """When each input last produced a reading this engine could count.
+
+        The question a household asks of a figure that has stopped moving, and the
+        only one this engine can answer on its own: a counter it cannot count -
+        unavailable, unit-less, refused - leaves no reading here, whatever its
+        sensor is doing. That is the right reading of the word, because it is
+        exactly the moment after which the figure could not have moved.
+
+        Read straight from each source, so it says what the diagnostics download
+        says, and it survives a restart because the position it comes from does.
+        """
+        return {
+            entity: snapshot.last_at
+            for entity, source in self._sources.items()
+            if (snapshot := source.snapshot()).last_at is not None
+        }
+
     def rescaled_sources(self) -> dict[str, ScaleChange]:
         """Inputs whose refused step looked like their scale moving (HEA-159).
 
