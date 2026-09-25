@@ -558,3 +558,91 @@ def test_a_fleet_with_no_nesting_never_carries_anything() -> None:
     # Then - netting is not merely a no-op, it is never reached, so a snapshot
     # taken here has no nesting state to restore
     assert acc.snapshot()["nesting_carry"] == []
+
+
+def test_the_remainder_is_the_house_less_the_roots_own_counters() -> None:
+    # Given - a three-level tree beside an untracked device, which is the shape
+    # the validation methodology has to be able to check by hand: a breaker
+    # carrying a sub-circuit carrying a plug, plus a standalone appliance
+    acc = _nested(
+        {
+            "breaker": "sensor.breaker_energy",
+            "sub_circuit": "sensor.sub_circuit_energy",
+            "plug": "sensor.plug_energy",
+            "standalone": "sensor.standalone_energy",
+        },
+        {"sub_circuit": "breaker", "plug": "sub_circuit"},
+    )
+    meters = {
+        "sensor.breaker_energy": Decimal("1.0"),
+        "sensor.sub_circuit_energy": Decimal("0.6"),
+        "sensor.plug_energy": Decimal("0.4"),
+        "sensor.standalone_energy": Decimal("0.2"),
+    }
+    for entity in (GRID, HOUSE, *meters):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the house used 1.5, of which the breaker carried 1.0 and the
+    # standalone appliance 0.2
+    acc.observe(GRID, at(5), Decimal("1.5"))
+    acc.observe(HOUSE, at(5), Decimal("1.5"))
+    for entity, reading in meters.items():
+        acc.observe(entity, at(5), reading)
+    acc.finalize(at(60))
+    totals = acc.totals()
+
+    # Then - the invariant, stated the way a household could check it with the
+    # meter faces in front of them: the remainder is the house less what the
+    # *root* counters physically read. Nothing walks the tree to get there -
+    # every device publishes its own net, and the intermediate terms cancel -
+    # but the identity has to hold or the remainder means nothing
+    roots_gross = meters["sensor.breaker_energy"] + meters["sensor.standalone_energy"]
+    assert roots_gross == Decimal("1.2")
+    assert totals.whole_home.energy_kwh - roots_gross == totals.untracked.energy_kwh
+    assert totals.untracked.energy_kwh == Decimal("0.3")
+
+    # And the middle of the chain is both a child and a parent, which is the
+    # case the two halves of the rule could disagree about: the sub-circuit
+    # nets its own child out while still being netted out of its own parent
+    assert totals.devices["breaker"].energy_kwh == Decimal("0.4")
+    assert totals.devices["sub_circuit"].energy_kwh == Decimal("0.2")
+    assert totals.devices["plug"].energy_kwh == Decimal("0.4")
+    assert totals.devices["standalone"].energy_kwh == Decimal("0.2")
+
+
+def test_the_roots_identity_is_a_property_of_nesting_and_not_an_accident() -> None:
+    # Given - the identical meters and house, with the hierarchy *not* declared.
+    # The assertion above passes the moment it is written, so this is what shows
+    # it has teeth: the same arithmetic on the same readings must fail here
+    acc = _nested(
+        {
+            "breaker": "sensor.breaker_energy",
+            "sub_circuit": "sensor.sub_circuit_energy",
+            "plug": "sensor.plug_energy",
+            "standalone": "sensor.standalone_energy",
+        },
+        {},
+    )
+    meters = {
+        "sensor.breaker_energy": Decimal("1.0"),
+        "sensor.sub_circuit_energy": Decimal("0.6"),
+        "sensor.plug_energy": Decimal("0.4"),
+        "sensor.standalone_energy": Decimal("0.2"),
+    }
+    for entity in (GRID, HOUSE, *meters):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the same 1.5 kWh house
+    acc.observe(GRID, at(5), Decimal("1.5"))
+    acc.observe(HOUSE, at(5), Decimal("1.5"))
+    for entity, reading in meters.items():
+        acc.observe(entity, at(5), reading)
+    acc.finalize(at(60))
+    totals = acc.totals()
+
+    # Then - the four devices claim 2.2 kWh of a 1.5 kWh house, because three of
+    # them are inside each other and nobody has said so. The remainder floors at
+    # nothing and the identity above is false by 0.3
+    roots_gross = meters["sensor.breaker_energy"] + meters["sensor.standalone_energy"]
+    assert totals.untracked.energy_kwh == Decimal(0)
+    assert totals.whole_home.energy_kwh - roots_gross != totals.untracked.energy_kwh
