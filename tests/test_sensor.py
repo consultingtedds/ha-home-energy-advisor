@@ -30,6 +30,8 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
@@ -59,14 +61,22 @@ _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 _CONCEPTS = ("energy_used", "actual_cost", "cost_at_grid_price", "cost_savings")
 
 
-def _entry(options: dict[str, Any] | None = None) -> MockConfigEntry:
-    """A home with one energy-metered device and one power-only device."""
+def _entry(
+    options: dict[str, Any] | None = None,
+    extra_data: dict[str, Any] | None = None,
+) -> MockConfigEntry:
+    """A home with one energy-metered device and one power-only device.
+
+    Grid-only unless ``extra_data`` adds generation or a battery, which is the
+    shape most installs have.
+    """
     return MockConfigEntry(
         domain=DOMAIN,
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            **(extra_data or {}),
         },
         options=options or {},
         subentries_data=[
@@ -92,6 +102,32 @@ def _entry(options: dict[str, Any] | None = None) -> MockConfigEntry:
     )
 
 
+# Figures that cannot carry information for a household with neither generation
+# nor a battery: two are always zero, and three restate a sensor beside them.
+_SUPPLY_ONLY_CONCEPTS = (
+    "energy_from_generation",
+    "energy_from_battery",
+    "energy_from_grid",
+    "cost_at_grid_price",
+    "cost_savings",
+)
+
+
+def _supply_entry() -> MockConfigEntry:
+    """The same household, with solar and a battery.
+
+    Used wherever a test asserts on *every* concept: on a grid-only home the
+    supply-only ones are disabled, so they have no state to assert against.
+    """
+    return _entry(
+        extra_data={
+            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+            CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+        }
+    )
+
+
 def _aircon_subentry_id(entry: MockConfigEntry) -> str:
     return str(
         next(
@@ -106,6 +142,10 @@ def _seed_states(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.price", "0.30")
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
     hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    # Seeded whether or not the entry references them, so `_supply_entry` needs
+    # no extra setup. A state nothing is configured to read changes nothing.
+    for entity in ("generation", "battery_charge", "battery_discharge"):
+        hass.states.async_set(f"sensor.{entity}", "0", _ENERGY)
 
 
 async def _run_one_interval(
@@ -172,10 +212,12 @@ async def test_untracked_is_a_normal_device(
 async def test_each_concept_carries_its_adr_0003_identity(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a running integration
+    # Given - a household with solar and a battery, so every concept is live.
+    # On a grid-only home the supply-only ones are disabled and have no state
+    # to assert an identity against (HEA-175)
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
-    entry = _entry()
+    entry = _supply_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -205,10 +247,11 @@ async def test_each_concept_carries_its_adr_0003_identity(
 async def test_untracked_costs_use_total_not_total_increasing_state_class(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a running integration with the Untracked remainder
+    # Given - the Untracked remainder on a household with solar and a battery,
+    # so its cost-at-grid-price and savings sensors exist to be checked
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
-    entry = _entry()
+    entry = _supply_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -312,10 +355,11 @@ async def test_sensors_publish_the_running_totals_over_an_interval(
 async def test_power_only_device_gets_sensors_reading_zero_until_energy_is_wired(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a running integration with an interval already accounted
+    # Given - an interval already accounted, on a household with solar and a
+    # battery so the power-only device has its full set of sensors to read
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
-    entry = _entry()
+    entry = _supply_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -665,10 +709,11 @@ def _decimal_places(state: str) -> int:
 async def test_published_values_are_rounded_to_the_publishing_precision(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a running integration
+    # Given - a household with solar and a battery, so the by-source energy
+    # sensors are live and their rounding is covered too
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
-    entry = _entry()
+    entry = _supply_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -1553,3 +1598,65 @@ async def test_the_warming_up_signal_is_kept_out_of_the_recorder(
     # and never again is noise in the history, recorded once a minute for every
     # HEA entity and every cycle meter mirroring one (HEA-59)
     assert "warming_up" in excluded
+
+
+def _disabled_concepts(hass: HomeAssistant) -> set[str]:
+    """Every concept the integration disabled for itself, by concept key.
+
+    Matched on the suffix rather than split, because a unique_id is
+    ``<device key>_<concept>`` and a device key is itself a ULID or a name with
+    underscores in it. An entity matching no known concept is reported by its
+    raw id, so an unexpected one cannot pass unnoticed.
+    """
+    concepts = [concept.key for concept in CONCEPT_DESCRIPTIONS]
+    disabled = set()
+    for entry in er.async_get(hass).entities.values():
+        if entry.disabled_by is not er.RegistryEntryDisabler.INTEGRATION:
+            continue
+        match = next(
+            (key for key in concepts if entry.unique_id.endswith(f"_{key}")),
+            entry.unique_id,
+        )
+        disabled.add(match)
+    return disabled
+
+
+async def _setup(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+async def test_a_grid_only_home_is_not_given_sensors_that_can_only_read_zero(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a grid meter and nothing else, which is what most installs are.
+    # With no generation and no battery there is nothing to decompose, so five
+    # of the seven figures per device are permanently zero or restate the
+    # sensor beside them. RedKing was deleting these by hand, statistics too
+    _seed_states(hass)
+
+    # When
+    await _setup(hass, _entry())
+
+    # Then - created, so identity is fixed from day one and adding panels later
+    # needs no migration, but disabled, so they record nothing
+    assert _disabled_concepts(hass) == set(_SUPPLY_ONLY_CONCEPTS)
+
+
+async def test_a_home_with_solar_and_a_battery_keeps_every_figure(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the same devices where the decomposition has something to
+    # decompose. This is the half that makes the test above mean anything: the
+    # rule has to follow the household's configuration, not the concept
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_charge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+
+    # When
+    await _setup(hass, _supply_entry())
+
+    # Then - nothing is disabled; every figure can carry information here
+    assert _disabled_concepts(hass) == set()

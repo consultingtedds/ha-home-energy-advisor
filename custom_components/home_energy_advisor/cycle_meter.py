@@ -251,6 +251,11 @@ def _device_cost_sensors(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, s
             entity.domain == "sensor"
             and concept is not None
             and concept in _CONCEPT_ICONS
+            # A disabled source never produces a state, so a meter over it would
+            # sit at zero for ever while counting against the helper budget the
+            # household is already objecting to (HEA-175). Disabled entities are
+            # still in the registry, so this has to be asked explicitly.
+            and entity.disabled_by is None
             and not (entity.unique_id or "").startswith(whole_home_prefix)
             and (
                 entity.config_subentry_id is None

@@ -46,9 +46,12 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
+    CONF_GENERATION_ENTITY,
     CONF_POWER_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
@@ -99,15 +102,69 @@ _ENERGY_PRECISION = 6
 _MONEY_PRECISION = 4
 
 
-def _concepts_for(device_key: str) -> tuple[HeaSensorDescription, ...]:
-    """The concept descriptions for a device key, remapping Untracked's to total."""
+# Figures that can only carry information where the house has something besides
+# the grid. Two are always zero without generation or a battery, and three
+# restate a sensor beside them: with one source, the blend *is* the import price,
+# so Cost at Grid Price equals Actual Cost, Cost Savings is their difference and
+# therefore zero, and Energy From Grid equals Energy Used.
+#
+# Created rather than withheld, and disabled rather than absent. Identity is
+# fixed from day one, so a household who fits panels later enables them instead
+# of gaining new entities whose baseline is out of step with their siblings -
+# the skew that has twice produced nonsense figures here (HEA-57, HEA-83).
+# `entity_registry_enabled_default` applies only at first registration, so no
+# existing install loses anything it already has (HEA-175).
+_SUPPLY_ONLY_CONCEPTS = frozenset(
+    {
+        "energy_from_generation",
+        "energy_from_battery",
+        "energy_from_grid",
+        "cost_at_grid_price",
+        "cost_savings",
+    }
+)
+
+
+def _has_supply_beyond_the_grid(entry: HeaConfigEntry) -> bool:
+    """Whether this household has anything serving it other than the meter.
+
+    Read from the configuration rather than asked as a question: a household who
+    has told us about their panels has already answered it, and a setting nobody
+    understands is a worse default than one that is simply right.
+    """
+    return any(
+        entry.data.get(conf)
+        for conf in (
+            CONF_GENERATION_ENTITY,
+            CONF_BATTERY_CHARGE_ENTITY,
+            CONF_BATTERY_DISCHARGE_ENTITY,
+        )
+    )
+
+
+def _concepts_for(
+    device_key: str, *, supply_beyond_the_grid: bool = True
+) -> tuple[HeaSensorDescription, ...]:
+    """The concept descriptions for a device key.
+
+    Untracked's cumulative figures become `total` rather than `total_increasing`,
+    because it is derived by subtraction and can legitimately fall.
+    """
+    concepts = _CONCEPTS
+    if not supply_beyond_the_grid:
+        concepts = tuple(
+            replace(concept, entity_registry_enabled_default=False)
+            if concept.key in _SUPPLY_ONLY_CONCEPTS
+            else concept
+            for concept in concepts
+        )
     if device_key != _UNTRACKED_KEY:
-        return _CONCEPTS
+        return concepts
     return tuple(
         replace(concept, state_class=SensorStateClass.TOTAL)
         if concept.key in _UNTRACKED_TOTAL_CONCEPTS
         else concept
-        for concept in _CONCEPTS
+        for concept in concepts
     )
 
 
@@ -250,6 +307,7 @@ async def async_setup_entry(
     """Create the four sensors for the Untracked remainder and each device."""
     coordinator = entry.runtime_data
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+    supply = _has_supply_beyond_the_grid(entry)
 
     # One integration-level "hub" device carries the devices-registry sensor -
     # the authoritative list dashboards read to enumerate tracked devices without
@@ -286,7 +344,7 @@ async def async_setup_entry(
             device_info=untracked_info,
             currency=currency,
         )
-        for concept in _concepts_for(_UNTRACKED_KEY)
+        for concept in _concepts_for(_UNTRACKED_KEY, supply_beyond_the_grid=supply)
     )
 
     # The whole-home aggregate: the monotonic total the derived split rolls up to
@@ -309,12 +367,15 @@ async def async_setup_entry(
             device_info=whole_home_info,
             currency=currency,
         )
-        for concept in (*_concepts_for(_WHOLE_HOME_KEY), *_BOUND_CONCEPTS)
+        for concept in (
+            *_concepts_for(_WHOLE_HOME_KEY, supply_beyond_the_grid=supply),
+            *_BOUND_CONCEPTS,
+        )
     )
 
-    device_concepts = _CONCEPTS
+    device_concepts = _concepts_for("", supply_beyond_the_grid=supply)
     if entry.options.get(CONF_DEVICE_COST_BOUNDS):
-        device_concepts = (*_CONCEPTS, *_BOUND_CONCEPTS)
+        device_concepts = (*device_concepts, *_BOUND_CONCEPTS)
 
     for subentry_id, subentry in entry.subentries.items():
         if subentry.subentry_type != SUBENTRY_TYPE_DEVICE:

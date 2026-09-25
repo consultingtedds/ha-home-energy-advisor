@@ -23,12 +23,15 @@ from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
     CONF_CYCLE_DAILY,
     CONF_CYCLE_METERS,
     CONF_CYCLE_MONTHLY,
     CONF_CYCLE_WEEKLY,
     CONF_ENERGY_ENTITY,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
@@ -209,6 +212,7 @@ def _entry_with_one_device(
     cycles: bool = True,
     version: int = 3,
     owned_meters: dict[str, Any] | None = None,
+    supply: bool = True,
 ) -> MockConfigEntry:
     """A household tracking one device.
 
@@ -218,6 +222,11 @@ def _entry_with_one_device(
 
     ``owned_meters`` is the record an older entry carries of the helpers it
     created for itself - what the migration reads to know a household had them.
+
+    ``supply`` adds generation and a battery, and is on by default: these tests
+    are about what the meters do, and that needs every concept to exist. Pass
+    ``supply=False`` for a grid-only household, where Cost at Grid Price, Cost
+    Savings and the by-source energies are disabled and earn no meter (HEA-175).
     """
     return MockConfigEntry(
         domain=DOMAIN,
@@ -227,6 +236,15 @@ def _entry_with_one_device(
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            **(
+                {
+                    CONF_GENERATION_ENTITY: "sensor.generation",
+                    CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+                    CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+                }
+                if supply
+                else {}
+            ),
             **({CONF_CYCLE_METERS: owned_meters} if owned_meters else {}),
         },
         subentries_data=[
@@ -286,6 +304,23 @@ async def test_opting_into_daily_and_monthly_creates_them(
     meters = hass.config_entries.async_entries("utility_meter")
     assert len(meters) == 12
     assert {m.options["cycle"] for m in meters} == {"daily", "monthly"}
+
+
+async def test_a_grid_only_household_earns_no_meter_for_a_figure_that_cannot_move(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the same opt-in, on a household with no generation and no
+    # battery. Cost at Grid Price is disabled there, because with one source it
+    # is Actual Cost by another name (HEA-175)
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    await _set_up(hass, _entry_with_one_device(supply=False))
+
+    # Then - two concepts earn a meter rather than three, for the device and for
+    # Untracked: eight helpers instead of twelve. A meter over a sensor that can
+    # never move is pure cost, and helper count is the complaint this answers
+    meters = hass.config_entries.async_entries("utility_meter")
+    assert len(meters) == 8
+    assert not [meter for meter in meters if "Cost At Grid Price" in meter.title]
 
 
 async def test_the_metered_concepts_are_the_three_that_earn_a_meter(
@@ -469,8 +504,10 @@ async def test_removing_a_device_removes_its_cycle_meters(
 async def test_removing_a_device_less_integration_cleans_up_untracked_meters(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a house-level-only install (no tracked devices), so the only cycle
-    # meters are the six over the Untracked remainder's three metered concepts
+    # Given - a house-level-only install with no tracked devices, on the grid
+    # alone. The only cycle meters are over the Untracked remainder, and only
+    # for the two concepts that can move here: Cost at Grid Price is disabled
+    # without generation or a battery, so it earns no meter (HEA-175)
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
     entry = MockConfigEntry(
         domain=DOMAIN,
@@ -482,7 +519,7 @@ async def test_removing_a_device_less_integration_cleans_up_untracked_meters(
         },
     )
     await _set_up(hass, entry)
-    assert len(hass.config_entries.async_entries("utility_meter")) == 6
+    assert len(hass.config_entries.async_entries("utility_meter")) == 4
 
     # When - the integration is removed before any device was ever added (the
     # "cancelled part-way through setup" case)
