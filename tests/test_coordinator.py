@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
@@ -34,6 +34,8 @@ from custom_components.home_energy_advisor.issues import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
 
@@ -1274,3 +1276,113 @@ async def test_a_household_that_declares_no_hierarchy_is_accounted_flat(
     circuit, aircon = (coordinator.data.devices[sub] for sub in entry.subentries)
     assert circuit.energy_kwh == Decimal("0.6")
     assert aircon.energy_kwh == Decimal("0.4")
+
+
+async def test_a_household_whose_energy_data_cannot_be_read_still_sets_up(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the Energy Dashboard's data cannot be read at all
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    for entity in ("sensor.grid_import", CIRCUIT_ENTITY, "sensor.coarse_step_energy"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    entry = _nested_entry()
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(side_effect=RuntimeError("no energy data")),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    # Then - the integration loads and accounts normally. Nesting is an
+    # improvement on the figures, never a precondition for them, so a household
+    # who has never opened the Energy Dashboard must not be held up by it.
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data.data is not None
+
+
+def _nesting_listener(manager: MagicMock) -> Callable[[], Awaitable[None]]:
+    """The callback the coordinator registered with the energy manager."""
+    manager.async_listen_updates.assert_called_once()
+    listener = manager.async_listen_updates.call_args.args[0]
+    assert callable(listener)
+    return cast("Callable[[], Awaitable[None]]", listener)
+
+
+async def test_editing_the_energy_dashboard_re_nests_without_a_restart(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The live mirror, which is the whole of HEA-168 rather than a convenience.
+
+    A household describes their wiring in the Energy Dashboard and expects the
+    figures to follow. Rebuilding the engine to take a new hierarchy would be a
+    regression dressed as a config update - it would throw away the battery
+    ledger, the open buckets and the retained ring (ADR-0021) - so what is
+    asserted here is both halves: the new hierarchy applies, *and* what was
+    already accounted is still there.
+    """
+    # Given - a household accounted flat, with a real total already booked
+    manager = _energy_prefs(None)
+    entry = await _run_nested(hass, freezer, manager)
+    coordinator = entry.runtime_data
+    circuit_key, aircon_key = tuple(entry.subentries)
+    assert coordinator.data.devices[circuit_key].energy_kwh == Decimal("0.6")
+
+    # When - they declare in the Energy Dashboard that the aircon sits on the
+    # circuit, and Home Assistant tells every listener
+    manager.data["device_consumption"][1]["included_in_stat"] = CIRCUIT_ENTITY
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await _nesting_listener(manager)()
+
+        # ...and a further interval is accounted under the new hierarchy
+        freezer.move_to(datetime(2026, 7, 8, 22, 35, tzinfo=UTC))
+        hass.states.async_set("sensor.grid_import", "2.0", _ENERGY)
+        hass.states.async_set(CIRCUIT_ENTITY, "1.2", _ENERGY)
+        hass.states.async_set("sensor.coarse_step_energy", "0.7", _ENERGY)
+        await hass.async_block_till_done()
+        await _tick(hass, freezer, datetime(2026, 7, 8, 23, 0, tzinfo=UTC))
+
+    # Then - the second interval nets, 0.6 of circuit less 0.3 of aircon, and it
+    # is *added* to what the first interval booked. A rebuilt engine would read
+    # 0.3 here, having lost everything before the edit.
+    devices = entry.runtime_data.data.devices
+    assert devices[circuit_key].energy_kwh == Decimal("0.9")
+    assert devices[aircon_key].energy_kwh == Decimal("0.7")
+
+
+async def test_the_nesting_listener_is_harmless_once_its_entry_is_gone(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """`async_listen_updates` has no unsubscribe, checked in Home Assistant.
+
+    Nothing removes a listener, so every reload leaves another one behind, bound
+    to a coordinator that is no longer accounting for anybody. They are called
+    for the rest of the run, every time the household touches the Energy
+    Dashboard, which is why this is guarded rather than left to teardown.
+    """
+    # Given - a household whose entry has since been unloaded
+    manager = _energy_prefs(None)
+    entry = await _run_nested(hass, freezer, manager)
+    listener = _nesting_listener(manager)
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the household edits the Energy Dashboard, and the listener that
+    # outlived the entry is called with it
+    manager.data["device_consumption"][1]["included_in_stat"] = CIRCUIT_ENTITY
+    read_again = AsyncMock(return_value=manager)
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        read_again,
+    ):
+        await listener()
+
+    # Then - it does not raise, and it does not go and read the preferences: a
+    # dead coordinator re-nesting itself would be accounting nobody reads, on a
+    # hierarchy nobody asked it about.
+    read_again.assert_not_called()
+    assert entry.state is ConfigEntryState.NOT_LOADED
