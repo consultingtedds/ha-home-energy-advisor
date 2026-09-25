@@ -327,6 +327,17 @@ Each tracked device gets its own device in Home Assistant, carrying these:
 | Energy From Generation | kWh | How much came from your own generation |
 | Energy From Battery | kWh | How much came from the battery |
 
+**If you have no generation and no battery, five of those are switched off.**
+Without a second source there is nothing to split: Cost at Grid Price would
+equal Actual Cost, Cost Savings would always be zero, Energy From Grid would
+equal Energy Used, and the other two would never move. They are still created,
+so nothing changes if you fit panels later - you would just switch them back on
+in Home Assistant, and they carry the figures from then on.
+
+This applies to new installs. If you already have them and would rather not have them,
+you can simply disable them under **Settings > Devices & services > Entities**; their
+daily and monthly totals are then removed for you at the next restart.
+
 Three more devices are created alongside them:
 
 - **Untracked Energy Devices** carries the same set for everything the house used
