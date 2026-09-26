@@ -13,9 +13,14 @@ bumping a file by hand cannot promise.
 Used by `.github/workflows/release.yml`:
 
     python scripts/release_version.py 0.4.2    # prints 0.5.0, or nothing
+    python scripts/release_version.py --notes  # prints what went into it
 
 Printing nothing is a real answer, and the common one: a week of documentation
 and dependency work earns no release.
+
+The notes come from the same parse for the same reason the version does: what a
+household reads in the update notification and the version their instance
+compares against then cannot disagree about what shipped (HEA-177).
 """
 
 from __future__ import annotations
@@ -117,6 +122,108 @@ def next_version(current: str, messages: list[str]) -> str | None:
     return f"{major}.{minor}.{patch + 1}"
 
 
+#: What each releasable type is called in front of a household. `perf` sits under
+#: the same heading as `fix` because the difference is ours, not theirs: both are
+#: "it behaves better than it did" and neither is new.
+_HEADINGS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("New", frozenset(_MINOR_TYPES)),
+    ("Fixed", frozenset(_PATCH_TYPES)),
+)
+
+
+def release_notes(messages: list[str]) -> str:
+    """What these commits changed, as the update dialog will render it.
+
+    Home Assistant shows an integration's release notes inside the update
+    notification, and HACS already offers ours. Until this existed the body held
+    only a compare link, because `--generate-notes` builds its list from merged
+    pull requests and this project has none (HEA-177).
+
+    Derived from the same parse as the version, so the two can never disagree
+    about what a release contains. Anything that earned no release is left out
+    entirely: a household told about a test fixture learns that the list is not
+    worth reading, and an update notification does not survive that.
+
+    Breaking changes lead, and are quoted from the `BREAKING CHANGE:` footer
+    where there is one. That footer exists precisely because a subject line has
+    no room to say what somebody has to go and change.
+
+    The empty string where nothing qualifies, rather than a heading with no list
+    under it.
+    """
+    sections = [_breaking_section(messages)]
+    sections += [
+        _section(heading, _subjects_of(messages, types)) for heading, types in _HEADINGS
+    ]
+    return "\n\n".join(section for section in sections if section)
+
+
+def _breaking_section(messages: list[str]) -> str:
+    breaking = [
+        _breaking_line(message)
+        for message in messages
+        if bump_for(message) is Bump.BREAKING
+    ]
+    return _section("Breaking changes", breaking)
+
+
+def _breaking_line(message: str) -> str:
+    """What a breaking commit says, preferring its footer to its subject."""
+    if match := _BREAKING_FOOTER.search(message):
+        return _sentence(message[match.end() :].strip().splitlines()[0])
+    return _subject_of(message) or _sentence(message.splitlines()[0])
+
+
+def _subjects_of(messages: list[str], types: frozenset[str]) -> list[str]:
+    """Every subject of the given types, breaking ones excluded.
+
+    A breaking change is reported once, under its own heading, however its type
+    would otherwise classify it.
+    """
+    return [
+        subject
+        for message in messages
+        if bump_for(message) is not Bump.BREAKING
+        and (match := _SUBJECT.match(message.splitlines()[0] if message else ""))
+        and match.group("type") in types
+        and (subject := _subject_of(message))
+    ]
+
+
+def _subject_of(message: str) -> str:
+    """A commit's subject with its type and ticket scope taken off.
+
+    The scope here is a ticket id, which means nothing to a household and reads
+    as noise beside sentences that are otherwise plain English.
+    """
+    first = message.splitlines()[0] if message else ""
+    _, _, text = first.partition(": ")
+    return _sentence(text)
+
+
+def _sentence(text: str) -> str:
+    """The text as a sentence, without mangling whatever it starts with.
+
+    Conventional Commits subjects start lower case, and a list of them reads
+    badly. Capitalising blindly reads worse: the first word is often an
+    identifier, and `solar_entity is now generation_entity` becomes a name that
+    never existed. So only a plainly alphabetic, all-lower-case first word is
+    touched - anything carrying an underscore, a digit, a dot or a capital of
+    its own is left exactly as the author wrote it.
+    """
+    first = text.split(" ", 1)[0]
+    if not first.isalpha() or not first.islower():
+        return text
+    return text[:1].upper() + text[1:]
+
+
+def _section(heading: str, lines: list[str]) -> str:
+    if not lines:
+        return ""
+    body = "\n".join(f"- {line}" for line in lines)
+    return f"### {heading}\n\n{body}"
+
+
 def commits_since(tag: str | None) -> list[str]:
     """Every commit message since `tag`, or the whole history if there is none.
 
@@ -150,7 +257,15 @@ def latest_tag() -> str | None:
 
 
 def main() -> int:
-    """Print the next version, or nothing at all."""
+    """Print the next version, or with `--notes` what went into it.
+
+    Both read the same commits. `--notes` has to run *before* the release is
+    tagged, or the tag it measures from is the one being cut and there is
+    nothing between them.
+    """
+    if len(sys.argv) > 1 and sys.argv[1] == "--notes":
+        print(release_notes(commits_since(latest_tag())))
+        return 0
     current = sys.argv[1] if len(sys.argv) > 1 else "0.0.0"
     version = next_version(current, commits_since(latest_tag()))
     if version is None:
