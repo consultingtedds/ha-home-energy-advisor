@@ -97,7 +97,7 @@ Use `feat` only for a commit that completes a user-visible capability - the
 intermediate commits building towards it are `fix`, `refactor`, `test` or
 `chore`. Versioning keys off this.
 
-### Your commit type chooses the version
+### Your commit type chooses the version, and your subject is the changelog
 
 Releases are cut by hand, and the version comes from the commits since the last
 one rather than from anybody editing a file:
@@ -120,6 +120,19 @@ maintainer makes on purpose - not one a commit subject makes on their behalf.
 The rules are `scripts/release_version.py`, and `tests/test_release_version.py`
 holds them against the table above: adding a type here without deciding whether
 it ships fails the suite.
+
+**Write the subject for the household, not for the diff.** The release notes are
+built from these same commits, so a `feat` or a `fix` subject becomes a line a
+household reads in Home Assistant's update notification, with the type and the
+scope taken off. "Stop giving a grid-only home figures that cannot move" works
+there; "tidy up the concept table" does not, and would be the only explanation
+anybody got. The types that release nothing never appear, so an internal commit
+needs no such care.
+
+Where a change breaks something, say what somebody has to go and do about it in
+a `BREAKING CHANGE:` footer. That footer is quoted at the top of the notes, ahead
+of everything else, because it is the part that costs a household their history
+if they install without reading it.
 
 **Cutting one is a decision.** The Release workflow runs only when somebody
 starts it, and it refuses to tag a commit CI has not passed. A tag is offered to
