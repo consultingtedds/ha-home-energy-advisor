@@ -183,6 +183,30 @@ watts, and not a sensor whose value goes up and down. The Energy Dashboard's gri
 meter is the right kind, and if you have set that up the field is usually filled
 in for you.
 
+## My total is slightly above my house meter
+
+Expected, if you have a home battery and have filled in **Battery level** and
+**Battery usable capacity**.
+
+A battery gives back a few percent less than it took in, the difference lost as
+heat or other battery losses. That energy was imported and paid for, so it is
+counted, and it is counted against a device called **Battery Losses**. It is
+kept separate rather than spread across your appliances or left in Untracked
+because it is not theirs, and because nothing you track will ever shrink it.
+
+Your house meter measures what reached the house, and this energy never did. So
+the two figures differ by roughly what the battery lost over the period you are
+looking at. A few percent of what the battery moved is normal.
+
+Two things make the gap bigger than it should be. If your battery discharge
+sensor counts only what reached the house, rather than everything that left the
+battery, whatever the battery exported looks like a loss - point it at the
+sensor that measures all of it. And if you have not given a battery level and
+capacity, nothing is published here at all and the difference goes the other
+way, leaving your total slightly below the meter.
+
+A much larger gap is something else, and the next section covers it.
+
 ## My figures are far higher than my meter, or Untracked is enormous
 
 Almost always a source sensor that was **replaced** rather than a fault in your
