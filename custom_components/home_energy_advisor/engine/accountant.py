@@ -149,6 +149,22 @@ class DeviceTotals:
     cost_ceiling: Decimal
 
 
+#: Every figure at zero, for a household whose battery has lost nothing - or has
+#: no battery at all.
+_ZERO_TOTALS = DeviceTotals(
+    energy_kwh=Decimal(0),
+    actual_cost=Decimal(0),
+    naive_cost=Decimal(0),
+    cost_savings=Decimal(0),
+    battery_savings=Decimal(0),
+    energy_from_grid=Decimal(0),
+    energy_from_generation=Decimal(0),
+    energy_from_battery=Decimal(0),
+    cost_floor=Decimal(0),
+    cost_ceiling=Decimal(0),
+)
+
+
 @dataclass(frozen=True)
 class Totals:
     """A snapshot of every tracked device, the Untracked remainder, and the home.
@@ -166,6 +182,12 @@ class Totals:
     devices: Mapping[str, DeviceTotals]
     untracked: DeviceTotals
     whole_home: DeviceTotals
+    # Energy the battery took in and never gave back, and what it cost. A third
+    # term in the identity rather than part of the remainder: it is real imported
+    # energy really used, so it belongs in the house total, but it is not
+    # *untracked* - Untracked is what a household shrinks by tracking more
+    # devices, and nothing they track will ever shrink this (HEA-174).
+    battery: DeviceTotals = field(default_factory=lambda: _ZERO_TOTALS)
     unreconciled_kwh: Decimal = Decimal(0)
 
 
@@ -374,6 +396,10 @@ class Accountant:
         self._draws: dict[datetime, dict[str, Decimal]] = {}
         self._prices: list[tuple[datetime, Decimal]] = []
         self._battery = BatteryLedger()
+        # What the house's own meters leave unexplained, which by physics is what
+        # the battery gained plus what it lost - and so a ceiling on the loss we
+        # will publish. ``None`` until a household meters enough to ask (HEA-174).
+        self._balance_headroom: Decimal | None = None
         # Energy charged before its meter reading arrived, awaiting the surplus
         # that repays it. Expiring at the span a coarse step is spread over is a
         # derivation, not a second knob: a deficit created by that spreading
@@ -496,12 +522,18 @@ class Accountant:
         Two kinds of state deliberately survive. Each meter's last reading stays,
         so a climbing counter is read neither as a fresh start (dropping the next
         delta) nor as a climb from zero (re-counting everything before the
-        rebase). And the battery's stored-cost ledger stays, because it records
+        rebase). And the battery's stored *inventory* stays, because it records
         physical fact - the battery still holds energy bought at a known price,
         and discharging it after a rebase is not free.
+
+        What the battery has *lost* is not physical fact about the present but a
+        running total of the past, and it is published as one (HEA-174). So it
+        rebases with every other figure, or a household who asked to start again
+        would find one sensor still carrying the whole history.
         """
         self._running = {device: _Running() for device in self._running}
         self._house = _Running()
+        self._battery.forget_losses()
         self._raw.clear()
         self._draws.clear()
         self._retained.clear()
@@ -575,6 +607,9 @@ class Accountant:
                 for when, price in self._prices
             ],
             "battery": self._battery.snapshot(),
+            "balance_headroom": (
+                None if self._balance_headroom is None else str(self._balance_headroom)
+            ),
             "balance": self._balance.snapshot(),
             "debts": self._debts.snapshot(),
             # What a parent still owes its children. Carried for the same reason
@@ -676,6 +711,9 @@ class Accountant:
             for entry in data["prices"]
         ]
         self._battery.restore(data["battery"])
+        # Absent before this ceiling existed - see the ledger's own restore.
+        headroom = data.get("balance_headroom")
+        self._balance_headroom = None if headroom is None else Decimal(headroom)
         # A snapshot taken before the carries existed simply has none to restore.
         self._balance.restore(data.get("balance", {}))
         self._debts.restore(data["debts"])
@@ -761,7 +799,8 @@ class Accountant:
         """
         devices = {device: run.snapshot() for device, run in self._running.items()}
         whole_home = self._house.snapshot()
-        untracked = self._derive_untracked(whole_home, devices.values())
+        battery = self._battery_totals()
+        untracked = self._derive_untracked(whole_home, [*devices.values(), battery])
         # Bounds are the one figure the household total does not accumulate. The
         # remainder is priced within its own slice, so it carries no doubt, and a
         # late correction moves value out of it long after the slice closed -
@@ -769,11 +808,43 @@ class Accountant:
         # Composing it from the parts keeps it exact however value has moved.
         bounded = _sum(d.cost_floor for d in devices.values()) + untracked.actual_cost
         capped = _sum(d.cost_ceiling for d in devices.values()) + untracked.actual_cost
+        # The battery's losses hang off the house and off nothing else: they are
+        # a property of the household's storage, not a share of any bucket, so
+        # they are attached here rather than accumulated through the allocation
+        # (HEA-174). Untracked is derived before this and so carries zero, which
+        # is right - it is a remainder of allocated energy, and this was never
+        # allocated.
         return Totals(
             devices=devices,
             untracked=untracked,
+            battery=battery,
             whole_home=replace(whole_home, cost_floor=bounded, cost_ceiling=capped),
             unreconciled_kwh=self.unreconciled_energy(),
+        )
+
+    def _battery_totals(self) -> DeviceTotals:
+        """The battery as the consumer it is: what it lost, and what that cost.
+
+        Its counterfactual equals its cost, so it shows no saving: this energy
+        really was bought from the grid, so what it would have cost from the grid
+        is what it cost. Nothing is attributed by source, because the split is
+        the blend of every charge that ever went in rather than anything this
+        interval can say.
+        """
+        kwh, cost = self._battery.losses
+        # Spelled out rather than `replace`d from the zero constant, which types
+        # as a bare dataclass and loses what this returns.
+        return DeviceTotals(
+            energy_kwh=kwh,
+            actual_cost=cost,
+            naive_cost=cost,
+            cost_savings=Decimal(0),
+            battery_savings=Decimal(0),
+            energy_from_grid=Decimal(0),
+            energy_from_generation=Decimal(0),
+            energy_from_battery=Decimal(0),
+            cost_floor=Decimal(0),
+            cost_ceiling=Decimal(0),
         )
 
     @staticmethod
@@ -823,26 +894,48 @@ class Accountant:
         ever and stops the drain-to-empty that is its only self-correction
         (HEA-178).
 
-        **The cost is published and the energy is not**, and the asymmetry is the
-        point. That money was paid to the grid: a charge is taken *out* of house
-        consumption for its interval and only becomes a cost when the energy is
-        discharged, so energy that never comes out is a bill nothing ever
-        publishes. The energy, though, was lost inside the battery, where the
-        house-consumption meter cannot see it - publishing it would lift the
-        published total above the meter and raise the unreconciled Repair for a
-        discrepancy of our own making.
+        **Both the energy and its cost are published**, because both are real. A
+        charge is taken *out* of house consumption for its interval and only
+        becomes a cost when the energy is discharged, so energy that never comes
+        out is a bill nothing else publishes - and that energy really was used,
+        in the battery, as heat.
 
-        Booked to the house and to no device, so it reaches the household's total
-        and falls out in the Untracked remainder by derivation. No appliance ran
-        on it. Actual and counterfactual move together, so Cost Savings is
-        untouched: this energy really was bought from the grid, so what it would
-        have cost from the grid is what it cost.
+        It reaches the household's total and is then **attributed to the battery
+        rather than to the Untracked remainder**. Untracked is the figure a
+        household is told to shrink by tracking more devices, and no amount of
+        device tracking will ever shrink this, so sweeping it in there would
+        publish a number nobody can act on. The identity gains a third term
+        instead: Σ devices + untracked + battery ≡ whole home.
+
+        Actual and counterfactual move together, so Cost Savings is untouched:
+        this energy really was bought from the grid, so what it would have cost
+        from the grid is what it cost.
         """
-        cost = self._battery.reconcile(available_kwh)
-        if cost == 0:
+        before_kwh, before_cost = self._battery.losses
+        self._battery.reconcile(available_kwh, ceiling=self._loss_ceiling())
+        after_kwh, after_cost = self._battery.losses
+        kwh, cost = after_kwh - before_kwh, after_cost - before_cost
+        if kwh == 0 and cost == 0:
             return
+        self._house.energy_kwh += kwh
         self._house.actual_cost += cost
         self._house.naive_cost += cost
+
+    def _loss_ceiling(self) -> Decimal | None:
+        """The most the battery can still honestly be said to have lost.
+
+        What the house's own meters cannot account for, less what has already
+        been written off against it. ``None`` where the household does not meter
+        enough for the question to be asked, in which case nothing is capped.
+        """
+        if self._balance_headroom is None:
+            return None
+        written_off, _ = self._battery.losses
+        return max(Decimal(0), self._balance_headroom - written_off)
+
+    def battery_losses(self) -> tuple[Decimal, Decimal]:
+        """Energy the battery never gave back, and what it cost (HEA-174)."""
+        return self._battery.losses
 
     def battery_diagnostics(self) -> dict[str, str]:
         """What the stored-cost ledger holds, for the diagnostics download.
@@ -1605,7 +1698,30 @@ class Accountant:
                 SourceRole.GENERATION, SourceRole.GRID_EXPORT
             ),
         )
+        self._account_for_the_balance(readings)
         return self._balance.decompose(readings, at)
+
+    def _account_for_the_balance(self, readings: HouseReadings) -> None:
+        """Keep what the house's own meters leave unexplained, as a ceiling.
+
+        `import + generation - export - house` is, by physics, whatever the
+        battery gained plus whatever was lost in it. So it is the most energy the
+        battery can honestly be said to have lost, and it comes from meters that
+        have nothing to do with the battery's own.
+
+        That makes it the check on a discharge meter we cannot otherwise verify:
+        one that counts only what reached the house leaves the battery's exports
+        looking like losses, and this is what refuses to publish them as energy
+        the household used. Only computable where the household meters all four,
+        and skipped where they do not - a ceiling nobody can calculate is not a
+        reason to refuse the figure underneath it.
+        """
+        if readings.house is None or not readings.generation_metered:
+            return
+        unexplained = (
+            readings.imported + readings.generated - readings.exported - readings.house
+        )
+        self._balance_headroom = (self._balance_headroom or Decimal(0)) + unexplained
 
     def _price_sources(
         self, served: Served, price: Decimal

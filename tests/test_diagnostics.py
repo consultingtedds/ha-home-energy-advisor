@@ -113,7 +113,9 @@ async def test_diagnostics_expose_the_battery_ledger(
         "stored_kwh": "0",
         "stored_cost": "0",
         # What reconciliation has written off, because that money reaches the
-        # household's own total and has to be accountable from here (HEA-178).
+        # household's own total and has to be accountable from here (HEA-178),
+        # and the energy beside it is the round-trip loss published (HEA-174).
+        "written_off_kwh": "0",
         "written_off_cost": "0",
     }
 
@@ -121,6 +123,7 @@ async def test_diagnostics_expose_the_battery_ledger(
     assert set(result["battery"]) == {
         "stored_kwh",
         "stored_cost",
+        "written_off_kwh",
         "written_off_cost",
     }
 

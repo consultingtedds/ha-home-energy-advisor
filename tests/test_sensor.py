@@ -30,8 +30,10 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
@@ -127,6 +129,19 @@ def _supply_entry() -> MockConfigEntry:
             CONF_GENERATION_ENTITY: "sensor.generation",
             CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
             CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+        }
+    )
+
+
+def _battery_level_entry() -> MockConfigEntry:
+    """A battery household that can also say how full the battery is (HEA-178)."""
+    return _entry(
+        extra_data={
+            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+            CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+            CONF_BATTERY_SOC_ENTITY: "sensor.battery_level",
+            CONF_BATTERY_CAPACITY_KWH: 5.0,
         }
     )
 
@@ -1619,10 +1634,11 @@ def _disabled_concepts(hass: HomeAssistant) -> set[str]:
     for entry in er.async_get(hass).entities.values():
         if entry.disabled_by is not er.RegistryEntryDisabler.INTEGRATION:
             continue
-        match = next(
-            (key for key in concepts if entry.unique_id.endswith(f"_{key}")),
-            entry.unique_id,
-        )
+        # Longest match wins, because one concept key can end with another and
+        # taking the first would report the two as one, hiding whichever came
+        # second.
+        matches = [key for key in concepts if entry.unique_id.endswith(f"_{key}")]
+        match = max(matches, key=len) if matches else entry.unique_id
         disabled.add(match)
     return disabled
 
@@ -1676,6 +1692,89 @@ async def test_a_household_with_a_battery_is_told_what_it_saved(
     assert state.attributes["unit_of_measurement"] == "EUR"
 
 
+async def test_a_household_that_says_what_its_battery_holds_gets_its_losses(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a battery household who has answered the optional level questions,
+    # which is what makes a round-trip loss measurable at all (HEA-178)
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_charge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "50", {"device_class": "battery"})
+
+    # When
+    await _setup(hass, _battery_level_entry())
+
+    # Then - the battery is a device of its own, carrying what it consumed and
+    # what that cost. Only those two of the seven: a loss has no counterfactual
+    # to save against, and no source split to speak of
+    assert hass.states.get("sensor.battery_losses_energy_used") is not None
+    assert hass.states.get("sensor.battery_losses_actual_cost") is not None
+    assert hass.states.get("sensor.battery_losses_cost_savings") is None
+
+
+async def test_the_battery_is_a_row_the_cards_can_sum(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - a household whose battery publishes figures
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_charge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "50", {"device_class": "battery"})
+    await _setup(hass, _battery_level_entry())
+    # One publication on, so the list is rebuilt with every entity registered.
+    # The first is written while the platform is still adding them.
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - it is in the list the cards enumerate. They sum these rows to reach
+    # a household total, and the battery's own consumption is a term in that sum
+    # now, so a row left out would make every card disagree with Whole Home
+    state = hass.states.get("sensor.home_energy_advisor_devices")
+    assert state is not None
+    # Found by the statistics it carries rather than by its key, because a key is
+    # derived from an entity id and this list is first published while the
+    # platform is still adding entities. What a card needs from the row is where
+    # to read the figures, and that is what is asserted.
+    battery = next(
+        row
+        for row in state.attributes["devices"]
+        if row["statistics"].get("actual_cost") == "sensor.battery_losses_actual_cost"
+    )
+    assert battery["statistics"]["energy_used"] == "sensor.battery_losses_energy_used"
+    assert not battery["untracked"]
+
+
+async def test_a_household_who_cannot_say_what_its_battery_holds_is_spared_it(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a battery household who has not answered the level questions, which
+    # is every existing install. Nothing can be measured
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_charge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+
+    # When
+    await _setup(hass, _supply_entry())
+
+    # Then - no battery device at all. Unlike a figure that merely reads zero,
+    # a whole device whose every entity is structurally empty is clutter, and it
+    # carries no history to be out of step with when it does arrive - its
+    # figures begin when the measuring does
+    assert hass.states.get("sensor.battery_losses_energy_used") is None
+    state = hass.states.get("sensor.home_energy_advisor_devices")
+    assert state is not None
+    assert not any(
+        "battery_losses" in str(row["statistics"].values())
+        for row in state.attributes["devices"]
+    )
+
+
 async def test_a_home_with_solar_but_no_battery_is_not_given_the_figure(
     hass: HomeAssistant,
 ) -> None:
@@ -1702,9 +1801,11 @@ async def test_a_home_with_solar_and_a_battery_keeps_every_figure(
     for entity in ("sensor.generation", "sensor.battery_charge"):
         hass.states.async_set(entity, "0", _ENERGY)
     hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "50", {"device_class": "battery"})
 
-    # When
-    await _setup(hass, _supply_entry())
+    # When - and telling us how full the battery is, which is what the two loss
+    # figures need before they can carry anything (HEA-178)
+    await _setup(hass, _battery_level_entry())
 
     # Then - nothing is disabled; every figure can carry information here
     assert _disabled_concepts(hass) == set()

@@ -154,6 +154,10 @@ def test_snapshot_restore_reproduces_an_uninterrupted_run_at_every_split() -> No
 _PERSISTED = frozenset(
     {
         "_balance",
+        # The ceiling on what the battery can be said to have lost. Persisted
+        # because the write-off it bounds is, and a ceiling that restarted at
+        # zero would refuse the next honest write-down (HEA-174).
+        "_balance_headroom",
         "_battery",
         "_debts",
         "_nesting_carry",

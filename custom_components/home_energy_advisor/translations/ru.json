@@ -207,6 +207,9 @@
     "whole_home": {
       "name": "Весь дом"
     },
+    "battery": {
+      "name": "Потери в батарее"
+    },
     "hub": {
       "name": "Home Energy Advisor"
     }

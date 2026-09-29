@@ -207,6 +207,9 @@
     "whole_home": {
       "name": "Whole Home"
     },
+    "battery": {
+      "name": "Battery Losses"
+    },
     "hub": {
       "name": "Home Energy Advisor"
     }

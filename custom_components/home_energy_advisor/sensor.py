@@ -51,8 +51,10 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
+    CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
@@ -82,6 +84,9 @@ if TYPE_CHECKING:
 # shared via const so cycle-meter creation can exclude it (HEA-48).
 _UNTRACKED_KEY = "untracked"
 _WHOLE_HOME_KEY = WHOLE_HOME_KEY
+# The battery itself, as the third term in Σ devices + untracked + battery ≡
+# whole home. A ULID cannot collide with it, as above.
+_BATTERY_KEY = "battery"
 
 # Only Energy Used differs between a real device and the Untracked remainder: a
 # late correction legitimately pulls Untracked's energy down, which HA statistics
@@ -140,6 +145,19 @@ def _has_a_battery(entry: HeaConfigEntry) -> bool:
     return any(
         entry.data.get(conf)
         for conf in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
+    )
+
+
+def _knows_the_battery_level(entry: HeaConfigEntry) -> bool:
+    """Whether this household can tell us how much is actually in the battery.
+
+    Both halves or neither: a percentage says nothing in kWh without the capacity
+    to scale it by, and the reconciliation that makes a loss measurable needs the
+    answer in kWh (HEA-178).
+    """
+    return all(
+        entry.data.get(conf)
+        for conf in (CONF_BATTERY_SOC_ENTITY, CONF_BATTERY_CAPACITY_KWH)
     )
 
 
@@ -354,6 +372,19 @@ _HOME_CONCEPTS: tuple[HeaSensorDescription, ...] = (
     ),
 )
 
+# What the battery itself consumed: energy it took in and never gave back, and
+# what that cost. Only these two of the seven concepts, because the rest cannot
+# say anything about a loss - its counterfactual equals its cost, so there is no
+# saving, and its source split is the blend of every charge that ever went in.
+#
+# A device of its own rather than a figure on the whole home, because the cards
+# sum device rows to reach a household total (ADR-0002). A term outside that sum
+# would make every card disagree with Whole Home; a row keeps them right and
+# names the battery as the consumer it is (HEA-174).
+_BATTERY_CONCEPTS: tuple[HeaSensorDescription, ...] = tuple(
+    concept for concept in _CONCEPTS if concept.key in {"energy_used", "actual_cost"}
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 - HA platform signature; state is on the entry
@@ -429,6 +460,27 @@ async def async_setup_entry(
             *_home_concepts(has_a_battery=_has_a_battery(entry)),
         )
     )
+
+    # The battery as a consumer in its own right, where the household has told us
+    # enough to measure what it consumed. Created only then: a device whose every
+    # figure is structurally zero is clutter, and it carries no history to be out
+    # of step with when it does arrive, because its figures start when the
+    # measuring does (HEA-174).
+    if _knows_the_battery_level(entry):
+        battery_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_{_BATTERY_KEY}")},
+            translation_key="battery",
+        )
+        async_add_entities(
+            HeaCostSensor(
+                coordinator,
+                concept,
+                device_key=_BATTERY_KEY,
+                device_info=battery_info,
+                currency=currency,
+            )
+            for concept in _BATTERY_CONCEPTS
+        )
 
     device_concepts = _concepts_for("", supply_beyond_the_grid=supply)
     if entry.options.get(CONF_DEVICE_COST_BOUNDS):
@@ -691,6 +743,8 @@ class HeaCostSensor(_HeaRestoringSensor):
             return totals.untracked
         if self._device_key == _WHOLE_HOME_KEY:
             return totals.whole_home
+        if self._device_key == _BATTERY_KEY:
+            return totals.battery
         return totals.devices.get(self._device_key)
 
 
@@ -904,8 +958,26 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
         ]
         rows.append(self._row(_UNTRACKED_KEY, None, source=None, untracked=True))
+        # The battery joins the rows it belongs beside, where it exists. Cards sum
+        # this list to reach a household total, and the battery's own consumption
+        # is now a term in that sum - a row left out here would make every card
+        # disagree with Whole Home by whatever the battery lost (HEA-174).
+        if self._battery_is_tracked():
+            rows.append(self._row(_BATTERY_KEY, None, source=None, untracked=False))
         rows.sort(key=lambda device: device["key"])
         return rows
+
+    def _battery_is_tracked(self) -> bool:
+        """Whether this household's battery publishes figures of its own.
+
+        Read from the configuration rather than by looking for the entity. This
+        list is first published while the platform is still adding entities, so
+        the battery's own may not be registered yet - and a row that appeared only
+        after the next update would be missing from the attribute a card reads on
+        its first paint.
+        """
+        entry = cast("HeaConfigEntry", self.coordinator.config_entry)
+        return _knows_the_battery_level(entry)
 
     def _location_of(self, source: str | None) -> _Location:
         """Where the sensor measuring a device sits - its area and floor (HEA-58).

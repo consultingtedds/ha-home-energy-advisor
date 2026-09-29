@@ -159,3 +159,28 @@ model - a negative price already reached `SourceKind.IMPORT` unaltered for energ
 served straight to the house - so it only made the battery path raise where the
 direct path quietly carried on, and it raised inside the settle path where a
 household gets a traceback instead of a figure (HEA-165).
+
+## Update - 2026-09-29: the allocations have a third term
+
+Σ devices + untracked ≡ whole home becomes **Σ devices + untracked + battery ≡
+whole home**, for households who tell us how full their battery is.
+
+Exhaustiveness is unchanged, and that is the point of writing this down rather
+than treating it as an exception. A battery loses a few percent of every round
+trip to heat. That energy was imported, it was paid for, and it was used - in the
+battery - so leaving it out put the household's published total below their real
+bill, and sweeping it into Untracked put it somewhere no household could act on:
+Untracked is the figure people shrink by tracking more devices, and nothing they
+track will ever shrink this. So the battery is named as the consumer it is.
+
+Two consequences follow for anything summing these figures. Cards sum the rows
+the devices sensor publishes, and the battery is now one of them, so the sum
+still reaches the household total. And **whole-home energy now sits above a
+house-consumption meter** by the losses, which is correct - that meter measures
+what reached the house, and this energy never did.
+
+It is bounded rather than trusted. `import + generation - export - house` is, by
+physics, whatever the battery gained plus whatever it lost, so nothing above that
+can honestly be called a loss and nothing above it is published. That ceiling is
+what stops a discharge meter counting only what reached the house from dressing
+the battery's exports up as consumption (HEA-174, HEA-178).

@@ -207,6 +207,9 @@
     "whole_home": {
       "name": "Casa completa"
     },
+    "battery": {
+      "name": "Pérdidas de la batería"
+    },
     "hub": {
       "name": "Home Energy Advisor"
     }

@@ -382,6 +382,9 @@ Three more devices are created alongside them:
 - **Whole Home** carries the same set for the house, plus **Lowest Possible
   Cost**, **Highest Possible Cost** and, if you have a battery, **Battery
   Savings**.
+- **Battery Losses** appears only if you have told us how full your battery is.
+  It carries Energy Used and Actual Cost for the energy the battery took in and
+  never gave back.
 - **Home Energy Advisor** carries **Unreconciled Energy**, which should read
   zero, and a diagnostic list of tracked devices that the cards read.
 
@@ -403,6 +406,31 @@ The two halves add up: whatever is not the battery's saving is your generation's
 Energy your panels put into the battery and you used later counts as the
 battery's, because without it that energy would have been exported and the
 evening's bought at full price.
+
+### What your battery loses
+
+A battery does not give back everything you put in. A few percent of every round
+trip goes to heat and other battery losses, and you paid for that energy just the same.
+
+If you have told the integration how full your battery is and what it holds when
+full, a **Battery Losses** device appears alongside your tracked devices,
+carrying how much never came back out and what it cost. It is a consumer in its
+own right, because that is what it is: the energy was imported, it was paid for,
+and it was used - in the battery.
+
+It is measured rather than estimated. Subtracting what came out from what went in
+looks like the same thing and is not: it is wrong by however much the battery's
+level moved over the window you are looking at. This is reconciled against what
+the battery actually holds, every few minutes, so the level cancels out.
+
+Two things follow. Your **Untracked figure does not contain it**, which matters
+because Untracked is what you shrink by tracking more devices and nothing you
+track will ever shrink this. And your **whole-home energy will read above a house
+consumption meter** by the losses, which is correct - that meter measures what
+reached the house, and this energy never did.
+
+To get a round-trip efficiency, compare Battery Losses over a period against what
+your battery took in over the same period, which the Energy Dashboard shows.
 
 Energy Used, Actual Cost and Cost at Grid Price also come as daily and monthly
 totals, named after the sensor and the period - `Tumble Dryer Actual Cost Daily`

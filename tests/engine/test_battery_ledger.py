@@ -241,7 +241,9 @@ def test_battery_diagnostics_expose_what_the_ledger_holds() -> None:
         "stored_kwh": "10",
         "stored_cost": "0.372",
         # Nothing written off yet, and stated rather than absent: a cost that
-        # reaches the household's total has to be accountable from here (HEA-178)
+        # reaches the household's total has to be accountable from here (HEA-178),
+        # and the energy beside it is the loss the household is shown (HEA-174)
+        "written_off_kwh": "0",
         "written_off_cost": "0",
     }
 

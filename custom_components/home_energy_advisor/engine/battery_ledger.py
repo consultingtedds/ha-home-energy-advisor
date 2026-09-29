@@ -49,13 +49,29 @@ class BatteryLedger:
         self._stored_kwh = Decimal(0)
         self._stored_cost = Decimal(0)
         # What reconciliation has written off in total, kept so a cost published
-        # on the household's figures can be accounted for in the diagnostics.
+        # on the household's figures can be accounted for in the diagnostics, and
+        # so the loss itself can be published (HEA-174).
+        self._written_off_kwh = Decimal(0)
         self._written_off_cost = Decimal(0)
 
     @property
     def stored_kwh(self) -> Decimal:
         """Energy the ledger believes is in the battery."""
         return self._stored_kwh
+
+    @property
+    def losses(self) -> tuple[Decimal, Decimal]:
+        """Energy reconciliation has written off, and what it cost (HEA-174).
+
+        The household's round-trip loss, measured rather than subtracted: taking
+        `charged - discharged` over a window is wrong by whatever the battery's
+        level did across it, while this is the same quantity reconciled against
+        what the battery actually holds, so the level cancels.
+
+        Running totals, so a period's loss is the change across it - the way
+        every other figure here is read (ADR-0008).
+        """
+        return self._written_off_kwh, self._written_off_cost
 
     @property
     def unit_cost(self) -> Decimal:
@@ -103,7 +119,9 @@ class BatteryLedger:
             self._stored_cost -= cost
         return cost
 
-    def reconcile(self, available_kwh: Decimal) -> Decimal:
+    def reconcile(
+        self, available_kwh: Decimal, ceiling: Decimal | None = None
+    ) -> Decimal:
         """Writes the inventory down to what the battery really holds.
 
         Returns the cost of the energy written off, for the caller to book.
@@ -133,6 +151,17 @@ class BatteryLedger:
         """
         if available_kwh >= self._stored_kwh:
             return Decimal(0)
+        # A ceiling is what the household's *other* meters can account for, and
+        # it refuses a write-down they cannot explain. A discharge meter counting
+        # only what reached the house makes the battery's exports look like
+        # losses, and publishing those as energy the household used would claim
+        # more than the house drew. Held on the books instead, which is the
+        # honest "we cannot tell" rather than a confident wrong answer.
+        if ceiling is not None:
+            available_kwh = max(available_kwh, self._stored_kwh - ceiling)
+            if available_kwh >= self._stored_kwh:
+                return Decimal(0)
+        self._written_off_kwh += self._stored_kwh - max(available_kwh, Decimal(0))
         if available_kwh <= 0:
             written_off = self._stored_cost
             self._stored_kwh = Decimal(0)
@@ -144,6 +173,15 @@ class BatteryLedger:
             self._stored_cost = kept
         self._written_off_cost += written_off
         return written_off
+
+    def forget_losses(self) -> None:
+        """Rebases the running loss totals, leaving the inventory alone (HEA-57).
+
+        The inventory is physical fact about the present and survives a rebase;
+        these two are a published running total of the past and do not.
+        """
+        self._written_off_kwh = Decimal(0)
+        self._written_off_cost = Decimal(0)
 
     def _charge(self, kwh: Decimal, cost: Decimal) -> None:
         if kwh < 0:
@@ -161,6 +199,7 @@ class BatteryLedger:
         return {
             "stored_kwh": str(self._stored_kwh),
             "stored_cost": str(self._stored_cost),
+            "written_off_kwh": str(self._written_off_kwh),
             "written_off_cost": str(self._written_off_cost),
         }
 
@@ -177,6 +216,7 @@ class BatteryLedger:
         return {
             "stored_kwh": str(self._stored_kwh),
             "stored_cost": str(self._stored_cost),
+            "written_off_kwh": str(self._written_off_kwh),
             "written_off_cost": str(self._written_off_cost),
         }
 
@@ -190,4 +230,5 @@ class BatteryLedger:
         """
         self._stored_kwh = Decimal(data["stored_kwh"])
         self._stored_cost = Decimal(data["stored_cost"])
+        self._written_off_kwh = Decimal(data.get("written_off_kwh", 0))
         self._written_off_cost = Decimal(data.get("written_off_cost", 0))
