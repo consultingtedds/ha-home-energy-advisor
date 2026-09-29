@@ -111,13 +111,32 @@ Energy Dashboard, most of them are filled in for you already.
 | Grid export energy | No | Your cumulative export meter |
 | Local generation energy | No | Cumulative generation of your own, whatever the source |
 | Battery charge energy | No | Cumulative energy charged into a home battery |
-| Battery discharge energy | No | Cumulative energy discharged from it |
+| Battery discharge energy | No | Cumulative energy discharged from it - **all** of it, including any that went to the grid rather than to the house |
 | House consumption energy | No | Total household consumption, if you measure it directly |
+| Battery level | No | How full the battery is, as a percentage |
+| Battery usable capacity | No | What it holds when full, in kWh |
 
 Every energy input has to be a cumulative counter that only rises, which is what
 Home Assistant calls a `total_increasing` sensor. The setup screen rejects
 anything else rather than quietly misreading it: costs are shared out in
 proportion, so one wrong house-level input makes every device's figure wrong.
+
+#### The last two, and why they are worth filling in
+
+Battery energy is priced at what it cost to put in, so the integration keeps a
+running note of how much is in your battery and what it cost. It works that out
+by watching energy go in and come out - and some energy never comes back out. A
+battery gives up a few percent to heat on every round trip, so that note drifts
+upwards, and it has no way of noticing.
+
+Telling it how full the battery is, and how much it holds when full, lets it
+correct that note against reality. Without them nothing breaks, and the drift
+stays what it has always been; with them, what your battery energy is priced at
+follows the last few days rather than the last few months.
+
+If you fill these in, check the discharge field above as well. If it is measuring
+only what the battery sent to the *house*, anything it sent to the grid is
+invisible and adds to the same drift.
 
 #### When generation and export actually matter
 

@@ -16,9 +16,15 @@ against Predbat's own accounting in dogfooding (HEA-28):
   tracked - prices the shortfall at zero, as if locally generated. The error is
   transient: it washes out within a cycle or two as real charge data arrives.
 - **Round-trip losses are not inflated.** Charging 10 kWh to retrieve 9 leaves
-  the lost kWh's cost stranded on the books rather than raising the per-kWh
-  discharge price. Correcting it needs a state-of-charge signal to reconcile
-  against; deferred.
+  the lost kWh's cost on the books rather than raising the per-kWh discharge
+  price.
+
+Left alone, that stranded energy never leaves: the only way this ledger corrects
+itself is being drained to empty, and a growing phantom is precisely what stops
+that happening. A household who tells us how full their battery is gets
+:meth:`reconcile`, which writes the inventory down to what is really there and
+hands back the cost to be booked. One who does not is on the path above, and the
+bias stays as documented (HEA-178).
 """
 
 from __future__ import annotations
