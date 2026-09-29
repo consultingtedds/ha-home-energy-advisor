@@ -923,7 +923,9 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         ``whole_home`` sits beside that list rather than inside it. Cards sum
         ``devices`` to get the household total - the allocations are exhaustive
         (ADR-0002) - so a whole-home row there would double every figure on every
-        card. It is here because some household figures belong to no device: the
+        card. The battery *is* one of these rows where it consumed anything,
+        which is what keeps that sum exhaustive now it is a term of its own.
+        It is here because some household figures belong to no device: the
         cost range is published for the whole home whether or not the per-device
         ranges are (ADR-0016), and a card must resolve its slug rather than guess
         ``sensor.whole_home_…``, which a rename would break.

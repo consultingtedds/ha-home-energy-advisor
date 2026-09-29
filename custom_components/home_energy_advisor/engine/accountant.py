@@ -169,8 +169,11 @@ _ZERO_TOTALS = DeviceTotals(
 class Totals:
     """A snapshot of every tracked device, the Untracked remainder, and the home.
 
-    ``untracked`` is derived (``whole_home`` minus the tracked devices), so the
-    three always reconcile exactly: Σ devices + untracked ≡ whole_home.
+    ``untracked`` is derived - ``whole_home`` less the tracked devices *and* less
+    the battery's own consumption - so the terms always reconcile exactly:
+    Σ devices + untracked + battery ≡ whole_home. The battery is zero throughout
+    for a household who has not said how full theirs is, which is what leaves
+    that identity reading as it always did for them (ADR-0002, HEA-174).
 
     ``unreconciled_kwh`` is the one figure that does *not* reconcile, and says so:
     debt the house meters never accounted for, forgiven at the expiry. Since the

@@ -378,7 +378,8 @@ sensor going **Unavailable** is the part that says nobody is counting.
 Three more devices are created alongside them:
 
 - **Untracked Energy Devices** carries the same set for everything the house used
-  that no tracked device claimed. It is what makes the parts add up to the whole.
+  that no tracked device claimed. It is what makes the parts add up to the whole,
+  along with Battery Losses below where you have one.
 - **Whole Home** carries the same set for the house, plus **Lowest Possible
   Cost**, **Highest Possible Cost** and, if you have a battery, **Battery
   Savings**.
