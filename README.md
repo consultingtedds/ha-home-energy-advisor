@@ -361,9 +361,29 @@ Three more devices are created alongside them:
 - **Untracked Energy Devices** carries the same set for everything the house used
   that no tracked device claimed. It is what makes the parts add up to the whole.
 - **Whole Home** carries the same set for the house, plus **Lowest Possible
-  Cost** and **Highest Possible Cost**.
+  Cost**, **Highest Possible Cost** and, if you have a battery, **Battery
+  Savings**.
 - **Home Energy Advisor** carries **Unreconciled Energy**, which should read
   zero, and a diagnostic list of tracked devices that the cards read.
+
+### What your battery saved you
+
+Cost Savings tells you what you saved against buying everything from the grid,
+but it cannot tell you which of your kit earned it. On a house with panels most
+of it is the sun, and a battery that was charged at the wrong time can be losing
+you money inside a figure that still looks healthy.
+
+**Battery Savings** is the battery's own half of that: energy that came out of
+the battery, valued at what buying it from the grid at that moment would have
+cost, less what it cost to store. So charging cheaply overnight and running the
+house on it at the evening peak shows up here, and **the figure goes down when
+the battery is charged dear and discharged cheap** - which is worth knowing, and
+is invisible in Cost Savings.
+
+The two halves add up: whatever is not the battery's saving is your generation's.
+Energy your panels put into the battery and you used later counts as the
+battery's, because without it that energy would have been exported and the
+evening's bought at full price.
 
 Energy Used, Actual Cost and Cost at Grid Price also come as daily and monthly
 totals, named after the sensor and the period - `Tumble Dryer Actual Cost Daily`

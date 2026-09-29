@@ -49,6 +49,9 @@ from custom_components.home_energy_advisor.sensor import (
 from custom_components.home_energy_advisor.sensor import (
     _CONCEPTS as CONCEPT_DESCRIPTIONS,
 )
+from custom_components.home_energy_advisor.sensor import (
+    _HOME_CONCEPTS as HOME_DESCRIPTIONS,
+)
 
 if TYPE_CHECKING:
     from typing import Any
@@ -1608,7 +1611,10 @@ def _disabled_concepts(hass: HomeAssistant) -> set[str]:
     underscores in it. An entity matching no known concept is reported by its
     raw id, so an unexpected one cannot pass unnoticed.
     """
-    concepts = [concept.key for concept in CONCEPT_DESCRIPTIONS]
+    concepts = [
+        concept.key
+        for concept in (*CONCEPT_DESCRIPTIONS, *BOUND_DESCRIPTIONS, *HOME_DESCRIPTIONS)
+    ]
     disabled = set()
     for entry in er.async_get(hass).entities.values():
         if entry.disabled_by is not er.RegistryEntryDisabler.INTEGRATION:
@@ -1640,8 +1646,50 @@ async def test_a_grid_only_home_is_not_given_sensors_that_can_only_read_zero(
     await _setup(hass, _entry())
 
     # Then - created, so identity is fixed from day one and adding panels later
-    # needs no migration, but disabled, so they record nothing
-    assert _disabled_concepts(hass) == set(_SUPPLY_ONLY_CONCEPTS)
+    # needs no migration, but disabled, so they record nothing. The battery's own
+    # saving goes with them: no battery, nothing for it to have saved (HEA-173)
+    assert _disabled_concepts(hass) == {*_SUPPLY_ONLY_CONCEPTS, "battery_savings"}
+
+
+async def test_a_household_with_a_battery_is_told_what_it_saved(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a home with solar and a battery, which is who asked for this
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_charge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+
+    # When
+    await _setup(hass, _supply_entry())
+
+    # Then - one figure, on the household's own device rather than on each
+    # appliance: the question is what the battery did for the house (HEA-173)
+    assert hass.states.get("sensor.whole_home_battery_savings") is not None
+    assert hass.states.get("sensor.coarse_step_aircon_battery_savings") is None
+    # ...and it is money, so a rebase has to be able to tell the compiler its
+    # zero point moved rather than that the household lost the balance (ADR-0022)
+    state = hass.states.get("sensor.whole_home_battery_savings")
+    assert state is not None
+    assert state.attributes["state_class"] == "total"
+    assert state.attributes["device_class"] == "monetary"
+    assert state.attributes["unit_of_measurement"] == "EUR"
+
+
+async def test_a_home_with_solar_but_no_battery_is_not_given_the_figure(
+    hass: HomeAssistant,
+) -> None:
+    # Given - panels and no battery, which the supply-only rule alone would let
+    # through: there *is* something to decompose here, just never a battery
+    _seed_states(hass)
+    hass.states.async_set("sensor.generation", "0", _ENERGY)
+
+    # When
+    await _setup(hass, _entry(extra_data={CONF_GENERATION_ENTITY: "sensor.generation"}))
+
+    # Then - created, so fitting a battery later needs no migration, and disabled,
+    # because a figure that can only ever read zero is worse than no figure
+    assert _disabled_concepts(hass) == {"battery_savings"}
 
 
 async def test_a_home_with_solar_and_a_battery_keeps_every_figure(

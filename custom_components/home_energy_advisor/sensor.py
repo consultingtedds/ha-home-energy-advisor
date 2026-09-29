@@ -130,6 +130,19 @@ _SUPPLY_ONLY_CONCEPTS = frozenset(
 )
 
 
+def _has_a_battery(entry: HeaConfigEntry) -> bool:
+    """Whether this household has a battery for anything to have been saved by.
+
+    Narrower than :func:`_has_supply_beyond_the_grid` on purpose: a house with
+    panels and no battery has plenty to decompose and still never time-shifts a
+    kWh, so its battery saving can only ever read zero.
+    """
+    return any(
+        entry.data.get(conf)
+        for conf in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
+    )
+
+
 def _has_supply_beyond_the_grid(entry: HeaConfigEntry) -> bool:
     """Whether this household has anything serving it other than the meter.
 
@@ -144,6 +157,22 @@ def _has_supply_beyond_the_grid(entry: HeaConfigEntry) -> bool:
             CONF_BATTERY_CHARGE_ENTITY,
             CONF_BATTERY_DISCHARGE_ENTITY,
         )
+    )
+
+
+def _home_concepts(*, has_a_battery: bool) -> tuple[HeaSensorDescription, ...]:
+    """The household's own figures, disabled where they cannot carry anything.
+
+    Created either way, so a household who fits a battery later enables a sensor
+    whose identity was fixed on the day they installed the integration rather
+    than gaining one whose baseline is out of step with its siblings - the skew
+    that has twice produced nonsense figures here (HEA-57, HEA-83, HEA-175).
+    """
+    if has_a_battery:
+        return _HOME_CONCEPTS
+    return tuple(
+        replace(concept, entity_registry_enabled_default=False)
+        for concept in _HOME_CONCEPTS
     )
 
 
@@ -303,6 +332,28 @@ _BOUND_CONCEPTS: tuple[HeaSensorDescription, ...] = (
     ),
 )
 
+# The household's own figures, published on the whole-home device and nowhere
+# else. What a battery saved is a question about the house: the machinery would
+# answer it per appliance, but "what did the dishwasher save by running off the
+# battery" is not what anybody asked, and it would cost an entity per tracked
+# device to offer (HEA-173).
+#
+# `total` like every other monetary figure (ADR-0007), so it inherits the zero
+# point a rebase has to stamp (ADR-0022) - and it needs one, because this figure
+# genuinely falls: a battery charged dear and discharged cheap loses money, which
+# is the case the household who asked for it named first.
+_HOME_CONCEPTS: tuple[HeaSensorDescription, ...] = (
+    HeaSensorDescription(
+        key="battery_savings",
+        translation_key="battery_savings",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
+        value_fn=lambda totals: totals.battery_savings,
+    ),
+)
+
 
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 - HA platform signature; state is on the entry
@@ -375,6 +426,7 @@ async def async_setup_entry(
         for concept in (
             *_concepts_for(_WHOLE_HOME_KEY, supply_beyond_the_grid=supply),
             *_BOUND_CONCEPTS,
+            *_home_concepts(has_a_battery=_has_a_battery(entry)),
         )
     )
 
@@ -1048,6 +1100,6 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             description.key: registry.async_get_entity_id(
                 "sensor", DOMAIN, f"{self._entry_id}_{device_key}_{description.key}"
             )
-            for description in (*_CONCEPTS, *_BOUND_CONCEPTS)
+            for description in (*_CONCEPTS, *_BOUND_CONCEPTS, *_HOME_CONCEPTS)
         }
         return {key: entity for key, entity in resolved.items() if entity is not None}

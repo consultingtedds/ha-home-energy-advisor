@@ -57,6 +57,13 @@ class DeviceAllocation:
     actual_cost: Decimal
     naive_cost: Decimal
     cost_savings: Decimal
+    # The part of ``cost_savings`` that time-shifting produced rather than the
+    # sun: battery-served energy valued at what buying it then would have cost,
+    # less what storing it did (HEA-173). Cost Savings is the sum over sources of
+    # `energy x (import price - source price)`, so it decomposes exactly into this
+    # and generation's own share - which is why this is published and that is
+    # left as the subtraction.
+    battery_savings: Decimal
     energy_by_source: Mapping[SourceKind, Decimal]
 
 
@@ -132,6 +139,19 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
         # untouched while the charge is outstanding.
         actuals = _proportional(energies, metered_cost)
         naives = _proportional(energies, consumption * import_price)
+        # Shared out the same way its two parents are, so an overdraw withholds
+        # all three in step and this stays a decomposition of Cost Savings rather
+        # than drifting from it by the size of every clamp.
+        # The price is asked for only where the battery actually served
+        # something, because `_price` rightly refuses to invent one for a source
+        # that did - and a bucket the battery sat out has nothing to attribute.
+        stored = bucket.sources.get(SourceKind.BATTERY, Decimal(0))
+        saved = (
+            stored * (import_price - _price(prices, SourceKind.BATTERY))
+            if stored
+            else Decimal(0)
+        )
+        batteries = _proportional(energies, saved)
 
         allocations = {
             label: DeviceAllocation(
@@ -139,6 +159,7 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
                 actual_cost=actuals[label],
                 naive_cost=naives[label],
                 cost_savings=naives[label] - actuals[label],
+                battery_savings=batteries[label],
                 energy_by_source=split_by_source(energy, bucket.sources, consumption),
             )
             for label, energy in energies.items()

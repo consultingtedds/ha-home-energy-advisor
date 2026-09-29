@@ -198,6 +198,20 @@ Presentation
     that withdraws itself past a thirty-minute grace: its value answers a person,
     its availability answers an unavailable-entity check, and nothing is raised
     for anybody to dismiss (HEA-176)
+25. ADR-0025: The battery's saving is a decomposition of Cost Savings, not a
+    second opinion. Cost Savings compares every kWh against the import price
+    whatever served it, so a house with panels shows a large saving with no
+    battery, and a battery charged at the wrong time loses money inside a figure
+    that still looks healthy - which is what a household running Predbat asked to
+    be able to see. It is the sum over sources of `energy x (import - source
+    price)`, and only generation and the battery are ever priced below import, so
+    it splits exactly in two; the battery's half is published and generation's is
+    left as the subtraction. Energy the sun put in the battery counts as the
+    battery's, deliberately: without it that surplus would have been exported and
+    the evening's kWh bought at peak. It falls when a battery is charged dear and
+    discharged cheap, which is the case that was asked for. Whole-home only, and
+    it has to reconcile on all four paths money reaches a device by - the debt
+    repayment was missed first time and shed EUR 0.0705 a settlement (HEA-173)
 
 ### Epic 3 - Accounting engine (pure Python, TDD)
 1. Delta calculator with `total_increasing` reset handling (`CumulativeEnergySource`)

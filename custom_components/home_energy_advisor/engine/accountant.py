@@ -132,6 +132,11 @@ class DeviceTotals:
     actual_cost: Decimal
     naive_cost: Decimal
     cost_savings: Decimal
+    # The share of ``cost_savings`` that came from time-shifting rather than from
+    # the sun, so a household can tell what their battery did for them from what
+    # their panels did (HEA-173). The two halves sum to ``cost_savings`` exactly;
+    # generation's is left as that subtraction.
+    battery_savings: Decimal
     energy_from_grid: Decimal
     energy_from_generation: Decimal
     energy_from_battery: Decimal
@@ -180,6 +185,10 @@ class _RetainedBucket:
     consumption: Decimal
     blended: Decimal
     import_price: Decimal
+    # What a kWh out of the battery cost in *this* bucket, so a late arrival's
+    # share of the battery saving is priced against the charge that really served
+    # it rather than against whatever the ledger holds when it turns up (HEA-173).
+    battery_price: Decimal
     draw: Decimal
     sources: Mapping[SourceKind, Decimal]
 
@@ -234,6 +243,7 @@ class _HeldCorrection:
     actual_cost: Decimal
     naive_cost: Decimal
     cost_savings: Decimal
+    battery_savings: Decimal
     by_source: dict[SourceKind, Decimal]
 
     def scaled(self, fraction: Decimal) -> _HeldCorrection:
@@ -244,6 +254,7 @@ class _HeldCorrection:
             actual_cost=self.actual_cost * fraction,
             naive_cost=self.naive_cost * fraction,
             cost_savings=self.cost_savings * fraction,
+            battery_savings=self.battery_savings * fraction,
             by_source={kind: kwh * fraction for kind, kwh in self.by_source.items()},
         )
 
@@ -255,6 +266,7 @@ class _HeldCorrection:
             actual_cost=self.actual_cost - taken.actual_cost,
             naive_cost=self.naive_cost - taken.naive_cost,
             cost_savings=self.cost_savings - taken.cost_savings,
+            battery_savings=self.battery_savings - taken.battery_savings,
             by_source={
                 kind: kwh - taken.by_source.get(kind, Decimal(0))
                 for kind, kwh in self.by_source.items()
@@ -282,6 +294,7 @@ class _Running:
     actual_cost: Decimal = Decimal(0)
     naive_cost: Decimal = Decimal(0)
     cost_savings: Decimal = Decimal(0)
+    battery_savings: Decimal = Decimal(0)
     # Deliberately not touched by ``add``: a bucket's allocation cannot bound a
     # figure whose uncertainty spans the buckets *around* it. Bounds accrue when
     # the span of the delta that revealed the energy has finished finalising.
@@ -298,6 +311,7 @@ class _Running:
         self.actual_cost += allocation.actual_cost
         self.naive_cost += allocation.naive_cost
         self.cost_savings += allocation.cost_savings
+        self.battery_savings += allocation.battery_savings
         self.add_by_source(allocation.energy_by_source)
 
     def add_by_source(self, shares: Mapping[SourceKind, Decimal]) -> None:
@@ -310,6 +324,7 @@ class _Running:
             actual_cost=self.actual_cost,
             naive_cost=self.naive_cost,
             cost_savings=self.cost_savings,
+            battery_savings=self.battery_savings,
             energy_from_grid=self.by_source.get(SourceKind.IMPORT, Decimal(0)),
             energy_from_generation=self.by_source.get(
                 SourceKind.GENERATION, Decimal(0)
@@ -585,6 +600,7 @@ class Accountant:
                     "actual_cost": str(held.actual_cost),
                     "naive_cost": str(held.naive_cost),
                     "cost_savings": str(held.cost_savings),
+                    "battery_savings": str(held.battery_savings),
                     "by_source": _dump_by_source(held.by_source),
                 }
                 for held in self._held
@@ -600,6 +616,7 @@ class Accountant:
                     "consumption": str(bucket.consumption),
                     "blended": str(bucket.blended),
                     "import_price": str(bucket.import_price),
+                    "battery_price": str(bucket.battery_price),
                     "draw": str(bucket.draw),
                     "sources": _dump_by_source(bucket.sources),
                 }
@@ -692,6 +709,8 @@ class Accountant:
                 actual_cost=Decimal(held["actual_cost"]),
                 naive_cost=Decimal(held["naive_cost"]),
                 cost_savings=Decimal(held["cost_savings"]),
+                # Absent before this figure existed - see `_load_running`.
+                battery_savings=Decimal(held.get("battery_savings", 0)),
                 by_source=_load_by_source(held["by_source"]),
             )
             for held in data["held"]
@@ -708,6 +727,8 @@ class Accountant:
                 consumption=Decimal(bucket["consumption"]),
                 blended=Decimal(bucket["blended"]),
                 import_price=Decimal(bucket["import_price"]),
+                # Absent before this figure existed - see `_load_running`.
+                battery_price=Decimal(bucket.get("battery_price", 0)),
                 draw=Decimal(bucket["draw"]),
                 sources=_load_by_source(bucket["sources"]),
             )
@@ -764,6 +785,7 @@ class Accountant:
         actual = _sum(d.actual_cost for d in tracked)
         naive = _sum(d.naive_cost for d in tracked)
         savings = _sum(d.cost_savings for d in tracked)
+        battery_savings = _sum(d.battery_savings for d in tracked)
         grid = _sum(d.energy_from_grid for d in tracked)
         generation = _sum(d.energy_from_generation for d in tracked)
         battery = _sum(d.energy_from_battery for d in tracked)
@@ -772,6 +794,7 @@ class Accountant:
             actual_cost=whole_home.actual_cost - actual,
             naive_cost=whole_home.naive_cost - naive,
             cost_savings=whole_home.cost_savings - savings,
+            battery_savings=whole_home.battery_savings - battery_savings,
             energy_from_grid=whole_home.energy_from_grid - grid,
             energy_from_generation=whole_home.energy_from_generation - generation,
             energy_from_battery=whole_home.energy_from_battery - battery,
@@ -989,6 +1012,9 @@ class Accountant:
         # comes out of the remainder, and only that part waits.
         run.energy_kwh += grew
         run.add_by_source(split_by_source(grew, retained.sources, retained.consumption))
+        funded_by_source = split_by_source(
+            funded, retained.sources, retained.consumption
+        )
         self._hold(
             _HeldCorrection(
                 device=device,
@@ -997,9 +1023,15 @@ class Accountant:
                 actual_cost=cost,
                 naive_cost=funded * retained.import_price,
                 cost_savings=funded * retained.import_price - cost,
-                by_source=split_by_source(
-                    funded, retained.sources, retained.consumption
-                ),
+                # Priced against *its own* bucket's battery, which is why the
+                # retained bucket keeps that price. A correction settled at
+                # today's stored cost would credit last night's cheap charge with
+                # whatever the battery happens to hold now, and would drift the
+                # two halves of Cost Savings apart by the size of every late
+                # arrival - which on a coarse counter is most of its energy.
+                battery_savings=funded_by_source.get(SourceKind.BATTERY, Decimal(0))
+                * (retained.import_price - retained.battery_price),
+                by_source=funded_by_source,
             )
         )
 
@@ -1059,7 +1091,11 @@ class Accountant:
             energy_kwh=remainder.energy_kwh,
             actual_cost=remainder.actual_cost,
             naive_cost=remainder.naive_cost,
+            # Neither saving constrains what a correction can afford: both are
+            # derived from the money above, and `_affordable` weighs only what a
+            # bucket actually has to hand over.
             cost_savings=Decimal(0),
+            battery_savings=Decimal(0),
             by_source={},
         )
         outstanding: list[_HeldCorrection] = []
@@ -1074,6 +1110,7 @@ class Accountant:
             run.actual_cost += paid.actual_cost
             run.naive_cost += paid.naive_cost
             run.cost_savings += paid.cost_savings
+            run.battery_savings += paid.battery_savings
             run.add_by_source(paid.by_source)
             budget = budget.less(paid)
             if fraction < 1:
@@ -1105,6 +1142,7 @@ class Accountant:
             run.actual_cost += held.actual_cost
             run.naive_cost += held.naive_cost
             run.cost_savings += held.cost_savings
+            run.battery_savings += held.battery_savings
             run.add_by_source(held.by_source)
 
     def _resolve_bounds(self, start: datetime) -> None:
@@ -1159,10 +1197,12 @@ class Accountant:
             return remainder
         blended = remainder.actual_cost / remainder.energy_kwh
         settlement = self._debts.repay(remainder.energy_kwh, blended)
-        self._release(settlement)
+        self._release(settlement, _battery_share(sources, prices))
         return _withhold(remainder, settlement.kwh, blended, import_price, sources)
 
-    def _release(self, settlement: Settlement) -> None:
+    def _release(
+        self, settlement: Settlement, battery_share: Decimal = Decimal(0)
+    ) -> None:
         """Publishes a suspended charge, now that its real price is known.
 
         The overdraw was never charged when it happened: pricing it at import was
@@ -1174,18 +1214,28 @@ class Accountant:
         Actual and counterfactual move together. On expiry they are equal and the
         saving is untouched; on repayment their difference is the real saving the
         household made by having been served more cheaply than the grid.
+
+        ``battery_share`` splits that saving the way the repaying bucket's own was
+        split, because that is the bucket whose blend priced it - the same
+        reasoning that makes the repayment happen at this blend rather than at the
+        overdrawing bucket's. It defaults to nothing for the expiry paths, where
+        actual and counterfactual are equal and there is no saving to divide. The
+        withheld remainder gave its share up in ``_withhold``, so without this the
+        household's battery saving would quietly shed the whole of every
+        settlement while Cost Savings kept it (HEA-173).
         """
         for device, amount in settlement.actual.items():
             self._running.setdefault(device, _Running()).actual_cost += amount
             self._house.actual_cost += amount
         for device, amount in settlement.naive.items():
             run = self._running.setdefault(device, _Running())
+            saving = amount - settlement.actual.get(device, Decimal(0))
             run.naive_cost += amount
-            run.cost_savings += amount - settlement.actual.get(device, Decimal(0))
+            run.cost_savings += saving
+            run.battery_savings += saving * battery_share
             self._house.naive_cost += amount
-            self._house.cost_savings += amount - settlement.actual.get(
-                device, Decimal(0)
-            )
+            self._house.cost_savings += saving
+            self._house.battery_savings += saving * battery_share
 
     def unreconciled_energy(self) -> Decimal:
         """Energy charged that the house meters never went on to account for.
@@ -1450,6 +1500,7 @@ class Accountant:
             consumption=consumption,
             blended=total_cost / consumption if consumption > 0 else Decimal(0),
             import_price=prices[SourceKind.IMPORT],
+            battery_price=prices.get(SourceKind.BATTERY, Decimal(0)),
             draw=_sum(draws.values()),
             sources=dict(sources),
         )
@@ -1593,8 +1644,44 @@ def _withhold(
         actual_cost=actual,
         naive_cost=naive,
         cost_savings=naive - actual,
+        # Scaled by what is kept rather than recomputed, and exactly rather than
+        # approximately: the source split is linear in energy, so the battery's
+        # share of `kept` is its share of the whole in the same ratio. That also
+        # spares this the bucket's battery price, which it has no other reason to
+        # know.
+        battery_savings=_scaled(remainder.battery_savings, kept, remainder.energy_kwh),
         energy_by_source=split_by_source(kept, sources, _sum(sources.values())),
     )
+
+
+def _battery_share(
+    sources: Mapping[SourceKind, Decimal], prices: Mapping[SourceKind, Decimal]
+) -> Decimal:
+    """How much of a bucket's saving the battery accounts for, from 0 to 1.
+
+    A bucket is cheaper than the grid only through the sources priced below it -
+    generation at nothing, the battery at whatever its charge cost - so the gap
+    between blended and import divides exactly between those two. This is the
+    battery's part of it, which is the share a late settlement of this bucket's
+    surplus carries with it.
+
+    Zero where the bucket made no saving at all, which is every all-grid bucket:
+    there is nothing to divide, and dividing by the gap would ask what fraction of
+    nothing the battery earned.
+    """
+    import_price = prices[SourceKind.IMPORT]
+    gap = _sum(
+        energy * (import_price - prices[kind]) for kind, energy in sources.items()
+    )
+    battery = sources.get(SourceKind.BATTERY, Decimal(0))
+    if gap == 0 or battery == 0:
+        return Decimal(0)
+    return battery * (import_price - prices[SourceKind.BATTERY]) / gap
+
+
+def _scaled(value: Decimal, kept: Decimal, whole: Decimal) -> Decimal:
+    """``value`` in the ratio ``kept`` bears to ``whole``, and zero if there is none."""
+    return value * kept / whole if whole else Decimal(0)
 
 
 def _sum(values: Iterable[Decimal]) -> Decimal:
@@ -1621,6 +1708,7 @@ def _dump_running(running: _Running) -> dict[str, Any]:
         "actual_cost": str(running.actual_cost),
         "naive_cost": str(running.naive_cost),
         "cost_savings": str(running.cost_savings),
+        "battery_savings": str(running.battery_savings),
         "cost_floor": str(running.cost_floor),
         "cost_ceiling": str(running.cost_ceiling),
         "by_source": _dump_by_source(running.by_source),
@@ -1633,6 +1721,14 @@ def _load_running(data: Mapping[str, Any]) -> _Running:
         actual_cost=Decimal(data["actual_cost"]),
         naive_cost=Decimal(data["naive_cost"]),
         cost_savings=Decimal(data["cost_savings"]),
+        # Absent from every snapshot written before this figure existed, and read
+        # as nothing rather than refused. Refusing is the general rule and it is
+        # right for a snapshot this engine cannot make sense of - but here the
+        # shape is understood and one field is simply missing, so insisting would
+        # send every installed household through a cold start and take the
+        # battery's stored-cost ledger with it. Their next discharge would be
+        # priced at zero to gain a figure whose absence means zero (ADR-0021).
+        battery_savings=Decimal(data.get("battery_savings", 0)),
         cost_floor=Decimal(data["cost_floor"]),
         cost_ceiling=Decimal(data["cost_ceiling"]),
         by_source=_load_by_source(data["by_source"]),

@@ -181,6 +181,9 @@
       "last_reading": {
         "name": "Última lectura"
       },
+      "battery_savings": {
+        "name": "Ahorro de la batería"
+      },
       "lowest_possible_cost": {
         "name": "Coste mínimo posible"
       },

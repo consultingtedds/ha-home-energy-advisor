@@ -181,6 +181,9 @@
       "last_reading": {
         "name": "Последнее показание"
       },
+      "battery_savings": {
+        "name": "Экономия за счёт батареи"
+      },
       "lowest_possible_cost": {
         "name": "Наименьшая возможная стоимость"
       },
