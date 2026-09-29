@@ -86,6 +86,36 @@ if you want them covered there.
 To fix it, check the integration that provides the sensor - it may need
 reauthenticating, or the device may be off the network.
 
+## Untracked shows a saving of a penny or two below zero
+
+Over a short period, and only when Untracked is nearly empty. It is not a fault,
+and it is not rounding.
+
+Your device sensors and your house meter are read at very different rates, so in
+any one five-minute slice the devices can account for more energy than the house
+metered. Home Energy Advisor does not charge for that excess when it happens -
+it waits until a later slice can pay for it, so no hour is ever published costing
+less than nothing. When it is repaid, a little value moves out of Untracked and
+into the device it belonged to. If almost nothing else landed in Untracked over
+the period you are looking at, that repayment is most of what you see, and it can
+leave the saving slightly below zero.
+
+It settles as soon as the remainder has anything real in it, and over a day or a
+month it is invisible. A genuinely negative saving is a different thing and is
+left alone deliberately: charging a battery when power is dear and using it when
+power is cheap really does cost money, and so does importing at a negative price.
+
+## The "from grid" column is blank for a device
+
+The percentage is only shown where it is a percentage. Over short periods a
+device's - and especially Untracked's - energy and its grid figure are worked out
+separately, so at very small amounts one can exceed the other and the ratio stops
+meaning anything. Rather than print a share above 100%, or below zero, the column
+says nothing.
+
+The energy columns beside it are still what was recorded. Widen the period and
+the share comes back.
+
 ## Notifications about a unit changing to your currency
 
 For example:

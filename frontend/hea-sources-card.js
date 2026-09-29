@@ -31,9 +31,22 @@ const EDITOR_TAG = `${TAG}-editor`;
  *
  * Undefined rather than zero when there is no energy: no share can be derived
  * from nothing, and "none of it" is a different claim from "we cannot say".
+ *
+ * Undefined too when the pair cannot be a proportion at all - a grid figure
+ * above the energy, or below zero. The Untracked remainder does this over short
+ * periods: its energy and its grid figure are separate subtractions taken across
+ * different buckets, so at small magnitudes they stop being a whole and a part
+ * of it. Reported as "149% of grid power" on GitHub 22, and it righted itself as
+ * soon as a dishwasher gave the remainder something to divide by.
+ *
+ * The energy columns beside it are still shown as recorded. The figures are what
+ * they are; it is only the ratio that has stopped meaning anything, and the same
+ * "we cannot say" the no-energy case already returns is the honest answer.
  */
 const gridShare = ({ energyFromGrid, energyUsed }) =>
-  energyUsed > 0 ? energyFromGrid / energyUsed : undefined;
+  energyUsed > 0 && energyFromGrid >= 0 && energyFromGrid <= energyUsed
+    ? energyFromGrid / energyUsed
+    : undefined;
 
 const COLUMNS = [
   { field: "name", label: "device" },

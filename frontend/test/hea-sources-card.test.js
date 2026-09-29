@@ -189,4 +189,49 @@ describe("the split", () => {
     expect(rows(card)[0].slice(1, 5)).toEqual(["10 kWh", "1 kWh", "1 kWh", "1 kWh"]);
     expect(rows(card)[0][5]).toBe("10%");
   });
+
+  it("says nothing rather than claim a device drew more grid than energy", async () => {
+    // Given - a row whose grid figure exceeds its own energy. Over a short
+    // period the Untracked remainder does this: its energy and its grid share
+    // are separate subtractions across different buckets, so at small
+    // magnitudes the pair stops being a share at all. Reported as "149% of grid
+    // power" on GitHub 22, and it went away as soon as a dishwasher gave the
+    // remainder something to divide by
+    const card = mount(
+      aHass({
+        devices: [AIRCON],
+        response: {
+          ...bucketsFor("slow_poll_aircon", 2, 1, 2),
+          ...sourcesFor("slow_poll_aircon", 3, 0, 0),
+        },
+      }),
+    );
+    await ready(card);
+
+    // Then - the energy figures are still shown, because they are what was
+    // recorded, and the share is blank. "We cannot say" is the honest reading of
+    // a pair that cannot be a proportion, and it is already what this column
+    // does when there is no energy at all
+    expect(rows(card)[0].slice(1, 5)).toEqual(["2 kWh", "3 kWh", "0 kWh", "0 kWh"]);
+    expect(rows(card)[0][5]).toBe("-");
+  });
+
+  it("says nothing rather than claim a negative share", async () => {
+    // Given - a row whose grid figure has gone below zero, which the remainder
+    // can do for the same reason
+    const card = mount(
+      aHass({
+        devices: [AIRCON],
+        response: {
+          ...bucketsFor("slow_poll_aircon", 2, 1, 2),
+          ...sourcesFor("slow_poll_aircon", -1, 0, 0),
+        },
+      }),
+    );
+    await ready(card);
+
+    // Then - the same "we cannot say" the no-energy case gives, not a negative
+    // percentage
+    expect(rows(card)[0][5]).toBe("-");
+  });
 });
