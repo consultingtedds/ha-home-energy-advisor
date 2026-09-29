@@ -16,9 +16,14 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.home_energy_advisor import issues
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
@@ -35,6 +40,7 @@ from custom_components.home_energy_advisor.issues import (
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
+    from typing import Any
 
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
@@ -1386,3 +1392,98 @@ async def test_the_nesting_listener_is_harmless_once_its_entry_is_gone(
     # hierarchy nobody asked it about.
     read_again.assert_not_called()
     assert entry.state is ConfigEntryState.NOT_LOADED
+
+
+def _battery_entry(*, soc: bool = True) -> MockConfigEntry:
+    """A household with a battery, optionally telling us what is in it."""
+    # The capacity is a number where every other value here is an entity id, so
+    # the mapping holds both rather than being inferred as one or the other.
+    data: dict[str, Any] = {
+        CONF_PRICE_ENTITY: "sensor.price",
+        CONF_CURRENCY: "EUR",
+        CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+        CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+        CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_load",
+    }
+    if soc:
+        data[CONF_BATTERY_SOC_ENTITY] = "sensor.battery_level"
+        data[CONF_BATTERY_CAPACITY_KWH] = 5.0
+    return MockConfigEntry(domain=DOMAIN, data=data, subentries_data=[])
+
+
+async def _charged_home(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, entry: MockConfigEntry
+) -> MockConfigEntry:
+    """A household that charged 4 kWh from the grid, so the ledger holds some."""
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    for entity in (
+        "sensor.grid_import",
+        "sensor.battery_charge",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+    ):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "80", {"device_class": "battery"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "4.0", _ENERGY)
+    hass.states.async_set("sensor.battery_charge", "4.0", _ENERGY)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+    return entry
+
+
+def _stored(entry: MockConfigEntry) -> Decimal:
+    return Decimal(entry.runtime_data.diagnostics()["battery"]["stored_kwh"])
+
+
+async def test_the_ledger_is_written_down_to_what_the_battery_reports(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household whose ledger holds the 4 kWh it saw charged
+    entry = await _charged_home(hass, freezer, _battery_entry())
+    assert _stored(entry) == Decimal("4.0")
+
+    # When - the battery says it is at 20 % of its 5 kWh
+    hass.states.async_set("sensor.battery_level", "20", {"device_class": "battery"})
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
+
+    # Then - the books say 1 kWh, because that is what is in there. Without this
+    # the inventory only ever rises, and its one self-correction - being drained
+    # to empty - is exactly what the excess prevents (HEA-178)
+    assert _stored(entry) == Decimal("1.0")
+
+
+async def test_a_battery_that_says_nothing_leaves_the_ledger_alone(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household whose battery reports its level
+    entry = await _charged_home(hass, freezer, _battery_entry())
+
+    # When - that sensor goes unavailable, as any sensor may
+    hass.states.async_set("sensor.battery_level", "unavailable")
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
+
+    # Then - the ledger is untouched. Reading silence as zero would empty it and
+    # price every later discharge at nothing, which is this ticket's own defect
+    # with the sign reversed
+    assert _stored(entry) == Decimal("4.0")
+
+
+async def test_a_household_who_configured_no_level_is_unaffected(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - a battery household who has not answered the optional
+    # questions, which is every existing install
+    entry = await _charged_home(hass, freezer, _battery_entry(soc=False))
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 31, tzinfo=UTC))
+
+    # Then - the ledger behaves exactly as it did before any of this existed
+    assert _stored(entry) == Decimal("4.0")

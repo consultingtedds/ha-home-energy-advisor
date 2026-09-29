@@ -814,6 +814,36 @@ class Accountant:
         """
         return self._balance.diagnostics()
 
+    def reconcile_battery(self, available_kwh: Decimal) -> None:
+        """Write the ledger down to what the battery holds, and book the money.
+
+        The inventory is inferred from the charge and discharge meters, so
+        anything that leaves the battery another way - round-trip losses, a
+        discharge the configured meter does not count - stays on the books for
+        ever and stops the drain-to-empty that is its only self-correction
+        (HEA-178).
+
+        **The cost is published and the energy is not**, and the asymmetry is the
+        point. That money was paid to the grid: a charge is taken *out* of house
+        consumption for its interval and only becomes a cost when the energy is
+        discharged, so energy that never comes out is a bill nothing ever
+        publishes. The energy, though, was lost inside the battery, where the
+        house-consumption meter cannot see it - publishing it would lift the
+        published total above the meter and raise the unreconciled Repair for a
+        discrepancy of our own making.
+
+        Booked to the house and to no device, so it reaches the household's total
+        and falls out in the Untracked remainder by derivation. No appliance ran
+        on it. Actual and counterfactual move together, so Cost Savings is
+        untouched: this energy really was bought from the grid, so what it would
+        have cost from the grid is what it cost.
+        """
+        cost = self._battery.reconcile(available_kwh)
+        if cost == 0:
+            return
+        self._house.actual_cost += cost
+        self._house.naive_cost += cost
+
     def battery_diagnostics(self) -> dict[str, str]:
         """What the stored-cost ledger holds, for the diagnostics download.
 

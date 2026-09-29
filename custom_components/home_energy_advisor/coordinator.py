@@ -32,8 +32,10 @@ from homeassistant.util import dt as dt_util
 from . import issues
 from .accountant_store import AccountantStore, SnapshotStatus
 from .const import (
+    CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
@@ -189,6 +191,13 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # Inputs whose counter changed the size of unit it reports in.
         self._rescaled_sources: set[str] = set()
         self._devices = devices
+        # HEA-178. What the battery actually holds, so the stored-cost ledger can
+        # be written down to it. Optional and only useful as a pair: a percentage
+        # says nothing in kWh without the capacity to scale it by.
+        self._battery_soc_entity = entry.data.get(CONF_BATTERY_SOC_ENTITY)
+        self._battery_capacity = _to_decimal(
+            str(entry.data.get(CONF_BATTERY_CAPACITY_KWH, ""))
+        )
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
         self._restored: Totals | None = None
@@ -363,6 +372,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_refused_steps()
         self._check_rescaled_sources()
         self._check_source_units(now)
+        self._reconcile_battery()
         self._refresh_source_health(now)
         self.async_set_updated_data(self._accountant.totals())
         self._store.async_schedule_save(
@@ -624,6 +634,38 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             issues.async_clear(self.hass, issues.source_unit_missing_issue_id(entity))
         self._unsupported_units = unsupported
         self._missing_units = missing
+
+    def _reconcile_battery(self) -> None:
+        """Tell the engine what the battery holds, where the household has said.
+
+        Silence leaves the ledger exactly as it is, and that is the important
+        half: a missing, unavailable or unreadable level read as zero would empty
+        the ledger and price every later discharge at nothing - the drift this
+        corrects, with its sign reversed. A household who answered neither
+        optional question is on the path they were on before it existed.
+        """
+        available = self._battery_available()
+        if available is not None:
+            self._accountant.reconcile_battery(available)
+
+    def _battery_available(self) -> Decimal | None:
+        """How much energy the battery holds, or ``None`` where it cannot say.
+
+        A percentage of a stated usable capacity, because that is the sensor
+        almost every battery integration publishes. Anything outside 0-100 is
+        refused rather than clamped: a reading that is not a percentage is not a
+        percentage read badly, and guessing at it would write the ledger down on
+        the strength of a misconfiguration.
+        """
+        if self._battery_soc_entity is None or self._battery_capacity is None:
+            return None
+        state = self.hass.states.get(self._battery_soc_entity)
+        if state is None or state.state in _UNAVAILABLE:
+            return None
+        percent = _to_decimal(state.state)
+        if percent is None or not (0 <= percent <= 100):  # noqa: PLR2004 - a percentage
+            return None
+        return self._battery_capacity * percent / 100
 
     def _refresh_source_health(self, now: datetime) -> None:
         """Take each device's last reading, and say whose has stopped (ADR-0024).

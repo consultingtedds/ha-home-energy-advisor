@@ -42,6 +42,9 @@ class BatteryLedger:
     def __init__(self) -> None:
         self._stored_kwh = Decimal(0)
         self._stored_cost = Decimal(0)
+        # What reconciliation has written off in total, kept so a cost published
+        # on the household's figures can be accounted for in the diagnostics.
+        self._written_off_cost = Decimal(0)
 
     @property
     def stored_kwh(self) -> Decimal:
@@ -94,6 +97,48 @@ class BatteryLedger:
             self._stored_cost -= cost
         return cost
 
+    def reconcile(self, available_kwh: Decimal) -> Decimal:
+        """Writes the inventory down to what the battery really holds.
+
+        Returns the cost of the energy written off, for the caller to book.
+
+        The inventory here is inferred rather than measured - charge in, discharge
+        out - and two things leave the battery by a door it does not subtract
+        from: round-trip losses, and any discharge the configured meter does not
+        count. Both stay on the books for ever, and because the only other way
+        this ledger corrects itself is being drained to empty, a growing phantom
+        is precisely what stops that happening. Measured on the reference
+        instance at 15.69 kWh in a 5 kWh battery (HEA-178).
+
+        **Down only.** A ledger holding *less* than the battery does is the
+        ordinary state of a household who installed this with a battery already
+        part full, and that shortfall is already priced at zero on discharge (see
+        the module docstring). Writing it up would invent energy at a cost nobody
+        paid and drag the blend of what really is in there towards free.
+
+        **The blend is preserved**, because a write-down says nothing about what
+        the energy still in there cost. Moving the price to fix the inventory
+        would make every later discharge wrong in order to correct a figure
+        nobody reads.
+
+        The cost handed back carries its sign: energy a household was *paid* to
+        store (HEA-165) is written off as a credit, since charging them for
+        losing it would be the same sign error in reverse.
+        """
+        if available_kwh >= self._stored_kwh:
+            return Decimal(0)
+        if available_kwh <= 0:
+            written_off = self._stored_cost
+            self._stored_kwh = Decimal(0)
+            self._stored_cost = Decimal(0)
+        else:
+            kept = available_kwh * self.unit_cost
+            written_off = self._stored_cost - kept
+            self._stored_kwh = available_kwh
+            self._stored_cost = kept
+        self._written_off_cost += written_off
+        return written_off
+
     def _charge(self, kwh: Decimal, cost: Decimal) -> None:
         if kwh < 0:
             msg = f"charge cannot be negative: {kwh}"
@@ -110,6 +155,7 @@ class BatteryLedger:
         return {
             "stored_kwh": str(self._stored_kwh),
             "stored_cost": str(self._stored_cost),
+            "written_off_cost": str(self._written_off_cost),
         }
 
     def snapshot(self) -> dict[str, str]:
@@ -125,9 +171,17 @@ class BatteryLedger:
         return {
             "stored_kwh": str(self._stored_kwh),
             "stored_cost": str(self._stored_cost),
+            "written_off_cost": str(self._written_off_cost),
         }
 
     def restore(self, data: Mapping[str, str]) -> None:
-        """Reinstates a snapshot taken by :meth:`snapshot`."""
+        """Reinstates a snapshot taken by :meth:`snapshot`.
+
+        The written-off total is absent from every snapshot taken before
+        reconciliation existed, and is read as nothing rather than refused: the
+        shape is understood, and insisting would cold-start every installed
+        household and discard the very ledger this exists to correct (ADR-0021).
+        """
         self._stored_kwh = Decimal(data["stored_kwh"])
         self._stored_cost = Decimal(data["stored_cost"])
+        self._written_off_cost = Decimal(data.get("written_off_cost", 0))

@@ -237,9 +237,99 @@ def test_battery_diagnostics_expose_what_the_ledger_holds() -> None:
     # Then - both figures are exposed, and at full Decimal precision as strings:
     # rounding either would make a discharge price that cannot be reproduced from
     # the download, which is the whole point of publishing it
-    assert held == {"stored_kwh": "10", "stored_cost": "0.372"}
+    assert held == {
+        "stored_kwh": "10",
+        "stored_cost": "0.372",
+        # Nothing written off yet, and stated rather than absent: a cost that
+        # reaches the household's total has to be accountable from here (HEA-178)
+        "written_off_cost": "0",
+    }
 
     # ...and they explain the rate the next discharge will be priced at
     assert Decimal(held["stored_cost"]) / Decimal(held["stored_kwh"]) == (
         ledger.unit_cost
     )
+
+
+def test_reconciling_writes_the_inventory_down_to_what_is_really_there() -> None:
+    """The fix for a ledger that believes in energy the battery never held.
+
+    Its inventory is inferred, never measured: charge in, discharge out. Neither
+    round-trip losses nor a discharge that went to the grid leave by the door it
+    subtracts from, so both stay on the books for ever. Measured on the reference
+    instance at 15.69 kWh in a 5 kWh battery (HEA-178).
+    """
+    # Given - a ledger that has drifted: 10 kWh on the books
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(10), Decimal("0.10"))
+
+    # When - the battery says it is holding 2 kWh
+    written_off = ledger.reconcile(Decimal(2))
+
+    # Then - the inventory is the measurement, and what it shed is reported so the
+    # money can be booked rather than quietly dropped
+    assert ledger.stored_kwh == Decimal(2)
+    assert written_off == Decimal("0.80")
+
+
+def test_reconciling_leaves_the_price_a_discharge_is_valued_at_alone() -> None:
+    # Given - a blend of paid and free charge, 4 kWh at 0.093 and 6 free
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(4), OVERNIGHT)
+    ledger.charge_from_generation(Decimal(6))
+    blend = ledger.unit_cost
+
+    # When - the inventory is written down by four fifths
+    ledger.reconcile(Decimal(2))
+
+    # Then - the blend is untouched. Writing energy off says nothing about what
+    # the energy still in there cost, and a write-down that moved the price would
+    # make every later discharge wrong in order to fix the inventory
+    assert ledger.unit_cost == blend
+    assert ledger.stored_kwh == Decimal(2)
+
+
+def test_reconciling_never_writes_the_inventory_up() -> None:
+    # Given - a ledger holding less than the battery does, which is the ordinary
+    # state of a household who installed this with a battery already part full
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(1), OVERNIGHT)
+
+    # When - the battery reports 4 kWh available
+    written_off = ledger.reconcile(Decimal(4))
+
+    # Then - nothing moves. That shortfall is already priced at zero on discharge
+    # (see the module docstring); adding it here would invent energy at a cost
+    # nobody paid and drag the blend of what really is in there towards free
+    assert ledger.stored_kwh == Decimal(1)
+    assert written_off == Decimal(0)
+
+
+def test_reconciling_to_an_empty_battery_clears_the_books() -> None:
+    # Given - a ledger holding a blend
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(3), PEAK)
+
+    # When - the battery is flat
+    written_off = ledger.reconcile(Decimal(0))
+
+    # Then - both figures go, and the whole stored cost is handed back to be
+    # booked. Nothing is left to dilute the next charge's blend
+    assert ledger.stored_kwh == Decimal(0)
+    assert ledger.unit_cost == Decimal(0)
+    assert written_off == Decimal("0.702")
+
+
+def test_reconciling_a_credited_charge_hands_back_a_credit() -> None:
+    # Given - a ledger holding energy the household was paid to take (HEA-165)
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(4), NEGATIVE_SPOT)
+
+    # When - half of it turns out not to be there
+    written_off = ledger.reconcile(Decimal(2))
+
+    # Then - the write-off is negative, because that is what it cost. Booking it
+    # as a positive would charge a household for losing energy they were paid to
+    # store, which is the sign error HEA-165 fixed on the way in
+    assert written_off == Decimal("-0.16")
+    assert ledger.unit_cost == NEGATIVE_SPOT

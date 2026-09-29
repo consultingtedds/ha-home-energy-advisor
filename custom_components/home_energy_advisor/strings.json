@@ -12,7 +12,9 @@
           "generation_entity": "Local generation energy (optional)",
           "battery_charge_entity": "Battery charge energy (optional)",
           "battery_discharge_entity": "Battery discharge energy (optional)",
-          "house_consumption_entity": "House consumption energy (optional)"
+          "house_consumption_entity": "House consumption energy (optional)",
+          "battery_soc_entity": "Battery level (optional)",
+          "battery_capacity_kwh": "Battery usable capacity (optional)"
         },
         "data_description": {
           "price_entity": "The sensor or Number helper giving the current import price per kWh.",
@@ -21,8 +23,10 @@
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
-          "battery_discharge_entity": "Cumulative energy discharged from the battery.",
-          "house_consumption_entity": "Total household consumption, if measured directly."
+          "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
+          "house_consumption_entity": "Total household consumption, if measured directly.",
+          "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
+          "battery_capacity_kwh": "What the battery holds when full, in kWh. Only used together with the battery level above."
         }
       },
       "reconfigure": {
@@ -36,7 +40,9 @@
           "generation_entity": "Local generation energy (optional)",
           "battery_charge_entity": "Battery charge energy (optional)",
           "battery_discharge_entity": "Battery discharge energy (optional)",
-          "house_consumption_entity": "House consumption energy (optional)"
+          "house_consumption_entity": "House consumption energy (optional)",
+          "battery_soc_entity": "Battery level (optional)",
+          "battery_capacity_kwh": "Battery usable capacity (optional)"
         },
         "data_description": {
           "price_entity": "The sensor or Number helper giving the current import price per kWh.",
@@ -45,8 +51,10 @@
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), combine them first with a Group helper of type Sum and choose that. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
-          "battery_discharge_entity": "Cumulative energy discharged from the battery.",
-          "house_consumption_entity": "Total household consumption, if measured directly."
+          "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
+          "house_consumption_entity": "Total household consumption, if measured directly.",
+          "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
+          "battery_capacity_kwh": "What the battery holds when full, in kWh. Only used together with the battery level above."
         }
       }
     },

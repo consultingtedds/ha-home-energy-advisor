@@ -14,6 +14,11 @@ CONF_GRID_EXPORT_ENTITY: Final = "grid_export_entity"
 CONF_GENERATION_ENTITY: Final = "generation_entity"
 CONF_BATTERY_CHARGE_ENTITY: Final = "battery_charge_entity"
 CONF_BATTERY_DISCHARGE_ENTITY: Final = "battery_discharge_entity"
+# What the battery actually holds, so the stored-cost ledger can be written down
+# to it rather than drifting upwards for ever (HEA-178). A percentage needs the
+# capacity to mean anything in kWh, so the two are only useful together.
+CONF_BATTERY_SOC_ENTITY: Final = "battery_soc_entity"
+CONF_BATTERY_CAPACITY_KWH: Final = "battery_capacity_kwh"
 CONF_HOUSE_CONSUMPTION_ENTITY: Final = "house_consumption_entity"
 
 DEFAULT_CURRENCY: Final = "EUR"

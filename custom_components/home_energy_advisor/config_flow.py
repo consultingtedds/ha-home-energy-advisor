@@ -27,8 +27,10 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector, translation
 
 from .const import (
+    CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_CYCLE_DAILY,
     CONF_CYCLE_MONTHLY,
@@ -75,6 +77,20 @@ _ENERGY_SELECTOR = selector.EntitySelector(
 )
 _POWER_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor", device_class="power")
+)
+# How full the battery is, and how much it holds when it is (HEA-178). The
+# `battery` device class is the percentage one almost every battery integration
+# publishes; the capacity is the *usable* figure a percentage is a percentage of.
+_BATTERY_LEVEL_SELECTOR = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain="sensor", device_class="battery")
+)
+_CAPACITY_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=0.1,
+        step=0.1,
+        mode=selector.NumberSelectorMode.BOX,
+        unit_of_measurement="kWh",
+    )
 )
 _DEVICE_SCHEMA = vol.Schema(
     {
@@ -175,6 +191,11 @@ def _build_schema(defaults: dict[str, str]) -> vol.Schema:
             prefilled(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
+            # Not prefilled: the Energy Dashboard knows nothing about either, and
+            # they are asked for together because neither means anything alone
+            # (HEA-178).
+            vol.Optional(CONF_BATTERY_SOC_ENTITY): _BATTERY_LEVEL_SELECTOR,
+            vol.Optional(CONF_BATTERY_CAPACITY_KWH): _CAPACITY_SELECTOR,
         }
     )
 

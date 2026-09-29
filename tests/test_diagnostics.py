@@ -109,11 +109,20 @@ async def test_diagnostics_expose_the_battery_ledger(
     # Then - the stored-cost ledger is in it. Discharge is priced from these two
     # figures and nothing else, so a household given a discharge costed below the
     # import rate can otherwise only infer why (HEA-112).
-    assert result["battery"] == {"stored_kwh": "0", "stored_cost": "0"}
+    assert result["battery"] == {
+        "stored_kwh": "0",
+        "stored_cost": "0",
+        # What reconciliation has written off, because that money reaches the
+        # household's own total and has to be accountable from here (HEA-178).
+        "written_off_cost": "0",
+    }
 
-    # ...and it is the whole ledger: two figures, with nothing else smuggled in
-    # beside them
-    assert set(result["battery"]) == {"stored_kwh", "stored_cost"}
+    # ...and it is the whole ledger, with nothing else smuggled in beside them
+    assert set(result["battery"]) == {
+        "stored_kwh",
+        "stored_cost",
+        "written_off_cost",
+    }
 
 
 async def test_diagnostics_say_why_the_previous_accounting_was_not_carried(
