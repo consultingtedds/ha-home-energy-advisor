@@ -1245,6 +1245,78 @@ async def test_an_area_on_the_source_entity_wins_over_its_devices(
     assert by_key["coarse_step_aircon"]["area_name"] == "Landing"
 
 
+def _put_our_device_in(
+    hass: HomeAssistant, entry: MockConfigEntry, *, area: str
+) -> None:
+    """Assign an area to the aircon's Home Energy Advisor device, as a user would.
+
+    Reached through one of its entities rather than by identifier: looking a
+    device up by identifier is deprecated, and it is the very lookup HEA-113
+    moved the production code off.
+    """
+    registry = er.async_get(hass)
+    entity = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}_actual_cost"
+    )
+    assert entity is not None
+    device_id = registry.async_get(entity).device_id  # type: ignore[union-attr]
+    assert device_id is not None
+    dr.async_get(hass).async_update_device(
+        device_id, area_id=ar.async_get(hass).async_get_or_create(area).id
+    )
+
+
+async def test_an_area_set_on_our_own_device_is_what_the_household_meant(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Reported on GitHub 30: assigned by hand, and the charts never learned it.
+
+    Reading the *source's* area is right by default - a plug in a room tells us
+    the room with nobody doing anything (HEA-58). But a household who opens our
+    device page, sees "Not in one" and assigns an area has said exactly what they
+    mean, and until now we read a different registry entry and carried on.
+    """
+    # Given - a running household whose source sits in no area at all
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert (await _devices_payload(hass, entry, freezer))["coarse_step_aircon"][
+        "area_name"
+    ] is None
+
+    # When - the household assigns an area to the Home Energy Advisor device
+    _put_our_device_in(hass, entry, area="Workshop")
+
+    # Then - the cards are told, because that is where a household looks
+    by_key = await _devices_payload(hass, entry, freezer)
+    assert by_key["coarse_step_aircon"]["area_name"] == "Workshop"
+
+
+async def test_our_own_devices_area_outranks_the_sources(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a source that already reports a room of its own
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the household says otherwise on our device
+    _put_our_device_in(hass, entry, area="Workshop")
+
+    # Then - theirs wins. An area inherited from a sensor is a good guess; one
+    # set by hand on the device in front of them is an instruction, and Home
+    # Assistant's own precedence works the same way round
+    by_key = await _devices_payload(hass, entry, freezer)
+    assert by_key["coarse_step_aircon"]["area_name"] == "Workshop"
+
+
 async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

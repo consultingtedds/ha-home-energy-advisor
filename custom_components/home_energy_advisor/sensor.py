@@ -981,28 +981,34 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         entry = cast("HeaConfigEntry", self.coordinator.config_entry)
         return _knows_the_battery_level(entry)
 
-    def _location_of(self, source: str | None) -> _Location:
-        """Where the sensor measuring a device sits - its area and floor (HEA-58).
+    def _location_of(
+        self, source: str | None, ours: dr.AnyDeviceEntry | None = None
+    ) -> _Location:
+        """Where a tracked device sits - its area and floor (HEA-58).
 
-        Read from the *source* sensor, because that is where the household's
-        hierarchy actually lives; HEA's own devices are deliberately left
-        unassigned. Assigning them would rewrite every entity id - Home Assistant
-        composes an id as ``area + device + entity`` with no de-duplication, so a
-        device whose name already repeats its area gets that word twice - and
-        ``suggested_area``, the only way to set one at creation, is removed in HA
-        2026.9. Exposing the hierarchy as data costs no registry writes and no
-        renames.
+        Falls back to the *source* sensor, because that is where the household's
+        hierarchy usually already lives: a plug in a room tells us the room with
+        nobody doing anything. HEA's own devices are still never *given* an area,
+        which would rewrite every entity id - Home Assistant composes an id as
+        ``area + device + entity`` with no de-duplication, so a device whose name
+        already repeats its area gets that word twice - and ``suggested_area``,
+        the only way to set one at creation, is removed in HA 2026.9.
 
-        An area set on the entity itself wins over its device's: that is Home
-        Assistant's own precedence, and it is how a user says "this particular
-        sensor lives elsewhere".
+        **An area the household set on our device wins**, though, and reading one
+        costs nothing (GitHub #30). Somebody who opens a device page, sees "Not in
+        one" and assigns a room has said exactly what they mean; reading the
+        source's instead answered a question they had already overruled. It is
+        the same precedence Home Assistant uses between an entity and its device,
+        one level up.
+
+        Within the source, an area on the entity itself wins over its device's,
+        for that same reason.
+
+        ``area_id`` is declared on ``BaseDeviceEntry``, so reading it off a child
+        device is a plain attribute rather than the compatibility shim that warns
+        (see :meth:`_device_behind`).
         """
-        if source is None:
-            return _NOWHERE
-        entity = er.async_get(self.hass).async_get(source)
-        if entity is None:
-            return _NOWHERE
-        area_id = entity.area_id or self._device_area(entity.device_id)
+        area_id = (ours.area_id if ours else None) or self._source_area(source)
         if area_id is None:
             return _NOWHERE
         area = ar.async_get(self.hass).async_get_area(area_id)
@@ -1014,6 +1020,15 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             floor_id=area.floor_id,
             floor_name=self._floor_name(area.floor_id),
         )
+
+    def _source_area(self, source: str | None) -> str | None:
+        """The area the sensor measuring a device sits in, if it sits in one."""
+        if source is None:
+            return None
+        entity = er.async_get(self.hass).async_get(source)
+        if entity is None:
+            return None
+        return entity.area_id or self._device_area(entity.device_id)
 
     def _labels_of(self, source: str | None) -> list[str]:
         """Every label on the sensor measuring a device, and on its device (HEA-95).
@@ -1139,7 +1154,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             else slugify(fallback_name or device_key)
         )
         name = (device and (device.name_by_user or device.name)) or fallback_name or key
-        location = self._location_of(source)
+        location = self._location_of(source, device)
         return {
             "key": key,
             "name": name,
