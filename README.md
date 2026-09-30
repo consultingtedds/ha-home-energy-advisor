@@ -375,17 +375,13 @@ sends nothing at all, and this can then read hours or days old with nothing
 whatever wrong. Read the time as when that device's figures last moved. The
 sensor going **Unavailable** is the part that says nobody is counting.
 
-Three more devices are created alongside them:
+Two more devices are created alongside them:
 
 - **Untracked Energy Devices** carries the same set for everything the house used
-  that no tracked device claimed. It is what makes the parts add up to the whole,
-  along with Battery Losses below where you have one.
+  that no tracked device claimed. It is what makes the parts add up to the whole.
 - **Whole Home** carries the same set for the house, plus **Lowest Possible
   Cost**, **Highest Possible Cost** and, if you have a battery, **Battery
   Savings**.
-- **Battery Losses** appears only if you have told us how full your battery is.
-  It carries Energy Used and Actual Cost for the energy the battery took in and
-  never gave back.
 - **Home Energy Advisor** carries **Unreconciled Energy**, which should read
   zero, and a diagnostic list of tracked devices that the cards read.
 
@@ -408,30 +404,27 @@ Energy your panels put into the battery and you used later counts as the
 battery's, because without it that energy would have been exported and the
 evening's bought at full price.
 
-### What your battery loses
+### Telling us how full your battery is
 
 A battery does not give back everything you put in. A few percent of every round
-trip goes to heat and other battery losses, and you paid for that energy just the same.
+trip goes to heat and other battery losses, and you paid for that energy just the
+same.
 
-If you have told the integration how full your battery is and what it holds when
-full, a **Battery Losses** device appears alongside your tracked devices,
-carrying how much never came back out and what it cost. It is a consumer in its
-own right, because that is what it is: the energy was imported, it was paid for,
-and it was used - in the battery.
+How much is in your battery is otherwise worked out from its charge and discharge
+meters alone, so anything leaving it a way those meters do not see builds up as a
+balance that was never there. Because a discharge is priced from that balance,
+the drift reaches what every later discharge is said to have cost.
 
-It is measured rather than estimated. Subtracting what came out from what went in
-looks like the same thing and is not: it is wrong by however much the battery's
-level moved over the window you are looking at. This is reconciled against what
-the battery actually holds, every few minutes, so the level cancels out.
+Filling in **Battery level** and **Battery usable capacity** fixes it. The
+inventory is checked against what the battery really holds every few minutes, so
+the drift is corrected rather than compounding, and your battery energy is priced
+against what is actually in there.
 
-Two things follow. Your **Untracked figure does not contain it**, which matters
-because Untracked is what you shrink by tracking more devices and nothing you
-track will ever shrink this. And your **whole-home energy will read above a house
-consumption meter** by the losses, which is correct - that meter measures what
-reached the house, and this energy never did.
-
-To get a round-trip efficiency, compare Battery Losses over a period against what
-your battery took in over the same period, which the Energy Dashboard shows.
+**What the battery lost is not published yet.** The correction says what was
+wrongly on the books but not why, and a discharge your meter never counted looks
+exactly like a round-trip loss while having already been counted when the house
+used it. Publishing one as the other would put your whole-home total above what
+you really used, so it waits until the loss can be measured on its own.
 
 Energy Used, Actual Cost and Cost at Grid Price also come as daily and monthly
 totals, named after the sensor and the period - `Tumble Dryer Actual Cost Daily`

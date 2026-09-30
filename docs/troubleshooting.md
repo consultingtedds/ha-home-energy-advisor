@@ -183,54 +183,27 @@ watts, and not a sensor whose value goes up and down. The Energy Dashboard's gri
 meter is the right kind, and if you have set that up the field is usually filled
 in for you.
 
-## My total is slightly above my house meter
+## My total leapt when I set the battery level, on 0.5.0
 
-Expected, if you have a home battery and have filled in **Battery level** and
-**Battery usable capacity**.
+**Fixed in 0.5.1.** Update, and it stops. Only 0.5.0 is affected, and only if you
+filled in **Battery level** and **Battery usable capacity**.
 
-A battery gives back a few percent less than it took in, the difference lost as
-heat or other battery losses. That energy was imported and paid for, so it is
-counted, and it is counted against a device called **Battery Losses**. It is
-kept separate rather than spread across your appliances or left in Untracked
-because it is not theirs, and because nothing you track will ever shrink it.
+If you cannot update yet, clearing those two settings stops it too.
 
-Your house meter measures what reached the house, and this energy never did. So
-the two figures differ by roughly what the battery lost over the period you are
-looking at. A few percent of what the battery moved is normal.
+How much is in your battery is otherwise worked out from its charge and discharge
+meters alone, so anything leaving it a way those meters do not see builds up as a
+balance that was never there. On a battery that has run for months that surplus
+can be several times what the battery physically holds. Giving the level and the
+capacity lets it be found and cleared, which is what those settings are for.
+0.5.0 published the clearing as energy the house had used, so while it unwound, a
+whole-home total could run at several times the house meter.
 
-Two things make the gap bigger than it should be. If your battery discharge
-sensor counts only what reached the house, rather than everything that left the
-battery, whatever the battery exported looks like a loss - point it at the
-sensor that measures all of it. And if you have not given a battery level and
-capacity, nothing is published here at all and the difference goes the other
-way, leaving your total slightly below the meter.
-
-**A gap far larger than a few percent is a fault, not this.** If it appeared the
-moment you set the battery level, see the next section. Otherwise see
-[My figures are far higher than my meter](#my-figures-are-far-higher-than-my-meter-or-untracked-is-enormous).
-
-## My total leapt when I first set the battery level
-
-A known fault, being worked on. It affects the first hours after you fill in
-**Battery level** and **Battery usable capacity**, and nothing else.
-
-Until you give those two figures, how much is in the battery is worked out from
-its charge and discharge meters alone. Anything that leaves the battery a way
-those meters do not see builds up as a balance that was never really there, and
-on a battery that has run for months that surplus can be several times what the
-battery physically holds.
-
-Giving the level and the capacity lets that surplus be found and cleared, which
-is what those settings are for. What goes wrong is where the clearing is put:
-it is currently published as energy the house used, so while it unwinds your
-whole-home total can run at several times your house meter, and the figures it
-writes into long-term statistics stay there.
-
-**If you have seen this, clear Battery level and Battery usable capacity again.**
-Nothing here is published without both of them, so that stops it. You lose the
-corrected battery pricing until this is fixed, and nothing else.
-
-If you have never set them, you are not affected and nothing is accumulating.
+Figures already written into long-term statistics stay there. If the period you
+care about is spoiled and you would rather start the totals again than live with
+it, **Settings** > **Devices & services** > **Home Energy Advisor**, three-dot
+menu, **Reset all totals**. That clears every figure and the history behind them
+and cannot be undone, so it is worth being sure the wrong days matter more to you
+than the right ones.
 
 ## My figures are far higher than my meter, or Untracked is enormous
 
