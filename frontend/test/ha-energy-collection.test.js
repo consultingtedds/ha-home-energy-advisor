@@ -81,7 +81,7 @@ describe("connectionKeyFor", () => {
   it("falls back to the key Home Assistant derives from the dashboard", () => {
     // Given - no collection_key anywhere, on the `hea-costs` dashboard. Home
     // Assistant gives each dashboard its own collection rather than one shared
-    // across all of them (verified live: panelUrl `hea-costs`).
+    // across all of them, keyed by that dashboard's own url path.
     // When / Then
     expect(connectionKeyFor(undefined, "hea-costs")).toBe("_energy_hea-costs");
     expect(connectionKeyFor("", "hea-costs")).toBe("_energy_hea-costs");
