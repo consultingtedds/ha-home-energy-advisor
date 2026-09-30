@@ -205,7 +205,32 @@ sensor that measures all of it. And if you have not given a battery level and
 capacity, nothing is published here at all and the difference goes the other
 way, leaving your total slightly below the meter.
 
-A much larger gap is something else, and the next section covers it.
+**A gap far larger than a few percent is a fault, not this.** If it appeared the
+moment you set the battery level, see the next section. Otherwise see
+[My figures are far higher than my meter](#my-figures-are-far-higher-than-my-meter-or-untracked-is-enormous).
+
+## My total leapt when I first set the battery level
+
+A known fault, being worked on. It affects the first hours after you fill in
+**Battery level** and **Battery usable capacity**, and nothing else.
+
+Until you give those two figures, how much is in the battery is worked out from
+its charge and discharge meters alone. Anything that leaves the battery a way
+those meters do not see builds up as a balance that was never really there, and
+on a battery that has run for months that surplus can be several times what the
+battery physically holds.
+
+Giving the level and the capacity lets that surplus be found and cleared, which
+is what those settings are for. What goes wrong is where the clearing is put:
+it is currently published as energy the house used, so while it unwinds your
+whole-home total can run at several times your house meter, and the figures it
+writes into long-term statistics stay there.
+
+**If you have seen this, clear Battery level and Battery usable capacity again.**
+Nothing here is published without both of them, so that stops it. You lose the
+corrected battery pricing until this is fixed, and nothing else.
+
+If you have never set them, you are not affected and nothing is accumulating.
 
 ## My figures are far higher than my meter, or Untracked is enormous
 
