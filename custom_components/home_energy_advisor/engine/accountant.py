@@ -826,21 +826,25 @@ class Accountant:
         )
 
     def _battery_totals(self) -> DeviceTotals:
-        """The battery as the consumer it is: what it lost, and what that cost.
+        """The battery's own row, currently zero throughout (HEA-182).
 
-        Its counterfactual equals its cost, so it shows no saving: this energy
-        really was bought from the grid, so what it would have cost from the grid
-        is what it cost. Nothing is attributed by source, because the split is
-        the blend of every charge that ever went in rather than anything this
-        interval can say.
+        The third term stays in the identity rather than being taken out again,
+        because what belongs here is a real figure that nobody else publishes:
+        energy the household bought and the battery never gave back. What is not
+        yet known is how to tell that apart from a discharge the meter missed,
+        and until it is, a row filled from the ledger's write-down reports the
+        second as though it were the first.
+
+        Zero is therefore the honest reading, not a placeholder: it says the
+        battery accounts for none of the household's total, which is exactly what
+        we can defend while the figure underneath it cannot be separated.
         """
-        kwh, cost = self._battery.losses
         # Spelled out rather than `replace`d from the zero constant, which types
         # as a bare dataclass and loses what this returns.
         return DeviceTotals(
-            energy_kwh=kwh,
-            actual_cost=cost,
-            naive_cost=cost,
+            energy_kwh=Decimal(0),
+            actual_cost=Decimal(0),
+            naive_cost=Decimal(0),
             cost_savings=Decimal(0),
             battery_savings=Decimal(0),
             energy_from_grid=Decimal(0),
@@ -889,40 +893,30 @@ class Accountant:
         return self._balance.diagnostics()
 
     def reconcile_battery(self, available_kwh: Decimal) -> None:
-        """Write the ledger down to what the battery holds, and book the money.
+        """Write the ledger down to what the battery holds.
 
         The inventory is inferred from the charge and discharge meters, so
         anything that leaves the battery another way - round-trip losses, a
         discharge the configured meter does not count - stays on the books for
         ever and stops the drain-to-empty that is its only self-correction
-        (HEA-178).
+        (HEA-178). Correcting it is what keeps discharge priced against energy
+        the battery really holds.
 
-        **Both the energy and its cost are published**, because both are real. A
-        charge is taken *out* of house consumption for its interval and only
-        becomes a cost when the energy is discharged, so energy that never comes
-        out is a bill nothing else publishes - and that energy really was used,
-        in the battery, as heat.
+        **Nothing here reaches the household's totals.** The write-down says what
+        was wrongly on the books; it cannot say why. Two causes reach it and they
+        want opposite treatment: a round-trip loss is energy the household paid
+        for and never got back, while a discharge the meter missed reached the
+        house and was billed there already. Publishing both as consumption
+        double-counts the second, and on a battery carrying months of drift it
+        does so all at once - the reference instance ran at four times its own
+        house meter for hours (HEA-182).
 
-        It reaches the household's total and is then **attributed to the battery
-        rather than to the Untracked remainder**. Untracked is the figure a
-        household is told to shrink by tracking more devices, and no amount of
-        device tracking will ever shrink this, so sweeping it in there would
-        publish a number nobody can act on. The identity gains a third term
-        instead: Σ devices + untracked + battery ≡ whole home.
-
-        Actual and counterfactual move together, so Cost Savings is untouched:
-        this energy really was bought from the grid, so what it would have cost
-        from the grid is what it cost.
+        So the correction stays inside the ledger, where it fixes pricing without
+        inventing energy. Separating the two causes needs the loss measured per
+        interval against what the battery's level actually did, which is HEA-182's
+        subject rather than this method's.
         """
-        before_kwh, before_cost = self._battery.losses
         self._battery.reconcile(available_kwh, ceiling=self._loss_ceiling())
-        after_kwh, after_cost = self._battery.losses
-        kwh, cost = after_kwh - before_kwh, after_cost - before_cost
-        if kwh == 0 and cost == 0:
-            return
-        self._house.energy_kwh += kwh
-        self._house.actual_cost += cost
-        self._house.naive_cost += cost
 
     def _loss_ceiling(self) -> Decimal | None:
         """The most the battery can still honestly be said to have lost.

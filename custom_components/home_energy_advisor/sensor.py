@@ -161,6 +161,22 @@ def _knows_the_battery_level(entry: HeaConfigEntry) -> bool:
     )
 
 
+def _can_measure_the_batterys_loss() -> bool:
+    """Whether what the battery lost can be told apart from what it gave back.
+
+    It cannot, yet. Knowing the battery's level lets the ledger be corrected, and
+    that correction is the only figure available - but it says what was wrongly
+    on the books rather than why. A round-trip loss and a discharge the
+    configured meter never counted reach it identically, and the second was
+    already billed when the house used it (HEA-182).
+
+    So the battery gets no device and no row until the loss is measured per
+    interval against what its level actually did. A figure that answers the
+    question by accident is worse than one that does not answer it at all.
+    """
+    return False
+
+
 def _has_supply_beyond_the_grid(entry: HeaConfigEntry) -> bool:
     """Whether this household has anything serving it other than the meter.
 
@@ -466,7 +482,7 @@ async def async_setup_entry(
     # figure is structurally zero is clutter, and it carries no history to be out
     # of step with when it does arrive, because its figures start when the
     # measuring does (HEA-174).
-    if _knows_the_battery_level(entry):
+    if _knows_the_battery_level(entry) and _can_measure_the_batterys_loss():
         battery_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{_BATTERY_KEY}")},
             translation_key="battery",
@@ -979,7 +995,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         its first paint.
         """
         entry = cast("HeaConfigEntry", self.coordinator.config_entry)
-        return _knows_the_battery_level(entry)
+        return _knows_the_battery_level(entry) and _can_measure_the_batterys_loss()
 
     def _location_of(
         self, source: str | None, ours: dr.AnyDeviceEntry | None = None

@@ -1764,11 +1764,23 @@ async def test_a_household_with_a_battery_is_told_what_it_saved(
     assert state.attributes["unit_of_measurement"] == "EUR"
 
 
-async def test_a_household_that_says_what_its_battery_holds_gets_its_losses(
-    hass: HomeAssistant,
+async def test_saying_what_the_battery_holds_does_not_yet_earn_it_a_row(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a battery household who has answered the optional level questions,
-    # which is what makes a round-trip loss measurable at all (HEA-178)
+    """The level is enough to correct the ledger, not to publish a figure.
+
+    Answering the level questions lets the inventory be reconciled against what
+    the battery really holds, and that much still happens - it is what keeps
+    discharge priced against energy the battery has.
+
+    What it does not buy is a figure. The only number the write-down yields says
+    what was wrongly on the books rather than why, and a discharge the configured
+    meter never counted reaches it looking exactly like a round-trip loss, having
+    already been billed when the house used it. Published, that put the reference
+    instance at four times its own house meter for hours (HEA-182).
+    """
+    # Given - a battery household who has answered the optional level questions
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
     for entity in ("sensor.generation", "sensor.battery_charge"):
         hass.states.async_set(entity, "0", _ENERGY)
@@ -1777,48 +1789,22 @@ async def test_a_household_that_says_what_its_battery_holds_gets_its_losses(
 
     # When
     await _setup(hass, _battery_level_entry())
-
-    # Then - the battery is a device of its own, carrying what it consumed and
-    # what that cost. Only those two of the seven: a loss has no counterfactual
-    # to save against, and no source split to speak of
-    assert hass.states.get("sensor.battery_losses_energy_used") is not None
-    assert hass.states.get("sensor.battery_losses_actual_cost") is not None
-    assert hass.states.get("sensor.battery_losses_cost_savings") is None
-
-
-async def test_the_battery_is_a_row_the_cards_can_sum(
-    hass: HomeAssistant, freezer: FrozenDateTimeFactory
-) -> None:
-    # Given / When - a household whose battery publishes figures
-    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
-    _seed_states(hass)
-    for entity in ("sensor.generation", "sensor.battery_charge"):
-        hass.states.async_set(entity, "0", _ENERGY)
-    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
-    hass.states.async_set("sensor.battery_level", "50", {"device_class": "battery"})
-    await _setup(hass, _battery_level_entry())
     # One publication on, so the list is rebuilt with every entity registered.
     # The first is written while the platform is still adding them.
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 
-    # Then - it is in the list the cards enumerate. They sum these rows to reach
-    # a household total, and the battery's own consumption is a term in that sum
-    # now, so a row left out would make every card disagree with Whole Home
+    # Then - no device, and no row for the cards to sum. The identity keeps its
+    # third term and that term is zero, so the rows still reach Whole Home
+    assert hass.states.get("sensor.battery_losses_energy_used") is None
+    assert hass.states.get("sensor.battery_losses_actual_cost") is None
     state = hass.states.get("sensor.home_energy_advisor_devices")
     assert state is not None
-    # Found by the statistics it carries rather than by its key, because a key is
-    # derived from an entity id and this list is first published while the
-    # platform is still adding entities. What a card needs from the row is where
-    # to read the figures, and that is what is asserted.
-    battery = next(
-        row
+    assert not any(
+        "battery_losses" in str(row["statistics"].values())
         for row in state.attributes["devices"]
-        if row["statistics"].get("actual_cost") == "sensor.battery_losses_actual_cost"
     )
-    assert battery["statistics"]["energy_used"] == "sensor.battery_losses_energy_used"
-    assert not battery["untracked"]
 
 
 async def test_a_household_who_cannot_say_what_its_battery_holds_is_spared_it(

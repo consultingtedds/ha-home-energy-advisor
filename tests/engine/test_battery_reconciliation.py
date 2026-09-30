@@ -7,19 +7,22 @@ books of a 5 kWh battery on the reference instance - and because its only
 self-correction is being drained to empty, the drift is what prevents the
 correction.
 
-Reconciling against what the battery really holds fixes the inventory. These
-tests are about the **money** that write-down releases, which is the part that
-cannot simply be dropped: when the battery charges from the grid, that import is
-taken *out* of house consumption for the interval and only becomes a cost when the
-energy is discharged. So energy that goes in and never comes out is money the
-household really paid the grid that nothing ever publishes.
+Reconciling against what the battery really holds fixes the inventory, and that
+is what these tests are about. Discharge is priced from the ledger and from
+nothing else, so a ledger carrying energy the battery does not have prices every
+discharge against a blend that was never there.
 
-**The cost is booked and the energy is not**, and that asymmetry is deliberate.
-The loss happens inside the battery, so the house-consumption meter never saw it;
-publishing it as consumption would push the published total above the meter and
-trip the unreconciled-energy Repair at 1 %, on the reference instance by 2-3 %.
-The money belongs in the totals because the grid really was paid it. The energy
-does not, because the house really did not use it.
+**Nothing the write-down releases is published** (HEA-182). It knows what was
+wrongly on the books but not why, and the two causes want opposite treatment: a
+round-trip loss is energy the household paid for and never got back, while a
+discharge the configured meter did not count reached the house and was billed
+there already. Publishing both as consumption double-counts the second, and on a
+battery carrying months of drift it does so all at once - measured on the
+reference instance at four times its own house meter, for hours.
+
+So the correction stays inside the ledger. What belongs in the household's total
+is the loss alone, measured per interval against what the battery's level
+actually did, and that is HEA-182's subject.
 """
 
 from __future__ import annotations
@@ -84,14 +87,15 @@ def _home_with_a_charged_battery() -> Accountant:
     return acc
 
 
-def test_the_battery_is_a_consumer_in_its_own_right() -> None:
-    """Where the loss belongs, settled 2026-09-29.
+def test_the_write_down_corrects_the_ledger_and_publishes_nothing() -> None:
+    """What the reconcile is for, and what it deliberately stops short of.
 
-    It is real imported electricity that was really used - in the battery, as
-    heat - so it stays in the household's totals. But it is not *untracked*:
-    Untracked is the figure a household is told to shrink by tracking more
-    devices, and no amount of device tracking will ever shrink this. So the
-    battery is named as the consumer it is, and the identity gains a third term.
+    Correcting the inventory is the point: discharge is priced from the ledger
+    and from nothing else, so a ledger holding energy the battery does not have
+    prices every discharge against a blend that was never there.
+
+    Publishing the correction is a separate claim, and one the write-down cannot
+    support - it knows what was wrongly on the books, not why (HEA-182).
     """
     # Given - a household whose ledger holds 2 kWh that is not in the battery
     acc = _home_with_a_charged_battery()
@@ -99,10 +103,11 @@ def test_the_battery_is_a_consumer_in_its_own_right() -> None:
     # When - the battery reports itself flat
     acc.reconcile_battery(Decimal(0))
 
-    # Then - the loss is the battery's own, in energy and in money
+    # Then - the books agree with the battery, and the household's row is silent
+    assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == Decimal(0)
     totals = acc.totals()
-    assert totals.battery.energy_kwh == Decimal("2.0")
-    assert totals.battery.actual_cost == Decimal("0.186")
+    assert totals.battery.energy_kwh == Decimal(0)
+    assert totals.battery.actual_cost == Decimal(0)
 
 
 def test_the_battery_is_not_swept_into_untracked() -> None:
@@ -166,11 +171,11 @@ def test_a_loss_the_house_meters_cannot_explain_is_refused() -> None:
     # given vanished - one more than the house's meters can explain
     acc.reconcile_battery(Decimal(0))
 
-    # Then - only the explainable 3 is published, and the fourth stays on the
-    # books as the honest "we cannot tell". Without the ceiling the household
-    # would be told they used 4 kWh in the battery *and* 1 kWh in the house, out
-    # of 4 kWh imported
-    assert acc.totals().battery.energy_kwh == Decimal("3.0")
+    # Then - only the explainable 3 is written off, and the fourth stays on the
+    # books as the honest "we cannot tell". The ceiling still governs what may
+    # leave the ledger even now that nothing leaving it is published: it is what
+    # keeps a mis-pointed discharge meter from emptying the inventory and pricing
+    # every later discharge against a blend built from nothing
     assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == Decimal("1.0")
 
 
@@ -241,10 +246,10 @@ def test_a_household_that_meters_too_little_is_not_capped() -> None:
     # Then - the write-down happens anyway. A ceiling nobody can calculate is not
     # a reason to refuse the figure underneath it, and this household's ledger
     # drifts exactly as much as anyone else's
-    assert acc.totals().battery.energy_kwh > 0
+    assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == Decimal(0)
 
 
-def test_the_write_off_is_booked_as_cost_the_household_really_paid() -> None:
+def test_the_write_off_publishes_no_cost() -> None:
     # Given - a household whose ledger believes it holds 2 kWh at the overnight
     # rate, when the battery is actually empty
     acc = _home_with_a_charged_battery()
@@ -254,14 +259,13 @@ def test_the_write_off_is_booked_as_cost_the_household_really_paid() -> None:
     # When - the battery reports itself flat
     acc.reconcile_battery(Decimal(0))
 
-    # Then - the stranded EUR 0.186 is published. That money was paid to the grid
-    # to charge the battery and is taken out of house consumption at charge time,
-    # so until it is booked here nothing ever publishes it and the household's
-    # totals sit below their real bill
-    assert acc.totals().whole_home.actual_cost == before + Decimal("0.186")
+    # Then - nothing is added to the bill. The money is real, but a write-down
+    # cannot say whether it paid for a round-trip loss or for a discharge the
+    # meter missed, and the second was already billed when the house used it
+    assert acc.totals().whole_home.actual_cost == before
 
 
-def test_the_lost_energy_reaches_the_household_total() -> None:
+def test_the_write_off_invents_no_energy_the_house_never_used() -> None:
     # Given - a household with a drifted ledger
     acc = _home_with_a_charged_battery()
     energy_before = acc.totals().whole_home.energy_kwh
@@ -269,10 +273,11 @@ def test_the_lost_energy_reaches_the_household_total() -> None:
     # When - the inventory is written down
     acc.reconcile_battery(Decimal(0))
 
-    # Then - the house total carries it. That energy really was imported and
-    # really was used, in the battery, so a total that left it out would sit
-    # below what the household was billed for
-    assert acc.totals().whole_home.energy_kwh == energy_before + Decimal("2.0")
+    # Then - the published total does not move. A ledger correction is a
+    # statement about what we wrongly believed, not about what the house drew,
+    # and publishing it put the reference instance at four times its own house
+    # meter for hours (HEA-182)
+    assert acc.totals().whole_home.energy_kwh == energy_before
 
 
 def test_the_write_off_leaves_cost_savings_alone() -> None:
