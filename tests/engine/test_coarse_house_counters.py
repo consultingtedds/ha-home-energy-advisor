@@ -23,8 +23,10 @@ from decimal import Decimal
 
 from custom_components.home_energy_advisor.engine.accountant import (
     Accountant,
+    AccountingWindows,
     SourceRole,
 )
+from custom_components.home_energy_advisor.engine.energy_source import DecisionReason
 
 BASE = datetime(2026, 9, 15, 10, 0, tzinfo=UTC)
 TARIFF = Decimal("0.30")
@@ -205,3 +207,121 @@ def test_a_days_worth_of_quantised_counters_matches_the_meters() -> None:
     # household's concern
     published = acc.totals().whole_home.energy_kwh
     assert published.quantize(Decimal("0.000000001")) == Decimal("5.000000000")
+
+
+def test_a_house_counter_silent_past_the_ring_still_reaches_the_total() -> None:
+    """A meter that goes quiet for a night, then reveals the whole rise (HEA-186).
+
+    A cloud-polled inverter does this: its value climbs while the reading we see
+    stands still, and one poll later the whole accrual arrives with a span
+    reaching back hours. The energy is real and the span is right - what has to
+    hold is that all of it is counted.
+
+    Portions falling in intervals that have already closed cannot be placed
+    where they belong, and dropping them loses energy the house genuinely used.
+    A device's late energy is reattributed inside the retained ring; a house
+    meter's had nowhere to go, so 2.17 kWh of 2.2 silently disappeared.
+    """
+    # Given - a home importing steadily all night while its generation meter
+    # says nothing at all
+    acc = a_generating_home()
+    minutes_of_night = 1070
+    for minute in range(5, minutes_of_night + 5, 5):
+        acc.observe(GRID_IMPORT, at(minute), Decimal("0.002") * minute)
+        acc.finalize(at(minute))
+
+    # When - the generation meter finally reports, revealing 2.2 kWh that accrued
+    # right across the night
+    acc.observe(GENERATION, at(minutes_of_night), Decimal("2.2"))
+    acc.finalize(at(minutes_of_night + 30))
+
+    # Then - the house is credited with all of it. The meters recorded 2.14
+    # imported and 2.2 generated, and with nothing exported or stored that is
+    # what the house used
+    totals = acc.totals()
+    assert totals.whole_home.energy_from_generation.quantize(
+        Decimal("0.001")
+    ) == Decimal("2.200")
+    assert totals.whole_home.energy_kwh.quantize(Decimal("0.001")) == Decimal("4.340")
+
+
+def test_late_generation_is_a_saving_rather_than_a_charge() -> None:
+    # Given - a home that imported through an hour, with every interval of it
+    # closed. Finalising well past the hour puts the whole of the generation
+    # delta below the watermark, so all of it takes the correction path rather
+    # than part of it landing live
+    acc = a_generating_home()
+    for minute in range(5, 65, 5):
+        acc.observe(GRID_IMPORT, at(minute), Decimal("0.01") * minute)
+    acc.finalize(at(200))
+    before = acc.totals().whole_home
+
+    # When - generation reports late for intervals that have closed
+    acc.observe(GENERATION, at(60), Decimal("1.0"))
+    acc.finalize(at(260))
+
+    # Then - the household used it and did not pay for it. The counterfactual is
+    # the import price, so what arrives is saving, not spending: charging the
+    # bucket's blend would bill a household for their own sunshine
+    after = acc.totals().whole_home
+    assert after.energy_kwh > before.energy_kwh
+    assert after.actual_cost == before.actual_cost
+    assert after.cost_savings > before.cost_savings
+
+
+def test_a_late_export_never_pulls_a_published_figure_down() -> None:
+    """Export subtracts, and a finalised figure only ever rises (HEA-85).
+
+    Import, generation and a discharge all add to what the house used, so a late
+    one can correct the interval it served. Export and battery charge subtract,
+    so applying them to a closed interval would publish a whole-home total lower
+    than the one already shown - which Home Assistant's statistics read as a
+    meter reset. `HouseBalance` carries both forward instead.
+    """
+    # Given - a home that has generated and had its total published
+    acc = a_generating_home()
+    acc.observe(GENERATION, at(5), Decimal(3))
+    for minute in range(10, 70, 5):
+        acc.finalize(at(minute))
+    published = acc.totals().whole_home.energy_kwh
+    assert published > 0
+
+    # When - the export meter finally ticks for intervals long closed
+    acc.observe(GRID_EXPORT, at(60), Decimal(2))
+    acc.finalize(at(180))
+
+    # Then - nothing the household has already been shown goes backwards
+    assert acc.totals().whole_home.energy_kwh >= published
+
+
+def test_a_house_portion_past_the_ring_is_dropped_but_says_so() -> None:
+    """Beyond the ring the choice is losing the energy or misdating it.
+
+    ADR-0006 already made it for devices: dropped, with a `DROPPED_LATE` entry,
+    never silently. A house meter gets the same, so a household whose total sits
+    under their own meter can be shown why from the diagnostics download.
+    """
+    # Given - a home whose ring keeps only half an hour, and an hour of closed
+    # intervals behind it
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: GRID_IMPORT,
+            SourceRole.GENERATION: GENERATION,
+        },
+        device_energy_entities={},
+        windows=AccountingWindows(retention=timedelta(minutes=30)),
+    )
+    acc.record_price(at(0), TARIFF)
+    acc.observe(GRID_IMPORT, at(0), Decimal(0))
+    acc.observe(GENERATION, at(0), Decimal(0))
+    for minute in range(5, 125, 5):
+        acc.observe(GRID_IMPORT, at(minute), Decimal("0.01") * minute)
+        acc.finalize(at(minute))
+
+    # When - generation reveals an hour that has already fallen out of the ring
+    acc.observe(GENERATION, at(120), Decimal("1.0"))
+    acc.finalize(at(180))
+
+    # Then - the loss is on the record rather than invisible
+    decisions = acc.source_diagnostics()[GENERATION].recent_decisions
+    assert any(entry.reason is DecisionReason.DROPPED_LATE for entry in decisions)

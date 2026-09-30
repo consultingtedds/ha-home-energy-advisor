@@ -248,3 +248,63 @@ There is no longer an early seal, no uncorrectable tail, and the ring carries.
 Decision 1's retained-context correction now works across a restart exactly as it
 does within one, which is what this ADR wanted in the first place and could not
 have without somewhere to put the state.
+
+## Update - house sources reach the ring too (2026-09-30, HEA-186)
+
+The Consequences above recorded a deliberate asymmetry, with its own trigger:
+
+> Late portions for **house-level** sources (grid/solar/battery) past the
+> watermark are still dropped silently: those meters report frequently, so their
+> deltas rarely cross the watermark. **Revisit if evidence shows otherwise.**
+
+The evidence has arrived. A household whose only generation meter is a
+cloud-polled inverter had its reading stand still for seventeen hours and then
+reveal the whole accrual at once (GitHub #22). `_spread_source` dropped every
+portion below the watermark, so **2.17 kWh of 2.2 was discarded** - and unlike a
+device's drop it was not logged, so nothing could prove it had happened.
+
+The premise was reasonable and is simply not general. A smart meter reporting
+every ten seconds never crosses the watermark; an inverter polled through a
+vendor cloud crosses it by hours. The direction matters too: losing a house
+source understates consumption, putting a household's published total *below*
+their own meter, which reconciliation check 3 calls always a failure.
+
+### Decision
+
+**House-source portions correct a retained bucket, exactly as device portions
+do.** The ring is 24 hours deep and already holds the buckets; only
+`_spread_source` was not looking at it.
+
+**The correction is additive only.** Import, generation and discharge add to what
+the house consumed, so a late one raises the interval it served. Export and
+battery charge subtract, and a finalised figure never falls (HEA-85), so those
+keep the carries `HouseBalance` already holds for them from ADR-0015's
+amendments.
+
+**No device moves, and there is no re-run.** Untracked is derived (decision 3),
+so raising a bucket's consumption raises the remainder by exactly that much. The
+closed form decision 2 insists on is preserved because the energy belonged to no
+device in the first place.
+
+**The money follows the source, not the bucket's blend.** Grid energy is charged
+at the interval's import price, generation is free at the margin (ADR-0002), and
+a discharge is charged what that interval's battery energy had been bought for.
+The counterfactual is the import price in every case, so late generation arrives
+as saving rather than as spending - billing it at the blend would charge a
+household for their own sunshine.
+
+**Past the ring it is still dropped, but never silently.** A portion older than
+24 hours gets the same `DROPPED_LATE` entry decision 1 gives a device, so
+diagnostics can prove it. Beyond the ring the choice is between losing the energy
+and misdating it, and this ADR already chose.
+
+### What this does not fix
+
+It does not explain the report it came from. The household saw Untracked jump
+*upward*, and this defect can only ever have held their total down. Whatever
+produced that remains open.
+
+It also does not shorten the span itself. A meter silent for seventeen hours
+still reveals seventeen hours at once, and the spreading in ADR-0006's HEA-74
+amendment is what keeps that from landing in a single bucket. This decision only
+settles what happens to the portions that land behind the watermark.

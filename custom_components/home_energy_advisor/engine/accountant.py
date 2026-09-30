@@ -67,7 +67,7 @@ from .interval_ledger import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
     from .energy_source import EnergyDelta, SourceSnapshot
 
@@ -216,6 +216,28 @@ class _RetainedBucket:
     battery_price: Decimal
     draw: Decimal
     sources: Mapping[SourceKind, Decimal]
+
+
+# House roles whose energy *adds* to what the house consumed, and which can
+# therefore still correct a bucket that has closed. Their counterparts - export
+# and battery charge - subtract, so a late one would pull a published figure
+# down, and `HouseBalance` already carries both forward instead (ADR-0015's
+# 2026-09-16 and 2026-09-18 amendments).
+_RAISES_CONSUMPTION = {
+    SourceRole.GRID_IMPORT: SourceKind.IMPORT,
+    SourceRole.GENERATION: SourceKind.GENERATION,
+    SourceRole.BATTERY_DISCHARGE: SourceKind.BATTERY,
+}
+
+# What a kilowatt-hour from each source cost the household in the interval that
+# used it. Generation is free at the margin (ADR-0002), grid is the import price
+# the bucket settled at, and a discharge is what that bucket's battery energy had
+# been bought for.
+_MARGINAL_PRICE_OF: dict[SourceKind, Callable[[_RetainedBucket], Decimal]] = {
+    SourceKind.IMPORT: lambda retained: retained.import_price,
+    SourceKind.GENERATION: lambda _: Decimal(0),
+    SourceKind.BATTERY: lambda retained: retained.battery_price,
+}
 
 
 @dataclass(frozen=True)
@@ -464,7 +486,7 @@ class Accountant:
         if delta is None:
             return
         if role is not None:
-            self._spread_source(role, delta)
+            self._spread_source(role, delta, source)
         elif (device := self._device_of.get(entity_id)) is not None:
             self._spread_device(device, delta, source)
 
@@ -985,12 +1007,63 @@ class Accountant:
         """
         return self._watermark is not None
 
-    def _spread_source(self, role: SourceRole, delta: EnergyDelta) -> None:
+    def _spread_source(
+        self, role: SourceRole, delta: EnergyDelta, source: CumulativeEnergySource
+    ) -> None:
+        """Place a house meter's energy in the intervals it accrued across.
+
+        A portion for an interval still open joins it. One for an interval that
+        has closed corrects it where the retained ring still holds it, exactly as
+        a late device portion does - the ring is 24 hours deep and a house meter
+        that goes quiet for a night falls well inside it.
+
+        ADR-0006 recorded dropping these silently, on the grounds that house
+        meters report too often for a delta to cross the watermark. A cloud-polled
+        inverter breaks that: one household's generation meter revealed seventeen
+        hours at once and 2.17 kWh of 2.2 was discarded, in the direction that
+        puts a household's total *below* their own meter (HEA-186). That ADR set
+        "revisit if evidence shows otherwise" as the trigger, and this is it.
+        """
         for portion in spread_energy(delta):
-            if self._is_finalised(portion.start):
+            if not self._is_finalised(portion.start):
+                bucket = self._raw.setdefault(portion.start, {})
+                bucket[role] = bucket.get(role, Decimal(0)) + portion.kwh
+            elif (kind := _RAISES_CONSUMPTION.get(role)) is None:
+                # Export and charge subtract, and a finalised bucket's published
+                # figure never falls. Their carries settle them forward instead.
                 continue
-            bucket = self._raw.setdefault(portion.start, {})
-            bucket[role] = bucket.get(role, Decimal(0)) + portion.kwh
+            elif (retained := self._retained.get(portion.start)) is not None:
+                self._correct_house(kind, retained, portion.kwh)
+            else:
+                source.note_dropped_late(portion.start, portion.kwh)
+
+    def _correct_house(
+        self, kind: SourceKind, retained: _RetainedBucket, kwh: Decimal
+    ) -> None:
+        """Add energy a house meter reported late to the interval it served.
+
+        The household really used it, so the whole-home total rises. No device
+        claimed it, and Untracked is derived by subtraction (ADR-0006 decision 3),
+        so the remainder absorbs exactly this much and no device's published
+        figure moves - which is what lets this be a closed form rather than a
+        re-run of the bucket's allocation.
+
+        What it *cost* follows the source, not the bucket's blend. Energy off the
+        grid is charged at the import price the bucket settled at; generation was
+        free then and is free now; a discharge is charged what that interval's
+        battery energy cost. The counterfactual is the import price either way,
+        so late generation shows up as saving rather than as spending.
+        """
+        actual = kwh * _MARGINAL_PRICE_OF[kind](retained)
+        naive = kwh * retained.import_price
+        self._house.energy_kwh += kwh
+        self._house.add_by_source({kind: kwh})
+        self._house.actual_cost += actual
+        self._house.naive_cost += naive
+        self._house.cost_savings += naive - actual
+        # So a further late portion for the same interval sees the headroom this
+        # one created, rather than funding itself against a stale figure.
+        retained.consumption += kwh
 
     def _spread_device(
         self, device: str, delta: EnergyDelta, source: CumulativeEnergySource
