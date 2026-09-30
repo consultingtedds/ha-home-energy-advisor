@@ -201,6 +201,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
         self._restored: Totals | None = None
+        self._carried_a_snapshot = False
         self._snapshot_status = SnapshotStatus.ABSENT
         self._snapshot_age: timedelta | None = None
 
@@ -284,7 +285,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             self._accountant = self._new_accountant()
             self._snapshot_status = SnapshotStatus.INCOMPATIBLE
             return
-        self._restored = self._accountant.totals()
+        self._carried_a_snapshot = True
 
     async def async_start(self) -> None:
         """Restore, baseline current states, subscribe, and start the timer."""
@@ -294,6 +295,31 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         for entity_id in self._energy_entities:
             self._feed_energy(entity_id, self.hass.states.get(entity_id))
         self._feed_price(self.hass.states.get(self._price_entity))
+        # *After* the readings above, not before them (HEA-183). Each one carries
+        # its meter's own timestamp, so a counter that moved since the snapshot
+        # was written books that movement here, into intervals that have already
+        # closed - and it settles on the next finalisation.
+        #
+        # This is what the sensors measure their restored state against, to take
+        # the baseline that sits under the engine's running figure. Read before
+        # those readings land, it describes an engine that has not yet counted
+        # them while the restored state already holds them, so the gap between
+        # the snapshot and now is published twice. Read after, the two agree
+        # however old the snapshot is.
+        #
+        # Settled first, because those readings land in intervals that closed
+        # while nothing was running, and an unsettled interval is not in
+        # ``totals()`` yet. Without this the figure below still describes the
+        # snapshot, the sensors take their baseline against it, and the gap
+        # arrives again when the first tick settles it.
+        #
+        # Still ``None`` where no snapshot was carried, which is a different
+        # statement from "carried, and it was zero": a cold start has nothing to
+        # measure against, and a sensor reads that as having no history rather
+        # than as a history of nothing.
+        if self._carried_a_snapshot:
+            self._accountant.finalize(dt_util.utcnow())
+            self._restored = self._accountant.totals()
 
         self._entry.async_on_unload(
             async_track_state_change_event(

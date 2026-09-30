@@ -188,6 +188,61 @@ async def test_adding_a_second_device_does_not_rebase_the_first(
     assert _published(hass, _AIRCON_ENERGY) == before
 
 
+async def test_a_reload_does_not_republish_what_ran_since_the_snapshot(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, hass_storage: dict[str, Any]
+) -> None:
+    """The seam the other reload test cannot reach (HEA-183).
+
+    `_accrue_and_publish` flushes the store and reloads straight away, so the
+    meters have not moved since the snapshot and there is no gap to count twice.
+    Every real reload has one: a config save arrives whenever the household
+    happens to make it, and on the reference instance that was 42 minutes after
+    the last write, which came back as 4.8 kWh of energy nobody used.
+
+    A restore hands the engine the snapshot's totals, and `async_start` then
+    feeds each meter's current reading, which re-books everything since. The
+    sensor's restored state already holds that, so unless the baseline is worked
+    out against the engine *after* those readings land, the gap arrives twice.
+    """
+    # Given - a published figure, a snapshot written behind it, and then a
+    # further interval that runs and publishes with no new snapshot written
+    entry = await _accrue_and_publish(hass, freezer)
+    assert f"{DOMAIN}.{entry.entry_id}.accountant" in hass_storage
+
+    freezer.move_to(START + timedelta(minutes=35))
+    hass.states.async_set("sensor.grid_import", "2.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "1.2", _ENERGY)
+    await hass.async_block_till_done()
+    freezer.move_to(START + timedelta(minutes=60))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    before = _published(hass, _AIRCON_ENERGY)
+    assert before == Decimal("1.2")
+
+    # The precondition, asserted rather than assumed: the snapshot must still be
+    # the older one, or there is no gap and this test proves nothing. It is the
+    # trap the neighbouring reload test fell into.
+    stored = hass_storage[f"{DOMAIN}.{entry.entry_id}.accountant"]
+    snapshot_sources = stored["data"]["state"]["sources"]
+    assert snapshot_sources["sensor.coarse_step_energy"]["last"]["value"] == "0.6"
+
+    # When - the entry reloads, as saving any option does, and the readings it
+    # takes on the way up are allowed to settle. They carry the meters' own
+    # timestamps, so they land in intervals that have already closed and come
+    # through on the next finalisation rather than immediately
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    freezer.move_to(START + timedelta(minutes=90))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - the figure is what it was. The 0.6 kWh that ran between the
+    # snapshot and the reload is counted once, not once by the sensor's restored
+    # state and again by the meter reading that reproduces it
+    assert _published(hass, _AIRCON_ENERGY) == before
+
+
 async def test_a_snapshot_the_engine_cannot_read_falls_back_to_a_cold_start(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, hass_storage: dict[str, Any]
 ) -> None:

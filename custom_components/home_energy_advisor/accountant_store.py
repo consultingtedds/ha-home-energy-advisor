@@ -39,10 +39,21 @@ STORAGE_VERSION = 1
 # heals within a cycle beats a confidently wrong one.
 MAX_SNAPSHOT_AGE = timedelta(hours=24)
 
-# Home Assistant's Store keeps the earliest pending deadline and flushes on
-# EVENT_HOMEASSISTANT_FINAL_WRITE, so this bounds what a crash loses while a
-# clean shutdown always writes a current snapshot.
-SAVE_DELAY = 300
+# How often a snapshot is actually written while the integration runs.
+#
+# Not `Store.async_delay_save`, which cannot do this. It keeps the earliest
+# pending *handle* but defers the write itself to the latest requested time, so
+# a caller that asks more often than the delay pushes the write out for ever:
+# `_async_schedule_callback_delayed_write` finds `loop.time() < _next_write_time`
+# and reschedules instead of writing. The finalisation tick asks every minute
+# against a five-minute delay, so nothing was ever written except on
+# EVENT_HOMEASSISTANT_FINAL_WRITE - and a reload then restored a snapshot as old
+# as the session, replaying every meter since (HEA-183).
+#
+# Written on our own clock instead, so the interval is what this says it is and
+# a test can hold it. EVENT_HOMEASSISTANT_FINAL_WRITE still catches a clean
+# shutdown between writes.
+SAVE_INTERVAL = timedelta(minutes=5)
 
 
 class SnapshotStatus(StrEnum):
@@ -80,6 +91,10 @@ class AccountantStore:
         self._store = Store[Any](
             hass, STORAGE_VERSION, f"{DOMAIN}.{entry_id}.accountant"
         )
+        # When this run last wrote, so the interval is measured rather than
+        # delegated. ``None`` until the first write, which is what makes that
+        # first one immediate.
+        self._written_at_this_run: datetime | None = None
 
     async def async_load(self, *, now: datetime) -> SnapshotLoad:
         """The stored engine state, and why it was refused when it is missing.
@@ -151,14 +166,22 @@ class AccountantStore:
         *,
         now_func: Callable[[], datetime],
     ) -> None:
-        """Queues a write, coalescing the calls the finalisation tick makes.
+        """Writes a snapshot if one is due, and does nothing if it is not.
 
-        The state is read when the write happens, so a queued save stores the
-        newest accounting rather than whatever was current when it was asked for.
+        Called from every finalisation tick, so it owns the interval rather than
+        writing whenever it is asked. ``SAVE_INTERVAL`` says why that is ours to
+        keep rather than the Store's.
+
+        The first call writes, so a restart is never more than one interval away
+        from having something on disk; and the state is read here, at the moment
+        of the write, so what lands is the accounting as it stands.
         """
-        self._store.async_delay_save(
-            lambda: self._envelope(state_func(), now_func()), SAVE_DELAY
-        )
+        now = now_func()
+        written = self._written_at_this_run
+        if written is not None and now - written < SAVE_INTERVAL:
+            return
+        self._written_at_this_run = now
+        self._store.async_delay_save(lambda: self._envelope(state_func(), now), 0)
 
     async def async_remove(self) -> None:
         """Deletes the snapshot, so a reinstall does not inherit old totals."""

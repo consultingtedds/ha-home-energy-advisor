@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from custom_components.home_energy_advisor.accountant_store import (
@@ -24,6 +25,16 @@ def _stored(hass_storage: dict[str, Any], entry_id: str) -> dict[str, Any]:
     return stored
 
 
+def _accounting_at(moment: datetime) -> dict[str, Any]:
+    """Stands in for the engine's snapshot, stamped with when it was read."""
+    return {"at": moment.isoformat()}
+
+
+def _moment(moment: datetime) -> datetime:
+    """A clock pinned to one instant, as `now_func`."""
+    return moment
+
+
 async def test_a_saved_snapshot_is_read_back_unchanged(
     hass: HomeAssistant, hass_storage: dict[str, Any]
 ) -> None:
@@ -39,6 +50,35 @@ async def test_a_saved_snapshot_is_read_back_unchanged(
     assert loaded.state == _STATE
     assert loaded.status is SnapshotStatus.RESTORED
     assert _stored(hass_storage, "entry-1")["version"] == STORAGE_VERSION
+
+
+async def test_a_running_integration_writes_snapshots_without_shutting_down(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The tick asks every minute; this decides how often that becomes a write.
+
+    `Store.async_delay_save` cannot be asked to do this. It defers the write to
+    the latest requested time, so asking more often than the delay postpones it
+    for ever and nothing reaches disk until EVENT_HOMEASSISTANT_FINAL_WRITE. A
+    reload then restored a snapshot as old as the session and replayed every
+    meter since (HEA-183).
+    """
+    # Given - a store, and a tick that asks once a minute as the coordinator does
+    store = AccountantStore(hass, "entry-1")
+    asked = [NOW + timedelta(minutes=minute) for minute in range(12)]
+
+    # When - each ask carries the accounting as it stood at that minute
+    for at in asked:
+        store.async_schedule_save(
+            partial(_accounting_at, at), now_func=partial(_moment, at)
+        )
+        await hass.async_block_till_done()
+
+    # Then - the first ask wrote, so a restart is never a whole session behind,
+    # and writes since have kept to the interval rather than to every tick
+    written = _stored(hass_storage, "entry-1")["data"]
+    assert written["state"]["at"] == (NOW + timedelta(minutes=10)).isoformat()
+    assert written["written_at"] == (NOW + timedelta(minutes=10)).isoformat()
 
 
 async def test_a_snapshot_older_than_the_age_limit_is_refused_and_says_so(
