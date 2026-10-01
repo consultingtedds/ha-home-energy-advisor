@@ -441,8 +441,9 @@ Presentation
 > lists an integration with an icon fetched straight from
 > `brands.home-assistant.io`, so ours 404s there and shows the "icon not
 > available" placeholder however complete the local folder is. A
-> `home-assistant/brands` submission is needed after all, for that one surface;
-> HEA-136 carries it.
+> `home-assistant/brands` submission was raised for that one surface (HEA-136)
+> and **cancelled on 2026-09-22**: the brands proxy API replaced that route, so
+> there is no pull request left to make. The placeholder is HACS's to fix.
 >
 > **Epic 8 and the MVP closed 2026-09-15.** The HACS default store submission
 > (HEA-129) sits outside both. It waits for households other than the reference
@@ -522,10 +523,58 @@ device's share (ADR-0002).
 between 2026-09-19 and 2026-09-25 and are in 0.4.0. Items 6 and 7 are the
 dashboard's, and neither blocks a release.
 
+### Epic 11 - Stabilising on households that are not this one
+
+Not planned. This is what the work has actually been since v0.1.1, and the plan
+should say so rather than stopping at the release.
+
+Between 2026-09-15 and 2026-10-01 the integration went from v0.1.0 to v0.5.2,
+twelve releases, on **30 fixes against 9 features**. Almost all of it came from
+**nine issues raised by eight households other than this one** - the first
+outside eyes the project has ever had.
+
+What they found, and what it says about the dogfooding that preceded them:
+
+1. **Defects living in branches this house does not take.** ADR-0005 decomposes
+   the house either from a consumption meter or from the full balance, and the
+   reference home has a meter - so every fault in the other branch was invisible
+   here. GitHub #19 and #25 were both that (HEA-133, HEA-155), and ADR-0015's
+   2026-09-16 amendment says it plainly: *"Dogfooding one house cannot find a
+   defect that lives in the branch that house does not take."*
+2. **Hardware this house does not own.** A counter jittering down in its eighth
+   decimal (HEA-139), a Wh sensor still unavailable at startup (HEA-149), a
+   cloud-polled inverter that reveals seventeen hours at once (HEA-186).
+3. **Process boundaries, not accounting.** The largest single defect of the
+   period was never in the engine: the accounting snapshot was only ever written
+   at a clean shutdown, so any reload or unclean restart re-read every meter and
+   counted it twice (HEA-183). It took a household's diagnostics to surface, and
+   the existing reload test had been passing while proving nothing.
+4. **Our own corrections, published wrongly.** The battery work (HEA-173, 174,
+   178) shipped a figure that could not tell a round-trip loss from a discharge
+   the meter missed; 0.5.1 withdrew it and HEA-182 restored it measured rather
+   than inferred.
+
+Two things are deliberately *not* claimed here. The product is not stable because
+the release count is high - several of those releases exist because an earlier one
+was wrong. And a quiet week from one household is not evidence; HEA-123 still
+holds that a winter battery regime has never been observed.
+
+Carried forward rather than closed:
+
+- **HEA-187** - a quarter of the test suite's assertions are in forms that can be
+  vacuous, and 57 are confirmed to assert only that something exists. Written
+  steadily since July while the standard required otherwise. Scheduled after the
+  current feature because it is substantial.
+- **HEA-129** - the HACS default store submission, made on 2026-09-22 and
+  awaiting review. Epic 8 above says it waits for outside installs; it no longer
+  does, and the households in this epic are the evidence that justified going.
+- **GitHub #22 and #29** remain open with their reporters.
+
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled. Epics 9 and 10 run whenever
 there is appetite for them and block nothing - Epic 9 because it is not ours to
-schedule, Epic 10 because it is new capability rather than a fix.
+schedule, Epic 10 because it is new capability rather than a fix. Epic 11 is not
+scheduled at all: it is whatever households report next.
 
 ## Risks and open questions
 
