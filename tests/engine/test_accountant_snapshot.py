@@ -159,6 +159,14 @@ _PERSISTED = frozenset(
         # zero would refuse the next honest write-down (HEA-174).
         "_balance_headroom",
         "_battery",
+        # The loss measurement's state. The baseline must persist or the next
+        # span would be measured against a headroom accumulated before it and
+        # publish the gap as loss; the carried balance and the totals are the
+        # usual reasons - a published figure cannot go backwards (HEA-182).
+        "_battery_loss_cost",
+        "_battery_loss_kwh",
+        "_loss_balance",
+        "_loss_baseline",
         "_debts",
         "_nesting_carry",
         "_draws",

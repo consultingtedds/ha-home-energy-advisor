@@ -40,6 +40,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
@@ -138,6 +139,21 @@ def _battery_level_entry() -> MockConfigEntry:
     return _entry(
         extra_data={
             CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+            CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+            CONF_BATTERY_SOC_ENTITY: "sensor.battery_level",
+            CONF_BATTERY_CAPACITY_KWH: 5.0,
+        }
+    )
+
+
+def _fully_metered_battery_entry() -> MockConfigEntry:
+    """A battery household metering everything the loss measurement needs."""
+    return _entry(
+        extra_data={
+            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_load",
             CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
             CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
             CONF_BATTERY_SOC_ENTITY: "sensor.battery_level",
@@ -1764,20 +1780,19 @@ async def test_a_household_with_a_battery_is_told_what_it_saved(
     assert state.attributes["unit_of_measurement"] == "EUR"
 
 
-async def test_saying_what_the_battery_holds_does_not_yet_earn_it_a_row(
+async def test_a_household_that_cannot_measure_the_loss_gets_no_battery_row(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    """The level is enough to correct the ledger, not to publish a figure.
+    """Knowing the level is necessary and not sufficient (HEA-182).
 
-    Answering the level questions lets the inventory be reconciled against what
-    the battery really holds, and that much still happens - it is what keeps
-    discharge priced against energy the battery has.
+    The loss is what the house's own meters cannot account for, less whatever the
+    battery gained. The first half needs a house-consumption meter and metered
+    generation; the second needs the level and the capacity. This household has
+    the level but meters no house consumption, so the first half cannot be
+    computed and no figure is published rather than a guess.
 
-    What it does not buy is a figure. The only number the write-down yields says
-    what was wrongly on the books rather than why, and a discharge the configured
-    meter never counted reaches it looking exactly like a round-trip loss, having
-    already been billed when the house used it. Published, that put the reference
-    instance at four times its own house meter for hours (HEA-182).
+    The ledger is still reconciled against the level, which is what keeps
+    discharge priced against energy the battery really holds.
     """
     # Given - a battery household who has answered the optional level questions
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
@@ -1805,6 +1820,70 @@ async def test_saying_what_the_battery_holds_does_not_yet_earn_it_a_row(
         "battery_losses" in str(row["statistics"].values())
         for row in state.attributes["devices"]
     )
+
+
+async def test_a_household_metering_everything_is_told_what_its_battery_lost(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The measured loss, as the household reads it off the sensor (HEA-182).
+
+    Every figure below is worked out from the meters rather than read off the
+    run. Overnight at 30 c/kWh the house imports 4 kWh and puts all of it in the
+    battery while drawing 1 kWh itself, so its meters cannot account for 3 kWh.
+    The battery holds 2.5 of a 5 kWh pack - 50 % - which is where the measuring
+    starts, so nothing before this is claimed.
+
+    Over the next interval it imports 2 kWh more, stores all of that too, and
+    draws another 0.5: 1.5 kWh unaccounted for. The pack reaches 74 %, which is
+    3.7 kWh, so it gained 1.2. The remaining **0.3 kWh** is what the battery took
+    in and never gave back.
+
+    Every kilowatt-hour in the pack was bought at 30 c, and a write-down removes
+    energy at the blend rather than changing it, so that 0.3 cost **9 c**.
+    """
+    # Given - a household metering consumption, generation and the pack's level
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_discharge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_charge", "0", _ENERGY)
+    hass.states.async_set("sensor.house_load", "0", _ENERGY)
+    hass.states.async_set("sensor.grid_export", "0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "0", {"device_class": "battery"})
+    await _setup(hass, _fully_metered_battery_entry())
+
+    # When - the first interval runs and the level is read, which only starts the
+    # measuring: the history behind it is not a loss anybody observed
+    freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "4.0", _ENERGY)
+    hass.states.async_set("sensor.battery_charge", "4.0", _ENERGY)
+    hass.states.async_set("sensor.house_load", "1.0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "50", {"device_class": "battery"})
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 22, 40, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # ...and then a second interval, which is the one that can be measured
+    freezer.move_to(datetime(2026, 7, 8, 22, 45, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "6.0", _ENERGY)
+    hass.states.async_set("sensor.battery_charge", "6.0", _ENERGY)
+    hass.states.async_set("sensor.house_load", "1.5", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "74", {"device_class": "battery"})
+    await hass.async_block_till_done()
+    freezer.move_to(datetime(2026, 7, 8, 23, 20, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - the household is told what the battery lost, and what it cost
+    energy = hass.states.get("sensor.battery_losses_energy_used")
+    assert energy is not None
+    assert energy.state == "0.300000"
+    cost = hass.states.get("sensor.battery_losses_actual_cost")
+    assert cost is not None
+    assert cost.state == "0.0900"
+    # A loss has no counterfactual to save against, so no saving is published
+    assert hass.states.get("sensor.battery_losses_cost_savings") is None
 
 
 async def test_a_household_who_cannot_say_what_its_battery_holds_is_spared_it(

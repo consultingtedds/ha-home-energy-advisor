@@ -59,6 +59,8 @@ from .const import (
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
     CONF_GENERATION_ENTITY,
+    CONF_GRID_EXPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
@@ -161,20 +163,33 @@ def _knows_the_battery_level(entry: HeaConfigEntry) -> bool:
     )
 
 
-def _can_measure_the_batterys_loss() -> bool:
+def _can_measure_the_batterys_loss(entry: HeaConfigEntry) -> bool:
     """Whether what the battery lost can be told apart from what it gave back.
 
-    It cannot, yet. Knowing the battery's level lets the ledger be corrected, and
-    that correction is the only figure available - but it says what was wrongly
-    on the books rather than why. A round-trip loss and a discharge the
-    configured meter never counted reach it identically, and the second was
-    already billed when the house used it (HEA-182).
+    The loss is `import + generation - export - house`, less whatever the battery
+    gained. Every term of that has to be metered: house consumption, generation
+    and export for the first half, and the level with the capacity for the
+    second. A household missing any of them gets no figure rather than a guess
+    (HEA-182).
 
-    So the battery gets no device and no row until the loss is measured per
-    interval against what its level actually did. A figure that answers the
-    question by accident is worse than one that does not answer it at all.
+    **Export belongs in the list even though it is not obviously part of a loss.**
+    The engine only computes the balance where generation *and* export are both
+    readable, because generation that was exported never served the house - so
+    without the export meter there is no first half to take the gain from, and a
+    device created on the strength of the other four would publish zero for ever.
+
+    Deliberately not the ledger's write-down, which was withdrawn in 0.5.1: that
+    says what was wrongly on the books rather than why, and a discharge the meter
+    never counted reaches it looking exactly like a round-trip loss.
     """
-    return False
+    return _knows_the_battery_level(entry) and all(
+        entry.data.get(conf)
+        for conf in (
+            CONF_HOUSE_CONSUMPTION_ENTITY,
+            CONF_GENERATION_ENTITY,
+            CONF_GRID_EXPORT_ENTITY,
+        )
+    )
 
 
 def _has_supply_beyond_the_grid(entry: HeaConfigEntry) -> bool:
@@ -482,7 +497,7 @@ async def async_setup_entry(
     # figure is structurally zero is clutter, and it carries no history to be out
     # of step with when it does arrive, because its figures start when the
     # measuring does (HEA-174).
-    if _knows_the_battery_level(entry) and _can_measure_the_batterys_loss():
+    if _can_measure_the_batterys_loss(entry):
         battery_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_{_BATTERY_KEY}")},
             translation_key="battery",
@@ -995,7 +1010,7 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         its first paint.
         """
         entry = cast("HeaConfigEntry", self.coordinator.config_entry)
-        return _knows_the_battery_level(entry) and _can_measure_the_batterys_loss()
+        return _can_measure_the_batterys_loss(entry)
 
     def _location_of(
         self, source: str | None, ours: dr.AnyDeviceEntry | None = None

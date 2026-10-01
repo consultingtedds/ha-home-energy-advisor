@@ -217,6 +217,103 @@ def _fully_metered_home() -> Accountant:
     return acc
 
 
+def _metered_home_at_rest() -> Accountant:
+    """A fully metered home with every counter at zero and one interval closed."""
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_import",
+            SourceRole.GRID_EXPORT: "sensor.grid_export",
+            SourceRole.GENERATION: "sensor.generation",
+            SourceRole.BATTERY_CHARGE: "sensor.battery_charge",
+            SourceRole.BATTERY_DISCHARGE: "sensor.battery_discharge",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.house_load",
+        },
+        device_energy_entities={},
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
+    )
+    acc.record_price(at(0), OVERNIGHT)
+    for entity in (
+        "sensor.grid_import",
+        "sensor.grid_export",
+        "sensor.generation",
+        "sensor.battery_charge",
+        "sensor.battery_discharge",
+        "sensor.house_load",
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+    # Far enough past the lateness margin that the opening interval really
+    # closes, so the balance headroom exists before anything is measured.
+    acc.finalize(at(40))
+    return acc
+
+
+def test_the_batterys_loss_is_what_the_meters_cannot_explain_less_what_it_gained() -> (
+    None
+):
+    """The measurement HEA-182 asked for, with no efficiency constant in it.
+
+    `import + generation - export - house` is, by physics, whatever the battery
+    gained plus whatever it lost. Knowing how full the battery is supplies the
+    gain, so the loss is the remainder - both halves metered, nothing assumed
+    about the hardware.
+    """
+    # Given - a home that has run a while and then had its battery level filled
+    # in, so the first reading is a baseline and nothing before it is claimed
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("2.5"))
+    assert acc.totals().battery.energy_kwh == Decimal(0)
+
+    # When - it imports 2 kWh more, puts all of it into the battery, and the
+    # house draws another 0.5. Its meters cannot account for 1.5 kWh of that
+    # span, and the battery itself gained only 1.2, so 0.3 went to heat
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"))
+
+    # Then - the loss is published as the battery's own consumption, and it is
+    # the span's figure rather than anything accumulated before the baseline
+    assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
+        "0.300"
+    )
+
+
+def test_the_first_measurement_establishes_a_baseline_and_publishes_nothing() -> None:
+    """The trap this ticket exists for, arriving by the other door.
+
+    `_balance_headroom` accumulates from the household's first interval, so a
+    first measurement taken against it would publish the whole history as one
+    loss - which is exactly what HEA-182 was raised to stop.
+    """
+    # Given - a home that has been running, unexplained energy already behind it
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+
+    # When - the household fills in the battery level for the first time
+    acc.reconcile_battery(Decimal("2.5"))
+
+    # Then - nothing is published. The history before the first reading is not a
+    # loss anybody measured, and claiming it would repeat the fault
+    assert acc.totals().battery.energy_kwh == Decimal(0)
+
+
 def test_a_household_that_meters_too_little_is_not_capped() -> None:
     # Given - a household with no generation or export meter, so the balance
     # cannot be computed at all

@@ -425,6 +425,15 @@ class Accountant:
         # the battery gained plus what it lost - and so a ceiling on the loss we
         # will publish. ``None`` until a household meters enough to ask (HEA-174).
         self._balance_headroom: Decimal | None = None
+        # Where the headroom and the battery's contents stood when the loss was
+        # last measured, so each measurement covers only the span since the last
+        # one. `None` until the household first tells us how full the battery is.
+        self._loss_baseline: tuple[Decimal, Decimal] | None = None
+        # A span can measure less loss than nothing, because meters tick at
+        # different moments. Carried rather than floored, for ADR-0015's reason.
+        self._loss_balance = Decimal(0)
+        self._battery_loss_kwh = Decimal(0)
+        self._battery_loss_cost = Decimal(0)
         # Energy charged before its meter reading arrived, awaiting the surplus
         # that repays it. Expiring at the span a coarse step is spread over is a
         # derivation, not a second knob: a deficit created by that spreading
@@ -635,6 +644,20 @@ class Accountant:
             "balance_headroom": (
                 None if self._balance_headroom is None else str(self._balance_headroom)
             ),
+            # The loss measurement's own state. All of it persists: a baseline
+            # that restarted would measure the next span against a headroom
+            # accumulated before it and publish the gap as loss, and the totals
+            # are published figures that cannot go backwards (ADR-0021).
+            "battery_loss": {
+                "baseline": (
+                    None
+                    if self._loss_baseline is None
+                    else [str(part) for part in self._loss_baseline]
+                ),
+                "balance": str(self._loss_balance),
+                "kwh": str(self._battery_loss_kwh),
+                "cost": str(self._battery_loss_cost),
+            },
             "balance": self._balance.snapshot(),
             "debts": self._debts.snapshot(),
             # What a parent still owes its children. Carried for the same reason
@@ -739,6 +762,16 @@ class Accountant:
         # Absent before this ceiling existed - see the ledger's own restore.
         headroom = data.get("balance_headroom")
         self._balance_headroom = None if headroom is None else Decimal(headroom)
+        # Absent from a snapshot written before the loss was measured, which
+        # simply means this household has not taken a baseline yet.
+        loss = data.get("battery_loss", {})
+        baseline = loss.get("baseline")
+        self._loss_baseline = (
+            None if baseline is None else (Decimal(baseline[0]), Decimal(baseline[1]))
+        )
+        self._loss_balance = Decimal(loss.get("balance", "0"))
+        self._battery_loss_kwh = Decimal(loss.get("kwh", "0"))
+        self._battery_loss_cost = Decimal(loss.get("cost", "0"))
         # A snapshot taken before the carries existed simply has none to restore.
         self._balance.restore(data.get("balance", {}))
         self._debts.restore(data["debts"])
@@ -848,25 +881,24 @@ class Accountant:
         )
 
     def _battery_totals(self) -> DeviceTotals:
-        """The battery's own row, currently zero throughout (HEA-182).
+        """The battery as the consumer it is: what it lost, and what that cost.
 
-        The third term stays in the identity rather than being taken out again,
-        because what belongs here is a real figure that nobody else publishes:
-        energy the household bought and the battery never gave back. What is not
-        yet known is how to tell that apart from a discharge the meter missed,
-        and until it is, a row filled from the ledger's write-down reports the
-        second as though it were the first.
+        Measured against what the battery's level actually did, so this is a
+        round-trip loss rather than the ledger's write-down - the two are not the
+        same thing, and reporting the second as the first is what HEA-182 was
+        raised about.
 
-        Zero is therefore the honest reading, not a placeholder: it says the
-        battery accounts for none of the household's total, which is exactly what
-        we can defend while the figure underneath it cannot be separated.
+        Its counterfactual equals its cost, so it shows no saving: this energy
+        really was bought, and what it would have cost is what it cost. Nothing
+        is attributed by source, because the split is the blend of every charge
+        that ever went in rather than anything one interval can say.
         """
         # Spelled out rather than `replace`d from the zero constant, which types
         # as a bare dataclass and loses what this returns.
         return DeviceTotals(
-            energy_kwh=Decimal(0),
-            actual_cost=Decimal(0),
-            naive_cost=Decimal(0),
+            energy_kwh=self._battery_loss_kwh,
+            actual_cost=self._battery_loss_cost,
+            naive_cost=self._battery_loss_cost,
             cost_savings=Decimal(0),
             battery_savings=Decimal(0),
             energy_from_grid=Decimal(0),
@@ -934,11 +966,63 @@ class Accountant:
         house meter for hours (HEA-182).
 
         So the correction stays inside the ledger, where it fixes pricing without
-        inventing energy. Separating the two causes needs the loss measured per
-        interval against what the battery's level actually did, which is HEA-182's
-        subject rather than this method's.
+        inventing energy. What the battery *lost* is a separate figure, measured
+        here against what its level actually did (HEA-182).
         """
         self._battery.reconcile(available_kwh, ceiling=self._loss_ceiling())
+        self._measure_the_batterys_loss(available_kwh)
+
+    def _measure_the_batterys_loss(self, available_kwh: Decimal) -> None:
+        """Book what the battery took in and never gave back, since last asked.
+
+        `import + generation - export - house` is, by physics, whatever the
+        battery gained plus whatever was lost inside it - which is why
+        `_balance_headroom` accumulates it. Knowing how full the battery is
+        supplies the gain, so the remainder is the loss. Both halves come from
+        meters, so nothing here assumes an efficiency, and nothing here depends
+        on the charge and discharge counters agreeing with each other.
+
+        **The first call only takes a baseline.** The headroom accumulates from
+        the household's first interval, so measuring against it outright would
+        publish their whole history as one loss - which is the fault HEA-182 was
+        raised to stop, arriving by the other door.
+
+        **A negative measurement is carried, not clamped.** Meters tick at
+        different moments and a level is a coarse percentage, so a span can
+        legitimately measure less loss than nothing. Flooring each one at zero
+        would rectify that noise into a standing overstatement, which is the
+        whole subject of ADR-0015; the balance carries instead and the next span
+        repays it.
+
+        Measurable only where the household meters enough for the headroom to
+        exist at all - a house-consumption meter and metered generation. Without
+        those there is no gain to subtract and no figure is published.
+        """
+        if self._balance_headroom is None:
+            return
+        if self._loss_baseline is None:
+            self._loss_baseline = (self._balance_headroom, available_kwh)
+            return
+
+        headroom_then, available_then = self._loss_baseline
+        self._loss_baseline = (self._balance_headroom, available_kwh)
+        unexplained = self._balance_headroom - headroom_then
+        gained = available_kwh - available_then
+        self._loss_balance += unexplained - gained
+        if self._loss_balance <= 0:
+            return
+
+        # Taken out of the ledger because it really has left the battery, and
+        # priced at what it cost to put there - the blend of every charge still
+        # on the books, which is the only price this energy ever had.
+        lost = self._loss_balance
+        self._loss_balance = Decimal(0)
+        cost = self._battery.discharge(lost)
+        self._battery_loss_kwh += lost
+        self._battery_loss_cost += cost
+        self._house.energy_kwh += lost
+        self._house.actual_cost += cost
+        self._house.naive_cost += cost
 
     def _loss_ceiling(self) -> Decimal | None:
         """The most the battery can still honestly be said to have lost.
