@@ -414,18 +414,20 @@ def test_cumulative_source_unchanged_counter_is_logged_as_no_movement() -> None:
 
 
 def test_cumulative_source_decision_log_keeps_only_the_most_recent_entries() -> None:
-    # Given - a source fed far more readings than the log retains
+    # Given - a source fed far more movements than the log retains. It stays
+    # bounded: a source running for months must not grow without limit
     source = CumulativeEnergySource()
-    for minute in range(30):
-        source.observe(reading(at=f"03:{minute:02d}", value=str(Decimal(minute))))
+    for minute in range(200):
+        at = datetime(2026, 7, 11, 3, 0, tzinfo=MADRID) + timedelta(minutes=minute)
+        source.observe(Reading(at=at, value=Decimal(minute), unit=EnergyUnit.KWH))
 
     # When - the bounded log is read back
     decisions = source.recent_decisions()
 
-    # Then - it retains only the last 20, newest last, oldest evicted
-    assert len(decisions) == 20
-    assert decisions[-1].at == moment("03:29")
-    assert decisions[0].at == moment("03:10")
+    # Then - the newest survive and the oldest are evicted, in arrival order
+    assert len(decisions) == 120
+    assert decisions[-1].at == datetime(2026, 7, 11, 6, 19, tzinfo=MADRID)
+    assert decisions[0].at == datetime(2026, 7, 11, 4, 20, tzinfo=MADRID)
 
 
 def test_cumulative_source_snapshot_exposes_last_reading_and_decisions() -> None:
@@ -538,6 +540,53 @@ def test_cumulative_source_reporting_gap_is_never_capped() -> None:
         start=moment("20:00", day="2026-07-08"),
         end=moment("22:00", day="2026-07-11"),
     )
+
+
+def test_a_chatty_meter_does_not_push_its_own_history_out_of_the_log() -> None:
+    """What a household sends us has to be able to contain what they saw.
+
+    A smart meter reporting every ten seconds spends almost every reading saying
+    nothing moved. Against one ring that filled the whole log with **three
+    minutes** of history, so a household who noticed something an hour earlier
+    and downloaded diagnostics promptly sent a file that could not hold it
+    (HEA-185, GitHub 22).
+
+    Quiet readings are the least useful thing in a support thread and the most
+    numerous, so they keep a short ring of their own and the decisions that
+    explain a figure keep a long one.
+    """
+    # Given - a meter that moves twice, an hour apart, and says nothing in between
+    source = CumulativeEnergySource()
+    source.observe(reading(at="08:00", value="100.000"))
+    source.observe(reading(at="08:01", value="100.001"))
+    quiet(source, "100.001", first="08:02", last="08:59")
+
+    # When - it moves again an hour later
+    source.observe(reading(at="09:00", value="100.002"))
+
+    # Then - both movements are still on the record, and the quiet run is still
+    # represented so the source can be seen to have been alive throughout
+    reasons = [entry.reason for entry in source.recent_decisions()]
+    assert reasons.count(DecisionReason.COUNTED) == 2
+    assert DecisionReason.NO_MOVEMENT in reasons
+
+
+def test_the_quiet_ring_cannot_crowd_out_what_explains_a_figure() -> None:
+    # Given - a device that stepped once and then held still for a long time,
+    # which is exactly what a coarse plug does between its rare ticks
+    source = CumulativeEnergySource()
+    source.observe(reading(at="06:00", value="5.00"))
+    source.observe(reading(at="06:01", value="5.25"))
+    quiet(source, "5.25", first="06:02", last="11:59")
+
+    # Then - the step that explains the energy survives hours of silence
+    counted = [
+        entry
+        for entry in source.recent_decisions()
+        if entry.reason is DecisionReason.COUNTED
+    ]
+    assert len(counted) == 1
+    assert counted[0].kwh == Decimal("0.25")
 
 
 def test_source_reset_anchors_the_next_accrual_at_the_cycle_boundary() -> None:

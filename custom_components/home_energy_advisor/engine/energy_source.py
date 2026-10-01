@@ -85,10 +85,34 @@ CREDIBLE_POWER_KW = Decimal(100)
 # tenth of a second on is 360 kW - and reporting jitter is not a fault.
 _MIN_JUDGED_SPAN = timedelta(minutes=1)
 
-# How many recent gating decisions each source retains for the diagnostics
-# download (HEA-24). Bounded so a long-running source never grows without limit;
-# 20 is enough to explain a device's most recent behaviour in a support thread.
-_DECISION_LOG_SIZE = 20
+# How many decisions each source retains for the diagnostics download (HEA-24),
+# split in two because one ring could not serve both jobs.
+#
+# A source spends most of its readings saying its counter did not move, and that
+# is simultaneously the most numerous entry and the least useful one in a support
+# thread. Against a single 20-entry ring, a smart meter reporting every ten
+# seconds held **three minutes** of history, so a household who noticed something
+# an hour earlier and downloaded diagnostics promptly sent a file that could not
+# contain it (HEA-185, GitHub 22).
+#
+# Only `NO_MOVEMENT` is thinned. Everything else either explains a figure
+# (`COUNTED`, `RESET`) or explains its absence (`STALE`, `UNAVAILABLE`,
+# `UNIT_CHANGED`, the refusals), and those are what a question is ever about -
+# `STALE` in particular is what HEA-186 went looking for and could not find.
+#
+# Sized against the chattiest real source seen. A smart meter reading every ten
+# seconds whose counter moves about twice a minute fills 120 notable entries with
+# roughly an hour, which is the target: a household who notices something and
+# downloads diagnostics within the hour sends us the event. A device polled once
+# a minute gets two hours. The quiet ring keeps just enough to show the source was
+# alive and at what cadence.
+#
+# Measured rather than assumed, on 36 sources - six house meters and thirty
+# devices, more than any household seen - fed 600 readings each: **1.7 MiB**
+# resident, 380 bytes an entry, against about 270 KiB for the single 20-entry
+# ring this replaces. The diagnostics download grows by roughly the same factor.
+_NOTABLE_LOG_SIZE = 120
+_QUIET_LOG_SIZE = 8
 
 # The scale changes worth naming. A vendor that moves a counter between watt
 # hours and kilowatt hours shifts it by a thousand; one that fixes a decimal
@@ -285,7 +309,13 @@ class CumulativeEnergySource:
         self._before_drop: _Drop | None = None
         self._moved_at: datetime | None = None
         self._max_quiet_span = max_quiet_span
-        self._decisions: deque[Decision] = deque(maxlen=_DECISION_LOG_SIZE)
+        # Paired with the order they arrived in, not the timestamps they carry.
+        # A stale reading's whole point is that its own `at` is behind the ones
+        # already seen, so ordering the log by that would move it away from the
+        # reading it explains.
+        self._decisions: deque[tuple[int, Decision]] = deque(maxlen=_NOTABLE_LOG_SIZE)
+        self._quiet: deque[tuple[int, Decision]] = deque(maxlen=_QUIET_LOG_SIZE)
+        self._logged = 0
         # A refused step that looked like a rescale, and one the accountant has
         # not ruled on yet. Diagnostics only: nothing here changes a figure.
         self._scale_change: ScaleChange | None = None
@@ -552,8 +582,15 @@ class CumulativeEnergySource:
         self._log(at, DecisionReason.ZERO_PRICED, None)
 
     def recent_decisions(self) -> tuple[Decision, ...]:
-        """The bounded log of what the engine did with recent readings."""
-        return tuple(self._decisions)
+        """The bounded log of what the engine did with recent readings.
+
+        The two rings are merged back into the order the readings arrived in,
+        because a reader is following a source through its own history and should
+        not have to know that quiet readings are kept separately in order to make
+        that history affordable.
+        """
+        merged = sorted([*self._decisions, *self._quiet], key=lambda entry: entry[0])
+        return tuple(decision for _, decision in merged)
 
     def snapshot(self) -> SourceSnapshot:
         """The source's current diagnostics state (HEA-24)."""
@@ -566,7 +603,9 @@ class CumulativeEnergySource:
         )
 
     def _log(self, at: datetime, reason: DecisionReason, kwh: Decimal | None) -> None:
-        self._decisions.append(Decision(at=at, reason=reason, kwh=kwh))
+        ring = self._quiet if reason is DecisionReason.NO_MOVEMENT else self._decisions
+        self._logged += 1
+        ring.append((self._logged, Decision(at=at, reason=reason, kwh=kwh)))
 
     def _position(self, reading: Reading) -> Decimal | None:
         """Where the counter stands, or ``None`` where the source had nothing.
