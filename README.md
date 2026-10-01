@@ -375,13 +375,17 @@ sends nothing at all, and this can then read hours or days old with nothing
 whatever wrong. Read the time as when that device's figures last moved. The
 sensor going **Unavailable** is the part that says nobody is counting.
 
-Two more devices are created alongside them:
+Three more devices are created alongside them:
 
 - **Untracked Energy Devices** carries the same set for everything the house used
-  that no tracked device claimed. It is what makes the parts add up to the whole.
+  that no tracked device claimed. It is what makes the parts add up to the whole,
+  along with Battery Losses below where you have one.
 - **Whole Home** carries the same set for the house, plus **Lowest Possible
   Cost**, **Highest Possible Cost** and, if you have a battery, **Battery
   Savings**.
+- **Battery Losses** appears only where the loss can be measured - see below. It
+  carries Energy Used and Actual Cost for the energy the battery took in and
+  never gave back.
 - **Home Energy Advisor** carries **Unreconciled Energy**, which should read
   zero, and a diagnostic list of tracked devices that the cards read.
 
@@ -420,11 +424,22 @@ inventory is checked against what the battery really holds every few minutes, so
 the drift is corrected rather than compounding, and your battery energy is priced
 against what is actually in there.
 
-**What the battery lost is not published yet.** The correction says what was
-wrongly on the books but not why, and a discharge your meter never counted looks
-exactly like a round-trip loss while having already been counted when the house
-used it. Publishing one as the other would put your whole-home total above what
-you really used, so it waits until the loss can be measured on its own.
+**What the battery lost is published too, where it can be measured.** A
+**Battery Losses** device appears carrying how much never came back out and what
+it cost, and it is measured rather than estimated: what your house's own meters
+cannot account for, less whatever the battery actually gained. Nothing in it
+assumes an efficiency figure, and nothing rests on your charge and discharge
+meters agreeing with each other.
+
+That needs the full set - grid import, grid **export**, generation, your house
+consumption, and the battery's level with its capacity. Export is in the list
+because generation that went out never served the house, so without it the first
+half cannot be worked out. Miss any of them and the device simply does not
+appear, rather than showing you a guess.
+
+Your whole-home total then reads a little **above** a house consumption meter, by
+the losses, which is correct: that meter measures what reached the house, and
+this energy never did.
 
 Energy Used, Actual Cost and Cost at Grid Price also come as daily and monthly
 totals, named after the sensor and the period - `Tumble Dryer Actual Cost Daily`

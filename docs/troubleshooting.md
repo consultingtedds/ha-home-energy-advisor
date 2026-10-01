@@ -183,6 +183,24 @@ watts, and not a sensor whose value goes up and down. The Energy Dashboard's gri
 meter is the right kind, and if you have set that up the field is usually filled
 in for you.
 
+## My total is slightly above my house meter
+
+Expected, if you have a home battery and meter enough for the losses to be
+measured: grid import and **export**, generation, your house consumption, and
+the battery's level with its capacity.
+
+A battery gives back a few percent less than it took in, the difference lost as
+heat or other battery losses. That energy was imported and paid for, so it is
+counted, against a device called **Battery Losses**. It is kept separate rather
+than spread across your appliances or left in Untracked because it is not theirs,
+and because nothing you track will ever shrink it.
+
+Your house meter measures what reached the house, and this energy never did. So
+the two figures differ by roughly what the battery lost over the period you are
+looking at. A few percent of what the battery moved is normal.
+
+A gap far larger than that is something else - see the sections below.
+
 ## My total leapt when I set the battery level, on 0.5.0
 
 **Fixed in 0.5.1.** Update, and it stops. Only 0.5.0 is affected, and only if you
