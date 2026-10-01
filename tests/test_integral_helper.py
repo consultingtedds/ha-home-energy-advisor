@@ -198,8 +198,11 @@ async def test_an_adopted_user_helper_survives_device_removal(
     hass.config_entries.async_remove_subentry(entry, subentry_id)
     await hass.async_block_till_done()
 
-    # Then - the user's helper is left intact, not deleted as if HEA owned it
-    assert hass.config_entries.async_get_entry(users_helper) is not None
+    # Then - the user's helper is left intact, not deleted as if HEA owned it,
+    # and intact means untouched: same entry, still under their own name
+    survivor = hass.config_entries.async_get_entry(users_helper)
+    assert survivor is not None
+    assert survivor.title == "My Own Lights Energy"
     assert len(hass.config_entries.async_entries("integration")) == 1
 
 
@@ -229,8 +232,11 @@ async def test_uninstall_deletes_created_helpers_but_spares_an_adopted_one(
     assert await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
 
-    # Then - HEA's own cycle meters are gone, but the user's Integral helper survives
-    assert hass.config_entries.async_get_entry(users_helper) is not None
+    # Then - HEA's own cycle meters are gone, but the user's Integral helper
+    # survives under their own name rather than being swept up with ours
+    survivor = hass.config_entries.async_get_entry(users_helper)
+    assert survivor is not None
+    assert survivor.title == "My Own Lights Energy"
     assert hass.config_entries.async_entries("utility_meter") == []
 
 
@@ -263,6 +269,10 @@ async def test_a_user_deleted_helper_is_recreated_and_raises_a_repair(
         DOMAIN, helper_recreated_issue_id(subentry_id)
     )
     assert issue is not None
+    # Informational, and not fixable: the helper is already back, so there is
+    # nothing for the household to do but understand why it reappeared
+    assert issue.severity is ir.IssueSeverity.WARNING
+    assert issue.is_fixable is False
 
 
 async def test_removing_the_integration_cleans_up_all_auto_created_helpers(

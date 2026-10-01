@@ -317,9 +317,12 @@ async def test_setting_up_without_lovelace_storage_still_serves_the_cards(
     # Given / When - a household whose dashboards are YAML files
     await _household(hass)
 
-    # Then - setup succeeds and the cards are still served and loaded. Which
+    # Then - setup succeeds and the cards are served from the same stamped path
+    # a storage-mode household gets, and registered under exactly that. Which
     # mechanism carries the module is a matter of when it arrives; it is never
-    # the thing that decides whether it is available at all.
-    assert async_cards_url(hass) is not None
-    urls = hass.data[DATA_EXTRA_MODULE_URL].urls
-    assert any(url.endswith(f"/{ENTRY_POINT}") for url in urls)
+    # the thing that decides whether it is available, nor what it is called.
+    manifest = json.loads((CARDS_DIR.parent / "manifest.json").read_text("utf-8"))
+    stamped = f"/{DOMAIN}/{manifest['version']}-{fingerprint(CARDS_DIR)}"
+    expected = f"{stamped}/{ENTRY_POINT}"
+    assert async_cards_url(hass) == stamped
+    assert set(hass.data[DATA_EXTRA_MODULE_URL].urls) == {expected}

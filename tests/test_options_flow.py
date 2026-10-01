@@ -197,9 +197,18 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
     assert set(by_title) == {"Tumble Dryer", "Power Only Lights"}
     assert by_title["Tumble Dryer"].data[CONF_ENERGY_ENTITY] == dryer
 
-    # ...and the reload created each device's sensors (add → reload → sensors)
-    assert hass.states.get("sensor.tumble_dryer_actual_cost") is not None
-    assert hass.states.get("sensor.power_only_lights_actual_cost") is not None
+    # ...and the reload created each device's sensors (add → reload → sensors).
+    # Asserted as a cost sensor rather than merely as a state: a device added
+    # through the options flow has to arrive fully formed, not as a bare entity
+    for entity_id in (
+        "sensor.tumble_dryer_actual_cost",
+        "sensor.power_only_lights_actual_cost",
+    ):
+        cost = hass.states.get(entity_id)
+        assert cost is not None, entity_id
+        assert cost.attributes["device_class"] == "monetary"
+        assert cost.attributes["state_class"] == "total"
+        assert cost.attributes["unit_of_measurement"] == "EUR"
 
 
 async def test_discovery_step_offers_a_browsable_checkbox_list(

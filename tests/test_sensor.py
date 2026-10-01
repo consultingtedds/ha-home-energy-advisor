@@ -331,6 +331,11 @@ async def test_whole_home_aggregate_publishes_the_monotonic_total(
         "sensor", DOMAIN, f"{entry.entry_id}_whole_home_energy_used"
     )
     assert energy_id is not None
+    # Its own device, which is the claim above: the figure hangs off the Whole
+    # Home entry rather than off the hub or off a tracked appliance
+    energy_entry = registry.async_get(energy_id)
+    assert energy_entry is not None
+    assert energy_entry.device_id == whole_home.id
     energy_state = hass.states.get(energy_id)
     assert energy_state is not None
     assert energy_state.attributes["state_class"] == "total_increasing"
@@ -1353,7 +1358,16 @@ async def test_hierarchy_is_exposed_without_touching_heas_own_devices(
     hea_device = _hea_device(hass, entry, f"_{_aircon_subentry_id(entry)}")
     assert hea_device is not None
     assert hea_device.area_id is None
-    assert hass.states.get("sensor.coarse_step_aircon_energy_used") is not None
+    # ...and the device being area-less costs the household nothing: its figure
+    # is published and bound to it exactly as an assigned device's would be
+    registry = er.async_get(hass)
+    energy_id = registry.async_get_entity_id(
+        "sensor", DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}_energy_used"
+    )
+    assert energy_id is not None
+    entity = registry.async_get(energy_id)
+    assert entity is not None
+    assert entity.device_id == hea_device.id
 
 
 async def test_unreconciled_energy_reads_zero_when_the_meters_agree(
@@ -1512,7 +1526,12 @@ async def test_per_device_bands_wait_to_be_asked_for(
     # tracks whether or not it publishes them
     assert hass.states.get("sensor.coarse_step_aircon_lowest_possible_cost") is None
     assert hass.states.get("sensor.coarse_step_aircon_highest_possible_cost") is None
-    assert hass.states.get("sensor.whole_home_lowest_possible_cost") is not None
+    # 1 kWh imported at 30 c, of which the aircon drew 0.6 and the remainder 0.4.
+    # Both are known exactly within the one bucket, so the band has no width to
+    # it and the floor is simply what the household paid
+    band = hass.states.get("sensor.whole_home_lowest_possible_cost")
+    assert band is not None
+    assert band.state == "0.3000"
 
 
 async def test_per_device_bands_appear_once_opted_in(
@@ -1556,8 +1575,11 @@ async def test_the_remainder_publishes_no_band_of_its_own(
     await hass.async_block_till_done()
     await _run_one_interval(hass, freezer)
 
-    # Then
-    assert hass.states.get("sensor.untracked_energy_devices_actual_cost") is not None
+    # Then - the remainder carries a cost of its own: 1 kWh imported at 30 c
+    # less the 0.6 the aircon drew leaves 0.4 kWh, so 12 c
+    remainder = hass.states.get("sensor.untracked_energy_devices_actual_cost")
+    assert remainder is not None
+    assert remainder.state == "0.1200"
     assert (
         hass.states.get("sensor.untracked_energy_devices_lowest_possible_cost") is None
     )
@@ -1769,7 +1791,6 @@ async def test_a_household_with_a_battery_is_told_what_it_saved(
 
     # Then - one figure, on the household's own device rather than on each
     # appliance: the question is what the battery did for the house (HEA-173)
-    assert hass.states.get("sensor.whole_home_battery_savings") is not None
     assert hass.states.get("sensor.coarse_step_aircon_battery_savings") is None
     # ...and it is money, so a rebase has to be able to tell the compiler its
     # zero point moved rather than that the household lost the balance (ADR-0022)

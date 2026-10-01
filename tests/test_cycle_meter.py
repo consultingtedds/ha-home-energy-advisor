@@ -550,6 +550,11 @@ async def test_a_user_deleted_cycle_meter_is_recreated_and_raises_a_repair(
     assert len(hass.config_entries.async_entries("utility_meter")) == 12
     issue = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_CYCLE_HELPER_RECREATED)
     assert issue is not None
+    # Informational, and not fixable: nothing is broken and there is no action
+    # for the household to take - the meter is already back
+    assert issue.severity is ir.IssueSeverity.WARNING
+    assert issue.is_fixable is False
+    assert issue.translation_key == ISSUE_CYCLE_HELPER_RECREATED
 
 
 async def _accumulating_meter(
