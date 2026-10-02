@@ -50,6 +50,15 @@ const legendOf = (card) => chartOf(card).options.legend;
 const deviceSeries = (card, key) =>
   chartOf(card).data.filter((series) => series.id.startsWith(`${key}:`));
 
+/**
+ * The amount a point carries, whether or not it is wrapped in a style.
+ *
+ * A capped segment arrives as `{ value, itemStyle }` and a plain one as the
+ * number alone, because only the ends of a bar are given a radius (HEA-148).
+ */
+const amountOf = (point) =>
+  point !== null && typeof point === "object" ? point.value : point;
+
 /** The `r, g, b` of a colour, so two strengths of one hue compare equal. */
 const channelsOf = (colour) =>
   colour.replace(/^rgba?\(|\)$/g, "").split(",").slice(0, 3).join(",").trim();
@@ -111,8 +120,29 @@ describe("the bars", () => {
 
     // Then - 3.00 paid of 4.00 at grid price, so 1.00 stands above it
     const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
-    expect(paid.data[0]).toBe(3.0);
-    expect(saved.data[0]).toBe(1.0);
+    expect(amountOf(paid.data[0])).toBe(3.0);
+    expect(amountOf(saved.data[0])).toBe(1.0);
+  });
+
+  it("rounds the top of every device's bar, not only the first", async () => {
+    // Given - three devices, each its own stack of two segments. The walk that
+    // finds a bar's ends has to be told about stacks, or it caps whichever
+    // segment is declared last and squares off every other device (HEA-148)
+    const card = mount(aHass({ devices: [PUMP, AIRCON, UNTRACKED], response: THREE }));
+    await ready(card);
+
+    // Then - each device's saving is the end of its own bar and carries the
+    // radius, and the spend beneath it carries none: a radius where two
+    // segments meet draws a lozenge in the middle of a column
+    for (const key of [
+      "cloud_polled_pump",
+      "slow_poll_aircon",
+      "untracked_energy_devices",
+    ]) {
+      const [paid, saved] = deviceSeries(card, key);
+      expect(saved.data[0].itemStyle.borderRadius).toEqual([4, 4, 0, 0]);
+      expect(amountOf(paid.data[0])).toBeTypeOf("number");
+    }
   });
 
   it("tints the saving rather than leaving it hollow", async () => {
@@ -221,7 +251,7 @@ describe("the bars", () => {
     // loss takes the error colour rather than the device's, so it is not read
     // as a gain
     const [, lost] = deviceSeries(losing, "slow_poll_aircon");
-    expect(lost.data[0]).toBe(-2);
+    expect(amountOf(lost.data[0])).toBe(-2);
     expect(lost.itemStyle.borderColor).not.toBe(gainedOutline);
     expect(channelsOf(lost.itemStyle.color)).toBe(
       channelsOf(tint(lost.itemStyle.borderColor, 1)),
@@ -238,6 +268,20 @@ describe("how well the device did, on hover", () => {
     [...tooltipFor(card, key).querySelectorAll("div")].find((node) =>
       /%/.test(node.textContent),
     );
+
+  it("heads the tooltip the way every other card does", async () => {
+    // Given / When - this card built its own heading, left-aligned, while the
+    // shared one is centred. Two tooltips on one dashboard disagreeing about
+    // that is the kind of drift nothing notices (HEA-148)
+    const card = mount(aHass({ devices: [PUMP], response: THREE }));
+    await ready(card);
+
+    // Then - the device's name, centred and bold, from the shared helper
+    const heading = tooltipFor(card, "cloud_polled_pump").firstElementChild;
+    expect(heading.textContent).toBe("Cloud Polled Pump");
+    expect(heading.style.textAlign).toBe("center");
+    expect(heading.style.fontWeight).toBe("bold");
+  });
 
   it("says what share was saved, without asking the reader to divide", async () => {
     // Given - the bar's geometry already shows the ratio, but comparing two
@@ -358,7 +402,7 @@ describe("comparing against an earlier period", () => {
     const before = chartOf(card).data.find(
       (s) => s.id === "slow_poll_aircon:before",
     );
-    expect(before.data).toEqual([1.7]);
+    expect(before.data.map(amountOf)).toEqual([1.7]);
     expect(before.stack).not.toBe("slow_poll_aircon");
   });
 
@@ -654,15 +698,20 @@ describe("the tooltip", () => {
 });
 
 describe("the options handed to the chart", () => {
-  it("labels the value axis in the household's currency", async () => {
+  it("names the currency once, at the top of the value axis", async () => {
     // Given / When
     const card = mount(aHass({ devices: [AIRCON], response: THREE }));
     await ready(card);
 
-    // Then
-    const label = chartOf(card).options.yAxis.axisLabel.formatter(3);
-    expect(label).toMatch(/€/);
+    // Then - as Home Assistant heads its own energy axis "kWh", and as the
+    // over-time chart beside this one already does (HEA-141). A symbol on every
+    // tick is the same word five times, in the column where a phone-width card
+    // has least room (HEA-103)
+    const { yAxis } = chartOf(card).options;
+    expect(yAxis.name).toBe("€");
+    const label = yAxis.axisLabel.formatter(3);
     expect(label).toMatch(/3[.,]00/);
+    expect(label).not.toMatch(/€/);
   });
 
   it("hovers a bar rather than the whole category", async () => {
@@ -865,14 +914,17 @@ describe("laid out sideways", () => {
     expect(chartOf(card).options.xAxis.axisLabel.hideOverlap).toBe(true);
   });
 
-  it("labels the money axis in the household's currency", async () => {
+  it("names the currency once on the money axis, wherever it has moved to", async () => {
     // Given / When - the value axis swaps sides with the layout, and a bare
     // number on it would say nothing about what was being counted
     const card = await sideways();
 
-    // Then
-    const label = chartOf(card).options.xAxis.axisLabel.formatter(3);
-    expect(label).toMatch(/^€\s?3([.,]00)?$/);
+    // Then - named on the axis it became, not on the one it was
+    const { xAxis } = chartOf(card).options;
+    expect(xAxis.name).toBe("€");
+    const label = xAxis.axisLabel.formatter(3);
+    expect(label).toMatch(/3[.,]00/);
+    expect(label).not.toMatch(/€/);
   });
 
   it("names the ghost series outright when comparing", async () => {

@@ -41,6 +41,7 @@
  * rewrites a custom legend to `{ show: false }` before handing the options on.
  */
 
+import { withRoundedCaps } from "./hea-bars.js";
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
@@ -48,6 +49,8 @@ import { drawsOnDark, tint } from "./hea-colour.js";
 import { readDevices } from "./hea-devices.js";
 import {
   changeTone,
+  currencyLabel,
+  formatAxisMoney,
   formatMoney,
   formatMoneyChange,
   formatMoneyRange,
@@ -56,7 +59,7 @@ import {
 } from "./hea-format.js";
 import { fill } from "./hea-labels.js";
 import { coloursFor, PALETTE, UNTRACKED_COLOUR } from "./hea-palette.js";
-import { tooltipRow } from "./hea-tooltip.js";
+import { tooltipHeading, tooltipRow } from "./hea-tooltip.js";
 import { verdictScaleFor, verdictSentence } from "./hea-verdict-scale.js";
 
 export const TAG = "hea-device-costs-card";
@@ -235,12 +238,10 @@ const TONE_COLOUR = {
 const tooltipFor = (device, locale, labels, toneColour, verdict) => {
   const savedTone = savingTone(device.costSavings);
   const box = document.createElement("div");
-  const title = document.createElement("div");
-  title.textContent = device.name;
-  title.style.fontWeight = "bold";
-  title.style.marginBottom = "4px";
   box.append(
-    title,
+    // The shared heading rather than one built here, so this tooltip is centred
+    // like every other and cannot drift from them again (HEA-148).
+    tooltipHeading(device.name),
     tooltipRow(labels.paid, formatMoney(device.actualCost, locale)),
     // A negative saving is a loss, and calling it "Saved" would read as a gain.
     // Coloured both ways round, like the same figure on the cards behind this
@@ -441,10 +442,17 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return this._ranked().some((device) => device.before);
   }
 
+  /**
+   * The bars, with each one's outer end rounded (HEA-148).
+   *
+   * Capped here rather than inside either layout, because both produce stacks
+   * and the walk needs the whole set to find where each bar ends. It groups by
+   * `stack`, which is what makes this safe on a chart with one stack per device.
+   */
   _series() {
-    return this._sideways()
-      ? this._sidewaysSeries()
-      : this._standingSeries();
+    return withRoundedCaps(
+      this._sideways() ? this._sidewaysSeries() : this._standingSeries(),
+    );
   }
 
   /**
@@ -666,8 +674,11 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return {
       xAxis: {
         type: "value",
+        // The currency named once at the end of the axis, as Home Assistant
+        // heads its own energy axes "kWh", rather than a symbol on every tick.
+        name: currencyLabel(locale),
         axisLabel: {
-          formatter: (value) => formatMoney(value, locale),
+          formatter: (value) => formatAxisMoney(value, locale),
           // The device names take the left of a phone-width card, leaving the
           // value axis little room, and money labels are wide - they collided
           // into an unreadable line (HEA-103). Letting the chart drop the ones
@@ -704,7 +715,17 @@ class HeaDeviceCostsCard extends HeaChartCard {
       },
       yAxis: {
         type: "value",
-        axisLabel: { formatter: (value) => formatMoney(value, locale) },
+        // Named once at the head, the same way the over-time chart heads its
+        // own and Home Assistant heads theirs (HEA-141). On a vertical axis this
+        // is where a phone-width card has least room, so a repeated symbol costs
+        // the most (HEA-103).
+        name: currencyLabel(locale),
+        nameGap: 2,
+        nameTextStyle: { align: "left" },
+        axisLabel: {
+          formatter: (value) => formatAxisMoney(value, locale),
+          hideOverlap: true,
+        },
       },
       tooltip: {
         trigger: "item",
