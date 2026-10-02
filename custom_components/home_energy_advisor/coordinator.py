@@ -13,6 +13,7 @@ rebuilds the coordinator from scratch.
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
@@ -20,6 +21,7 @@ from typing import TYPE_CHECKING
 from homeassistant.components.energy.data import async_get_manager
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import (
     async_track_state_change_event,
@@ -891,12 +893,64 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         instance.
         """
         return {
+            "entry": self._entry_diagnostics(),
             "config": self._config_diagnostics(),
             "sources": self._source_diagnostics(),
             "battery": self._accountant.battery_diagnostics(),
             "balance": self._accountant.balance_diagnostics(),
             "snapshot": self._snapshot_diagnostics(),
             "totals": self._totals_diagnostics(),
+        }
+
+    def _entry_diagnostics(self) -> dict[str, Any]:
+        """The config entry's own settings, which decide whether any of it lands.
+
+        Everything else in this download describes what the engine worked out.
+        None of it reaches a household if Home Assistant has been told not to
+        enable the entities carrying it, and that is a per-integration setting
+        buried in a menu: with `pref_disable_new_entities` set, every entity
+        created afterwards arrives disabled, so a device added later tracks
+        nothing at all.
+
+        Reported because a household hit exactly that and sent a full download
+        with the report, which could not say so - the file knew what the engine
+        knew and nothing about the entry it was running in (HEA-189, GitHub 32).
+
+        Our own entry's settings rather than anything of the household's, so
+        there is nothing here to redact.
+        """
+        # `.value` rather than `str()`: both are tuple-valued enums, so `str()`
+        # prints the member name and a reader would have to know ours to match it
+        # against Home Assistant's own wording.
+        disabled_by = self._entry.disabled_by
+        ours = er.async_entries_for_config_entry(
+            er.async_get(self.hass), self._entry.entry_id
+        )
+        # The same question from the other side. The preference above explains
+        # entities disabled *on arrival*; this covers ones switched off since,
+        # and says plainly how much of what we publish a household is not seeing.
+        #
+        # Counted *by who disabled them*, because the two mean opposite things.
+        # A grid-only household has sixteen of ours disabled by the integration
+        # on purpose - the by-source and battery figures that could only ever
+        # read zero (HEA-175) - and reporting that beside a household's own
+        # choices as one number would make the normal case look alarming.
+        off = Counter(
+            entity.disabled_by.value
+            for entity in ours
+            if entity.disabled_by is not None
+        )
+        return {
+            "state": self._entry.state.value,
+            "source": self._entry.source,
+            "disabled_by": None if disabled_by is None else disabled_by.value,
+            "pref_disable_new_entities": self._entry.pref_disable_new_entities,
+            "pref_disable_polling": self._entry.pref_disable_polling,
+            "entities": {
+                "total": len(ours),
+                "disabled": sum(off.values()),
+                "disabled_by": dict(sorted(off.items())),
+            },
         }
 
     def _snapshot_diagnostics(self) -> dict[str, Any]:
