@@ -372,6 +372,69 @@ def test_a_parent_subtracts_its_children_gross_not_their_net() -> None:
     assert booked == totals.whole_home.energy_kwh == Decimal("1.0")
 
 
+def test_a_circuit_with_several_children_keeps_only_its_own_load() -> None:
+    """Partial nesting: a parent that draws its own load and has more than one child.
+
+    Every nesting test above gives a parent exactly one child, so a rule that
+    subtracted the first child, or the largest, would pass all of them. It would
+    charge this kitchen circuit 0.55 or 0.88 kWh instead of 0.43, and the fleet
+    would no longer sum to the house.
+
+    The cost is asserted beside the energy because that is the figure the
+    household is billed on: a breaker with its own sockets and lighting must be
+    charged for those and for nothing that is metered separately underneath it.
+    """
+    # Given - a kitchen circuit clamp that carried 1.00 kWh, with a dishwasher
+    # (0.45) and a fridge (0.12) separately metered on it. The remaining 0.43 is
+    # the circuit's own - its sockets and lighting, which nobody meters
+    dishwasher = "sensor.dishwasher_energy"
+    fridge = "sensor.fridge_energy"
+    acc = _nested(
+        {"kitchen_circuit": CIRCUIT, "dishwasher": dishwasher, "fridge": fridge},
+        {"dishwasher": "kitchen_circuit", "fridge": "kitchen_circuit"},
+    )
+    for entity in (GRID, HOUSE, CIRCUIT, dishwasher, fridge):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the house used 1.30 kWh, 1.00 of it through this circuit and 0.30
+    # on circuits nobody meters
+    acc.observe(GRID, at(5), Decimal("1.30"))
+    acc.observe(HOUSE, at(5), Decimal("1.30"))
+    acc.observe(CIRCUIT, at(5), Decimal("1.00"))
+    acc.observe(dishwasher, at(5), Decimal("0.45"))
+    acc.observe(fridge, at(5), Decimal("0.12"))
+    acc.finalize(at(60))
+
+    # Then - the circuit keeps 1.00 - 0.45 - 0.12 = 0.43, which is positive and
+    # is the thing a household wanted to know: what the unmetered part of this
+    # circuit costs. At 0.30/kWh that is 0.129
+    totals = acc.totals()
+    assert totals.devices["kitchen_circuit"].energy_kwh == Decimal("0.43")
+    assert totals.devices["kitchen_circuit"].actual_cost == Decimal("0.129")
+
+    # ...and each child keeps its own counter, untouched by having a parent
+    assert totals.devices["dishwasher"].energy_kwh == Decimal("0.45")
+    assert totals.devices["dishwasher"].actual_cost == Decimal("0.135")
+    assert totals.devices["fridge"].energy_kwh == Decimal("0.12")
+    assert totals.devices["fridge"].actual_cost == Decimal("0.036")
+
+    # ...and the 0.30 on other circuits is Untracked, not absorbed by the clamp
+    assert totals.untracked.energy_kwh == Decimal("0.30")
+    assert totals.untracked.actual_cost == Decimal("0.09")
+
+    # ...so the four still sum to the metered house, in energy and in money
+    booked = sum(
+        (device.energy_kwh for device in totals.devices.values()),
+        start=totals.untracked.energy_kwh,
+    )
+    charged = sum(
+        (device.actual_cost for device in totals.devices.values()),
+        start=totals.untracked.actual_cost,
+    )
+    assert booked == totals.whole_home.energy_kwh == Decimal("1.30")
+    assert charged == totals.whole_home.actual_cost == Decimal("0.39")
+
+
 def test_a_parent_outrun_by_a_coarse_child_publishes_zero_not_a_negative() -> None:
     # Given - a circuit clamp reporting every bucket, and a coarse counter on
     # that circuit reporting once for a span it covered. Over the span the
@@ -402,7 +465,11 @@ def test_a_parent_outrun_by_a_coarse_child_publishes_zero_not_a_negative() -> No
     # its own counter catches up, so across the span it books 0.6 - 0.4 = 0.2
     totals = acc.totals()
     assert totals.devices["kitchen_circuit"].energy_kwh == Decimal("0.2")
-    assert totals.devices["kitchen_circuit"].actual_cost >= Decimal(0)
+    # Exactly nothing, not merely "not negative". The bucket that repaid the
+    # carry is one where neither the grid nor the house meter moved, so there
+    # was no metered source in it to price the circuit's energy against. A
+    # non-zero figure here would be money the engine invented
+    assert totals.devices["kitchen_circuit"].actual_cost == Decimal("0.00")
     assert totals.devices["aircon"].energy_kwh == Decimal("0.4")
 
     # And the invariant holds over the span, which is the level ADR-0015 says
