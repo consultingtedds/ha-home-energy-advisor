@@ -322,6 +322,19 @@ def test_a_house_portion_past_the_ring_is_dropped_but_says_so() -> None:
     acc.observe(GENERATION, at(120), Decimal("1.0"))
     acc.finalize(at(180))
 
-    # Then - the loss is on the record rather than invisible
+    # Then - the loss is on the record rather than invisible, and the record says
+    # how much was lost. The ring holds half an hour of a 2-hour reveal, so the
+    # portions before it are dropped and the diagnostics name the quantity a
+    # household's total is short by
     decisions = acc.source_diagnostics()[GENERATION].recent_decisions
-    assert any(entry.reason is DecisionReason.DROPPED_LATE for entry in decisions)
+    dropped = [
+        entry for entry in decisions if entry.reason is DecisionReason.DROPPED_LATE
+    ]
+    assert dropped != []
+    # The reveal spans 120 minutes. The watermark trails the last finalisation by
+    # the lateness margin, and the ring holds 30 minutes behind that, so the
+    # first 70 of those minutes have nowhere to go: 70/120 of the kilowatt-hour
+    lost = sum((entry.kwh or Decimal(0) for entry in dropped), Decimal(0))
+    assert lost.quantize(Decimal("0.0001")) == (Decimal(70) / Decimal(120)).quantize(
+        Decimal("0.0001")
+    )

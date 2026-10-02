@@ -402,6 +402,8 @@ def test_battery_diagnostics_report_the_ledger_behind_the_discharge_price() -> N
 
     # Then - the ledger's contents are exposed, so a household reading the
     # download can see why the next discharge was priced as it was rather than
-    # having to infer it from the totals
-    assert Decimal(held["stored_kwh"]) > 0
-    assert Decimal(held["stored_cost"]) > 0
+    # having to infer it from the totals. 4.6 kWh went into the battery by
+    # minute 20: 3.6 bought off-peak before the sun was up, and 1.0 from
+    # generation once it was, which cost nothing
+    assert Decimal(held["stored_kwh"]) == Decimal("4.6")
+    assert Decimal(held["stored_cost"]) == Decimal("3.6") * OFF_PEAK

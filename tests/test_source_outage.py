@@ -262,11 +262,12 @@ async def test_the_house_figures_keep_publishing_through_a_device_outage(
     await hass.async_block_till_done()
     await _tick(hass, freezer, PAST_GRACE + timedelta(minutes=30))
 
-    # Then - whole home and Untracked are still numbers. The energy the silent
-    # device used still reached the house meter, so the total is still right and
-    # that energy lands in the remainder.
-    assert _published(hass, _WHOLE_HOME_COST) > 0
-    assert _published(hass, _UNTRACKED_COST) > 0
+    # Then - whole home and Untracked are still right, not merely still present.
+    # The house metered 2 kWh at 30 c, of which the aircon claimed 0.6 before it
+    # fell silent: the energy it used afterwards still reached the house meter,
+    # so it lands in the remainder rather than vanishing from the total.
+    assert _published(hass, _WHOLE_HOME_COST) == Decimal("0.6000")
+    assert _published(hass, _UNTRACKED_COST) == Decimal("0.4200")
     assert _state(hass, _AIRCON_LAST_READING) == STATE_UNAVAILABLE
 
 

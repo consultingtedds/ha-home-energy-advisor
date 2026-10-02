@@ -147,10 +147,11 @@ def test_a_bucket_with_no_battery_saves_nothing_through_one() -> None:
     # When
     allocation = STRATEGY.allocate(served, prices(Decimal(0)))
 
-    # Then - zero from the battery, while Cost Savings is substantial. Telling
-    # those apart is the whole request
+    # Then - zero from the battery, while Cost Savings is substantial: 2 of the
+    # 3 kWh came free from the panels, so the house saved two peak units.
+    # Telling those apart is the whole request
     assert battery_saved(allocation) == Decimal(0)
-    assert saved(allocation) > 0
+    assert saved(allocation) == 2 * PEAK
 
 
 def test_energy_the_sun_put_in_the_battery_is_credited_to_the_battery() -> None:
@@ -301,6 +302,12 @@ def test_a_late_arrival_keeps_the_two_halves_together() -> None:
     # Then - the device is credited with the saving, Untracked gives up exactly
     # that much, and the household's two halves are still one figure
     result = acc.totals()
+    # 2 kWh bought overnight and spent at peak, so the household saved the
+    # difference twice over. The *household* figure is exact; the device's share
+    # of it is not, because a funded correction is handed over as later buckets
+    # earn it rather than all at once (HEA-85), and the schedule for that is
+    # another test's subject
+    assert result.whole_home.battery_savings == 2 * (PEAK - OVERNIGHT)
     assert result.devices["coarse_step_aircon"].battery_savings > 0
     assert result.whole_home.battery_savings == result.whole_home.cost_savings
     assert (

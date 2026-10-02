@@ -141,6 +141,52 @@ e.g. `test_allocator_deficit_smaller_than_tracked_draw_caps_total_at_import_cost
 
 ---
 
+## Assert the value, not that something happened
+
+**If the expected value can be worked out, assert it.** An assertion earns its
+place only if a materially wrong implementation would fail it.
+
+```python
+# No - every wrong answer but zero passes
+assert hass.states.get("sensor.untracked_energy_devices_actual_cost") is not None
+assert saved(allocation) > 0
+assert any(entry.reason is DecisionReason.DROPPED_LATE for entry in decisions)
+
+# Yes - 1 kWh imported at 30 c, of which the aircon drew 0.6
+assert _published(hass, UNTRACKED_COST) == Decimal("0.1200")
+assert saved(allocation) == 2 * PEAK
+```
+
+Work the figure out **from the scenario, by hand, before running the test**. A
+value copied out of a failing run is not a prediction, and a test written that
+way passes whatever the code does.
+
+### What is still specific
+
+- **Equality and identity**, including absence: `assert hass.states.get(...) is
+  None` for an entity that must not exist is an exact claim, and so is
+  `assert entries == []`.
+- **A guard before a real assertion.** `assert state is not None` so that mypy
+  will allow `state.state`, or so a helper can return a non-optional, is type
+  narrowing rather than a test. The assertion is the line after it.
+- **A precondition in `# Given`.** `assert before > 0` before a rebase stops the
+  test proving nothing on a household that had accrued nothing. The same line in
+  `# Then` is a weak outcome - the section decides which it is.
+- **A relationship, where the relationship is the claim.** `floor <= actual <=
+  ceiling` says the band brackets the figure; `after >= before` says a published
+  total never falls. No single value expresses either.
+- **A boolean that is itself the outcome**: `assert await
+  hass.config_entries.async_setup(entry_id)`.
+
+### When a figure genuinely cannot be pinned
+
+Say so in the test, and say where it *is* pinned. A power-only device's energy
+depends on Home Assistant's own integration helper, so the coordinator test
+asserts the seam and names `test_integral_helper` as the place the arithmetic is
+proven. That is the exemption; an unexplained `> 0` is not.
+
+---
+
 ## Engine test rules
 
 - Money and energy assertions compare `Decimal`s exactly; if float enters at

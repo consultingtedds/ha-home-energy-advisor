@@ -715,6 +715,9 @@ async def test_reset_leaves_the_split_reconciling_as_it_accumulates_again(
 
     aircon = energy("sensor.coarse_step_aircon_energy_used")
     untracked = energy("sensor.untracked_energy_devices_energy_used")
+    # The identity is the claim; this stops it holding vacuously, because
+    # 0 + 0 == 0 would satisfy it on a household that had accrued nothing since
+    # the rebase and prove exactly nothing
     assert aircon > 0
     assert aircon + untracked == energy("sensor.whole_home_energy_used")
 
