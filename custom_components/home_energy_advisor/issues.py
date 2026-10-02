@@ -46,6 +46,13 @@ ISSUE_SOURCE_UNIT_MISSING = "source_unit_missing"
 # reporting in a different size of unit, and they send a household to different
 # places.
 ISSUE_RESCALED_SOURCE = "rescaled_source"
+# Figures the integration asked to be enabled that Home Assistant registered
+# disabled, which only its "Enable newly added entities" preference does. Keyed
+# off the entities rather than off that preference, because Home Assistant reads
+# it once at registration: turning it back on leaves everything already created
+# disabled, so a check on the preference would clear while the figures are still
+# missing (HEA-190).
+ISSUE_NEW_ENTITIES_DISABLED = "new_entities_disabled"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -86,6 +93,16 @@ def source_unit_unsupported_issue_id(entity_id: str) -> str:
 def source_unit_missing_issue_id(entity_id: str) -> str:
     """Stable issue id for an input that never says what it is counting in."""
     return f"{ISSUE_SOURCE_UNIT_MISSING}_{entity_id}"
+
+
+def new_entities_disabled_issue_id(entry_id: str) -> str:
+    """Stable issue id for figures registered disabled against our will.
+
+    Keyed by config entry rather than by entity: the household has one thing to
+    go and do about it however many figures are affected, and a Repair per
+    silenced entity would be two dozen notifications saying the same sentence.
+    """
+    return f"{ISSUE_NEW_ENTITIES_DISABLED}_{entry_id}"
 
 
 def rescaled_source_issue_id(entity_id: str) -> str:

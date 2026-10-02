@@ -418,6 +418,32 @@ def test_the_notes_file_is_where_the_script_reads_it() -> None:
     assert UPGRADING.read_text(encoding="utf-8").startswith("# Upgrading\n")
 
 
+def test_the_notes_file_keeps_its_guidance_above_the_sections() -> None:
+    """Prose below the last section is printed to a household (HEA-190).
+
+    A pending section ends where the next one begins, so with nothing below it
+    the extractor reads to the end of the file. The first paragraph written under
+    `## Unreleased` took this file's own closing sentence about the releases page
+    with it, into the release body.
+
+    The layout is the fix - guidance above, version sections below, nothing after
+    them - and this is what holds the layout.
+    """
+    # Given - the shipped file, and the guidance that is really in it
+    text = UPGRADING.read_text(encoding="utf-8")
+    assert "releases page" in text, "the sentence this is guarding has been reworded"
+
+    # Then - the last section in the file holds none of it. That is the invariant
+    # whether or not a release has already stamped the pending heading away,
+    # because the last section is the one with nothing after it to stop at
+    assert "releases page" not in text[text.rindex("## ") :]
+
+    # ...and what a release would print is the paragraph alone. The releases-page
+    # pointer is the sentence that actually leaked into a release body, so it is
+    # the one named here rather than a general claim about prose
+    assert "releases page" not in pending_note(text)
+
+
 def test_the_guide_names_the_heading_the_script_looks_for() -> None:
     # Given - the heading a contributor is told to write
     contributing = (REPO_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")

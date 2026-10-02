@@ -27,3 +27,19 @@ survive.
 Releases before 0.7.0 carry their notes on the
 [releases page](https://github.com/consultingtedds/ha-home-energy-advisor/releases)
 only; this file began with the mechanism that writes it.
+
+**Everything above is for whoever writes here. Nothing but version sections goes
+below**, because a pending section ends at the next one - so prose after the last
+section is read as part of it and printed to a household.
+
+## Unreleased
+
+**If any of Home Energy Advisor's figures are switched off, you will now be told.**
+A warning appears saying how many, and where the setting that usually causes it
+lives. Nothing has broken by the update: those figures were already recording
+nothing, and this is the first release able to say so.
+
+It counts only figures the integration asked to be enabled. On a home with no
+generation and no battery the by-source and battery figures are disabled on
+purpose, because they could only ever read zero, and they are not reported here -
+nor is anything you switched off yourself.

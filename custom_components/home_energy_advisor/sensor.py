@@ -71,11 +71,12 @@ from .const import (
 from .recorded_baseline import async_last_recorded
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
     from datetime import datetime
     from typing import Any
 
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.entity import Entity
     from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
     from .coordinator import HeaConfigEntry, HeaCoordinator
@@ -427,6 +428,31 @@ async def async_setup_entry(
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
     supply = _has_supply_beyond_the_grid(entry)
 
+    expected_enabled: set[str] = set()
+
+    def add(
+        entities: Iterable[Entity], *, config_subentry_id: str | None = None
+    ) -> None:
+        """Register these, remembering which of them asked to be enabled.
+
+        A disabled entity is never added to `hass`, so it cannot report this
+        about itself afterwards - the answer only exists here, at creation. The
+        coordinator needs it to tell a figure we quietened on purpose from one
+        Home Assistant disabled on the household's behalf: both carry
+        `RegistryEntryDisabler.INTEGRATION` and are otherwise indistinguishable.
+
+        `entity_registry_enabled_default` is read rather than the description's
+        field directly, because that is the property Home Assistant itself reads,
+        and some of these sensors carry no description at all.
+        """
+        created = list(entities)
+        expected_enabled.update(
+            entity.unique_id
+            for entity in created
+            if entity.entity_registry_enabled_default and entity.unique_id
+        )
+        async_add_entities(created, config_subentry_id=config_subentry_id)
+
     # One integration-level "hub" device carries the devices-registry sensor -
     # the authoritative list dashboards read to enumerate tracked devices without
     # hardcoding them (HEA-55); a natural home for future house-level sensors too.
@@ -434,7 +460,7 @@ async def async_setup_entry(
         identifiers={(DOMAIN, entry.entry_id)},
         translation_key="hub",
     )
-    async_add_entities(
+    add(
         [
             HeaDevicesSensor(coordinator, device_info=hub_info),
             HeaUnreconciledSensor(coordinator, device_info=hub_info),
@@ -454,7 +480,7 @@ async def async_setup_entry(
         identifiers={(DOMAIN, f"{entry.entry_id}_{_UNTRACKED_KEY}")},
         translation_key="untracked",
     )
-    async_add_entities(
+    add(
         HeaCostSensor(
             coordinator,
             concept,
@@ -477,7 +503,7 @@ async def async_setup_entry(
     # knowable to is not an advanced question, and one honest pair of sensors is
     # cheap. It is composed from the parts whether or not those parts publish
     # their own bands, so the figure does not depend on the opt-in below.
-    async_add_entities(
+    add(
         HeaCostSensor(
             coordinator,
             concept,
@@ -502,7 +528,7 @@ async def async_setup_entry(
             identifiers={(DOMAIN, f"{entry.entry_id}_{_BATTERY_KEY}")},
             translation_key="battery",
         )
-        async_add_entities(
+        add(
             HeaCostSensor(
                 coordinator,
                 concept,
@@ -524,7 +550,7 @@ async def async_setup_entry(
             identifiers={(DOMAIN, f"{entry.entry_id}_{subentry_id}")},
             name=subentry.title,
         )
-        async_add_entities(
+        add(
             (
                 *(
                     HeaCostSensor(
@@ -542,6 +568,11 @@ async def async_setup_entry(
             ),
             config_subentry_id=subentry_id,
         )
+
+    # Told last, when every figure this platform publishes has been offered.
+    # Anything still registered disabled that is in here was disabled against our
+    # wishes, which is the one thing the entity registry cannot say by itself.
+    coordinator.set_figures_that_should_reach_the_household(expected_enabled)
 
 
 class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):

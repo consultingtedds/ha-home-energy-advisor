@@ -192,6 +192,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._unitless_since: dict[str, datetime] = {}
         # Inputs whose counter changed the size of unit it reports in.
         self._rescaled_sources: set[str] = set()
+        # The `unique_id` of every figure the sensor platform asked to be enabled,
+        # which it tells us once it has offered them all. Empty until then, so a
+        # health pass that runs first finds nothing to complain about rather than
+        # mistaking an unbuilt platform for a suppressed one (HEA-190).
+        self._should_reach_the_household: frozenset[str] = frozenset()
         self._devices = devices
         # HEA-178. What the battery actually holds, so the stored-cost ledger can
         # be written down to it. Optional and only useful as a pair: a percentage
@@ -400,6 +405,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_refused_steps()
         self._check_rescaled_sources()
         self._check_source_units(now)
+        self._check_the_figures_reach_the_household()
         self._reconcile_battery()
         self._refresh_source_health(now)
         self.async_set_updated_data(self._accountant.totals())
@@ -581,6 +587,58 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         for entity in self._rescaled_sources - set(rescaled):
             issues.async_clear(self.hass, issues.rescaled_source_issue_id(entity))
         self._rescaled_sources = set(rescaled)
+
+    @callback
+    def set_figures_that_should_reach_the_household(self, unique_ids: set[str]) -> None:
+        """Record which figures the sensor platform asked to be enabled.
+
+        Passed in rather than worked out here. The decision about which concepts a
+        household's configuration can carry lives in the sensor platform, which
+        this module cannot import without a cycle - and recomputing it would be a
+        second copy of that rule, free to drift from the one that acted.
+        """
+        self._should_reach_the_household = frozenset(unique_ids)
+
+    def _check_the_figures_reach_the_household(self) -> None:
+        """Name, in Repairs, a figure Home Assistant registered disabled (HEA-190).
+
+        Home Assistant lets a household switch off "Enable newly added entities"
+        per integration. With it off, everything created afterwards arrives
+        disabled, so a device added later publishes nothing - which is what was
+        reported on GitHub 32, by a household who had not knowingly set it and so
+        had no way to reason their way to it.
+
+        **Keyed off the entities, not off that preference.** Home Assistant reads
+        it once, in `async_get_or_create`, so turning it back on leaves everything
+        already created disabled. A check on the preference would clear the moment
+        it was flipped, while the figures were still missing - taking the only
+        signal away at the point it was most needed.
+
+        **Only figures we asked to be enabled count.** A preference-disabled
+        entity carries `RegistryEntryDisabler.INTEGRATION`, and so does one
+        HEA-175 quietened on purpose, so the disabler cannot tell them apart: a
+        grid-only household has sixteen of the latter and nothing wrong with them.
+        What separates the two is what we requested, which only the platform
+        knows. One switched off by the household is `USER` and is their business.
+        """
+        silenced = [
+            entity
+            for entity in er.async_entries_for_config_entry(
+                er.async_get(self.hass), self._entry.entry_id
+            )
+            if entity.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+            and entity.unique_id in self._should_reach_the_household
+        ]
+        issue_id = issues.new_entities_disabled_issue_id(self._entry.entry_id)
+        if not silenced:
+            issues.async_clear(self.hass, issue_id)
+            return
+        issues.async_raise(
+            self.hass,
+            issue_id,
+            issues.ISSUE_NEW_ENTITIES_DISABLED,
+            {"count": str(len(silenced))},
+        )
 
     def _check_source_units(self, now: datetime) -> None:
         """Name, in Repairs, an input whose unit stops it being counted (HEA-156).

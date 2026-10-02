@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import (
@@ -33,6 +34,7 @@ from custom_components.home_energy_advisor.const import (
 from custom_components.home_energy_advisor.issues import (
     ISSUE_PRICE_UNAVAILABLE,
     ISSUE_UNRECONCILED_ENERGY,
+    new_entities_disabled_issue_id,
     source_never_reported_issue_id,
     source_removed_issue_id,
     source_unavailable_issue_id,
@@ -1487,3 +1489,119 @@ async def test_a_household_who_configured_no_level_is_unaffected(
 
     # Then - the ledger behaves exactly as it did before any of this existed
     assert _stored(entry) == Decimal("4.0")
+
+
+async def _home_whose_entities_arrive_disabled(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> MockConfigEntry:
+    """A grid-only home set up with "Enable newly added entities" switched off.
+
+    Home Assistant applies that preference in `async_get_or_create`, so it has to
+    be set before the platform registers anything - which is also the order a
+    household meets it in, having switched it off at some earlier point.
+    """
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    hass.config_entries.async_update_entry(entry, pref_disable_new_entities=True)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _ours(hass: HomeAssistant, entry: MockConfigEntry) -> list[er.RegistryEntry]:
+    return er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+
+
+async def test_a_figure_that_arrived_disabled_is_named_in_repairs(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The household-facing half of the GitHub 32 diagnosis (HEA-190).
+
+    `Thorinair` added a device, every entity arrived disabled, and nothing he
+    could see said why. He had not knowingly switched the setting off, so no
+    amount of looking would have led him to it - he opened an issue instead.
+    """
+    # Given - that household: the preference off, so the platform's figures were
+    # all registered disabled
+    entry = await _home_whose_entities_arrive_disabled(hass, freezer)
+    issue_id = new_entities_disabled_issue_id(entry.entry_id)
+
+    # When - the health pass runs
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+
+    # Then - the Repair names how many figures are not reaching them. All 27 were
+    # caught by the preference, but only the 11 we asked to be enabled are a
+    # fault: the other 16 are HEA-175's, disabled on purpose because this home
+    # has no generation or battery to measure
+    disabled = [
+        ours
+        for ours in _ours(hass, entry)
+        if ours.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    ]
+    assert len(disabled) == 27
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+    assert issue is not None
+    assert issue.translation_placeholders == {"count": "11"}
+
+
+async def test_a_grid_only_home_is_not_told_about_figures_we_switched_off(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - the same home with the preference left alone, which is almost every
+    # household. HEA-175 still disables sixteen by-source and battery figures
+    # here, with the same `INTEGRATION` disabler the preference uses
+    entry = await _setup_running_home(hass, freezer)
+    by_us = [
+        ours
+        for ours in _ours(hass, entry)
+        if ours.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    ]
+    assert len(by_us) == 16, "the fixture must be a home we deliberately quieten"
+
+    # When
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+
+    # Then - nothing. A Repair on almost every grid-only install is HEA-24's
+    # exact failure, and the disabler cannot tell these apart from the
+    # preference's - only asking what we requested can
+    assert not _has_issue(hass, new_entities_disabled_issue_id(entry.entry_id))
+
+
+async def test_the_repair_waits_for_the_figures_not_for_the_setting(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Turning the setting back on does not re-enable what already arrived.
+
+    Home Assistant reads `pref_disable_new_entities` once, in
+    `async_get_or_create`. So a household who finds the setting and fixes it
+    still has disabled entities, still has no figures, and would have had the
+    only signal about it taken away. The Repair tracks the symptom instead.
+    """
+    # Given - the raised Repair
+    entry = await _home_whose_entities_arrive_disabled(hass, freezer)
+    issue_id = new_entities_disabled_issue_id(entry.entry_id)
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+    assert _has_issue(hass, issue_id)
+
+    # When - they find the setting and turn it back on
+    hass.config_entries.async_update_entry(entry, pref_disable_new_entities=False)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 11, tzinfo=UTC))
+
+    # Then - it stays open, because their figures still do not work
+    assert _has_issue(hass, issue_id)
+
+    # When - they enable the figures themselves, which is what actually fixes it
+    registry = er.async_get(hass)
+    for ours in _ours(hass, entry):
+        if ours.disabled_by is er.RegistryEntryDisabler.INTEGRATION:
+            registry.async_update_entity(ours.entity_id, disabled_by=None)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 16, tzinfo=UTC))
+
+    # Then - and only then - it clears
+    assert not _has_issue(hass, issue_id)
