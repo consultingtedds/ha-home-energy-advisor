@@ -126,6 +126,10 @@ jobs:
       # nothing but the compare link - which is what a household saw in the
       # update notification where every other integration shows a changelog
       # (HEA-177).
+      #
+      # The list comes from the commit subjects. Anything they had no room for is
+      # a paragraph in `docs/UPGRADING.md`, which this picks up and the step
+      # below dates (HEA-181).
       - name: Write the release notes
         if: steps.version.outputs.next != ''
         env:
@@ -141,6 +145,17 @@ jobs:
           echo "--- notes.md ---"
           cat notes.md
 
+      # After the notes have been built from it, and before the commit that
+      # carries it. Stamping first would leave the notes looking for a heading
+      # that no longer says "Unreleased"; stamping later would leave the
+      # paragraph pending, and the next release would print it a second time.
+      #
+      # Nothing waiting is the ordinary case and not a failure: it says so and
+      # leaves the file alone.
+      - name: Date the upgrade paragraph with this version
+        if: steps.version.outputs.next != ''
+        run: python scripts/release_version.py --stamp "${{ steps.version.outputs.next }}"
+
       # The manifest is what HACS reads to decide whether a household is behind,
       # so it has to be inside the tag rather than pushed after it.
       #
@@ -153,7 +168,7 @@ jobs:
           version="v${{ steps.version.outputs.next }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add custom_components/home_energy_advisor/manifest.json
+          git add custom_components/home_energy_advisor/manifest.json docs/UPGRADING.md
           git commit -m "chore(release): $version"
           git tag -a "$version" -m "$version"
           git push origin HEAD:main

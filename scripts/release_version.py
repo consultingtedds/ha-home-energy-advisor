@@ -12,8 +12,9 @@ bumping a file by hand cannot promise.
 
 Used by `.github/workflows/release.yml`:
 
-    python scripts/release_version.py 0.4.2    # prints 0.5.0, or nothing
-    python scripts/release_version.py --notes  # prints what went into it
+    python scripts/release_version.py 0.4.2       # prints 0.5.0, or nothing
+    python scripts/release_version.py --notes     # prints what went into it
+    python scripts/release_version.py --stamp 0.5.0   # dates the paragraph
 
 Printing nothing is a real answer, and the common one: a week of documentation
 and dependency work earns no release.
@@ -21,6 +22,14 @@ and dependency work earns no release.
 The notes come from the same parse for the same reason the version does: what a
 household reads in the update notification and the version their instance
 compares against then cannot disagree about what shipped (HEA-177).
+
+What that parse cannot do is explain a change. A release sometimes has to say
+something no commit subject had room for - a figure that will now read
+differently, a setting worth checking - so `docs/UPGRADING.md` carries a
+paragraph under a pending heading, and the release puts its own number on it
+(HEA-181). The heading is not written in advance because the version is not a
+thing anybody should have to predict: a paragraph keyed to a guess is one that
+vanishes the day the guess is wrong.
 """
 
 from __future__ import annotations
@@ -29,6 +38,14 @@ import re
 import subprocess
 import sys
 from enum import IntEnum
+from pathlib import Path
+
+#: Where a release's hand-written paragraph lives, resolved from this file so it
+#: does not depend on the directory the workflow happens to run in.
+UPGRADING = Path(__file__).resolve().parent.parent / "docs" / "UPGRADING.md"
+
+#: The heading a paragraph waits under until a release gives it a number.
+PENDING_HEADING = "## Unreleased"
 
 #: Types that change something a household can observe.
 _MINOR_TYPES = frozenset({"feat"})
@@ -56,6 +73,11 @@ _SUBJECT = re.compile(r"^(?P<type>[a-z]+)(?:\([^)]*\))?(?P<breaking>!)?: .+")
 #: the words anywhere would make any commit that merely *discusses* one cut a
 #: major release - and this project's commit messages discuss things at length.
 _BREAKING_FOOTER = re.compile(r"^BREAKING[ -]CHANGE:", re.MULTILINE)
+
+#: Another footer, or a git trailer: a word, a colon, a space. A footer's prose
+#: ends where one of these begins, because `Refs: HEA-61` is metadata and reads
+#: as nonsense in front of a household.
+_FOOTER_TOKEN = re.compile(r"^(?:[A-Za-z][A-Za-z-]*: |BREAKING[ -]CHANGE:)")
 
 
 class Bump(IntEnum):
@@ -131,7 +153,58 @@ _HEADINGS: tuple[tuple[str, frozenset[str]], ...] = (
 )
 
 
-def release_notes(messages: list[str]) -> str:
+def pending_note(upgrading: str) -> str:
+    """The paragraph waiting for the next release, or `""` if none is.
+
+    Takes the whole of `docs/UPGRADING.md` and returns only what sits under the
+    pending heading, stopping at the release below it. Most releases need no
+    paragraph, so the empty string is the ordinary answer rather than an error -
+    and a heading left behind with nothing under it counts as none, or stamping
+    it would file an empty entry under a version.
+    """
+    lines = upgrading.splitlines()
+    index = _pending_index(lines)
+    if index is None:
+        return ""
+    body: list[str] = []
+    for line in lines[index + 1 :]:
+        if line.startswith("## "):
+            break
+        body.append(line)
+    return "\n".join(body).strip()
+
+
+def stamp_pending_note(upgrading: str, version: str) -> str:
+    """The file with the pending heading replaced by the version carrying it.
+
+    This is what keeps `docs/UPGRADING.md` an archive rather than a scratch file
+    somebody has to remember to clear, and it is why the heading is not written
+    with a version in the first place: the number arrives from the commits at
+    release time, so nothing can be written against a version never cut.
+
+    Returned unchanged when nothing is pending, so the usual release neither
+    rewrites the file nor invents a heading for a version nobody described.
+    """
+    if not pending_note(upgrading):
+        return upgrading
+    return re.sub(
+        rf"^{re.escape(PENDING_HEADING)}[ \t]*$",
+        f"## {version}",
+        upgrading,
+        count=1,
+        flags=re.MULTILINE,
+    )
+
+
+def _pending_index(lines: list[str]) -> int | None:
+    """Which line is the pending heading, tolerating trailing whitespace."""
+    for index, line in enumerate(lines):
+        if line.rstrip() == PENDING_HEADING:
+            return index
+    return None
+
+
+def release_notes(messages: list[str], note: str = "") -> str:
     """What these commits changed, as the update dialog will render it.
 
     Home Assistant shows an integration's release notes inside the update
@@ -148,10 +221,15 @@ def release_notes(messages: list[str]) -> str:
     where there is one. That footer exists precisely because a subject line has
     no room to say what somebody has to go and change.
 
+    `note` is the hand-written paragraph from `docs/UPGRADING.md`, printed under
+    its own heading above the list. It sits below a breaking change and above
+    everything else: "go and change this" outranks "you should know this", and
+    both outrank news.
+
     The empty string where nothing qualifies, rather than a heading with no list
     under it.
     """
-    sections = [_breaking_section(messages)]
+    sections = [_breaking_section(messages), _paragraph("Upgrading", note)]
     sections += [
         _section(heading, _subjects_of(messages, types)) for heading, types in _HEADINGS
     ]
@@ -170,8 +248,26 @@ def _breaking_section(messages: list[str]) -> str:
 def _breaking_line(message: str) -> str:
     """What a breaking commit says, preferring its footer to its subject."""
     if match := _BREAKING_FOOTER.search(message):
-        return _sentence(message[match.end() :].strip().splitlines()[0])
+        return _sentence(_footer_paragraph(message[match.end() :]))
     return _subject_of(message) or _sentence(message.splitlines()[0])
+
+
+def _footer_paragraph(text: str) -> str:
+    """One footer's prose, rewrapped onto a single line.
+
+    commitlint wraps a footer at 100 characters, so anything worth saying there
+    arrives as several lines. Reading only the first printed half a sentence and
+    dropped the half that said what to go and do about it.
+
+    The paragraph ends at a blank line or at the next footer, neither of which is
+    part of what it says.
+    """
+    collected: list[str] = []
+    for line in text.strip().splitlines():
+        if not line.strip() or (collected and _FOOTER_TOKEN.match(line)):
+            break
+        collected.append(line.strip())
+    return " ".join(collected)
 
 
 def _subjects_of(messages: list[str], types: frozenset[str]) -> list[str]:
@@ -224,6 +320,11 @@ def _section(heading: str, lines: list[str]) -> str:
     return f"### {heading}\n\n{body}"
 
 
+def _paragraph(heading: str, text: str) -> str:
+    """A section of prose rather than a list, or nothing where there is none."""
+    return f"### {heading}\n\n{text.strip()}" if text.strip() else ""
+
+
 def commits_since(tag: str | None) -> list[str]:
     """Every commit message since `tag`, or the whole history if there is none.
 
@@ -262,15 +363,52 @@ def main() -> int:
     Both read the same commits. `--notes` has to run *before* the release is
     tagged, or the tag it measures from is the one being cut and there is
     nothing between them.
+
+    `--stamp <version>` is the other half: it puts that version's number on the
+    paragraph the notes just printed, so the file becomes an archive and the next
+    release does not print it again. It runs after the notes and before the
+    release commit, which carries the rewritten file.
     """
-    if len(sys.argv) > 1 and sys.argv[1] == "--notes":
-        print(release_notes(commits_since(latest_tag())))
+    match sys.argv[1:]:
+        case ["--stamp", version]:
+            return _stamp(version)
+        case ["--stamp", *_]:
+            print("--stamp needs the version to date the paragraph with.")
+            return 1
+        case ["--notes", *_]:
+            print(release_notes(commits_since(latest_tag()), _pending_paragraph()))
+            return 0
+        case [current, *_]:
+            pass
+        case _:
+            current = "0.0.0"
+
+    next_ = next_version(current, commits_since(latest_tag()))
+    if next_ is None:
         return 0
-    current = sys.argv[1] if len(sys.argv) > 1 else "0.0.0"
-    version = next_version(current, commits_since(latest_tag()))
-    if version is None:
+    print(next_)
+    return 0
+
+
+def _pending_paragraph() -> str:
+    """The paragraph waiting in `docs/UPGRADING.md`.
+
+    Read without a fallback. A missing file is a release that would print no
+    paragraph and say nothing about it, which is the silence this mechanism
+    exists to remove.
+    """
+    return pending_note(UPGRADING.read_text(encoding="utf-8"))
+
+
+def _stamp(version: str) -> int:
+    """Put this version's number on the pending paragraph, if there is one."""
+    before = UPGRADING.read_text(encoding="utf-8")
+    after = stamp_pending_note(before, version)
+    if after == before:
+        print(f"No paragraph was waiting, so {version} carries none.")
         return 0
-    print(version)
+    UPGRADING.write_text(after, encoding="utf-8")
+    print(f"{UPGRADING.name}: the pending paragraph is now {version}'s.")
     return 0
 
 

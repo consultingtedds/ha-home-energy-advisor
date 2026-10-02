@@ -134,6 +134,15 @@ a `BREAKING CHANGE:` footer. That footer is quoted at the top of the notes, ahea
 of everything else, because it is the part that costs a household their history
 if they install without reading it.
 
+**Where a change needs a paragraph, write it in `docs/UPGRADING.md`.** A subject
+says what was changed; sometimes a release has to say what somebody will *see* -
+a figure that reads differently afterwards, a correct reading that looks like a
+fault. Put it under a heading spelled exactly `## Unreleased`, in the same commit
+as the change. The release prints it under **Upgrading** above the list, then
+replaces that heading with the version it cut, so the file is an archive and
+nothing has to be edited after the fact. Leave the heading out when the subjects
+say it all, which is most releases.
+
 **Cutting one is a decision.** The Release workflow runs only when somebody
 starts it, and it refuses to tag a commit CI has not passed. A tag is offered to
 every household as an update and cannot be withdrawn once an instance has taken
