@@ -1550,6 +1550,48 @@ async def test_a_device_whose_figures_are_merely_disabled_is_not_reported_as_mis
     assert not _has_issue(hass, issues.device_without_figures_issue_id(subentry_id))
 
 
+async def test_a_device_that_never_draws_anything_is_never_reported_as_missing(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A device that is off for the season, which is HEA-24's rule and its trap.
+
+    "No figures" means no figures *exist*, never "every figure reads zero". The
+    two are a word apart and lead opposite ways: a device that is genuinely off
+    all summer reads zero correctly, for months, and a Repair about it is one a
+    household must dismiss over and over for a device that is behaving (HEA-176,
+    HEA-24).
+
+    Whoever next touches this check will be tempted to ask whether the figures
+    carry anything, because that is what the wording sounds like. This is here to
+    fail them.
+    """
+    # Given - a configured device whose source sits at zero and never moves, the
+    # radiator nobody has plugged in since spring
+    entry = await _setup_running_home(hass, freezer)
+    subentry_id = next(iter(entry.subentries))
+    issue_id = issues.device_without_figures_issue_id(subentry_id)
+
+    # When - a full day of it, long past any grace period
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+    assert not _has_issue(hass, issue_id)
+    await _tick(hass, freezer, datetime(2026, 7, 9, 22, 6, tzinfo=UTC))
+
+    # Then - still nothing, and the reason is that its figures exist. This home
+    # is grid-only, so HEA-175 has deliberately disabled the device's by-source
+    # figures as well - which makes the point twice over: some of them are off on
+    # purpose, it still draws nothing, and neither fact is a fault
+    assert not _has_issue(hass, issue_id)
+    theirs = [
+        ours for ours in _ours(hass, entry) if ours.config_subentry_id == subentry_id
+    ]
+    assert theirs, "a device with no registry entries would be the fault, not this"
+
+    # ...and the figure a household reads is published, enabled, and honestly zero
+    published = hass.states.get("sensor.coarse_step_aircon_energy_used")
+    assert published is not None, "the figure a household reads must exist"
+    assert published.state == "0.000000"
+
+
 async def _home_whose_entities_arrive_disabled(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> MockConfigEntry:
