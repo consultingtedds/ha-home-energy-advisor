@@ -1491,6 +1491,65 @@ async def test_a_household_who_configured_no_level_is_unaffected(
     assert _stored(entry) == Decimal("4.0")
 
 
+async def test_a_configured_device_with_no_figures_at_all_is_reported(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The silence that cost a morning (HEA-192).
+
+    On the demo instance, seven of nine devices ended up with no entities at all
+    after a batch of additions. Every figure for them was absent rather than
+    wrong, their energy fell into Untracked, the whole-home total stayed right,
+    and **nothing anywhere said so** - no Repair, no log line, and a dashboard
+    that simply had fewer devices on it than the household had configured.
+
+    The cause has not been reproduced outside that instance. This reports the
+    state whatever causes it, which is the half that can be made reliable.
+    """
+    # Given - a running home whose device then loses its entities, which is the
+    # end state observed, reached directly rather than through the race
+    entry = await _setup_running_home(hass, freezer)
+    registry = er.async_get(hass)
+    subentry_id = next(iter(entry.subentries))
+    theirs = [
+        ours for ours in _ours(hass, entry) if ours.config_subentry_id == subentry_id
+    ]
+    assert theirs, "the fixture must start with a device that has figures"
+    for ours in theirs:
+        registry.async_remove(ours.entity_id)
+    await hass.async_block_till_done()
+
+    # When - the health pass runs
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+
+    # Then - the device is named, so a household can see which of the ones they
+    # added is reporting nothing. Named rather than counted: with eight missing,
+    # "eight devices" sends them looking at all of them
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, issues.device_without_figures_issue_id(subentry_id)
+    )
+    assert issue is not None
+    assert issue.translation_placeholders == {
+        "name": entry.subentries[subentry_id].title
+    }
+
+
+async def test_a_device_whose_figures_are_merely_disabled_is_not_reported_as_missing(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a device whose figures exist but are switched off, which HEA-190
+    # already reports and which must not be told twice in two different voices
+    entry = await _home_whose_entities_arrive_disabled(hass, freezer)
+    subentry_id = next(iter(entry.subentries))
+
+    # When
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
+
+    # Then - registered is registered. A disabled figure is a household's own
+    # setting and has its own Repair; this one is for a figure that was never
+    # created at all
+    assert not _has_issue(hass, issues.device_without_figures_issue_id(subentry_id))
+
+
 async def _home_whose_entities_arrive_disabled(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> MockConfigEntry:

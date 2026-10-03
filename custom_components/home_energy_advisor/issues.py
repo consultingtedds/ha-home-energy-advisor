@@ -53,6 +53,11 @@ ISSUE_RESCALED_SOURCE = "rescaled_source"
 # disabled, so a check on the preference would clear while the figures are still
 # missing (HEA-190).
 ISSUE_NEW_ENTITIES_DISABLED = "new_entities_disabled"
+# A device the household configured that carries no figures at all - not disabled
+# ones, none. Its energy falls into the Untracked remainder, so every total stays
+# right and nothing else notices; the household simply has a device that reports
+# nothing for ever (HEA-192).
+ISSUE_DEVICE_WITHOUT_FIGURES = "device_without_figures"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -93,6 +98,16 @@ def source_unit_unsupported_issue_id(entity_id: str) -> str:
 def source_unit_missing_issue_id(entity_id: str) -> str:
     """Stable issue id for an input that never says what it is counting in."""
     return f"{ISSUE_SOURCE_UNIT_MISSING}_{entity_id}"
+
+
+def device_without_figures_issue_id(subentry_id: str) -> str:
+    """Stable issue id for a configured device carrying no figures.
+
+    Keyed per device, unlike the disabled-entities issue beside it: there the
+    household has one setting to change however many figures it caught, and here
+    each device is its own fault with its own name to go and look at.
+    """
+    return f"{ISSUE_DEVICE_WITHOUT_FIGURES}_{subentry_id}"
 
 
 def new_entities_disabled_issue_id(entry_id: str) -> str:

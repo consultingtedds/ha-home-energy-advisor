@@ -406,6 +406,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_rescaled_sources()
         self._check_source_units(now)
         self._check_the_figures_reach_the_household()
+        self._check_every_device_has_figures()
         self._reconcile_battery()
         self._refresh_source_health(now)
         self.async_set_updated_data(self._accountant.totals())
@@ -639,6 +640,45 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             issues.ISSUE_NEW_ENTITIES_DISABLED,
             {"count": str(len(silenced))},
         )
+
+    def _check_every_device_has_figures(self) -> None:
+        """Name, in Repairs, a configured device carrying no figures at all (HEA-192).
+
+        Not disabled figures - none. On the demo instance a batch of additions
+        left seven devices of nine like this: the household had configured them,
+        the dashboard showed fewer devices than they had added, their energy fell
+        into the Untracked remainder, and every total stayed exactly right. So
+        nothing else here could notice, and nothing did.
+
+        **Only asked once the platform has reported.** A subentry exists before
+        its entities do, so without that guard this would fire on every setup in
+        the gap between the two. `_should_reach_the_household` is set at the end
+        of the sensor platform's setup and is the signal that the gap has closed.
+
+        Registered is enough. A figure the household switched off, or one Home
+        Assistant disabled on arrival, is still a figure and has its own Repair
+        next door; telling them twice in two voices about one cause is how a
+        household learns to read neither (HEA-24).
+        """
+        if not self._should_reach_the_household:
+            return
+        ours = er.async_entries_for_config_entry(
+            er.async_get(self.hass), self._entry.entry_id
+        )
+        carried = {entity.config_subentry_id for entity in ours}
+        for subentry_id, subentry in self._entry.subentries.items():
+            if subentry.subentry_type != SUBENTRY_TYPE_DEVICE:
+                continue
+            issue_id = issues.device_without_figures_issue_id(subentry_id)
+            if subentry_id in carried:
+                issues.async_clear(self.hass, issue_id)
+                continue
+            issues.async_raise(
+                self.hass,
+                issue_id,
+                issues.ISSUE_DEVICE_WITHOUT_FIGURES,
+                {"name": subentry.title},
+            )
 
     def _check_source_units(self, now: datetime) -> None:
         """Name, in Repairs, an input whose unit stops it being counted (HEA-156).

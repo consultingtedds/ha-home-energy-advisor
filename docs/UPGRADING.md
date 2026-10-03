@@ -43,3 +43,11 @@ It counts only figures the integration asked to be enabled. On a home with no
 generation and no battery the by-source and battery figures are disabled on
 purpose, because they could only ever read zero, and they are not reported here -
 nor is anything you switched off yourself.
+
+**And a tracked device that has no figures at all is now named.** This is rarer
+and stranger: the device is configured, nothing was ever published for it, and
+your totals stay right the whole time because its energy counts in Untracked
+instead. It has been seen after adding several devices one after another in quick
+succession. Removing that device and adding it again fixes it, and the warning
+says so. If you meet it, a report with a diagnostics download would be genuinely
+useful - the cause is not understood yet, and it has only been seen once.

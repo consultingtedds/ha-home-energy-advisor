@@ -9,13 +9,15 @@ behaviour that keeps the totals continuous across a Home Assistant restart.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 from decimal import Decimal
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from homeassistant.components.sensor import DOMAIN as SENSOR_DOMAIN
 from homeassistant.components.sensor import SensorExtraStoredData
-from homeassistant.config_entries import ConfigSubentryData
+from homeassistant.config_entries import ConfigSubentry, ConfigSubentryData
 from homeassistant.const import CONF_NAME, EntityCategory
 from homeassistant.core import State
 from homeassistant.helpers import area_registry as ar
@@ -221,6 +223,130 @@ async def test_setup_creates_the_four_sensors_for_every_device_and_untracked(
     ]
     assert len(concept_sensors) == 16
     assert {e.translation_key for e in concept_sensors} == set(_CONCEPTS)
+
+
+async def test_a_batch_of_discovered_devices_all_get_their_figures(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Ticking several boxes in Discover devices to track (HEA-192).
+
+    `config_flow._add_devices` loops over the chosen candidates calling
+    `async_add_subentry` with no await between them, so a household who selects
+    eight devices creates eight subentries in one go. Each fires the update
+    listener, which reloads the entry.
+
+    On the demo instance that left seven of nine devices with **no entities at
+    all** - not partial ones - so their figures never existed and their energy
+    fell silently into Untracked. Every device that worked had its full set, so
+    whatever goes wrong loses a device whole.
+    """
+    # Given - a configured home, running
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - eight more are added the way the discovery flow adds them: one
+    # synchronous loop, nothing awaited in between
+    discovered = [f"device_{index}" for index in range(8)]
+    for name in discovered:
+        hass.states.async_set(f"sensor.{name}_energy", "0", _ENERGY)
+    for name in discovered:
+        hass.config_entries.async_add_subentry(
+            entry,
+            ConfigSubentry(
+                data=MappingProxyType(
+                    {CONF_NAME: name, CONF_ENERGY_ENTITY: f"sensor.{name}_energy"}
+                ),
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title=name,
+                unique_id=None,
+            ),
+        )
+    await hass.async_block_till_done()
+
+    # Then - every one of them carries all four figures. A device the platform
+    # never ran for reports nothing for ever, with no Repair and no log line to
+    # say so, and the household's own total stays right the whole time - which is
+    # exactly why nothing else would catch this
+    registry = er.async_get(hass)
+    ours = er.async_entries_for_config_entry(registry, entry.entry_id)
+    for subentry_id in entry.subentries:
+        theirs = [
+            found
+            for found in ours
+            if found.config_subentry_id == subentry_id
+            and found.translation_key in _CONCEPTS
+        ]
+        assert len(theirs) == len(_CONCEPTS), (
+            f"{entry.subentries[subentry_id].title} has "
+            f"{len(theirs)} of {len(_CONCEPTS)} figures"
+        )
+
+
+async def test_devices_added_while_a_reload_is_in_flight_still_get_their_figures(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The shape the demo instance produces, which a tight loop does not (HEA-192).
+
+    `configure.mjs` adds each device in its own HTTP request, so every one lands
+    in a different turn of the event loop and the reload it triggers is still
+    running when the next arrives. A synchronous loop is the opposite: all the
+    subentries exist before anything yields, so the reloads that follow see the
+    finished list.
+
+    Yielding between the adds is what models the demo. Seven of nine devices
+    ended up with no entities there.
+    """
+    # Given - a configured home, running
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - each is added in its own turn, the reload from the last one still
+    # settling as the next arrives
+    discovered = [f"device_{index}" for index in range(8)]
+    for name in discovered:
+        hass.states.async_set(f"sensor.{name}_energy", "0", _ENERGY)
+    for name in discovered:
+        hass.config_entries.async_add_subentry(
+            entry,
+            ConfigSubentry(
+                data=MappingProxyType(
+                    {CONF_NAME: name, CONF_ENERGY_ENTITY: f"sensor.{name}_energy"}
+                ),
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title=name,
+                unique_id=None,
+            ),
+        )
+        # One turn only. Draining to quiescence here would be the test above
+        # again, and would prove the same thing twice.
+        await asyncio.sleep(0)
+    await hass.async_block_till_done()
+
+    # Then - every device still has its four figures
+    registry = er.async_get(hass)
+    ours = er.async_entries_for_config_entry(registry, entry.entry_id)
+    missing = [
+        entry.subentries[subentry_id].title
+        for subentry_id in entry.subentries
+        if len(
+            [
+                found
+                for found in ours
+                if found.config_subentry_id == subentry_id
+                and found.translation_key in _CONCEPTS
+            ]
+        )
+        != len(_CONCEPTS)
+    ]
+    assert missing == []
 
 
 async def test_untracked_is_a_normal_device(
