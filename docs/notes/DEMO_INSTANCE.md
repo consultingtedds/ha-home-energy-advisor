@@ -216,3 +216,23 @@ README makes in words.
 - **Verify, never count.** Every step that reports success checks the thing it
   claims to have done. The first version of the device loop cheerfully reported
   adding nine devices having created none.
+- **Measure the wait; never guess it.** On 2026-10-05 four runs in a row failed
+  because every budget in the harness had been guessed and this container is
+  slower than all of them: the *first* device took over a minute to publish its
+  figures. Two of those failures were diagnosed as a stall that was not one. The
+  device loop now waits for each device to publish before adding the next, with
+  four minutes to do it, and a full two-language run takes about forty.
+- **Two of the devices are breaker clamps**, which exist to exercise the
+  hierarchy (HEA-153). One has three metered appliances on it plus its own load;
+  the other has nothing on it and is the control, because a feature that treats
+  both the same is not doing anything. `house.mjs` declares `contains`, and
+  `setup.mjs` turns that into the Energy Dashboard's `included_in_stat` - the
+  only place the hierarchy is described, because that is the only place the
+  integration reads it from.
+- **`included_in_stat` must be omitted, not null.** Home Assistant validates it
+  as a string and refuses the whole `energy/save_prefs` call over a single null,
+  which is how it expects "this device has no upstream" to be said.
+- **A clamp's template sensor reads gross.** The breaker's rate is the sum of the
+  appliance rates on it plus its own, so engine mode has something real to net.
+  Change an appliance's rate and the clamp's has to move with it, or the circuit
+  reads as having carried less than its parts.

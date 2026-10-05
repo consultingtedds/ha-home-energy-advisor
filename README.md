@@ -526,6 +526,12 @@ zero, when in truth it could have been sold.
   that already includes it. Home Energy Advisor follows that and stops
   double-counting, with no setup of its own.
 
+  Once you have, the cards show it. A circuit heads its own group at what its
+  clamp reads, the devices on it sit underneath, and one more row - "*your
+  circuit* Untracked" - is the part of that circuit nothing else accounts for.
+  The circuit's own figure is a subtotal of the rows beneath it, so your totals
+  are built from those rather than from it, and nothing is counted twice.
+
   **If you do not record it, we cannot tell.** Where the double count pushes
   your tracked devices above what your house meter read, you get a notification
   about the totals not adding up. Where it stays below that, nothing detects it

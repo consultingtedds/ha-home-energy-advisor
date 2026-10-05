@@ -513,15 +513,35 @@ device's share (ADR-0002).
    the hierarchy is declared, and that where it stays below the house meter
    *nothing detects it* (HEA-170) - **shipped**, in the README, the
    troubleshooting page and the unreconciled-energy Repair
-6. Render the hierarchy in the flow view and the dashboard, so the picture does
-   not contradict the corrected numbers (HEA-153)
-7. Open question: a circuit's HA area is the cupboard it is installed in, not
-   the rooms it feeds, so electrical topology and the area registry disagree
-   about where a nested circuit's untracked residual belongs (HEA-154)
+6. Show which device sits inside which, in the lists and the bars (HEA-153) -
+   **shipped in 0.7.0**. A circuit heads its own group at what its clamp reads,
+   with the devices on it beneath it and a row for the part nothing else accounts
+   for - "Kitchen Circuit Untracked", borrowing Home Assistant's word for the
+   same quantity.
 
-**The accounting is complete; what is left is presentation.** Items 1-5 shipped
-between 2026-09-19 and 2026-09-25 and are in 0.4.0. Items 6 and 7 are the
-dashboard's, and neither blocks a release.
+   Two properties hold it up. **A container's figure is a subtotal**: it carries
+   the rows under it, so a totals line sums the *leaves* and never what is drawn,
+   and the chart gives a container no bar at all - one for it and one for each
+   device inside it draws the same energy twice, and a bar chart is where a
+   reader adds them up. And **the hierarchy is held in one place**, the engine,
+   with the cards reading a projection of it resolved on every render; a second
+   copy kept consistent by call ordering was written and then removed before it
+   shipped.
+
+   This is also where item 1's *gross* half landed, having had nowhere to live:
+   above the rows it contains rather than as a figure of its own, so no entity
+   and no permanent statistics (ADR-0003).
+7. ~~Open question: where a nested circuit's untracked residual belongs by
+   area~~ (HEA-154) - **settled 2026-10-05: physical location stays.** The
+   question assumed the two hierarchies had to be reconciled, and they do not: a
+   circuit's residual keeps the area it already has, and electrical topology
+   becomes a second *view* rather than a competing attribution (HEA-191, after
+   everything else and only if a simulation says a switch is worth offering).
+
+**The accounting was complete at 0.4.0; the presentation is complete at 0.7.0.**
+Items 1-5 shipped between 2026-09-19 and 2026-09-25. What is left is item 1's
+gross *entity*, which nobody has asked for and which the subtotal above may have
+made unnecessary, and HEA-191, which is deliberately last.
 
 ### Epic 11 - Stabilising on households that are not this one
 
@@ -553,6 +573,13 @@ What they found, and what it says about the dogfooding that preceded them:
    178) shipped a figure that could not tell a round-trip loss from a discharge
    the meter missed; 0.5.1 withdrew it and HEA-182 restored it measured rather
    than inferred.
+5. **Silence, which is the fault that generates the reports.** Three of the
+   issues were a household unable to see *why* a figure was missing rather than a
+   figure being wrong. 0.7.0 is mostly the answer to that: the diagnostics
+   download now carries the config entry's own settings (HEA-189), a household
+   whose figures arrived switched off is told so and where (HEA-190), and a device
+   carrying no figures at all is named (HEA-192). Every one of those existed as a
+   silence first and a GitHub issue second.
 
 Two things are deliberately *not* claimed here. The product is not stable because
 the release count is high - several of those releases exist because an earlier one
