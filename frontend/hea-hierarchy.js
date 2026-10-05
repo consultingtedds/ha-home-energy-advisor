@@ -117,10 +117,10 @@ export const groupedOf = (devices, labels, rank = (rows) => rows) => {
   const top = devices.filter((device) => !device.upstream);
   return rank(top).flatMap((device) => {
     if (!containers.has(device.key)) return [{ device, depth: 0 }];
-    const inside = rank([
-      ...(children.get(device.key) ?? []),
-      residualOf(device, labels),
-    ]);
+    // No fallback: `containers` is this map's own key set, so a container always
+    // has children to look up. A `?? []` here would be a branch nothing could
+    // reach, which reads as a guarded case and is really a dead one.
+    const inside = rank([...children.get(device.key), residualOf(device, labels)]);
     return [
       { device: { ...device, ...added(inside), subtotal: true }, depth: 0 },
       ...inside.map((child) => ({ device: child, depth: 1 })),

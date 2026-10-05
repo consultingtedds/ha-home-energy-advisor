@@ -110,6 +110,25 @@ describe("groupedOf", () => {
     expect(subtotal.costSavings).toBe(5);
   });
 
+  it("treats a figure that has not arrived as nothing, not as a broken sum", () => {
+    // Given - a row the statistics have not decorated yet, which a card holds
+    // for the moment between rendering and its first response
+    const devices = [
+      aDevice("circuit", "Circuit", 4, 2, 5),
+      { key: "plug", name: "Plug", upstream: "circuit", untracked: false },
+    ];
+
+    // When
+    const [{ device: subtotal }] = groupedOf(devices, LABELS);
+
+    // Then - the circuit's own figures, and no `NaN`. One absent number would
+    // otherwise poison every total on the card, and a reader cannot tell a
+    // missing figure from a wrong one once it reads "NaN"
+    expect(subtotal.energyUsed).toBe(4);
+    expect(subtotal.actualCost).toBe(2);
+    expect(subtotal.costSavings).toBe(3);
+  });
+
   it("marks the subtotal, because nothing may add it to the rows beneath it", () => {
     // Given / When
     const grouped = groupedOf(circuit(), LABELS);
@@ -119,6 +138,27 @@ describe("groupedOf", () => {
     expect(
       grouped.filter(({ device }) => device.subtotal).map(({ device }) => device.name),
     ).toEqual(["Kitchen Circuit"]);
+  });
+
+  it("adds up the cost range where every row inside carries one", () => {
+    // Given - a household who opted into the per-device range (ADR-0016), so the
+    // circuit and the plug on it both have one
+    const devices = [
+      aDevice("circuit", "Circuit", 4, 2, 5, { costFloor: 1.8, costCeiling: 2.4 }),
+      aDevice("plug", "Plug", 1, 1, 2, {
+        upstream: "circuit",
+        costFloor: 0.9,
+        costCeiling: 1.2,
+      }),
+    ];
+
+    // When
+    const [{ device: subtotal }] = groupedOf(devices, LABELS);
+
+    // Then - the bounds add, because what the whole circuit could have cost is
+    // what each part could have cost. The figure a household reads as "between"
+    expect(subtotal.costFloor).toBeCloseTo(2.7);
+    expect(subtotal.costCeiling).toBeCloseTo(3.6);
   });
 
   it("gives a subtotal a cost range only where every row inside has one", () => {
