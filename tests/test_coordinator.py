@@ -1269,6 +1269,48 @@ async def test_the_energy_dashboards_hierarchy_reaches_the_engine(
     assert coordinator.data.untracked.energy_kwh == Decimal("0.4")
 
 
+async def test_the_devices_sensor_says_which_device_each_one_sits_inside(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The hierarchy has to reach a card, and it only knows row keys (HEA-153).
+
+    The engine is keyed by subentry id. A card never sees one: a row is
+    identified by the slug of its Actual Cost entity, because that survives a
+    rename and is what exists on a Spanish install (ADR-0018). So the parent has
+    to be published as the parent's own row key, not as the id we hold it by.
+    """
+    # Given / When - the Energy Dashboard says the aircon sits on the circuit
+    await _run_nested(hass, freezer, _energy_prefs(CIRCUIT_ENTITY))
+
+    # Then - the aircon's row names the circuit's row, by the key a card matches
+    # on, and the circuit names nothing because it sits inside nothing
+    state = hass.states.get("sensor.home_energy_advisor_devices")
+    assert state is not None
+    rows = {row["name"]: row for row in state.attributes["devices"]}
+    assert rows["Coarse Step Aircon"]["upstream"] == rows["Kitchen Circuit"]["key"]
+    assert rows["Kitchen Circuit"]["upstream"] is None
+
+    # ...and the rows that are not devices carry the key too, so a card can read
+    # it without knowing which kind of row it has
+    assert rows["Untracked Energy Devices"]["upstream"] is None
+
+
+async def test_a_flat_household_says_no_device_sits_inside_another(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - no hierarchy declared, which is every household today
+    entry = await _run_nested(hass, freezer, _energy_prefs(None))
+
+    # Then - nothing claims a parent. A card indenting on a stale or guessed
+    # value would invent a hierarchy the household never declared
+    state = hass.states.get("sensor.home_energy_advisor_devices")
+    assert state is not None
+    assert [row["upstream"] for row in state.attributes["devices"]] == [
+        None for _ in state.attributes["devices"]
+    ]
+    assert len(entry.subentries) == 2
+
+
 async def test_a_household_that_declares_no_hierarchy_is_accounted_flat(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
@@ -1360,6 +1402,14 @@ async def test_editing_the_energy_dashboard_re_nests_without_a_restart(
     devices = entry.runtime_data.data.devices
     assert devices[circuit_key].energy_kwh == Decimal("0.9")
     assert devices[aircon_key].energy_kwh == Decimal("0.7")
+
+    # ...and what the cards read followed the same edit, with nothing reloaded.
+    # The figures and the hierarchy a card draws come from one copy of this, held
+    # by the engine, so they cannot come to disagree about it (HEA-153)
+    state = hass.states.get("sensor.home_energy_advisor_devices")
+    assert state is not None
+    rows = {row["name"]: row for row in state.attributes["devices"]}
+    assert rows["Coarse Step Aircon"]["upstream"] == rows["Kitchen Circuit"]["key"]
 
 
 async def test_the_nesting_listener_is_harmless_once_its_entry_is_gone(

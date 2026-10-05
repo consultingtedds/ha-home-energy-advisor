@@ -44,6 +44,15 @@ generation and no battery the by-source and battery figures are disabled on
 purpose, because they could only ever read zero, and they are not reported here -
 nor is anything you switched off yourself.
 
+**If you have told the Energy Dashboard that one device sits inside another, the
+cards now show it.** A circuit holding devices you also track is labelled
+**(other)**, because its figure is what that circuit used on its own - the
+appliances on it are counted under their own names, not twice. The devices inside
+it are indented underneath it in the tables.
+
+Nothing about the figures has changed, only how they are labelled. If you have
+not described your wiring in the Energy Dashboard, nothing changes at all.
+
 **And a tracked device that has no figures at all is now named.** This is rarer
 and stranger: the device is configured, nothing was ever published for it, and
 your totals stay right the whole time because its energy counts in Untracked

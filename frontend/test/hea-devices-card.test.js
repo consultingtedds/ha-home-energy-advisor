@@ -967,6 +967,44 @@ describe("the table", () => {
     expect(text(card)).not.toMatch(/typical error/);
   });
 
+  it("indents a device inside its circuit, and says the circuit is the rest", async () => {
+    // Given - a household who has told the Energy Dashboard that one of these
+    // sits on the other. The circuit's figure is then what it used *itself*, so
+    // it reads lower than the clamp measuring it - which looks like a fault
+    // unless the table says the row is only part of that circuit (HEA-153)
+    const hass = aHass({
+      devices: [
+        aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
+        {
+          ...aDeviceRow("fine_meter_aircon", "Fine Meter Aircon"),
+          upstream: "slow_poll_aircon",
+        },
+      ],
+      response: THREE_RESPONSE,
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - the container is renamed and the child is indented under it
+    expect(deviceOrder(card)).toContain("Slow Poll Aircon (other)");
+    const inside = card.shadowRoot.querySelectorAll("tbody th.inside");
+    expect([...inside].map((cell) => cell.textContent.trim())).toEqual([
+      "Fine Meter Aircon",
+    ]);
+  });
+
+  it("leaves the table exactly as it was when no hierarchy is declared", async () => {
+    // Given / When - every household today, and the case that must not move
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+    await ready(card);
+
+    // Then - no suffix anywhere, and nothing indented
+    expect(deviceOrder(card).join("|")).not.toContain("(other)");
+    expect(card.shadowRoot.querySelectorAll("tbody th.inside")).toHaveLength(0);
+  });
+
   it("grows its card size with the number of devices it shows", async () => {
     // Given - masonry lays out from this estimate, and a 15-device table is
     // nothing like the height of a one-device one

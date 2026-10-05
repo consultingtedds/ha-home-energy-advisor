@@ -66,13 +66,44 @@ const resolveSensor = (hass) => {
  *
  * @returns {Array<{key: string, name: string, deviceId: string|null,
  *   untracked: boolean, areaId: string|null, areaName: string|null,
- *   floorId: string|null, floorName: string|null}>}
+ *   floorId: string|null, floorName: string|null, upstream: string|null}>}
  */
 export const readDevices = (hass, entityId = undefined) => {
   const rows = hass?.states?.[entityId ?? resolveSensor(hass)]?.attributes?.devices;
   if (!Array.isArray(rows)) return [];
   return rows.filter((row) => row?.key).map(toDevice);
 };
+
+/**
+ * The keys of the devices that contain other devices, as a set to test against.
+ *
+ * Derived from the children rather than published per parent: the household
+ * declares "this sits inside that" one link at a time in the Energy Dashboard,
+ * and reading it the other way round would be a second description of the same
+ * fact, free to disagree with the first.
+ *
+ * Empty on every household that has declared no hierarchy, which makes every
+ * caller's hierarchy case vanish rather than needing to be guarded.
+ */
+export const containersAmong = (devices) =>
+  new Set(devices.map((device) => device.upstream).filter(Boolean));
+
+/**
+ * What to call a device, given what sits inside it.
+ *
+ * A device containing others is published at what it used *itself* - a circuit
+ * clamp measuring 12 kWh with 9 of them separately metered reports 3 - so its
+ * figure reads lower than the meter a household can see, and the name is where
+ * that gets explained. Home Assistant's own device chart does the same thing,
+ * suffixing a parent rather than drawing containment anywhere.
+ *
+ * Unchanged for a device that contains nothing, which is all of them until a
+ * household says otherwise.
+ */
+export const nameOf = (device, containers, labels) =>
+  containers.has(device.key)
+    ? `${device.name} (${labels.contains_others})`
+    : device.name;
 
 /**
  * The whole-home aggregate, or `null` where the integration publishes none.
@@ -144,6 +175,11 @@ const toDevice = (row) => ({
   areaName: row.area_name ?? null,
   floorId: row.floor_id ?? null,
   floorName: row.floor_name ?? null,
+  // The `key` of the device this one sits inside, where the household has told
+  // the Energy Dashboard. Null on an integration published before this existed,
+  // which reads the same as a household who has declared no hierarchy - and both
+  // should draw exactly what they drew before.
+  upstream: row.upstream ?? null,
   // Empty rather than absent on an integration published before labels
   // existed: a card may be newer than the instance it is running against, and
   // every reader wants a set to test membership against either way (HEA-95).

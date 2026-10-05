@@ -1011,8 +1011,8 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
 
     def _devices(self) -> list[dict[str, Any]]:
         entry = cast("HeaConfigEntry", self.coordinator.config_entry)
-        rows = [
-            self._row(
+        by_subentry = {
+            subentry_id: self._row(
                 subentry_id,
                 subentry.title,
                 source=_source_entity(subentry.data),
@@ -1020,7 +1020,9 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             )
             for subentry_id, subentry in entry.subentries.items()
             if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
-        ]
+        }
+        self._say_what_sits_inside_what(by_subentry)
+        rows = list(by_subentry.values())
         rows.append(self._row(_UNTRACKED_KEY, None, source=None, untracked=True))
         # The battery joins the rows it belongs beside, where it exists. Cards sum
         # this list to reach a household total, and the battery's own consumption
@@ -1222,6 +1224,11 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             "name": name,
             "device_id": device.id if device is not None else None,
             "untracked": untracked,
+            # Which device this one sits inside. Filled in by `_devices` once
+            # every row's key is known, and `None` on everything that sits inside
+            # nothing - which is every row on a household that has declared no
+            # hierarchy, and every row that is not a device.
+            "upstream": None,
             "statistics": self._statistic_ids(device_key),
             "area_id": location.area_id,
             "area_name": location.area_name,
@@ -1229,6 +1236,27 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             "floor_name": location.floor_name,
             "labels": self._labels_of(source),
         }
+
+    def _say_what_sits_inside_what(self, rows: dict[str, dict[str, Any]]) -> None:
+        """Translate the hierarchy into the keys a card can match on.
+
+        The Energy Dashboard owns this, the engine holds the one copy of it, and
+        it is keyed by subentry id. **A card never sees a subentry id**: a row is
+        identified by the slug of its Actual Cost entity, because that is what
+        survives a rename and what exists on an install in any language
+        (ADR-0018). So the parent is published as the parent's own row key.
+
+        Resolved here, on every read, rather than stored anywhere - the same way
+        this payload resolves statistic ids and areas. Nothing is duplicated, so
+        there is nothing to fall out of step with the Energy Dashboard.
+
+        A parent we publish no row for leaves its child sitting inside nothing,
+        rather than naming a row that is not there.
+        """
+        for subentry_id, row in rows.items():
+            parent = self.coordinator.nesting.get(subentry_id)
+            if parent is not None and (above := rows.get(parent)) is not None:
+                row["upstream"] = above["key"]
 
     def _statistic_ids(self, device_key: str) -> dict[str, str]:
         """Each concept's real entity id, so no consumer ever composes one.

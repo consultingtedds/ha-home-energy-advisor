@@ -40,6 +40,7 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import Enum
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from .allocation import (
@@ -577,6 +578,19 @@ class Accountant:
         # balance is a claim on the same buckets, and goes for the same reason.
         self._debts = DebtLedger(expiry=self._max_quiet_span)
         self._balance = HouseBalance(expiry=self._max_quiet_span)
+
+    @property
+    def nesting(self) -> Mapping[str, str]:
+        """Which device sits inside which, child to parent, as it was last set.
+
+        Readable because the hierarchy decides more than the arithmetic: a circuit
+        published at what it used *itself* reads lower than the clamp measuring it,
+        and whatever shows that figure has to be able to say why.
+
+        Returned as a mapping rather than the dictionary itself, so a reader
+        cannot rewrite the hierarchy the netting depends on.
+        """
+        return MappingProxyType(self._upstream)
 
     def set_nesting(self, nested_devices: Mapping[str, str]) -> None:
         """Replaces which device contains which, without disturbing anything else.

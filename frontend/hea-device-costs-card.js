@@ -46,7 +46,7 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { drawsOnDark, tint } from "./hea-colour.js";
-import { readDevices } from "./hea-devices.js";
+import { containersAmong, nameOf, readDevices } from "./hea-devices.js";
 import {
   changeTone,
   currencyLabel,
@@ -235,13 +235,14 @@ const TONE_COLOUR = {
  * string - and a device name is whatever the household typed into their own
  * registry.
  */
-const tooltipFor = (device, locale, labels, toneColour, verdict) => {
+const tooltipFor = (device, name, locale, labels, toneColour, verdict) => {
   const savedTone = savingTone(device.costSavings);
   const box = document.createElement("div");
   box.append(
     // The shared heading rather than one built here, so this tooltip is centred
-    // like every other and cannot drift from them again (HEA-148).
-    tooltipHeading(device.name),
+    // like every other and cannot drift from them again (HEA-148). Named by the
+    // caller, because a device holding others is called something else (HEA-153).
+    tooltipHeading(name),
     tooltipRow(labels.paid, formatMoney(device.actualCost, locale)),
     // A negative saving is a loss, and calling it "Saved" would read as a gain.
     // Coloured both ways round, like the same figure on the cards behind this
@@ -390,6 +391,17 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 
   /**
+   * What to call each device, saying which of them hold others (HEA-153).
+   *
+   * Taken from the whole device list rather than this card's ranking, for the
+   * same reason the colours are: a circuit is still a circuit when a filter has
+   * hidden what sits on it, and its bar is still only part of what it carried.
+   */
+  _nameFor(device) {
+    return nameOf(device, containersAmong(this._result?.devices ?? []), this._labels);
+  }
+
+  /**
    * One colour per device, with the remainder set apart.
    *
    * Keyed on the device, and taken from the **whole** device list rather than
@@ -526,10 +538,11 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return this._ranked().flatMap((device) => {
       const colour = this._colourFor(device);
       const outline = device.costSavings < 0 ? loss : colour;
+      const name = this._nameFor(device);
       return [
         {
           id: `${device.key}:paid`,
-          name: device.name,
+          name,
           type: "bar",
           stack: device.key,
           // Unbordered: the outline above it would otherwise be drawn twice
@@ -539,7 +552,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
         },
         {
           id: `${device.key}:saved`,
-          name: device.name,
+          name,
           type: "bar",
           stack: device.key,
           itemStyle: {
@@ -556,7 +569,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
           ? [
               {
                 id: `${device.key}:before`,
-                name: device.name,
+                name,
                 type: "bar",
                 stack: `${device.key}:before`,
                 itemStyle: { color: tint(colour, BEFORE_ALPHA) },
@@ -591,6 +604,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return device
       ? tooltipFor(
           device,
+          this._nameFor(device),
           locale,
           this._labels,
           (tone) => this._colour(TONE_COLOUR[tone]),
@@ -689,7 +703,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
       },
       yAxis: {
         type: "category",
-        data: this._ranked().map((device) => device.name),
+        data: this._ranked().map((device) => this._nameFor(device)),
         // Dearest at the top. A category axis counts up from the bottom, which
         // would stand the ranking on its head.
         inverse: true,
@@ -748,7 +762,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
               `${device.key}:saved`,
               ...(device.before ? [`${device.key}:before`] : []),
             ],
-            name: device.name,
+            name: this._nameFor(device),
             // The solid colour, not the fill: a wash of a hue is harder to tell
             // from its neighbour than the hue itself.
             itemStyle: { color: this._colourFor(device) },

@@ -253,6 +253,20 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _apply_nesting(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
         self._accountant.set_nesting(_nesting_of(prefs, self._device_of_entity))
 
+    @property
+    def nesting(self) -> Mapping[str, str]:
+        """Which device sits inside which, as subentry ids, child to parent.
+
+        Asked of the engine rather than kept here. The hierarchy belongs to the
+        Energy Dashboard, is read from it live, and is held in exactly one place
+        in this process - so the figures and the cards cannot come to disagree
+        about it, whatever order anything is set up in (HEA-153).
+
+        Empty on every household that has declared nothing, which is all of them
+        so far.
+        """
+        return self._accountant.nesting
+
     def _new_accountant(self) -> Accountant:
         return Accountant(
             house_sources=self._house_sources,

@@ -27,6 +27,7 @@
 import { HeaCard } from "./hea-card-base.js";
 import { drawsOnDark } from "./hea-colour.js";
 import { CONCEPT_STYLE, swatch } from "./hea-concepts.js";
+import { containersAmong, nameOf } from "./hea-devices.js";
 import { changeTone, escapeText, savingTone } from "./hea-format.js";
 import { verdictScaleFor, verdictSentence } from "./hea-verdict-scale.js";
 
@@ -60,6 +61,10 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
   thead th:first-child, tbody th:first-child, tfoot th:first-child {
     padding-left: 14px;
   }
+  /* A device that sits inside another one, indented under it. Added to the
+     verdict band's own padding rather than replacing it, so the band stays where
+     it is on every row and only the name moves (HEA-153). */
+  tbody th.inside { padding-left: 30px; }
   /*
    * A device name gets its own line on a phone. Wrapping it saves width the
    * table does not need - it already scrolls sideways - and spends height it
@@ -150,6 +155,10 @@ export class HeaTableCard extends HeaCard {
   _body(locale) {
     const columns = this._columns();
     const verdict = this._verdictScale();
+    // Over every device the integration publishes, not just the rows shown: a
+    // circuit is still a circuit when a filter has hidden what sits on it, and
+    // its figure is still only part of what it carried.
+    const containers = containersAmong(this._result?.devices ?? []);
     return `
       <div class="scroll">
         <table>
@@ -157,7 +166,7 @@ export class HeaTableCard extends HeaCard {
             .map((column) => this._heading(column, locale))
             .join("")}</tr></thead>
           <tbody>${this._ranked()
-            .map((device) => this._row(device, locale, verdict))
+            .map((device) => this._row(device, locale, verdict, containers))
             .join("")}</tbody>
           <tfoot>${this._total(locale, verdict)}</tfoot>
         </table>
@@ -225,21 +234,46 @@ export class HeaTableCard extends HeaCard {
     );
   }
 
-  _row(device, locale, verdict) {
+  _row(device, locale, verdict, containers) {
     return `<tr>${this._columns()
-      .map((column) => this._cell(column, device, locale, verdict?.(device)))
+      .map((column) =>
+        this._cell(column, device, locale, verdict?.(device), containers),
+      )
       .join("")}</tr>`;
   }
 
-  _cell({ field, derive, format, tone, carriesVerdict }, device, locale, verdict) {
+  _cell(
+    { field, derive, format, tone, carriesVerdict },
+    device,
+    locale,
+    verdict,
+    containers,
+  ) {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) {
-      return `<th scope="row"${edgeOf(verdict)}>${escapeText(device[field])}</th>`;
+      return `<th scope="row"${this._nesting(device)}${edgeOf(verdict)}>${escapeText(
+        this._nameOf(device, containers),
+      )}</th>`;
     }
     const value = derive ? derive(device) : device[field];
     const mark = carriesVerdict ? this._verdictOn(verdict, locale) : "";
     return `<td${classFor(field, tone, value)}${mark}>${format(value, locale)}</td>`;
+  }
+
+  /**
+   * A row's name, saying so where its figure is only part of what it carried.
+   *
+   * Falls back to the field for the rows that are not devices - the totals line
+   * has no key and contains nothing.
+   */
+  _nameOf(device, containers) {
+    return containers ? nameOf(device, containers, this._labels) : device.name;
+  }
+
+  /** Indented where this device sits inside another one on the table. */
+  _nesting(device) {
+    return device.upstream ? ' class="inside"' : "";
   }
 
   _total(locale, verdict) {
