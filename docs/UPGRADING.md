@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.7.0
 
 **If any of Home Energy Advisor's figures are switched off, you will now be told.**
 A warning appears saying how many, and where the setting that usually causes it
