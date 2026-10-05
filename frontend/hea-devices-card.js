@@ -18,6 +18,7 @@ import {
   rateUnit,
 } from "./hea-format.js";
 import { fill, labelsFor } from "./hea-labels.js";
+import { BOUNDS } from "./hea-statistics.js";
 import { HeaTableCard, sortSchemaFor } from "./hea-table-card.js";
 
 export const TAG = "hea-devices-card";
@@ -31,6 +32,17 @@ const EDITOR_TAG = `${TAG}-editor`;
  */
 const effectiveRate = ({ actualCost, energyUsed }) =>
   energyUsed > 0 ? actualCost / energyUsed : undefined;
+
+/**
+ * Whether the integration publishes a range for this row at all.
+ *
+ * Read off `statistics`, which omits a concept whose entity does not exist - so
+ * this asks what the integration created rather than what the recorder happens
+ * to hold yet, and tells "this row never has a range" apart from "its range has
+ * not arrived".
+ */
+const offersARange = (row) =>
+  Object.values(BOUNDS).every((concept) => concept in (row.statistics ?? {}));
 
 /**
  * What the figure beside it could honestly have been (ADR-0016).
@@ -48,6 +60,21 @@ const RANGE = {
   // honestly be read as either, or as the saving (HEA-88).
   label: "range_column",
   format: formatMoneyRange,
+  /**
+   * A row with no range of its own contributes its cost to the total's.
+   *
+   * The Untracked remainder and the battery carry no bounds, and that is not
+   * missing data: both are derived per interval from meters that reported for
+   * that interval, so there is no span to be uncertain about and - as `sensor.py`
+   * puts it - *their bounds are their cost*. Left out of the sum, the household's
+   * range would come to less than what they paid, and on a house where Untracked
+   * is half the energy it would be wrong by half.
+   *
+   * Their own cell still shows a dash rather than a range of zero width, which
+   * would read as a precision claim about a figure that simply has no span.
+   */
+  readField: (row, field) =>
+    Number.isFinite(row[field]) ? row[field] : row.actualCost,
 };
 
 /**
@@ -136,12 +163,24 @@ class HeaDevicesCard extends HeaTableCard {
   }
 
   /**
-   * The Range column only where every row can fill it.
+   * The Range column only where every row that *could* carry a bound does.
    *
    * Per-device ranges are opt-in (ADR-0016), and a device the recorder holds no
    * bound for cannot be given one. A column of dashes would read as a fault; a
    * partly-filled one would invite comparing a bounded device with an unbounded
    * one, which is exactly the misranking the ADR rejects.
+   *
+   * **"Every row" was the wrong set, and made the column unreachable.** Two rows
+   * never carry bounds under any configuration - the Untracked remainder and the
+   * battery - so asking it of all of them was a condition no household could
+   * meet, and the column had never once rendered. Asked of the rows the
+   * integration publishes bounds *for*, the ADR's objection is preserved exactly:
+   * what it rejects is comparing devices with each other on unequal footing, and
+   * a row that cannot have a range is not competing in that comparison.
+   *
+   * The discriminator is already published and needs no flag: `statistics` omits
+   * a concept whose entity does not exist, so a row offering the bound concepts
+   * is a row the integration bounds.
    */
   /**
    * The columns this table can honestly fill.
@@ -172,10 +211,10 @@ class HeaDevicesCard extends HeaTableCard {
   }
 
   _hasEveryBound() {
-    const rows = this._result?.devices ?? [];
+    const bounded = (this._result?.devices ?? []).filter(offersARange);
     return (
-      rows.length > 0 &&
-      rows.every((row) => RANGE.fields.every((f) => Number.isFinite(row[f])))
+      bounded.length > 0 &&
+      bounded.every((row) => RANGE.fields.every((f) => Number.isFinite(row[f])))
     );
   }
 

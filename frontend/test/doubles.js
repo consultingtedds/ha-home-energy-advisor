@@ -75,9 +75,26 @@ export const aDeviceRow = (key, name, untracked = false, statistics = undefined)
   statistics:
     statistics ??
     Object.fromEntries(
-      STAT_CONCEPTS.map((concept) => [concept, `sensor.${key}_${concept}`]),
+      conceptsOf(untracked).map((concept) => [concept, `sensor.${key}_${concept}`]),
     ),
 });
+
+/**
+ * Which statistics a row really offers, which is not the same for every row.
+ *
+ * The Untracked remainder gets **no cost bounds**: it is derived per interval
+ * from the meters that reported for it, so there is no span to be uncertain
+ * about and `sensor.py` creates no such sensors. A double that gave it those ids
+ * said a row could be bounded when the product never bounds it, and the card
+ * that waited for every row to be bounded therefore waited for ever (HEA-194).
+ */
+const conceptsOf = (untracked) =>
+  untracked
+    ? STAT_CONCEPTS.filter((concept) => !BOUND_CONCEPTS.has(concept))
+    : STAT_CONCEPTS;
+
+/** The two the per-device range is published as, where it is published at all. */
+const BOUND_CONCEPTS = new Set(["lowest_possible_cost", "highest_possible_cost"]);
 
 /**
  * A device row filed into an area, a floor, both or neither (HEA-58).

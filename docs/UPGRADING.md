@@ -32,6 +32,18 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you turned on per-device cost ranges, the "Paid (min-max)" column will
+appear on Cost by device.** It should have been there since the option existed
+and never was: the table waited for every row to carry a range, and two rows
+never can - the Untracked remainder and the battery both have an exact cost with
+no span to be uncertain about, so there is nothing to bracket.
+
+Those two now show a dash in that column, which is what "no range" looks like,
+and they still count towards the total's range at their exact cost. No figure has
+changed, and if you have not turned the option on you will not see the column.
+
 ## 0.7.0
 
 **If any of Home Energy Advisor's figures are switched off, you will now be told.**

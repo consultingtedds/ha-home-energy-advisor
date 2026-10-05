@@ -555,22 +555,29 @@ describe("the table", () => {
     expect(deviceOrder(card)).toEqual(["Fine Meter Aircon"]);
   });
 
+  /**
+   * A household with per-device ranges on, as the integration really publishes.
+   *
+   * **The Untracked row carries no bounds, and must not be given any here.** It
+   * never has them - `sensor.py` creates no such sensors for it - and a fixture
+   * that invents them is written from the same belief as the code rather than
+   * from the product. That one line is why the Range column could never render
+   * and why nothing noticed for seven weeks (HEA-194).
+   */
+  const BOUNDED = aHass({
+    devices: THREE_DEVICES,
+    response: {
+      ...THREE_RESPONSE,
+      ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+      ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+    },
+  });
+
   it("shows what each device's cost could honestly have been", async () => {
     // Given - a household that opted into per-device ranges. A counter reporting
     // every 30-90 minutes used that energy somewhere inside the span and nothing
     // says where, so the cost is knowable only to a range (ADR-0016).
-    const hass = aHass({
-      devices: THREE_DEVICES,
-      response: {
-        ...THREE_RESPONSE,
-        ...boundsFor("slow_poll_aircon", 0.02, 0.4),
-        ...boundsFor("fine_meter_aircon", 2.8, 3.1),
-        ...boundsFor("untracked_energy_devices", 1.5, 1.5),
-      },
-    });
-
-    // When
-    const card = mount(hass);
+    const card = mount(BOUNDED);
     await ready(card);
 
     // Then - money, never a percentage: 0.02 to 0.40 on a cost of 0.11 is
@@ -580,26 +587,36 @@ describe("the table", () => {
     expect(ranges["Fine Meter Aircon"]).toMatch(/2[.,]80.+3[.,]10/);
   });
 
-  it("shows a single figure where there is no span to be uncertain about", async () => {
-    // Given - the Untracked remainder is derived per interval from meters that
-    // reported for it, so its floor and ceiling are its cost
-    const hass = aHass({
-      devices: THREE_DEVICES,
-      response: {
-        ...THREE_RESPONSE,
-        ...boundsFor("slow_poll_aircon", 0.02, 0.4),
-        ...boundsFor("fine_meter_aircon", 2.8, 3.1),
-        ...boundsFor("untracked_energy_devices", 1.5, 1.5),
-      },
-    });
-
-    // When
-    const card = mount(hass);
+  it("still shows the column when a row that can have no range has none", async () => {
+    // Given / When - the real shape, and the one the old fixture hid: every
+    // device bounded, the Untracked remainder not, because it never is
+    const card = mount(BOUNDED);
     await ready(card);
 
-    // Then - one amount, not "~€1.50" and not "€1.50 - €1.50"
+    // Then - the column is there at all, which it was not for seven weeks
+    const headings = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+      cell.textContent.trim(),
+    );
+    expect(headings.join("|")).toContain(RANGE_COLUMN_LABEL);
+
+    // ...and that row shows a dash rather than a range of zero width, which
+    // would claim an exactness about a figure that simply has no span
     const ranges = Object.fromEntries(rows(card).map((row) => [row[0], row[3]]));
-    expect(ranges["Untracked Energy Devices"]).toMatch(/^\D*1[.,]50$/);
+    expect(ranges["Untracked Energy Devices"]).toBe("-");
+  });
+
+  it("counts a row with no range into the total's range at its cost", async () => {
+    // Given / When - Untracked has no span to be uncertain about, so its bounds
+    // are its cost. Left out, the household's range would come to less than what
+    // they paid - and on a house where Untracked is half the energy, by half
+    const card = mount(BOUNDED);
+    await ready(card);
+
+    // Then - the total's range brackets the total paid rather than falling
+    // below it. Paid 0.11 + 3.00 + 1.50 = 4.61; the range is 0.02 + 2.80 + 1.50
+    // to 0.40 + 3.10 + 1.50
+    const total = totalCells(card).map((cell) => cell.textContent.trim());
+    expect(total[3]).toMatch(/4[.,]32.+5[.,]00/);
   });
 
   it("drops the range column rather than half-filling it", async () => {

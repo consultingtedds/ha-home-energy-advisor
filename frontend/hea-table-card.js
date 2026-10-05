@@ -258,7 +258,13 @@ export class HeaTableCard extends HeaCard {
       .join("")}</tr>`;
   }
 
-  _cell({ field, derive, format, tone, carriesVerdict }, device, locale, verdict, depth) {
+  _cell(
+    { field, derive, format, tone, carriesVerdict },
+    device,
+    locale,
+    verdict,
+    depth,
+  ) {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) {
@@ -332,10 +338,21 @@ export class HeaTableCard extends HeaCard {
     // table's visible rows would count a circuit's energy twice over - the one
     // error ADR-0002 will not trade for anything.
     const rows = leavesOf(this._result?.devices ?? [], this._labels);
+    // How each field is read for summing. A column may say, because a figure a
+    // row does not carry is not always nothing: a cost range absent from a row
+    // whose cost is exact still contributes that cost to the total's range.
+    const read = Object.fromEntries(
+      this._columns().flatMap(({ fields, field, readField }) =>
+        readField ? (fields ?? [field]).map((name) => [name, readField]) : [],
+      ),
+    );
     const sum = (of) =>
       rows.reduce(
         (totals, device) => {
-          for (const field of summed) totals[field] += of(device)[field];
+          for (const field of summed) {
+            const row = of(device);
+            totals[field] += read[field] ? read[field](row, field) : row[field];
+          }
           return totals;
         },
         Object.fromEntries(summed.map((field) => [field, 0])),
