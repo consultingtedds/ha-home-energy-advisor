@@ -108,6 +108,35 @@ export async function cardText(page, tag) {
 }
 
 /**
+ * The names a chart card handed to the chart, rather than the ones on screen.
+ *
+ * `cardText` reads what is rendered, and a legend collapses its overflow behind
+ * a "more" chip once there are more devices than fit - so on a house with a
+ * dozen, reading the text says a card is missing devices it drew perfectly well.
+ * This asks the card instead, which is the honest question for "did it draw
+ * this": the legend's behaviour is HEA-100's deliberate trade and not the
+ * subject of the check.
+ */
+export async function chartSeriesNames(page, tag) {
+  return page.evaluate((wanted) => {
+    const findHost = (root) => {
+      for (const element of root.querySelectorAll("*")) {
+        if (element.tagName.toLowerCase() === wanted) return element;
+        if (element.shadowRoot) {
+          const found = findHost(element.shadowRoot);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    const host = findHost(document);
+    const chart = host?.shadowRoot?.querySelector("ha-chart-base");
+    const series = chart?.data ?? chart?.options?.series ?? [];
+    return [...new Set(series.map((entry) => entry?.name).filter(Boolean))];
+  }, tag);
+}
+
+/**
  * Step the dashboard back to the last complete day.
  *
  * The dashboard opens on today, and today is however many hours old the clock

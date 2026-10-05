@@ -967,12 +967,16 @@ describe("the table", () => {
     expect(text(card)).not.toMatch(/typical error/);
   });
 
-  it("indents a device inside its circuit, and says the circuit is the rest", async () => {
-    // Given - a household who has told the Energy Dashboard that one of these
-    // sits on the other. The circuit's figure is then what it used *itself*, so
-    // it reads lower than the clamp measuring it - which looks like a fault
-    // unless the table says the row is only part of that circuit (HEA-153)
-    const hass = aHass({
+  /**
+   * A circuit of 38.6 kWh: one metered device on it, and the rest its own.
+   *
+   * The integration publishes the circuit at what it used *itself*, so the
+   * seeded figures are the aircon's 12.0 and the circuit's own 38.6. The clamp
+   * on the breaker reads the two together, which is the figure the table has to
+   * show at the top of the group.
+   */
+  const aCircuit = () =>
+    aHass({
       devices: [
         aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
         {
@@ -983,16 +987,50 @@ describe("the table", () => {
       response: THREE_RESPONSE,
     });
 
-    // When
-    const card = mount(hass);
+  it("puts the circuit above the rows inside it, at what its own meter reads", async () => {
+    // Given / When - ranked by cost, which would otherwise scatter the children
+    // through the house and leave an indent pointing at the wrong row (HEA-153)
+    const card = mount(aCircuit());
     await ready(card);
 
-    // Then - the container is renamed and the child is indented under it
-    expect(deviceOrder(card)).toContain("Slow Poll Aircon (other)");
-    const inside = card.shadowRoot.querySelectorAll("tbody th.inside");
-    expect([...inside].map((cell) => cell.textContent.trim())).toEqual([
+    // Then - the circuit, then what is inside it: the metered device and the
+    // part of the circuit nothing else accounts for
+    expect(deviceOrder(card)).toEqual([
+      "Slow Poll Aircon",
       "Fine Meter Aircon",
+      "Slow Poll Aircon Untracked",
     ]);
+
+    // ...with only the two inner rows indented, and the circuit marked as the
+    // subtotal it is rather than as another device competing with its children
+    const inside = [...card.shadowRoot.querySelectorAll("tbody th.inside")];
+    expect(inside.map((cell) => cell.textContent.trim())).toEqual([
+      "Fine Meter Aircon",
+      "Slow Poll Aircon Untracked",
+    ]);
+    expect(card.shadowRoot.querySelectorAll("tbody tr.subtotal")).toHaveLength(1);
+  });
+
+  it("shows the circuit carrying its children's energy as well as its own", async () => {
+    // Given / When
+    const card = mount(aCircuit());
+    await ready(card);
+
+    // Then - 38.6 of its own plus the aircon's 12.0. That figure exists nowhere
+    // as a sensor; it is the roll-up a clamp would show, added up here
+    const [circuit, , residual] = rows(card);
+    expect(circuit[1]).toMatch(/50[.,]6/);
+    expect(residual[1]).toMatch(/38[.,]6/);
+  });
+
+  it("totals the leaves, so a circuit's energy is not counted twice", async () => {
+    // Given / When - the one error ADR-0002 will not trade for anything. The
+    // visible rows add to 101.2; the household used 50.6
+    const card = mount(aCircuit());
+    await ready(card);
+
+    // Then - the totals line is the household, not the sum of what is drawn
+    expect(totalCells(card)[1].textContent).toMatch(/50[.,]6/);
   });
 
   it("leaves the table exactly as it was when no hierarchy is declared", async () => {
@@ -1000,9 +1038,10 @@ describe("the table", () => {
     const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
     await ready(card);
 
-    // Then - no suffix anywhere, and nothing indented
-    expect(deviceOrder(card).join("|")).not.toContain("(other)");
+    // Then - nothing indented, no subtotal, and no row the household did not name
+    expect(deviceOrder(card).join("|")).not.toContain("Untracked Untracked");
     expect(card.shadowRoot.querySelectorAll("tbody th.inside")).toHaveLength(0);
+    expect(card.shadowRoot.querySelectorAll("tbody tr.subtotal")).toHaveLength(0);
   });
 
   it("grows its card size with the number of devices it shows", async () => {

@@ -45,13 +45,23 @@ purpose, because they could only ever read zero, and they are not reported here 
 nor is anything you switched off yourself.
 
 **If you have told the Energy Dashboard that one device sits inside another, the
-cards now show it.** A circuit holding devices you also track is labelled
-**(other)**, because its figure is what that circuit used on its own - the
-appliances on it are counted under their own names, not twice. The devices inside
-it are indented underneath it in the tables.
+cards now show it.** A circuit you meter appears with the devices on it grouped
+underneath, and a row for the part of it nothing else accounts for:
 
-Nothing about the figures has changed, only how they are labelled. If you have
-not described your wiring in the Energy Dashboard, nothing changes at all.
+```
+Kitchen Circuit                 20 kWh
+  Dishwasher                     5 kWh
+  Washing Machine                2 kWh
+  Kitchen Circuit Untracked     13 kWh
+```
+
+The circuit's own row is what its clamp reads - the whole 20 - so it is the figure
+on your breaker rather than a number you have to assemble. The rows under it add
+up to it, and they are what the rest of your totals are built from, so nothing is
+counted twice.
+
+No figure has changed. **If you have not described your wiring in the Energy
+Dashboard, nothing changes at all** - and nothing asks you to describe it.
 
 **And a tracked device that has no figures at all is now named.** This is rarer
 and stranger: the device is configured, nothing was ever published for it, and

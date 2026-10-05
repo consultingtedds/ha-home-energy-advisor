@@ -75,35 +75,12 @@ export const readDevices = (hass, entityId = undefined) => {
 };
 
 /**
- * The keys of the devices that contain other devices, as a set to test against.
+ * Arranging devices by what contains what lives in `hea-hierarchy.js`.
  *
- * Derived from the children rather than published per parent: the household
- * declares "this sits inside that" one link at a time in the Energy Dashboard,
- * and reading it the other way round would be a second description of the same
- * fact, free to disagree with the first.
- *
- * Empty on every household that has declared no hierarchy, which makes every
- * caller's hierarchy case vanish rather than needing to be guarded.
+ * It belongs beside the figures rather than here: a container's own total is a
+ * sum over the rows inside it, so the shaping needs them decorated with
+ * statistics, which these readers deliberately know nothing about.
  */
-export const containersAmong = (devices) =>
-  new Set(devices.map((device) => device.upstream).filter(Boolean));
-
-/**
- * What to call a device, given what sits inside it.
- *
- * A device containing others is published at what it used *itself* - a circuit
- * clamp measuring 12 kWh with 9 of them separately metered reports 3 - so its
- * figure reads lower than the meter a household can see, and the name is where
- * that gets explained. Home Assistant's own device chart does the same thing,
- * suffixing a parent rather than drawing containment anywhere.
- *
- * Unchanged for a device that contains nothing, which is all of them until a
- * household says otherwise.
- */
-export const nameOf = (device, containers, labels) =>
-  containers.has(device.key)
-    ? `${device.name} (${labels.contains_others})`
-    : device.name;
 
 /**
  * The whole-home aggregate, or `null` where the integration publishes none.

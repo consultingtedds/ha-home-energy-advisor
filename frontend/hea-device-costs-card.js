@@ -46,7 +46,8 @@ import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { drawsOnDark, tint } from "./hea-colour.js";
-import { containersAmong, nameOf, readDevices } from "./hea-devices.js";
+import { readDevices } from "./hea-devices.js";
+import { leavesOf } from "./hea-hierarchy.js";
 import {
   changeTone,
   currencyLabel,
@@ -383,22 +384,21 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * descend - a tall bar on a small fill is a device that ran mostly on
    * generation, which is worth seeing rather than sorting away.
    */
+  /**
+   * The bars, largest first.
+   *
+   * Drawn from the **leaves**: a circuit holding metered devices is replaced by
+   * the part of it nothing else accounts for, named for it. A bar for the circuit
+   * itself would draw the same energy twice - once in its own bar and once in the
+   * rows inside it - and a bar chart is exactly where a reader adds them up
+   * (HEA-153). The table shows the circuit as a subtotal instead, where a
+   * subtotal reads as one.
+   */
   _ranked() {
-    return [...(this._result?.devices ?? [])].sort(
+    return leavesOf(this._result?.devices ?? [], this._labels).sort(
       (left, right) =>
         right.actualCost - left.actualCost || left.name.localeCompare(right.name),
     );
-  }
-
-  /**
-   * What to call each device, saying which of them hold others (HEA-153).
-   *
-   * Taken from the whole device list rather than this card's ranking, for the
-   * same reason the colours are: a circuit is still a circuit when a filter has
-   * hidden what sits on it, and its bar is still only part of what it carried.
-   */
-  _nameFor(device) {
-    return nameOf(device, containersAmong(this._result?.devices ?? []), this._labels);
   }
 
   /**
@@ -410,9 +410,13 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * with the Sankey, which walks a different order again (HEA-101).
    */
   _colourFor(device) {
-    return device.untracked
-      ? this._colour(UNTRACKED_COLOUR)
-      : (this._colours().get(device.key) ?? PALETTE[0]);
+    if (device.untracked) return this._colour(UNTRACKED_COLOUR);
+    // A circuit's residual wears the circuit's own colour. It is part of that
+    // circuit, so the two read as one group - and the published list it would
+    // otherwise be looked up in has no such key, which would land every residual
+    // on the first colour in the palette, shared with whichever device has it.
+    const key = device.residualOf ?? device.key;
+    return this._colours().get(key) ?? PALETTE[0];
   }
 
   /** The household's whole device set, which is what makes a colour stable. */
@@ -538,7 +542,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return this._ranked().flatMap((device) => {
       const colour = this._colourFor(device);
       const outline = device.costSavings < 0 ? loss : colour;
-      const name = this._nameFor(device);
+      const name = device.name;
       return [
         {
           id: `${device.key}:paid`,
@@ -604,7 +608,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     return device
       ? tooltipFor(
           device,
-          this._nameFor(device),
+          device.name,
           locale,
           this._labels,
           (tone) => this._colour(TONE_COLOUR[tone]),
@@ -703,7 +707,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
       },
       yAxis: {
         type: "category",
-        data: this._ranked().map((device) => this._nameFor(device)),
+        data: this._ranked().map((device) => device.name),
         // Dearest at the top. A category axis counts up from the bottom, which
         // would stand the ranking on its head.
         inverse: true,
@@ -762,7 +766,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
               `${device.key}:saved`,
               ...(device.before ? [`${device.key}:before`] : []),
             ],
-            name: this._nameFor(device),
+            name: device.name,
             // The solid colour, not the fill: a wash of a hue is harder to tell
             // from its neighbour than the hue itself.
             itemStyle: { color: this._colourFor(device) },

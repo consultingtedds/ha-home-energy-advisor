@@ -37,7 +37,12 @@ import {
   freshAuth,
 } from "./ha-client.mjs";
 import { DEVICES } from "./house.mjs";
-import { cardText, stepBackOneDay, strandedCards } from "./browser.mjs";
+import {
+  cardText,
+  chartSeriesNames,
+  stepBackOneDay,
+  strandedCards,
+} from "./browser.mjs";
 import {
   CARD_TOLERANCE,
   RECONCILIATION_TOLERANCE,
@@ -353,13 +358,35 @@ async function figureChecks(page) {
     );
   });
 
-  await check("the device costs card names every tracked device", async () => {
-    const text = await cardText(page, "hea-device-costs-card");
-    const missing = DEVICES.filter((device) => !text.includes(device.name));
-    assert(
-      missing.length === 0,
-      `absent from the card: ${missing.map((device) => device.name).join(", ")}`,
-    );
+  await check("the device costs card draws a bar for every device it should", async () => {
+    // Asked of the card rather than of the screen: with a dozen devices the
+    // legend collapses its overflow behind a "more" chip (HEA-100), so reading
+    // the rendered text reports devices missing that were drawn.
+    const drawn = new Set(await chartSeriesNames(page, "hea-device-costs-card"));
+
+    // A circuit holding metered devices gets **no bar of its own**: one for it
+    // and one for each device inside it would draw the same energy twice, and a
+    // bar chart is where a reader adds them up. It gets a bar for the part of it
+    // nothing else accounts for, and the table carries the subtotal (HEA-153).
+    const containers = DEVICES.filter((device) => device.contains?.length);
+    const containerNames = new Set(containers.map((device) => device.name));
+
+    const missing = DEVICES.filter(
+      (device) => !containerNames.has(device.name) && !drawn.has(device.name),
+    ).map((device) => device.name);
+    assert(missing.length === 0, `no bar drawn for: ${missing.join(", ")}`);
+
+    for (const container of containers) {
+      assert(
+        drawn.has(`${container.name} Untracked`),
+        `expected a bar named "${container.name} Untracked"; drawn: ${[...drawn].join(", ")}`,
+      );
+      assert(
+        !drawn.has(container.name),
+        `"${container.name}" has its own bar as well as the devices inside it, ` +
+          `which draws that energy twice`,
+      );
+    }
   });
 
   await check("the devices card shows a figure for every device", async () => {

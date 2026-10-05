@@ -116,6 +116,43 @@ async function addDevice(token, entryId, device) {
 }
 
 /**
+ * Wait for one device's figures to exist before the next device is added.
+ *
+ * Carrying statistics is the test, not merely appearing in the list: a row is
+ * published as soon as the subentry exists, while the entities behind it are
+ * still being registered, and a row naming no statistics is one the seed would
+ * write nothing for.
+ *
+ * **Four minutes, which sounds absurd and is measured.** The first device on
+ * this instance took over a minute to publish its figures - a container on a
+ * bind-mounted Windows filesystem, reloading the entry and registering sixty-odd
+ * entities. Waiting for the answer costs minutes once; guessing short costs a
+ * whole run, and every failure this harness produced in a day was a budget that
+ * had been guessed rather than measured.
+ */
+async function waitForOneDevice(token, name, { timeoutMs = 240000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = await publishedDevices(token);
+    const row = rows.find((candidate) => candidate.name === name);
+    if (row && Object.keys(row.statistics ?? {}).length > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(
+    `Gave up waiting for ${name} to publish its figures. The entry may still be ` +
+      `reloading from the device added before it (HEA-192).`,
+  );
+}
+
+/** Every device row the integration is publishing, or `[]` before it does. */
+async function publishedDevices(token) {
+  const sensor = await entityIdForUniqueId(token, "_devices").catch(() => null);
+  if (!sensor) return [];
+  const state = await api(`/api/states/${sensor}`, token).catch(() => null);
+  return state?.attributes?.devices ?? [];
+}
+
+/**
  * Wait until the integration has caught up with the devices just added.
  *
  * Adding a device reloads the config entry, and the sensor that names every
@@ -205,8 +242,18 @@ export async function configureIntegration(token) {
   const entryId = entry.result.entry_id;
   console.log(`  household configured (${entryId})`);
 
+  // One at a time, and **waiting for each to arrive before adding the next**.
+  //
+  // Adding a subentry reloads the entry, and a reload on a real instance takes
+  // seconds - restoring the snapshot, re-reading every meter, creating helpers.
+  // Driving the API is fast enough that the next add lands while the last reload
+  // is still running, and on this instance that left seven devices of nine with
+  // no entities at all: configured, published in the device list, and carrying
+  // nothing (HEA-192). Nine stacked reloads is not a shape a household can
+  // produce by clicking, and it is not what this harness is here to test.
   for (const device of DEVICES) {
     await addDevice(token, entryId, device);
+    await waitForOneDevice(token, device.name);
     console.log(`  + ${device.name}`);
   }
 

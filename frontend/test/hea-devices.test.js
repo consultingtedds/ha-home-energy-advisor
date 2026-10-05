@@ -8,9 +8,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  containersAmong,
   DEVICES_SENSOR,
-  nameOf,
   readDevices,
   readLabelNames,
   readSettledUntil,
@@ -189,54 +187,23 @@ describe("readDevices", () => {
   });
 });
 
-describe("saying which device sits inside which", () => {
-  const circuit = aRow("kitchen_circuit", "Kitchen Circuit");
-  const dishwasher = aRow("dishwasher", "Dishwasher", {
-    upstream: "kitchen_circuit",
-  });
-  const fridge = aRow("fridge", "Fridge", { upstream: "kitchen_circuit" });
-  const kettle = aRow("kettle", "Kettle");
+describe("the link to what contains a device", () => {
+  it("passes the parent through as the key a card can match on", () => {
+    // Given - the integration publishes the parent's own row key, never the
+    // subentry id it holds the hierarchy by (ADR-0018)
+    const hass = aHass({
+      devices: [
+        aRow("kitchen_circuit", "Kitchen Circuit"),
+        aRow("dishwasher", "Dishwasher", { upstream: "kitchen_circuit" }),
+      ],
+    });
 
-  const nested = () =>
-    readDevices(aHass({ devices: [circuit, dishwasher, fridge, kettle] }));
-
-  it("finds the devices that hold others, from the children's own links", () => {
-    // Given / When - two devices declare the circuit; the kettle declares nothing
-    const containers = containersAmong(nested());
-
-    // Then - the circuit, once, and nothing else. Derived from the children
-    // because that is the direction the household declares it in
-    expect([...containers]).toEqual(["kitchen_circuit"]);
-  });
-
-  it("says a container's figure is the part nothing else accounts for", () => {
-    // Given - a clamp on a circuit reads everything downstream, so publishing it
-    // at what it used *itself* makes it read lower than the meter a household
-    // can see. The name is where that gets explained
-    const devices = nested();
-    const containers = containersAmong(devices);
-    const labels = { contains_others: "other" };
-
-    // When / Then - the circuit is renamed, and nothing else is
-    const named = Object.fromEntries(
-      devices.map((device) => [device.key, nameOf(device, containers, labels)]),
-    );
-    expect(named.kitchen_circuit).toBe("Kitchen Circuit (other)");
-    expect(named.dishwasher).toBe("Dishwasher");
-    expect(named.kettle).toBe("Kettle");
-  });
-
-  it("leaves every name alone on a household that declared no hierarchy", () => {
-    // Given / When - which is every household today, and the case that must not
-    // change by so much as a character
-    const devices = readDevices(aHass({ devices: [circuit, kettle] }));
-    const containers = containersAmong(devices);
-
-    // Then
-    expect(containers.size).toBe(0);
-    expect(nameOf(devices[0], containers, { contains_others: "other" })).toBe(
-      "Kitchen Circuit",
-    );
+    // When / Then - read through unchanged. What is *done* with it - the
+    // grouping, the subtotals, the residual row - is `hea-hierarchy.js`, which
+    // needs the figures and so cannot live here
+    const [circuit, dishwasher] = readDevices(hass);
+    expect(circuit.upstream).toBeNull();
+    expect(dishwasher.upstream).toBe("kitchen_circuit");
   });
 });
 

@@ -180,6 +180,34 @@ template:
           {{ (923 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
               / 3600 * 0.171) | round(3) }}
 
+      # --- Two breaker clamps ---------------------------------------------
+      # A clamp measures everything downstream of it, so these read *gross* -
+      # the appliances on the circuit plus whatever else is on it. The
+      # integration subtracts the children it has been told about, which is what
+      # makes engine mode worth running against this.
+      #
+      # 0.324 is the three kitchen appliances above (0.09 + 0.14 + 0.042) plus
+      # 0.052 of sockets and lighting. Change a child's rate and this has to move
+      # with it, or the circuit reads as though it carried less than its parts.
+      - name: Kitchen Circuit Energy
+        unique_id: demo_kitchen_circuit
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (1840 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.324) | round(3) }}
+
+      # Nothing tracked is on this one, so gross and net are the same figure.
+      - name: Garage Circuit Energy
+        unique_id: demo_garage_circuit
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (412 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.038) | round(3) }}
+
       - name: Wall Lights Power
         unique_id: demo_wall_lights
         device_class: power

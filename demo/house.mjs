@@ -200,6 +200,45 @@ export const DEVICES = [
     share: { grid: 0.01, generation: 0.96, battery: 0.03 },
     hours: [11, 16],
   },
+  {
+    name: "Kitchen Circuit",
+    source: "sensor.kitchen_circuit_energy",
+    kind: "energy",
+    area: "kitchen",
+    // A clamp on a breaker, with three of the devices above it on that circuit.
+    // `contains` is what the Energy Dashboard is told, and the integration reads
+    // the hierarchy from there rather than from anything of its own (HEA-168).
+    //
+    // **`weekKwh` here is what the circuit used *itself*** - its sockets and
+    // lighting, not the appliances. That is what the integration publishes for a
+    // device holding others, so it is what the seed has to write: the children
+    // are counted under their own names, and counting them here too would make
+    // every card disagree with the whole-home total.
+    //
+    // The clamp's own sensor reads the whole circuit, which is `configuration.yaml`'s
+    // business and is where engine mode gets a gross figure to net.
+    contains: ["Dishwasher", "Tumble Dryer", "Washing Machine"],
+    weekKwh: 8.8,
+    share: { grid: 0.54, generation: 0.34, battery: 0.12 },
+    hours: [7, 23],
+  },
+  {
+    name: "Garage Circuit",
+    source: "sensor.garage_circuit_energy",
+    kind: "energy",
+    area: "garage",
+    // The other half of the pair, and the control: a circuit with **nothing
+    // tracked on it**. It is an ordinary device, and the cards must leave it
+    // alone - no suffix, nothing indented under it - which is what makes the
+    // treatment of the circuit above legible rather than decorative.
+    //
+    // The Car Charger is in this room and is *not* on this circuit: an EV
+    // charger gets a dedicated one. Declaring it here would be the double count
+    // the README warns about (HEA-170), which is the household's to avoid.
+    weekKwh: 6.4,
+    share: { grid: 0.71, generation: 0.18, battery: 0.11 },
+    hours: [6, 22],
+  },
 ];
 
 /**

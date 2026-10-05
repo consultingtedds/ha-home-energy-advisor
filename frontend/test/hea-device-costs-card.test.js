@@ -124,31 +124,34 @@ describe("the bars", () => {
     expect(amountOf(saved.data[0])).toBe(1.0);
   });
 
-  it("says in the bar's own name that a circuit is only part of itself", async () => {
-    // Given - the aircon sits on the pump's circuit, so the pump's bar is what
-    // the circuit used itself. Home Assistant answers this by renaming the bar
-    // rather than drawing containment, and this copies that (HEA-153)
+  it("draws the part of a circuit nothing else covers, never the circuit itself", async () => {
+    // Given - the aircon sits on the pump's circuit. A bar for the circuit *and*
+    // bars for what is inside it would draw the same energy twice, and a bar
+    // chart is exactly where a reader adds them up. So the circuit becomes the
+    // part of it nothing else accounts for, and the table carries the subtotal
+    // instead, where a subtotal reads as one (HEA-153)
     const card = mount(
       aHass({
-        devices: [
-          PUMP,
-          { ...AIRCON, upstream: "cloud_polled_pump" },
-        ],
+        devices: [PUMP, { ...AIRCON, upstream: "cloud_polled_pump" }],
         response: THREE,
       }),
     );
     await ready(card);
 
-    // Then - the container's series carry the suffix, the child's do not
-    const [paid, saved] = deviceSeries(card, "cloud_polled_pump");
-    expect(paid.name).toBe("Cloud Polled Pump (other)");
-    expect(saved.name).toBe("Cloud Polled Pump (other)");
+    // Then - no bar belongs to the circuit itself
+    expect(deviceSeries(card, "cloud_polled_pump:")).toEqual([]);
+
+    // ...its residual has one, named for it
+    const [paid] = deviceSeries(card, "cloud_polled_pump__untracked");
+    expect(paid.name).toBe("Cloud Polled Pump Untracked");
+
+    // ...and the child keeps its own, unchanged
     expect(deviceSeries(card, "slow_poll_aircon")[0].name).toBe("Slow Poll Aircon");
 
-    // ...and the legend names it the same way, or the legend and the bars would
-    // disagree about what the household is looking at
-    expect(legendOf(card).data.map((entry) => entry.name)).toContain(
-      "Cloud Polled Pump (other)",
+    // ...and the legend names what is drawn, or it would offer a household a
+    // toggle for a bar that is not there
+    expect(legendOf(card).data.map((entry) => entry.name)).toEqual(
+      expect.arrayContaining(["Cloud Polled Pump Untracked", "Slow Poll Aircon"]),
     );
   });
 

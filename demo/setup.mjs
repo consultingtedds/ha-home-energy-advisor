@@ -175,7 +175,37 @@ function setEnergyPreferences(socket) {
         stat_energy_to: HOUSE.batteryCharge,
       },
     ],
-    device_consumption: [],
+    device_consumption: deviceConsumption(),
+  });
+}
+
+/**
+ * The devices, and which of them sit inside which.
+ *
+ * This is the **only** place the hierarchy is described. The integration reads
+ * `included_in_stat` from here and holds no copy of its own, so a demo that
+ * declared it anywhere else would be testing something the product does not do.
+ *
+ * Only energy-metered devices appear. A power-only device is tracked through an
+ * Integral helper whose entity id does not exist until the integration creates
+ * it, so there is nothing to name here at setup time - and nothing in the demo
+ * needs one nested.
+ */
+function deviceConsumption() {
+  const parentOf = new Map();
+  for (const device of DEVICES) {
+    for (const child of device.contains ?? []) {
+      parentOf.set(child, device.source);
+    }
+  }
+  return DEVICES.filter((device) => device.kind === "energy").map((device) => {
+    const parent = parentOf.get(device.name);
+    // Omitted rather than null for a device that sits inside nothing: Home
+    // Assistant validates this as a string and refuses the whole save over one
+    // null, which is how it tells you a device has no upstream.
+    return parent
+      ? { stat_consumption: device.source, included_in_stat: parent }
+      : { stat_consumption: device.source };
   });
 }
 

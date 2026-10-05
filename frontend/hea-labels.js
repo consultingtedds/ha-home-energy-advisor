@@ -110,11 +110,11 @@ export const DEFAULTS = Object.freeze({
   filter_labels: "Labels",
   filter_devices: "Devices",
   filter_unfiled: "Not in one",
-  // Suffixed in parentheses onto a device that contains others, so its figure
-  // reads as the part of it nothing else accounts for. The parentheses are the
-  // card's, as they are in Home Assistant's own chart, so a translation is the
-  // word alone.
-  contains_others: "other",
+  // Appended to a container's name to label the part of it nothing else
+  // accounts for - "Kitchen Circuit Untracked". Home Assistant's own device
+  // chart uses this word for the same quantity, which is reason enough to use
+  // theirs; a household meeting both should meet one word.
+  device_untracked: "Untracked",
   hourly_shape_estimate:
     "One device's hourly shape is an estimate: each meter reading is spread " +
     "across the hours it spanned, so cost may not land in the hour the energy " +

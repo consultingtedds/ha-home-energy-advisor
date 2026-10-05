@@ -27,7 +27,7 @@
 import { HeaCard } from "./hea-card-base.js";
 import { drawsOnDark } from "./hea-colour.js";
 import { CONCEPT_STYLE, swatch } from "./hea-concepts.js";
-import { containersAmong, nameOf } from "./hea-devices.js";
+import { groupedOf, leavesOf } from "./hea-hierarchy.js";
 import { changeTone, escapeText, savingTone } from "./hea-format.js";
 import { verdictScaleFor, verdictSentence } from "./hea-verdict-scale.js";
 
@@ -61,10 +61,14 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
   thead th:first-child, tbody th:first-child, tfoot th:first-child {
     padding-left: 14px;
   }
-  /* A device that sits inside another one, indented under it. Added to the
-     verdict band's own padding rather than replacing it, so the band stays where
-     it is on every row and only the name moves (HEA-153). */
+  /* A device that sits inside another one, indented under the row above it.
+     Added to the verdict band's own padding rather than replacing it, so the
+     band stays where it is on every row and only the name moves (HEA-153). */
   tbody th.inside { padding-left: 30px; }
+  /* A circuit's own meter, which contains the rows under it. Weighted like the
+     totals line it behaves like, so a reader can see it is a subtotal and not
+     another device competing with its own children. */
+  tbody tr.subtotal th, tbody tr.subtotal td { font-weight: 500; }
   /*
    * A device name gets its own line on a phone. Wrapping it saves width the
    * table does not need - it already scrolls sideways - and spends height it
@@ -155,10 +159,6 @@ export class HeaTableCard extends HeaCard {
   _body(locale) {
     const columns = this._columns();
     const verdict = this._verdictScale();
-    // Over every device the integration publishes, not just the rows shown: a
-    // circuit is still a circuit when a filter has hidden what sits on it, and
-    // its figure is still only part of what it carried.
-    const containers = containersAmong(this._result?.devices ?? []);
     return `
       <div class="scroll">
         <table>
@@ -166,7 +166,7 @@ export class HeaTableCard extends HeaCard {
             .map((column) => this._heading(column, locale))
             .join("")}</tr></thead>
           <tbody>${this._ranked()
-            .map((device) => this._row(device, locale, verdict, containers))
+            .map(({ device, depth }) => this._row(device, locale, verdict, depth))
             .join("")}</tbody>
           <tfoot>${this._total(locale, verdict)}</tfoot>
         </table>
@@ -225,55 +225,49 @@ export class HeaTableCard extends HeaCard {
   }
 
   /** Largest first, and by name where two devices tie. */
-  _ranked() {
+  _rank(rows) {
     const { sorts, defaultSort } = this.constructor;
     const { field } = sorts[this._config?.sort_by ?? defaultSort];
-    return [...(this._result?.devices ?? [])].sort(
+    return [...rows].sort(
       (left, right) =>
         right[field] - left[field] || left.name.localeCompare(right.name),
     );
   }
 
-  _row(device, locale, verdict, containers) {
-    return `<tr>${this._columns()
-      .map((column) =>
-        this._cell(column, device, locale, verdict?.(device), containers),
-      )
+  /**
+   * The rows to draw, each with how deep it sits.
+   *
+   * Grouped before ranked, so a device inside a circuit is drawn under *that*
+   * circuit rather than wherever its cost puts it. Ranking alone and indenting
+   * the children says something false: the reader sees the row above, and the
+   * row above is whatever happened to cost a similar amount (HEA-153).
+   */
+  _ranked() {
+    return groupedOf(this._result?.devices ?? [], this._labels, (rows) =>
+      this._rank(rows),
+    );
+  }
+
+  _row(device, locale, verdict, depth) {
+    // A subtotal carries the rows beneath it, so it must not be read as one of
+    // them: it is the circuit's own meter, and adding it to its children would
+    // count that energy twice.
+    const kind = device.subtotal ? ' class="subtotal"' : "";
+    return `<tr${kind}>${this._columns()
+      .map((column) => this._cell(column, device, locale, verdict?.(device), depth))
       .join("")}</tr>`;
   }
 
-  _cell(
-    { field, derive, format, tone, carriesVerdict },
-    device,
-    locale,
-    verdict,
-    containers,
-  ) {
+  _cell({ field, derive, format, tone, carriesVerdict }, device, locale, verdict, depth) {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) {
-      return `<th scope="row"${this._nesting(device)}${edgeOf(verdict)}>${escapeText(
-        this._nameOf(device, containers),
-      )}</th>`;
+      const inside = depth ? ' class="inside"' : "";
+      return `<th scope="row"${inside}${edgeOf(verdict)}>${escapeText(device.name)}</th>`;
     }
     const value = derive ? derive(device) : device[field];
     const mark = carriesVerdict ? this._verdictOn(verdict, locale) : "";
     return `<td${classFor(field, tone, value)}${mark}>${format(value, locale)}</td>`;
-  }
-
-  /**
-   * A row's name, saying so where its figure is only part of what it carried.
-   *
-   * Falls back to the field for the rows that are not devices - the totals line
-   * has no key and contains nothing.
-   */
-  _nameOf(device, containers) {
-    return containers ? nameOf(device, containers, this._labels) : device.name;
-  }
-
-  /** Indented where this device sits inside another one on the table. */
-  _nesting(device) {
-    return device.upstream ? ' class="inside"' : "";
   }
 
   _total(locale, verdict) {
@@ -333,7 +327,11 @@ export class HeaTableCard extends HeaCard {
         }),
       ),
     ];
-    const rows = this._result?.devices ?? [];
+    // The leaves, never the rows as drawn. A container is shown at what its own
+    // meter reads, which already contains the rows beneath it, so adding the
+    // table's visible rows would count a circuit's energy twice over - the one
+    // error ADR-0002 will not trade for anything.
+    const rows = leavesOf(this._result?.devices ?? [], this._labels);
     const sum = (of) =>
       rows.reduce(
         (totals, device) => {
