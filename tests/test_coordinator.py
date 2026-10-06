@@ -1344,12 +1344,28 @@ async def test_a_household_whose_energy_data_cannot_be_read_still_sets_up(
     ):
         await hass.config_entries.async_setup(entry.entry_id)
         await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+        hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+        hass.states.async_set(CIRCUIT_ENTITY, "0.6", _ENERGY)
+        hass.states.async_set("sensor.coarse_step_energy", "0.4", _ENERGY)
+        await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+        async_fire_time_changed(hass, fire_all=True)
+        await hass.async_block_till_done()
 
     # Then - the integration loads and accounts normally. Nesting is an
     # improvement on the figures, never a precondition for them, so a household
     # who has never opened the Energy Dashboard must not be held up by it.
+    #
+    # Which means these are the *flat* figures, the same ones
+    # `test_a_household_that_declares_no_hierarchy_is_accounted_flat` pins: each
+    # device books its own counter, un-netted. Had the unreadable manager left
+    # the engine believing a hierarchy it could not read, the circuit would book
+    # 0.2 here instead of 0.6.
     assert entry.state is ConfigEntryState.LOADED
-    assert entry.runtime_data.data is not None
+    circuit, aircon = (entry.runtime_data.data.devices[sub] for sub in entry.subentries)
+    assert circuit.energy_kwh == Decimal("0.6")
+    assert aircon.energy_kwh == Decimal("0.4")
 
 
 def _nesting_listener(manager: MagicMock) -> Callable[[], Awaitable[None]]:
