@@ -588,14 +588,32 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
-- **HEA-187** - a quarter of the test suite's assertions are in forms that can be
-  vacuous, and 57 are confirmed to assert only that something exists. Written
-  steadily since July while the standard required otherwise. Scheduled after the
-  current feature because it is substantial.
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
+- **HEA-195** - a restart was thought to un-publish up to five minutes of the
+  whole-home total. Measured on 2026-10-06 across six demo restarts and one on
+  the reference instance: **a clean restart loses nothing**, because Home
+  Assistant rewrites its restore cache on the way down. What is left is the one
+  sample taken during a HACS *update*, which takes the reload path rather than the
+  stop path, and that waits on the next release to observe.
+- **HEA-193** - the demo harness cannot tell a house still building from one that
+  has stalled, so a slow container reads as a broken one. Nominally blocked by
+  HEA-192, which is now a single unexplained observation at Low.
 - **GitHub #22 and #29** remain open with their reporters.
+
+Closed since:
+
+- **HEA-187** - the generic-assertion audit, closed 2026-10-02 as mostly
+  addressed, with the standard rather than a sweep as the live obligation.
+  Re-measured on 2026-10-06 against the same classification: 53 of the original
+  57 still match, but almost all of those are narrowing guards - either inside a
+  helper whose caller asserts the value, or followed by an assertion on a value
+  derived from the one guarded. **One was genuinely vacuous** and is fixed: the
+  test claiming a household accounts normally when the Energy Dashboard cannot be
+  read asserted only that its data existed, and never drove an interval, so it
+  passed with every figure zero. The count is a search space, not a defect count,
+  and that remains true in both directions.
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled. Epics 9 and 10 run whenever

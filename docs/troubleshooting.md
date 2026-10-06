@@ -24,6 +24,28 @@ This is expected, and it takes a while.
 If the sensors still read zero after an hour, look for a notification from Home
 Energy Advisor, or see the next entry.
 
+## Nothing moves for about twenty minutes after a restart or an update
+
+Every figure holds the value it had before, then carries on from there. Usually
+about fifteen minutes, and up to twenty.
+
+It is the same wait as a new setup, for the same reason: a stretch of time is
+only counted once it is twenty minutes old, because some device sensors report
+their energy late and it waits for them. A restart means waiting for a fresh
+stretch before anything can be published, so until then each figure shows what
+it last published.
+
+- **The figures are not wrong.** They are what your house had used up to the
+  restart, and counting carries on from exactly there rather than starting again.
+- **It happens after an update too**, because installing a new version means
+  restarting.
+- **The dashboard can take longer than the sensors** - up to the next hour
+  boundary - because its cards read Home Assistant's hourly statistics.
+
+A figure that has not moved an hour later is something else: see
+[A device's figures have stopped moving](#a-devices-figures-have-stopped-moving)
+if it is one device, or the entry above if it is all of them.
+
 ## A device stays at zero
 
 - **It may simply not have run.** A heater in summer, or an appliance that has
