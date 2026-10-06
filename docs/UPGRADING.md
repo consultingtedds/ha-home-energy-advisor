@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.7.1
 
 **If you turned on per-device cost ranges, the "Paid (min-max)" column will
 appear on Cost by device.** It should have been there since the option existed
