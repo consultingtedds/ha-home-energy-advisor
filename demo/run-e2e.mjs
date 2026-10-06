@@ -183,6 +183,10 @@ async function main() {
   await waitForHomeAssistant();
 
   const outcomes = [];
+  // A pass that could not run leaves a half-built house behind. Under `--keep`
+  // that is indistinguishable from a working one until the cards are opened, and
+  // it cost the maintainer ten minutes looking at an empty dashboard (HEA-193).
+  let houseUsable = true;
   try {
     for (const language of languages) {
       // Each pass reports rather than throws, so a Spanish failure still gets
@@ -193,13 +197,21 @@ async function main() {
         passed = await pass(language, engineMode);
       } catch (error) {
         console.log(`  ${language} pass could not run: ${error.message}`);
+        houseUsable = false;
       }
       outcomes.push({ language, passed });
     }
   } finally {
     if (keep) {
       console.log("");
-      console.log("Instance left running (--keep). `node demo/reset.mjs` when done.");
+      if (houseUsable) {
+        console.log("Instance left running (--keep). `node demo/reset.mjs` when done.");
+      } else {
+        console.log("Instance left running (--keep), but a pass could not run, so");
+        console.log("THE HOUSE IT HOLDS IS INCOMPLETE - its dashboard will be missing");
+        console.log("devices, and that is the failure above rather than a card defect.");
+        console.log("`node demo/reset.mjs` to start again.");
+      }
     } else {
       console.log("");
       console.log("Tearing the instance down...");

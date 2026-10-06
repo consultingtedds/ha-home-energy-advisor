@@ -20,6 +20,8 @@
 
 import { DEVICES, HOUSE } from "./house.mjs";
 import { BASE_URL, entityIdForUniqueId } from "./ha-client.mjs";
+import { describeHouse } from "./diagnose.mjs";
+import { giveUpReport, hasFigures, noted } from "./progress.mjs";
 
 const DOMAIN = "home_energy_advisor";
 
@@ -132,15 +134,23 @@ async function addDevice(token, entryId, device) {
  */
 async function waitForOneDevice(token, name, { timeoutMs = 240000 } = {}) {
   const deadline = Date.now() + timeoutMs;
+  let listed = false;
   while (Date.now() < deadline) {
     const rows = await publishedDevices(token);
     const row = rows.find((candidate) => candidate.name === name);
-    if (row && Object.keys(row.statistics ?? {}).length > 0) return;
+    listed = row !== undefined;
+    if (row && hasFigures(row)) return;
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  // Which of the two it is decides where to look, so say it rather than leaving
+  // both open (HEA-193).
   throw new Error(
-    `Gave up waiting for ${name} to publish its figures. The entry may still be ` +
-      `reloading from the device added before it (HEA-192).`,
+    listed
+      ? `Gave up waiting for ${name}: it is published in the device list and ` +
+        "carries no statistics, so its entities were never registered " +
+        "(HEA-192). The seed would write nothing for it."
+      : `Gave up waiting for ${name}: it never reached the device list at all. ` +
+        "The entry may still be reloading from the device added before it.",
   );
 }
 
@@ -167,8 +177,15 @@ async function publishedDevices(token) {
  * device rather than for any.
  */
 async function waitForDevices(token, expected, { timeoutMs = 180000 } = {}) {
-  const deadline = Date.now() + timeoutMs;
-  let listed = 0;
+  const started = Date.now();
+  const deadline = started + timeoutMs;
+  // Tracked with the moment each count last *changed*, not just its value, so
+  // giving up can say how long a thing has been stuck rather than implying it is
+  // nearly there. Saying "still moving" while the device count had not moved for
+  // a quarter of an hour is the defect this fixes (HEA-193).
+  let devices = noted(null, 0, started);
+  let helpers = noted(null, -1, started);
+  let rows = [];
   let stableHelpers = 0;
   let previousHelpers = -1;
 
@@ -180,12 +197,12 @@ async function waitForDevices(token, expected, { timeoutMs = 180000 } = {}) {
     const sensor = devicesSensor
       ? await api(`/api/states/${devicesSensor}`, token).catch(() => null)
       : null;
-    const rows = sensor?.attributes?.devices ?? [];
+    rows = sensor?.attributes?.devices ?? [];
     // Every row must carry its statistic ids too. A row that exists but names
     // no statistics is one the seed would write nothing for, and the card would
     // come up a device short with nothing on the page to say why.
-    const ready = rows.filter((row) => Object.keys(row.statistics ?? {}).length > 0);
-    listed = ready.length;
+    const listed = rows.filter(hasFigures).length;
+    devices = noted(devices, listed, Date.now());
 
     // The devices sensor is necessary and nowhere near sufficient. It publishes
     // while the integration is still creating the native helpers that carry the
@@ -197,22 +214,32 @@ async function waitForDevices(token, expected, { timeoutMs = 180000 } = {}) {
     // So wait for the helper count to stop moving. Stability is the honest
     // signal; a fixed number would encode today's device list and cycle options
     // into the harness and go quietly wrong the day either changes.
-    const helpers = await countHelpers(token);
-    stableHelpers = helpers === previousHelpers ? stableHelpers + 1 : 0;
-    previousHelpers = helpers;
+    const count = await countHelpers(token);
+    helpers = noted(helpers, count, Date.now());
+    stableHelpers = count === previousHelpers ? stableHelpers + 1 : 0;
+    previousHelpers = count;
 
     // The devices plus the Untracked remainder the integration derives itself.
-    if (listed >= expected + 1 && stableHelpers >= 3) {
-      console.log(`  ${helpers} native helpers created, and the count has settled`);
+    if (devices.value >= expected + 1 && stableHelpers >= 3) {
+      console.log(`  ${count} native helpers created, and the count has settled`);
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
   }
-  throw new Error(
-    `Gave up waiting: ${listed} of ${expected + 1} devices on the devices ` +
-      `sensor, ${previousHelpers} helpers and still moving. Seeding against ` +
-      "this would produce cards with devices missing.",
-  );
+
+  // Everything a diagnosis needs, before the throw rather than after it: this
+  // failure used to be re-investigated from scratch every time it happened.
+  const report = giveUpReport({
+    expectedNames: DEVICES.map((device) => device.name),
+    rows,
+    devices,
+    helpers,
+    now: Date.now(),
+    waitedMs: Date.now() - started,
+  });
+  console.log(report);
+  await describeHouse(token);
+  throw new Error(report.split("\n")[0]);
 }
 
 /** How many native helpers the integration has created so far. */
