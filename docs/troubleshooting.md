@@ -26,8 +26,11 @@ Energy Advisor, or see the next entry.
 
 ## Nothing moves for about twenty minutes after a restart or an update
 
-Every figure holds the value it had before, then carries on from there. Usually
-about fifteen minutes, and up to twenty.
+Every figure holds the value it had before, then carries on from there. Up to
+twenty minutes, and often much less - sometimes under a minute. How long depends
+on how recently Home Energy Advisor last saved its position, which is not
+something you can see or influence, so the wait is worth expecting rather than
+timing.
 
 It is the same wait as a new setup, for the same reason: a stretch of time is
 only counted once it is twenty minutes old, because some device sensors report
