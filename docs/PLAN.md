@@ -495,10 +495,19 @@ HEA has the same gap, and it matters more here: allocation is proportional, so a
 device counted twice does not produce one wrong figure, it shifts every other
 device's share (ADR-0002).
 
-1. Exclude a nested device's energy from its upstream device's figures (HEA-151).
-   **The netting shipped**; the *gross* half - publishing what a breaker really
-   carried alongside what it used itself - is shelved pending anyone asking for
-   it, so the ticket stays open on that alone
+1. Exclude a nested device's energy from its upstream device's figures (HEA-151) -
+   **shipped, and closed 2026-10-06.** The netting shipped first; the *gross* half
+   is **declined** rather than shelved, and the reasoning sits in
+   `frontend/hea-hierarchy.js` where it applies: a roll-up a card computes per
+   render is not worth four permanent sensors per container (ADR-0003), and Home
+   Assistant's own device chart computes gross and net and publishes neither.
+
+   The ticket had the shape backwards, which is worth keeping. It assumed the
+   existing sensors were gross and that net would need new ones. It is the other
+   way round: **net is what is published**, because net is what sums to the
+   household, and gross is a presentation of it. If gross is ever wanted outside a
+   card, a `grossEnergyUsed` field on the devices sensor's rows carries no entity
+   and no statistics, and that is a new ticket when somebody asks.
 2. Derive whole-home and Untracked from root-level gross readings only, or the
    remainder double-counts everything nested (HEA-152) - **shipped**, and pinned
    by an invariant test rather than an example
@@ -539,9 +548,10 @@ device's share (ADR-0002).
    everything else and only if a simulation says a switch is worth offering).
 
 **The accounting was complete at 0.4.0; the presentation is complete at 0.7.0.**
-Items 1-5 shipped between 2026-09-19 and 2026-09-25. What is left is item 1's
-gross *entity*, which nobody has asked for and which the subtotal above may have
-made unnecessary, and HEA-191, which is deliberately last.
+Items 1-5 shipped between 2026-09-19 and 2026-09-25, and item 1 closed on
+2026-10-06 once the gross entity was declined rather than left pending. **What is
+left is HEA-191 alone**, which is deliberately last and starts with a simulation
+that may say it is not worth building.
 
 ### Epic 11 - Stabilising on households that are not this one
 
