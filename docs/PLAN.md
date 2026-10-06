@@ -549,9 +549,12 @@ device's share (ADR-0002).
 
 **The accounting was complete at 0.4.0; the presentation is complete at 0.7.0.**
 Items 1-5 shipped between 2026-09-19 and 2026-09-25, and item 1 closed on
-2026-10-06 once the gross entity was declined rather than left pending. **What is
-left is HEA-191 alone**, which is deliberately last and starts with a simulation
-that may say it is not worth building.
+2026-10-06 once the gross entity was declined rather than left pending.
+
+**This epic is closed (2026-10-06).** HEA-191 moved out of it rather than holding
+it open: a speculative follow-on nobody has asked for, whose own first step is a
+simulation that may conclude it is not worth building, was making six shipped
+items look unfinished. It stands on its own now, still deliberately last.
 
 ### Epic 11 - Stabilising on households that are not this one
 
@@ -607,7 +610,13 @@ Carried forward rather than closed:
   Assistant rewrites its restore cache on the way down. What is left is the one
   sample taken during a HACS *update*, which takes the reload path rather than the
   stop path, and that waits on the next release to observe.
-- **GitHub #22 and #29** remain open with their reporters.
+- **GitHub #22, #29 and #34** remain open with their reporters. **#34 was not
+  recorded anywhere until 2026-10-06**, two days after it was raised and with no
+  reply on it: a household on 0.6.0 seeing Battery Losses of about 2.5 kWh in a
+  day against a 14.33 kWh battery, which is far above a round-trip loss. HEA-196
+  carries it, and their own hypothesis is the interesting one - their inverter
+  publishes a *changing* usable-capacity sensor while the setting takes a static
+  number, and capacity is what a level in percent is converted through.
 
 Closed since:
 
