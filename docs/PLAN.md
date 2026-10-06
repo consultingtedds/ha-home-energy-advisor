@@ -607,12 +607,23 @@ Carried forward rather than closed:
   Assistant rewrites its restore cache on the way down. What is left is the one
   sample taken during a HACS *update*, which takes the reload path rather than the
   stop path, and that waits on the next release to observe.
-- **HEA-193** - the demo harness cannot tell a house still building from one that
-  has stalled, so a slow container reads as a broken one. Nominally blocked by
-  HEA-192, which is now a single unexplained observation at Low.
 - **GitHub #22 and #29** remain open with their reporters.
 
 Closed since:
+
+- **HEA-193** - the demo harness could not tell a house still building from one
+  that had stalled, so a slow container read as a broken one and the suite ran at
+  one pass in five. **Shipped 2026-10-06.** It now names the devices that are not
+  ready and splits them by cause, says "unchanged for 3m 1s" where nothing is
+  moving instead of claiming progress, prints the entry's state, settings,
+  snapshot age and entities per subentry on giving up, and says plainly when the
+  house left behind by `--keep` is incomplete. The verdict is pure and tested,
+  because the defect was a message. A full two-language run passed afterwards,
+  including the Spanish pass that had not completed at all on the day it was
+  raised.
+- **HEA-151** - closed 2026-10-06 with nothing built. Everything it asked for had
+  shipped under HEA-152, HEA-168, HEA-169 and HEA-153, tests included; its one
+  remaining item, the gross entity, was declined. See Epic 10 item 1 above.
 
 - **HEA-187** - the generic-assertion audit, closed 2026-10-02 as mostly
   addressed, with the standard rather than a sweep as the live obligation.

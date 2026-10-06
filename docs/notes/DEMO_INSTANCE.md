@@ -222,6 +222,15 @@ README makes in words.
   figures. Two of those failures were diagnosed as a stall that was not one. The
   device loop now waits for each device to publish before adding the next, with
   four minutes to do it, and a full two-language run takes about forty.
+- **A wait that gives up now says which it is** (HEA-193). It names the devices
+  that are not ready and separates those missing from the list from those listed
+  while carrying no statistics, which are different causes. It says "unchanged for
+  3m 1s" where nothing has moved rather than implying progress, and prints the
+  entry's state, its settings, the accounting snapshot's age and entities per
+  subentry, so a failure can be read without writing a probe against the
+  container. A subentry at zero entities is marked. Under `--keep` it says when
+  the house it leaves behind is incomplete, because an empty dashboard otherwise
+  looks like a card defect.
 - **Two of the devices are breaker clamps**, which exist to exercise the
   hierarchy (HEA-153). One has three metered appliances on it plus its own load;
   the other has nothing on it and is the control, because a feature that treats
