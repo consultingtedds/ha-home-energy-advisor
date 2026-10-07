@@ -604,21 +604,82 @@ Carried forward rather than closed:
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
-- **HEA-195** - a restart was thought to un-publish up to five minutes of the
-  whole-home total. Measured on 2026-10-06 across six demo restarts and one on
-  the reference instance: **a clean restart loses nothing**, because Home
-  Assistant rewrites its restore cache on the way down. What is left is the one
-  sample taken during a HACS *update*, which takes the reload path rather than the
-  stop path, and that waits on the next release to observe.
-- **GitHub #22, #29 and #34** remain open with their reporters. **#34 was not
-  recorded anywhere until 2026-10-06**, two days after it was raised and with no
-  reply on it: a household on 0.6.0 seeing Battery Losses of about 2.5 kWh in a
-  day against a 14.33 kWh battery, which is far above a round-trip loss. HEA-196
-  carries it, and their own hypothesis is the interesting one - their inverter
-  publishes a *changing* usable-capacity sensor while the setting takes a static
-  number, and capacity is what a level in percent is converted through.
+- **GitHub #22 and #29** remain open with their reporters.
+- **HEA-199** - the battery's loss reads about 17% low even with every meter
+  agreeing, found while replaying HEA-196 and untouched by it, since that cap only
+  reduces. Systematic rather than noisy, which points at the measurement; the
+  first thing to establish is whether it is the replay's unflushed tail rather
+  than the engine.
+- **HEA-200** - whether a household should be told their meters disagree.
+  `loss_refused_kwh` is the only signal that can say so, and it reaches nobody
+  outside a diagnostics download. Argued both ways on the ticket: a standing
+  condition is exactly what should not become a Repair, and after HEA-196 their
+  figures are right either way.
+- **HEA-201** - whether the cost range should default to the rollover or the
+  column, which HEA-197 may have settled by narrowing the band so far that the
+  objection to the column no longer applies. Needs 0.7.2 deployed to judge, and is
+  a matter of what reads well rather than anything measurable.
 
 Closed since:
+
+- **HEA-196, HEA-197 and HEA-198** - the three fixes awaiting release as 0.7.2,
+  all of them downstream of one household's report and one afternoon's
+  measurement. Worth reading together, because each changed what the next was
+  about.
+
+  **HEA-196: battery loss overstated fourfold.** GitHub #34, raised 2026-10-04 and
+  recorded nowhere for two days. Their own inverter counters bound the loss at
+  0.70 kWh over a window where we published 2.82. The cause was not their
+  configured capacity, which was the reporter's hypothesis and then mine - it is
+  that the loss is a **residual of four house meters**, so every disagreement
+  between them is attributed to the battery. A 4% over-read on one of them moves
+  the published figure by 50%, and it scales with generation rather than with the
+  battery, which is why a large array and a small battery produce a large
+  multiple. Now capped at `charge - discharge - gain`, from the metered totals
+  rather than the ledger's write-down: that write-down looks like the same
+  quantity and is not, because `_loss_ceiling` already caps it against the same
+  house balance, and `reconcile` being down-only leaves it at zero for ever on a
+  battery that was not empty at install. Both were tried and measured first. The
+  excess is **refused rather than carried**, against ADR-0015's instinct, because
+  it is a metering disagreement and not energy that arrived late; what was refused
+  is counted in the diagnostics, which tells a household with inconsistent meters
+  apart from one whose accounting is wrong.
+
+  **HEA-197: the cost range was infeasible, not merely wide.** A device reporting
+  hourly spans twelve slices, and the range priced its whole step at the cheapest
+  and at the dearest. But a step is spread in proportion to what each slice
+  consumed, so a slice where the house used 0.1 kWh never receives a whole
+  kilowatt-hour - the old floor described a distribution the allocation excludes.
+  Measured at 0.0030 against a published 0.27030. Now bounded over feasible
+  spreads, which lifted that floor ninety-fold and left the ceiling untouched,
+  because it binds only where capacity binds.
+
+  **HEA-198: the range moved to a rollover on Paid, with the column a choice.**
+  0.7.1 made the column appear for the first time and it read as a second
+  headline. A focusable span, revealed on hover, focus **and tap**, because a tap
+  gives focus where it can never produce a hover and a dashboard is read on a
+  phone. Home Assistant's own tooltip element was rejected on ADR-0013's decision
+  3: a component that fails to load would make the range unreachable rather than
+  plain, and a chart earns that risk where a small reveal does not.
+
+  Three things about how this went, rather than what shipped. **The reporter was
+  right and I twice told them otherwise** - first that their battery settings were
+  unconfigured, inferred from a diagnostics block that never carries them, and
+  that draft was nearly sent. **Two guard tests caught real omissions** that the
+  affected files' own tests had passed: the snapshot field classifier and the
+  diagnostics key set. And **CI caught a stale bundle** after five local gates
+  came back green, because `npm run build` is not among them - which
+  `CONTRIBUTING.md` says plainly and I did not follow.
+
+- **HEA-195** - a restart was thought to un-publish up to five minutes of the
+  whole-home total. **Closed 2026-10-06 having measured the premise away.** Six
+  demo restarts, one on the reference instance with 0.139972 kWh deliberately at
+  stake, and the 0.7.1 HACS update itself: **none lost anything**, because Home
+  Assistant rewrites its restore cache at stop. Only an outright SIGKILL loses,
+  and that bound is 15 minutes of draw - `STATE_DUMP_INTERVAL`, confirmed
+  empirically on the live instance. The original 0.179 kWh sample is closed
+  unexplained rather than resolved, with the two observations that would reopen it
+  written down.
 
 - **HEA-193** - the demo harness could not tell a house still building from one
   that had stalled, so a slow container read as a broken one and the suite ran at
