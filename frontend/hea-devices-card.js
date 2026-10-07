@@ -111,10 +111,32 @@ const CHANGE = {
   tone: "actualCost",
 };
 
+/**
+ * What was paid, with what it could honestly have been behind it.
+ *
+ * The range used to be a column of its own, and a column puts an uncertainty
+ * band at the same weight as the figure it qualifies - which read as a second
+ * headline rather than as a footnote about the first (HEA-198). It is a rollover
+ * on Paid by default, which is where it was first asked for, and the column
+ * remains available to anyone who wants to sort or scan by it.
+ */
+const PAID = {
+  field: "actualCost",
+  label: "paid",
+  format: formatMoney,
+  reveal: (row, locale) => {
+    if (!offersARange(row) || !RANGE.fields.every((f) => Number.isFinite(row[f]))) {
+      return null;
+    }
+    const range = formatMoneyRange(RANGE.derive(row), locale);
+    return { text: range, label: `${formatMoney(row.actualCost, locale)} (${range})` };
+  },
+};
+
 const COLUMNS = [
   { field: "name", label: "device" },
   { field: "energyUsed", label: "energy", format: formatEnergy },
-  { field: "actualCost", label: "paid", format: formatMoney },
+  PAID,
   CHANGE,
   RANGE,
   // The one column that carries how well the device did, not just what it came
@@ -191,10 +213,18 @@ class HeaDevicesCard extends HeaTableCard {
    * put.
    */
   _columns() {
+    // Opt-in now, and a rollover on Paid otherwise. The band is still dropped
+    // entirely where no row can carry one, which is the condition HEA-194 fixed
+    // and this does not reopen (HEA-198).
+    const asColumn = this._config?.range === "column" && this._hasEveryBound();
     const dropped = new Set();
-    if (!this._hasEveryBound()) dropped.add(RANGE);
+    if (!asColumn) dropped.add(RANGE);
     if (!this._hasComparison()) dropped.add(CHANGE);
-    return COLUMNS.filter((column) => !dropped.has(column));
+    return COLUMNS.filter((column) => !dropped.has(column)).map((column) =>
+      // Shown once or the other way, never both: a rollover repeating the column
+      // beside it is noise, and the column is the explicit request.
+      column === PAID && asColumn ? { ...PAID, reveal: undefined } : column,
+    );
   }
 
   /**
@@ -252,7 +282,25 @@ class HeaDevicesCard extends HeaTableCard {
  */
 class HeaDevicesCardEditor extends HeaCardEditor {
   _extraSchema() {
-    return sortSchemaFor(SORTS, labelsFor(this._hass));
+    const labels = labelsFor(this._hass);
+    return [
+      ...sortSchemaFor(SORTS, labels),
+      // Offered rather than decided, because the two readings trade off: a
+      // rollover keeps Paid as the single figure on the row, and a column can be
+      // sorted and read down the page (HEA-198, HEA-100's precedent).
+      {
+        name: "range",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "rollover", label: labels.editor_range_rollover },
+              { value: "column", label: labels.editor_range_column },
+            ],
+          },
+        },
+      },
+    ];
   }
 }
 

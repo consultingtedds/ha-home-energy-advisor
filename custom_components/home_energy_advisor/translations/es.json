@@ -353,6 +353,9 @@
     "card_editor_sort_by": "Ordenar por",
     "card_editor_layout": "Disposición",
     "card_editor_metric": "Medir por",
+    "card_editor_range": "Mostrar el rango de coste como",
+    "card_editor_range_rollover": "Al pasar sobre Pagado",
+    "card_editor_range_column": "Su propia columna",
     "card_still_accruing": "El último intervalo aún se está contando, así que su barra crecerá. Las cifras están completas unos veinte minutos por detrás del reloj, que es el tiempo que se da a los contadores para informar."
   }
 }

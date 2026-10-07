@@ -55,6 +55,26 @@ and cannot be undone.
 
 Nothing to configure, and no other figure changes.
 
+**The cost range on Cost by device is now narrower, and it has moved.** Two
+changes to the same thing.
+
+It was far too wide. A device whose counter reports once an hour could have used
+that energy in any of twelve five-minute slices, and the range priced all of it at
+the cheapest slice and at the dearest - which included slices where your house
+barely used anything at all, so the energy could not have been there. One device
+read "paid 0.39, range 0.04 to 0.86". The range now covers only where the energy
+can actually have been, which on that device lifts the bottom of the range by
+roughly ninety times.
+
+**And it is a rollover on Paid rather than a column.** 0.7.1 made the column
+appear for the first time, and a column puts the range at the same weight as the
+figure it qualifies, which reads as a second headline. Hover over a Paid figure,
+or tap it on a phone, and the range appears beside it. If you preferred the
+column, it is still there: edit the card and set **Show the cost range as** to
+**Its own column**.
+
+Only the range moved. What you paid is unchanged.
+
 ## 0.7.1
 
 **If you turned on per-device cost ranges, the "Paid (min-max)" column will

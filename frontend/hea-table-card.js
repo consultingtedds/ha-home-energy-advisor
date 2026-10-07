@@ -52,6 +52,35 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
       radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.18), transparent) 0 0 / 12px 100% no-repeat scroll,
       radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.18), transparent) 100% 0 / 12px 100% no-repeat scroll;
   }
+  /*
+   * A figure carrying something extra, shown on hover, focus or tap (HEA-198).
+   *
+   * The focus rule is what makes it reachable at all on a touch screen and by
+   * keyboard, so it is not decoration beside the hover one - it is the half that
+   * works where most dashboards are read. The outline is left to the browser.
+   *
+   * Note for anyone editing this: a CSS comment here cannot quote a selector in
+   * backticks, because this whole block is a template literal and a backtick
+   * ends it. That mistake parsed as a syntax error in the module, not as CSS.
+   */
+  .reveal {
+    cursor: help;
+    text-decoration: underline dotted
+      var(--secondary-text-color, rgba(0, 0, 0, 0.54));
+    text-underline-offset: 3px;
+  }
+  .revealed {
+    display: none;
+    margin-left: 0.5em;
+    color: var(--secondary-text-color);
+    font-size: 0.85em;
+    font-variant-numeric: tabular-nums;
+  }
+  .reveal:hover .revealed,
+  .reveal:focus .revealed,
+  .reveal:focus-within .revealed {
+    display: inline;
+  }
   table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
   th, td { padding: 6px 8px; text-align: right; white-space: nowrap; }
   th:first-child, td:first-child { text-align: left; white-space: normal; }
@@ -259,7 +288,7 @@ export class HeaTableCard extends HeaCard {
   }
 
   _cell(
-    { field, derive, format, tone, carriesVerdict },
+    { field, derive, format, tone, carriesVerdict, reveal },
     device,
     locale,
     verdict,
@@ -273,7 +302,29 @@ export class HeaTableCard extends HeaCard {
     }
     const value = derive ? derive(device) : device[field];
     const mark = carriesVerdict ? this._verdictOn(verdict, locale) : "";
-    return `<td${classFor(field, tone, value)}${mark}>${format(value, locale)}</td>`;
+    const body = this._revealed(format(value, locale), reveal?.(device, locale));
+    return `<td${classFor(field, tone, value)}${mark}>${body}</td>`;
+  }
+
+  /**
+   * A figure with something a reader can ask for, without a second column.
+   *
+   * Focusable rather than hover-only: a dashboard is read on a phone as much as
+   * a desktop, and a tap gives a `tabindex` element focus where it can never
+   * produce a hover. The whole of it is also in the label, so a screen reader is
+   * told without having to interact at all (HEA-198).
+   *
+   * No state is kept, deliberately. These cards re-render from a string on every
+   * update, so anything toggled in JavaScript would be lost mid-read; `:hover`
+   * and `:focus` survive that because the browser owns them.
+   */
+  _revealed(shown, extra) {
+    if (!extra) return shown;
+    return (
+      `<span class="reveal" tabindex="0" aria-label="${escapeText(extra.label)}">` +
+      `${shown}<span class="revealed" aria-hidden="true">${escapeText(extra.text)}</span>` +
+      "</span>"
+    );
   }
 
   _total(locale, verdict) {

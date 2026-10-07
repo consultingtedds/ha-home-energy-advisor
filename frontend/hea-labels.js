@@ -136,6 +136,9 @@ export const DEFAULTS = Object.freeze({
   editor_sort_by: "Order by",
   editor_layout: "Layout",
   editor_metric: "Measure by",
+  editor_range: "Show the cost range as",
+  editor_range_rollover: "A rollover on Paid",
+  editor_range_column: "Its own column",
 });
 
 /**

@@ -85,6 +85,12 @@ const rows = (card) =>
 
 const deviceOrder = (card) => rows(card).map(([name]) => name);
 
+/** The rollover on one named device's Paid cell, or null if it has none. */
+const revealIn = (card, device) =>
+  [...card.shadowRoot.querySelectorAll("tbody tr")]
+    .find((row) => row.textContent.includes(device))
+    ?.querySelector(".reveal") ?? null;
+
 /** The totals row's cells as elements, since some of them carry a verdict. */
 const totalCells = (card) => [
   ...card.shadowRoot.querySelectorAll("tfoot th, tfoot td"),
@@ -573,11 +579,68 @@ describe("the table", () => {
     },
   });
 
+  it("keeps the range off the table until it is asked for", async () => {
+    // Given / When - the default, with every device bounded. A column puts an
+    // uncertainty band at the same weight as the figure it qualifies, which read
+    // as a second headline rather than a footnote about the first (HEA-198)
+    const card = mount(BOUNDED);
+    await ready(card);
+
+    // Then - no column of its own
+    const headings = [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+      cell.textContent.trim(),
+    );
+    expect(headings.some((heading) => heading.includes("min"))).toBe(false);
+
+    // ...and the range is on Paid instead, reachable rather than gone
+    const reveal = revealIn(card, "Slow Poll Aircon");
+    expect(reveal).not.toBeNull();
+    expect(reveal.textContent).toMatch(/0[.,]02.+0[.,]40/);
+  });
+
+  it("offers the range to a reader who cannot hover", async () => {
+    // Given / When - a phone, or a keyboard. A hover-only disclosure is simply
+    // absent on a touch screen, which is where a dashboard is most read
+    const card = mount(BOUNDED);
+    await ready(card);
+
+    // Then - it takes focus, which is what a tap gives it and what a keyboard
+    // reaches, and it carries the whole reading for a screen reader without any
+    // interaction at all
+    const reveal = revealIn(card, "Slow Poll Aircon");
+    expect(reveal.getAttribute("tabindex")).toBe("0");
+    expect(reveal.getAttribute("aria-label")).toMatch(/0[.,]02.+0[.,]40/);
+  });
+
+  it("does not offer a rollover on a row that can have no range", async () => {
+    // Given / When - the Untracked remainder, which never carries bounds: it is
+    // derived per interval from meters that reported, so it has no span to be
+    // uncertain about
+    const card = mount(BOUNDED);
+    await ready(card);
+
+    // Then - nothing to roll over, and nothing claiming otherwise
+    const untracked = [...card.shadowRoot.querySelectorAll("tbody tr")].find((row) =>
+      row.textContent.includes("Untracked"),
+    );
+    expect(untracked).toBeDefined();
+    expect(untracked.querySelector(".reveal")).toBeNull();
+  });
+
+  it("shows the range once, never both ways at once", async () => {
+    // Given / When - the column asked for explicitly
+    const card = mount(BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - no rollover duplicating the column beside it
+    expect(card.shadowRoot.querySelector("tbody .reveal")).toBeNull();
+  });
+
   it("shows what each device's cost could honestly have been", async () => {
     // Given - a household that opted into per-device ranges. A counter reporting
     // every 30-90 minutes used that energy somewhere inside the span and nothing
     // says where, so the cost is knowable only to a range (ADR-0016).
-    const card = mount(BOUNDED);
+    const card = mount(BOUNDED, { range: "column" });
     await ready(card);
 
     // Then - money, never a percentage: 0.02 to 0.40 on a cost of 0.11 is
@@ -590,7 +653,7 @@ describe("the table", () => {
   it("still shows the column when a row that can have no range has none", async () => {
     // Given / When - the real shape, and the one the old fixture hid: every
     // device bounded, the Untracked remainder not, because it never is
-    const card = mount(BOUNDED);
+    const card = mount(BOUNDED, { range: "column" });
     await ready(card);
 
     // Then - the column is there at all, which it was not for seven weeks
@@ -609,7 +672,7 @@ describe("the table", () => {
     // Given / When - Untracked has no span to be uncertain about, so its bounds
     // are its cost. Left out, the household's range would come to less than what
     // they paid - and on a house where Untracked is half the energy, by half
-    const card = mount(BOUNDED);
+    const card = mount(BOUNDED, { range: "column" });
     await ready(card);
 
     // Then - the total's range brackets the total paid rather than falling
@@ -896,7 +959,7 @@ describe("the table", () => {
   });
 
   it("names the range column for the figure it brackets", async () => {
-    // Given - a household with every device bounded, so the column is shown
+    // Given - a household with every device bounded, who asked for the column
     const hass = aHass({
       devices: THREE_DEVICES,
       response: {
@@ -908,7 +971,7 @@ describe("the table", () => {
     });
 
     // When
-    const card = mount(hass);
+    const card = mount(hass, { range: "column" });
     await ready(card);
 
     // Then - the header says which of the three figures it is a range of. The
