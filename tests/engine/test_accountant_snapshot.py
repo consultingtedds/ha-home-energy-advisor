@@ -167,6 +167,16 @@ _PERSISTED = frozenset(
         "_battery_loss_kwh",
         "_loss_balance",
         "_loss_baseline",
+        # The bound on that measurement, and its own baseline, for the same
+        # reason: a metered total that restarted at zero would compute a negative
+        # span and refuse an honest loss, and a baseline that restarted would
+        # bound the next span against a charge accumulated before it (HEA-196).
+        "_metered_charge",
+        "_metered_discharge",
+        "_loss_meters_baseline",
+        # What the bound refused, which is a running diagnostics total and so
+        # cannot restart either.
+        "_loss_refused_kwh",
         "_debts",
         "_nesting_carry",
         "_draws",

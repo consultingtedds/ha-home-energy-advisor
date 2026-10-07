@@ -435,6 +435,22 @@ class Accountant:
         self._loss_balance = Decimal(0)
         self._battery_loss_kwh = Decimal(0)
         self._battery_loss_cost = Decimal(0)
+        # What the battery's own meters have carried, which bounds the loss the
+        # house balance infers (HEA-196). Running totals of the *metered* charge
+        # and discharge: the ledger's own write-down cannot serve here, because
+        # `_loss_ceiling` already caps that against this same house balance, so it
+        # is not independent of the figure it would be bounding.
+        self._metered_charge = Decimal(0)
+        self._metered_discharge = Decimal(0)
+        # Where those totals stood when the loss was last measured, so the bound
+        # covers the same span as the measurement. `None` alongside
+        # `_loss_baseline`, and on a snapshot written before this existed, which
+        # simply leaves the span unbounded as it was.
+        self._loss_meters_baseline: tuple[Decimal, Decimal] | None = None
+        # What the bound refused, for the diagnostics. A household seeing this
+        # grow has meters that disagree with each other, which is worth knowing
+        # and is not something the figures can fix.
+        self._loss_refused_kwh = Decimal(0)
         # Energy charged before its meter reading arrived, awaiting the surplus
         # that repays it. Expiring at the span a coarse step is spread over is a
         # derivation, not a second knob: a deficit created by that spreading
@@ -671,6 +687,15 @@ class Accountant:
                 "balance": str(self._loss_balance),
                 "kwh": str(self._battery_loss_kwh),
                 "cost": str(self._battery_loss_cost),
+                # The bound's own state, for the same reason as the baseline: a
+                # restart that lost it would leave the next span unbounded.
+                "metered": [str(self._metered_charge), str(self._metered_discharge)],
+                "metered_baseline": (
+                    None
+                    if self._loss_meters_baseline is None
+                    else [str(part) for part in self._loss_meters_baseline]
+                ),
+                "refused": str(self._loss_refused_kwh),
             },
             "balance": self._balance.snapshot(),
             "debts": self._debts.snapshot(),
@@ -786,6 +811,20 @@ class Accountant:
         self._loss_balance = Decimal(loss.get("balance", "0"))
         self._battery_loss_kwh = Decimal(loss.get("kwh", "0"))
         self._battery_loss_cost = Decimal(loss.get("cost", "0"))
+        # Absent from a snapshot written before the bound existed, which leaves
+        # the first span after the upgrade unbounded - the state it was already
+        # in, rather than a bound guessed from totals that restarted at zero.
+        metered = loss.get("metered")
+        if metered is not None:
+            self._metered_charge = Decimal(metered[0])
+            self._metered_discharge = Decimal(metered[1])
+        meters_baseline = loss.get("metered_baseline")
+        self._loss_meters_baseline = (
+            None
+            if meters_baseline is None
+            else (Decimal(meters_baseline[0]), Decimal(meters_baseline[1]))
+        )
+        self._loss_refused_kwh = Decimal(loss.get("refused", "0"))
         # A snapshot taken before the carries existed simply has none to restore.
         self._balance.restore(data.get("balance", {}))
         self._debts.restore(data["debts"])
@@ -1016,12 +1055,14 @@ class Accountant:
             return
         if self._loss_baseline is None:
             self._loss_baseline = (self._balance_headroom, available_kwh)
+            self._loss_meters_baseline = (self._metered_charge, self._metered_discharge)
             return
 
         headroom_then, available_then = self._loss_baseline
         self._loss_baseline = (self._balance_headroom, available_kwh)
         unexplained = self._balance_headroom - headroom_then
         gained = available_kwh - available_then
+        allowed = self._what_the_battery_can_have_lost(gained)
         self._loss_balance += unexplained - gained
         if self._loss_balance <= 0:
             return
@@ -1030,6 +1071,14 @@ class Accountant:
         # priced at what it cost to put there - the blend of every charge still
         # on the books, which is the only price this energy ever had.
         lost = self._loss_balance
+        if allowed is not None and lost > allowed:
+            # The house balance is claiming more than the battery physically
+            # carried, so the excess is a disagreement between the household's
+            # meters rather than energy. Refused outright rather than carried:
+            # carrying it would publish the same phantom later, whenever a span
+            # happened to leave room for it (HEA-196).
+            self._loss_refused_kwh += lost - allowed
+            lost = allowed
         self._loss_balance = Decimal(0)
         cost = self._battery.discharge(lost)
         self._battery_loss_kwh += lost
@@ -1037,6 +1086,36 @@ class Accountant:
         self._house.energy_kwh += lost
         self._house.actual_cost += cost
         self._house.naive_cost += cost
+
+    def _what_the_battery_can_have_lost(self, gained: Decimal) -> Decimal | None:
+        """The most the battery can have lost over the span just measured.
+
+        Energy in has to go somewhere: `charge = discharge + gain + loss`, so the
+        loss cannot exceed `charge - discharge - gain`. Every term is metered, so
+        this assumes nothing about the hardware, and it is the bound the house
+        balance lacks - that figure is a residual of four house meters and
+        inherits every disagreement between them (HEA-196, GitHub 34, where a
+        household saw four times what their battery could have lost).
+
+        `None` where there is nothing to compare against: a span before the first
+        measurement, or a snapshot written before this was tracked. Unbounded is
+        what the figure already was, so saying so is safer than guessing a bound.
+
+        **An upper bound and not the figure itself.** Where a discharge meter
+        counts only what reached the house, this is loose by whatever it missed -
+        which is the fault HEA-182 exists for, and the reason this caps the house
+        balance rather than replacing it. Taking the lower of the two keeps both
+        faults out: the house balance refuses a discharge the meter missed, and
+        this refuses a disagreement between the house's own meters.
+        """
+        if self._loss_meters_baseline is None:
+            return None
+        charged_then, discharged_then = self._loss_meters_baseline
+        self._loss_meters_baseline = (self._metered_charge, self._metered_discharge)
+        carried = (self._metered_charge - charged_then) - (
+            self._metered_discharge - discharged_then
+        )
+        return max(Decimal(0), carried - gained)
 
     def _loss_ceiling(self) -> Decimal | None:
         """The most the battery can still honestly be said to have lost.
@@ -1060,8 +1139,17 @@ class Accountant:
         Discharge is priced from this and from nothing else, so without it a
         discharge costed below the import rate cannot be explained from the
         download alone.
+
+        `loss_refused_kwh` is what the battery's own meters would not allow the
+        house balance to publish as loss. It grows only where a household's
+        meters disagree with each other, so a figure climbing here says their
+        metering wants looking at rather than that anything is wrong with the
+        accounting - which is a distinction nothing else in the download could
+        make (HEA-196).
         """
-        return self._battery.diagnostics()
+        return self._battery.diagnostics() | {
+            "loss_refused_kwh": str(self._loss_refused_kwh),
+        }
 
     def source_diagnostics(self) -> dict[str, SourceSnapshot]:
         """Per-source accumulator state and decision log, keyed by entity id.
@@ -1898,6 +1986,11 @@ class Accountant:
             self._battery.charge_from_grid(served.grid_charge, price)
         if served.generation_charge > 0:
             self._battery.charge_from_generation(served.generation_charge)
+        # The metered totals, kept here rather than in the ledger because the
+        # ledger's own discharge is also called to remove a measured loss, which
+        # would make it count what it is meant to bound (HEA-196).
+        self._metered_charge += served.grid_charge + served.generation_charge
+        self._metered_discharge += served.discharged
 
         # The ledger falls by the full physical discharge - `served.discharged`,
         # not `served.battery` - whether or not the house is the one billed for

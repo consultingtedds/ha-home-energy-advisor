@@ -118,6 +118,12 @@ async def test_diagnostics_expose_the_battery_ledger(
         # and the energy beside it is the round-trip loss published (HEA-174).
         "written_off_kwh": "0",
         "written_off_cost": "0",
+        # What the battery's own meters would not let the house balance publish
+        # as loss. It grows only where a household's meters disagree with each
+        # other, which is the one thing the download could not say before: a
+        # figure climbing here means their metering wants looking at, not that
+        # the accounting is wrong (HEA-196).
+        "loss_refused_kwh": "0",
     }
 
     # ...and it is the whole ledger, with nothing else smuggled in beside them
@@ -126,6 +132,7 @@ async def test_diagnostics_expose_the_battery_ledger(
         "stored_cost",
         "written_off_kwh",
         "written_off_cost",
+        "loss_refused_kwh",
     }
 
 

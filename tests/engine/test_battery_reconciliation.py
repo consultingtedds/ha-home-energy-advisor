@@ -289,6 +289,53 @@ def test_the_batterys_loss_is_what_the_meters_cannot_explain_less_what_it_gained
     )
 
 
+def test_the_loss_cannot_exceed_what_the_batterys_own_meters_allow() -> None:
+    """The house balance is a residual, so it absorbs every meter disagreement.
+
+    `unexplained` is `import + generation - export - house`, and any inconsistency
+    between those four is attributed to the battery. A household whose generation
+    is metered on the far side of their inverter had a quarter of their
+    generation's conversion loss published as battery loss, four times what their
+    battery could physically have lost (GitHub 34, HEA-196).
+
+    The battery's own meters bound it. Charging adds, discharging and the level's
+    rise account for where it went, and whatever is left is the most that can have
+    been lost: `charge - discharge - gain`. Read from the meters rather than from
+    the ledger's write-down, which is already capped against this same house
+    balance and so is not independent of it.
+    """
+    # Given - a home that has taken its baseline, so a span can be measured
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("2.5"))
+
+    # When - the same span as the test above, except the generation meter reports
+    # 2 kWh that never reached the house. The house balance now cannot explain
+    # 3.5 kWh and the battery gained 1.2, so the residual alone would publish 2.3
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.generation", "2.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"))
+
+    # Then - the battery took in 2 kWh over the span, gave back none, and gained
+    # 1.2, so 0.8 is the most it can have lost. The phantom generation is refused
+    # rather than published as energy the household used
+    assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
+        "0.800"
+    )
+
+
 def test_the_first_measurement_establishes_a_baseline_and_publishes_nothing() -> None:
     """The trap this ticket exists for, arriving by the other door.
 
