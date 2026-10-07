@@ -32,6 +32,29 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you have a home battery, Battery Losses may stop climbing as quickly.** It
+could read far too high. The figure is worked out from what your house meters
+cannot account for, less what your battery's level gained - which assumes nothing
+about your hardware, but means any disagreement between your meters was being
+published as battery loss. One household saw four times what their battery could
+physically have lost, because their generation is metered on the far side of
+their inverter.
+
+Your battery's own charge and discharge meters put a limit on this: energy going
+in has to come out, stay in, or be lost, so the loss can never exceed what went in
+less what came out and what the battery gained. That limit now applies.
+
+**Figures already recorded are not rewritten.** Battery Losses is a running total
+and cannot go backwards, so the overstatement stops accruing rather than being
+corrected - the same reason any published total here is only ever put right going
+forwards. If the history matters more to you than keeping the rest, **Reset all
+totals** in the integration's menu clears every figure and the history behind it,
+and cannot be undone.
+
+Nothing to configure, and no other figure changes.
+
 ## 0.7.1
 
 **If you turned on per-device cost ranges, the "Paid (min-max)" column will
