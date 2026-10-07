@@ -128,6 +128,52 @@ def test_generation_makes_the_band_much_wider_than_the_tariff_does() -> None:
     assert aircon.cost_floor <= aircon.actual_cost <= aircon.cost_ceiling
 
 
+def test_a_slice_cannot_hold_more_energy_than_the_house_used_in_it() -> None:
+    """The bound is over *feasible* spreads, not over slices (HEA-197).
+
+    A step spanning a thin slice and a fat one could not have landed entirely in
+    the thin one: the house only consumed so much there, and the engine's own
+    allocation already honours that - it spreads a step in proportion to what each
+    slice consumed, not evenly in time.
+
+    Pricing the whole step at the cheapest slice's blend therefore claims a
+    distribution the allocation excludes. Measured on a counter reporting hourly,
+    so twelve slices to a step, that produced a floor of 6% of the figure it
+    brackets, and a household reading it learnt nothing (HEA-197, 2026-10-06).
+    """
+    # Given - a house whose first slice is almost entirely solar and *small*: it
+    # consumed only 0.1 kWh there, against 2.0 in the slice that follows
+    acc = a_home(generation=True)
+    acc.record_price(at(0), DEAR)
+    for entity in (GRID, GENERATION, HOUSE, COARSE_STEP_AIRCON):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("0.001"))
+    acc.observe(GENERATION, at(5), Decimal("0.1"))
+    acc.observe(HOUSE, at(5), Decimal("0.1"))
+    acc.observe(COARSE_STEP_AIRCON, at(5), Decimal(0))
+
+    # When - a 1 kWh step lands having spanned both, which is ten times what the
+    # cheap slice could have supplied
+    acc.observe(GRID, at(10), Decimal("2.001"))
+    acc.observe(GENERATION, at(10), Decimal("0.1"))
+    acc.observe(HOUSE, at(10), Decimal("2.1"))
+    acc.observe(COARSE_STEP_AIRCON, at(10), Decimal("1.0"))
+    acc.finalize(at(45))
+
+    # Then - the cheapest it can honestly have been is 0.1 kWh at the solar
+    # slice's blend and the remaining 0.9 at the tariff. The old floor priced all
+    # 1.0 kWh at the solar blend, which is 0.0030 - ninety times lower, and a
+    # distribution the house's own meter rules out
+    aircon = acc.totals().devices["coarse_step_aircon"]
+    solar_blend = Decimal("0.001") * DEAR / Decimal("0.1")
+    assert aircon.cost_floor == Decimal("0.1") * solar_blend + Decimal("0.9") * DEAR
+
+    # ...and the ceiling is untouched, because the dear slice had room for all of
+    # it. A bound only tightens where the capacity actually binds
+    assert aircon.cost_ceiling == Decimal("1.0") * DEAR
+    assert aircon.cost_floor <= aircon.actual_cost <= aircon.cost_ceiling
+
+
 def test_the_remainder_carries_no_doubt_of_its_own() -> None:
     # Given - Untracked is derived per slice from meters that reported for that
     # slice, so unlike a coarse counter it has no span to be uncertain about

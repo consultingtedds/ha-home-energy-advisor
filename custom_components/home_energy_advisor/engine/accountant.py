@@ -1087,6 +1087,46 @@ class Accountant:
         self._house.actual_cost += cost
         self._house.naive_cost += cost
 
+    @staticmethod
+    def _cheapest_spread(
+        kwh: Decimal,
+        slices: list[tuple[Decimal, Decimal]],
+        *,
+        dearest: bool,
+    ) -> Decimal:
+        """The cheapest - or dearest - way this energy can have been spread.
+
+        Each slice is its blended price and what the house consumed in it, and a
+        slice cannot have supplied more than that. So the bound is over *feasible*
+        distributions rather than over slices: filling the cheapest slices first,
+        to their capacity, is the cheapest arrangement there is, and filling the
+        dearest first is the most expensive (HEA-197).
+
+        Pricing the whole step at one slice's blend, as this did before, claims a
+        distribution the allocation itself excludes - it spreads a step in
+        proportion to what each slice consumed, so a thin slice never receives the
+        lot. Measured on a counter reporting hourly, so twelve slices to a step,
+        the old floor came to 6% of the figure it bracketed.
+
+        Where the slices cannot hold it all, the excess is priced at the extreme,
+        which is what this did throughout before. A household whose devices report
+        more energy than their house meter is in that position by metering
+        disagreement rather than by physics (ADR-0015), and a bound is the wrong
+        place to adjudicate it.
+        """
+        ordered = sorted(slices, key=lambda entry: entry[0], reverse=dearest)
+        total = Decimal(0)
+        remaining = kwh
+        for blended, capacity in ordered:
+            took = min(remaining, max(Decimal(0), capacity))
+            total += took * blended
+            remaining -= took
+            if remaining <= 0:
+                return total
+        # Still energy to place, so every slice is full. The favourable extreme is
+        # the first in this order, which keeps the figure a bound either way.
+        return total + remaining * ordered[0][0]
+
     def _what_the_battery_can_have_lost(self, gained: Decimal) -> Decimal | None:
         """The most the battery can have lost over the span just measured.
 
@@ -1538,15 +1578,15 @@ class Accountant:
             if pending.buckets[-1] > start:
                 waiting.append(pending)
                 continue
-            blends = [
-                retained.blended
+            slices = [
+                (retained.blended, retained.consumption)
                 for at in pending.buckets
                 if (retained := self._retained.get(at)) is not None
             ]
-            if not blends:
+            if not slices:
                 continue
-            floor = pending.kwh * min(blends)
-            ceiling = pending.kwh * max(blends)
+            floor = self._cheapest_spread(pending.kwh, slices, dearest=False)
+            ceiling = self._cheapest_spread(pending.kwh, slices, dearest=True)
             self._running.setdefault(pending.device, _Running()).bound(floor, ceiling)
         self._pending_bounds = waiting
 
