@@ -166,10 +166,21 @@ Three more sensors name no device: `Unreconciled Energy`, and the whole-home
 The cards say this where it matters rather than hiding it here, but in one
 place:
 
-- **Paid (min-max) is a bound, not an error bar.** A meter that reports every 30
+- **The cost range is a bound, not an error bar.** A meter that reports every 30
   to 90 minutes used its energy somewhere inside that span, and nothing in the
   data says where, so the cost is knowable only to a range. What is shown is the
   widest those readings allow, which is not a typical error (ADR-0016).
+
+  Hover a **Paid** figure on Cost by device, or tap it on a phone, and the range
+  appears beside it. It is a rollover rather than a column because a column gives
+  an uncertainty band the same weight as the figure it qualifies. If you would
+  rather have the column - it can be sorted, and it announces that the figures
+  carry a range at all - set **Show the cost range as** to **Its own column** in
+  the card's settings.
+
+  The range covers only where the energy can actually have been. A slice where
+  your house used almost nothing cannot have supplied a whole kilowatt-hour, so
+  it is not priced as though it had.
 - **Saved can be negative, and that is real.** Battery energy stored when
   electricity was expensive and used when it was cheap costs more than buying at
   the time. It is shown as a loss rather than floored at zero (ADR-0003).
