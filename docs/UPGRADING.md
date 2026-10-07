@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.7.2
 
 **If you have a home battery, Battery Losses may stop climbing as quickly.** It
 could read far too high. The figure is worked out from what your house meters
