@@ -64,16 +64,38 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
    * ends it. That mistake parsed as a syntax error in the module, not as CSS.
    */
   .reveal {
+    position: relative;
     cursor: help;
     text-decoration: underline dotted
       var(--secondary-text-color, rgba(0, 0, 0, 0.54));
     text-underline-offset: 3px;
   }
+  /*
+   * Out of the layout entirely, which is the whole point: revealing this inline
+   * widened the cell and reflowed the table, so every column jumped as the
+   * pointer moved across it.
+   *
+   * It opens sideways and stays inside the row's own height. The table scrolls
+   * horizontally, and setting one overflow axis to auto makes the other compute
+   * to auto as well - so anything reaching above or below a row is clipped by
+   * that container, however a tooltip would normally behave.
+   */
   .revealed {
     display: none;
-    margin-left: 0.5em;
+    position: absolute;
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    margin-right: 8px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    background: var(--card-background-color, #fff);
+    box-shadow: 0 1px 6px rgba(0, 0, 0, 0.3);
     color: var(--secondary-text-color);
     font-size: 0.85em;
+    font-weight: normal;
     font-variant-numeric: tabular-nums;
   }
   .reveal:hover .revealed,
