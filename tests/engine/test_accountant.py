@@ -45,6 +45,7 @@ ZERO_TOTALS = DeviceTotals(
     energy_from_battery=Decimal(0),
     cost_floor=Decimal(0),
     cost_ceiling=Decimal(0),
+    forgone_export=Decimal(0),
 )
 
 

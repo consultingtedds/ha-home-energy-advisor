@@ -148,6 +148,12 @@ class DeviceTotals:
     # served by the sun and one served entirely by the meter (ADR-0016).
     cost_floor: Decimal
     cost_ceiling: Decimal
+    # What the generation this device consumed would have earned had it been
+    # exported instead, at the export rate in force at the time. Published
+    # *beside* the cost and never inside it, so `actual_cost` stays what the
+    # household paid and ADR-0002's reconciliation keeps meaning what it says
+    # (ADR-0026). Zero for a household who declare no export price.
+    forgone_export: Decimal
 
 
 #: Every figure at zero, for a household whose battery has lost nothing - or has
@@ -163,6 +169,7 @@ _ZERO_TOTALS = DeviceTotals(
     energy_from_battery=Decimal(0),
     cost_floor=Decimal(0),
     cost_ceiling=Decimal(0),
+    forgone_export=Decimal(0),
 )
 
 
@@ -215,6 +222,12 @@ class _RetainedBucket:
     # share of the battery saving is priced against the charge that really served
     # it rather than against whatever the ledger holds when it turns up (HEA-173).
     battery_price: Decimal
+    # What exporting a kWh earned in *this* bucket, so late generation is valued
+    # against the rate that really applied rather than whatever is current when
+    # it turns up (ADR-0026). Kept here for the same reason `import_price` is:
+    # the rate series is pruned against the watermark, so an old bucket's rate
+    # is not necessarily still in it.
+    export_price: Decimal
     draw: Decimal
     sources: Mapping[SourceKind, Decimal]
 
@@ -292,6 +305,10 @@ class _HeldCorrection:
     naive_cost: Decimal
     cost_savings: Decimal
     battery_savings: Decimal
+    # The export rate of the bucket this correction belongs to. A rate, not an
+    # amount, so it is carried through a split unchanged while the energy beside
+    # it is scaled (ADR-0026).
+    export_price: Decimal
     by_source: dict[SourceKind, Decimal]
 
     def scaled(self, fraction: Decimal) -> _HeldCorrection:
@@ -303,6 +320,7 @@ class _HeldCorrection:
             naive_cost=self.naive_cost * fraction,
             cost_savings=self.cost_savings * fraction,
             battery_savings=self.battery_savings * fraction,
+            export_price=self.export_price,
             by_source={kind: kwh * fraction for kind, kwh in self.by_source.items()},
         )
 
@@ -315,6 +333,7 @@ class _HeldCorrection:
             naive_cost=self.naive_cost - taken.naive_cost,
             cost_savings=self.cost_savings - taken.cost_savings,
             battery_savings=self.battery_savings - taken.battery_savings,
+            export_price=self.export_price,
             by_source={
                 kind: kwh - taken.by_source.get(kind, Decimal(0))
                 for kind, kwh in self.by_source.items()
@@ -348,23 +367,43 @@ class _Running:
     # the span of the delta that revealed the energy has finished finalising.
     cost_floor: Decimal = Decimal(0)
     cost_ceiling: Decimal = Decimal(0)
+    # What this device's share of self-consumed generation would have earned had
+    # it been exported instead (ADR-0026). Accumulated here rather than carried
+    # on the allocation, because `add_by_source` is the one funnel every path
+    # attributes energy through - so a path that books generation cannot fail to
+    # book what it gave up. ADR-0025 threaded a money figure through each path by
+    # hand and silently missed one of the four.
+    forgone_export: Decimal = Decimal(0)
     by_source: dict[SourceKind, Decimal] = field(default_factory=dict)
 
     def bound(self, floor: Decimal, ceiling: Decimal) -> None:
         self.cost_floor += floor
         self.cost_ceiling += ceiling
 
-    def add(self, allocation: DeviceAllocation) -> None:
+    def add(self, allocation: DeviceAllocation, export_price: Decimal) -> None:
         self.energy_kwh += allocation.energy_kwh
         self.actual_cost += allocation.actual_cost
         self.naive_cost += allocation.naive_cost
         self.cost_savings += allocation.cost_savings
         self.battery_savings += allocation.battery_savings
-        self.add_by_source(allocation.energy_by_source)
+        self.add_by_source(allocation.energy_by_source, export_price)
 
-    def add_by_source(self, shares: Mapping[SourceKind, Decimal]) -> None:
+    def add_by_source(
+        self, shares: Mapping[SourceKind, Decimal], export_price: Decimal
+    ) -> None:
+        """Attribute energy to its sources, and generation's forgone revenue.
+
+        ``export_price`` is the rate of the interval this energy belongs to, not
+        of the moment it was booked: a late arrival is attributed to the sources
+        of its own bucket, so it has to be valued at that bucket's rate too.
+        Required rather than defaulted, so a new caller cannot quietly book
+        generation at nothing.
+        """
         for kind, kwh in shares.items():
             self.by_source[kind] = self.by_source.get(kind, Decimal(0)) + kwh
+        self.forgone_export += shares.get(SourceKind.GENERATION, Decimal(0)) * (
+            export_price
+        )
 
     def snapshot(self) -> DeviceTotals:
         return DeviceTotals(
@@ -380,6 +419,7 @@ class _Running:
             energy_from_battery=self.by_source.get(SourceKind.BATTERY, Decimal(0)),
             cost_floor=self.cost_floor,
             cost_ceiling=self.cost_ceiling,
+            forgone_export=self.forgone_export,
         )
 
 
@@ -421,6 +461,13 @@ class Accountant:
         self._raw: dict[datetime, dict[SourceRole, Decimal]] = {}
         self._draws: dict[datetime, dict[str, Decimal]] = {}
         self._prices: list[tuple[datetime, Decimal]] = []
+        # What the household is paid for exporting, kept the same way the import
+        # price is because the forgone-export figure is accumulated against the
+        # rate in force at the time rather than an average over a period
+        # (ADR-0026). Empty on every household who export nothing, and then
+        # nothing is published - which is today's behaviour and the right one,
+        # since for them self-consumed generation really is free.
+        self._export_prices: list[tuple[datetime, Decimal]] = []
         self._battery = BatteryLedger()
         # What the house's own meters leave unexplained, which by physics is what
         # the battery gained plus what it lost - and so a ceiling on the loss we
@@ -480,6 +527,17 @@ class Accountant:
     def record_price(self, at: datetime, price: Decimal) -> None:
         """Records the import price active from ``at``."""
         self._prices.append((at, price))
+
+    def record_export_price(self, at: datetime, price: Decimal) -> None:
+        """Records the export price active from ``at`` (ADR-0026).
+
+        Read from the Energy Dashboard rather than configured here, because a
+        household who exports has already declared what they are paid for it and
+        a second copy would be a second source of truth. A household who records
+        none is one who exports nothing, and forgoes nothing by using their own
+        generation.
+        """
+        self._export_prices.append((at, price))
 
     def observe(
         self,
@@ -670,6 +728,14 @@ class Accountant:
                 {"at": when.isoformat(), "price": str(price)}
                 for when, price in self._prices
             ],
+            # Persisted for the same reason the import price is: a restart that
+            # lost it would value the generation served before the household's
+            # export sensor next reports at nothing, and book a forgone figure
+            # of zero against energy that really gave something up (ADR-0026).
+            "export_prices": [
+                {"at": when.isoformat(), "price": str(price)}
+                for when, price in self._export_prices
+            ],
             "battery": self._battery.snapshot(),
             "balance_headroom": (
                 None if self._balance_headroom is None else str(self._balance_headroom)
@@ -797,6 +863,12 @@ class Accountant:
             (datetime.fromisoformat(entry["at"]), Decimal(entry["price"]))
             for entry in data["prices"]
         ]
+        # Absent from a snapshot written before this existed, which is every
+        # installed household's on the release that adds it - see `_load_running`.
+        self._export_prices = [
+            (datetime.fromisoformat(entry["at"]), Decimal(entry["price"]))
+            for entry in data.get("export_prices", [])
+        ]
         self._battery.restore(data["battery"])
         # Absent before this ceiling existed - see the ledger's own restore.
         headroom = data.get("balance_headroom")
@@ -860,6 +932,7 @@ class Accountant:
                 cost_savings=Decimal(held["cost_savings"]),
                 # Absent before this figure existed - see `_load_running`.
                 battery_savings=Decimal(held.get("battery_savings", 0)),
+                export_price=Decimal(held.get("export_price", 0)),
                 by_source=_load_by_source(held["by_source"]),
             )
             for held in data["held"]
@@ -878,6 +951,7 @@ class Accountant:
                 import_price=Decimal(bucket["import_price"]),
                 # Absent before this figure existed - see `_load_running`.
                 battery_price=Decimal(bucket.get("battery_price", 0)),
+                export_price=Decimal(bucket.get("export_price", 0)),
                 draw=Decimal(bucket["draw"]),
                 sources=_load_by_source(bucket["sources"]),
             )
@@ -959,6 +1033,10 @@ class Accountant:
             energy_from_battery=Decimal(0),
             cost_floor=Decimal(0),
             cost_ceiling=Decimal(0),
+            # Nothing forgone: this energy went into the battery and never came
+            # out, so none of it was generation a device consumed instead of
+            # exporting (ADR-0026).
+            forgone_export=Decimal(0),
         )
 
     @staticmethod
@@ -974,6 +1052,7 @@ class Accountant:
         grid = _sum(d.energy_from_grid for d in tracked)
         generation = _sum(d.energy_from_generation for d in tracked)
         battery = _sum(d.energy_from_battery for d in tracked)
+        forgone = _sum(d.forgone_export for d in tracked)
         return DeviceTotals(
             energy_kwh=whole_home.energy_kwh - energy,
             actual_cost=whole_home.actual_cost - actual,
@@ -988,6 +1067,7 @@ class Accountant:
             # uncertain about: its cost is its own bound.
             cost_floor=whole_home.actual_cost - actual,
             cost_ceiling=whole_home.actual_cost - actual,
+            forgone_export=whole_home.forgone_export - forgone,
         )
 
     def balance_diagnostics(self) -> dict[str, str]:
@@ -1297,7 +1377,7 @@ class Accountant:
         actual = kwh * _MARGINAL_PRICE_OF[kind](retained)
         naive = kwh * retained.import_price
         self._house.energy_kwh += kwh
-        self._house.add_by_source({kind: kwh})
+        self._house.add_by_source({kind: kwh}, retained.export_price)
         self._house.actual_cost += actual
         self._house.naive_cost += naive
         self._house.cost_savings += naive - actual
@@ -1444,7 +1524,10 @@ class Accountant:
         # so handing it over now takes nothing from anyone. Only the funded part
         # comes out of the remainder, and only that part waits.
         run.energy_kwh += grew
-        run.add_by_source(split_by_source(grew, retained.sources, retained.consumption))
+        run.add_by_source(
+            split_by_source(grew, retained.sources, retained.consumption),
+            retained.export_price,
+        )
         funded_by_source = split_by_source(
             funded, retained.sources, retained.consumption
         )
@@ -1464,6 +1547,7 @@ class Accountant:
                 # arrival - which on a coarse counter is most of its energy.
                 battery_savings=funded_by_source.get(SourceKind.BATTERY, Decimal(0))
                 * (retained.import_price - retained.battery_price),
+                export_price=retained.export_price,
                 by_source=funded_by_source,
             )
         )
@@ -1474,7 +1558,8 @@ class Accountant:
         self._debts.owe(start, grew, grew * retained.import_price, {device: kwh})
         self._house.energy_kwh += grew
         self._house.add_by_source(
-            split_by_source(grew, retained.sources, retained.consumption)
+            split_by_source(grew, retained.sources, retained.consumption),
+            retained.export_price,
         )
         retained.draw += kwh
 
@@ -1490,11 +1575,12 @@ class Accountant:
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
         remainder = self._settle(start, allocation.untracked, draws, sources, prices)
+        export_price = self._export_price_at(start)
         for device, share in allocation.devices.items():
-            self._running.setdefault(device, _Running()).add(share)
+            self._running.setdefault(device, _Running()).add(share, export_price)
         for share in allocation.devices.values():
-            self._house.add(share)
-        self._house.add(remainder)
+            self._house.add(share, export_price)
+        self._house.add(remainder, export_price)
         # After the remainder has been banked, so the budget it funds is real.
         self._release_held(remainder, start)
         self._retain(start, sources, prices, draws)
@@ -1529,6 +1615,8 @@ class Accountant:
             # bucket actually has to hand over.
             cost_savings=Decimal(0),
             battery_savings=Decimal(0),
+            # The budget is weighed, never attributed, so no rate applies to it.
+            export_price=Decimal(0),
             by_source={},
         )
         outstanding: list[_HeldCorrection] = []
@@ -1544,7 +1632,7 @@ class Accountant:
             run.naive_cost += paid.naive_cost
             run.cost_savings += paid.cost_savings
             run.battery_savings += paid.battery_savings
-            run.add_by_source(paid.by_source)
+            run.add_by_source(paid.by_source, paid.export_price)
             budget = budget.less(paid)
             if fraction < 1:
                 outstanding.append(held.less(paid))
@@ -1576,7 +1664,7 @@ class Accountant:
             run.naive_cost += held.naive_cost
             run.cost_savings += held.cost_savings
             run.battery_savings += held.battery_savings
-            run.add_by_source(held.by_source)
+            run.add_by_source(held.by_source, held.export_price)
 
     def _resolve_bounds(self, start: datetime) -> None:
         """Price every waiting delta whose last slice has now closed.
@@ -1934,6 +2022,7 @@ class Accountant:
             blended=total_cost / consumption if consumption > 0 else Decimal(0),
             import_price=prices[SourceKind.IMPORT],
             battery_price=prices.get(SourceKind.BATTERY, Decimal(0)),
+            export_price=self._export_price_at(start),
             draw=_sum(draws.values()),
             sources=dict(sources),
         )
@@ -2071,14 +2160,32 @@ class Accountant:
         return prices, sources
 
     def _price_at(self, when: datetime) -> Decimal:
-        if not self._prices:
-            return Decimal(0)
-        applicable = self._prices[0][1]
-        for at, price in self._prices:
-            if at > when:
-                break
-            applicable = price
-        return applicable
+        return _rate_at(self._prices, when)
+
+    def _export_price_at(self, when: datetime) -> Decimal:
+        """What a kWh exported at ``when`` would have earned, or zero if unknown.
+
+        Zero for a household who have declared no export price, which makes the
+        forgone figure zero too - the honest answer rather than a guessed rate.
+        """
+        return _rate_at(self._export_prices, when)
+
+
+def _rate_at(series: list[tuple[datetime, Decimal]], when: datetime) -> Decimal:
+    """The newest rate in ``series`` at or before ``when``, stepwise.
+
+    The earliest recorded rate applies to anything before it, so a household
+    whose first reading arrives a moment after the first interval is priced at
+    the rate they were on rather than at nothing.
+    """
+    if not series:
+        return Decimal(0)
+    applicable = series[0][1]
+    for at, rate in series:
+        if at > when:
+            break
+        applicable = rate
+    return applicable
 
 
 def _withhold(

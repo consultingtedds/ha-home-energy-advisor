@@ -185,6 +185,7 @@ _PERSISTED = frozenset(
         "_implausible",
         "_pending_bounds",
         "_prices",
+        "_export_prices",
         "_raw",
         "_retained",
         "_running",
