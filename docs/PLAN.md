@@ -605,20 +605,27 @@ Carried forward rather than closed:
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
 - **GitHub #22 and #29** remain open with their reporters.
-- **HEA-199** - the battery's loss reads about 17% low even with every meter
-  agreeing, found while replaying HEA-196 and untouched by it, since that cap only
-  reduces. Systematic rather than noisy, which points at the measurement; the
-  first thing to establish is whether it is the replay's unflushed tail rather
-  than the engine.
 - **HEA-200** - whether a household should be told their meters disagree.
   `loss_refused_kwh` is the only signal that can say so, and it reaches nobody
   outside a diagnostics download. Argued both ways on the ticket: a standing
   condition is exactly what should not become a Repair, and after HEA-196 their
   figures are right either way.
 - **HEA-201** - whether the cost range should default to the rollover or the
-  column, which HEA-197 may have settled by narrowing the band so far that the
-  objection to the column no longer applies. Needs 0.7.2 deployed to judge, and is
-  a matter of what reads well rather than anything measurable.
+  column. It cannot be judged yet, and the reason is now better evidenced than
+  "needs 0.7.2 deployed": the release restarted the instance mid-afternoon on
+  2026-10-07, and every device reading since is either older than that or a
+  trickle of a few hundredths of a cent, at which size a floor of zero proves
+  nothing. In October most of the tracked fleet is idle, so a real day waits on
+  one of the few loads still running. The ticket's premise is also unproven - the real spread
+  runs from 1.10x to 2.70x ceiling-over-paid rather than the tight band the case
+  for a column rests on.
+- **HEA-202** - the battery ledger is still gaining inventory eight days after
+  HEA-178, measured at 11.89 kWh on the books of a 5 kWh battery holding about
+  2.6. Both inflows HEA-178 named are closed, yet outflows over those eight days
+  came to 13.67 kWh while the ledger fell only 3.80, which implies something
+  still adding roughly a quarter of the battery's capacity a day. **Opens with a
+  week of daily measurement rather than a fix**, because the arithmetic rests on
+  lifetime counters whose start dates are not known precisely.
 
 Closed since:
 
@@ -694,6 +701,56 @@ Closed since:
 - **HEA-151** - closed 2026-10-06 with nothing built. Everything it asked for had
   shipped under HEA-152, HEA-168, HEA-169 and HEA-153, tests included; its one
   remaining item, the gross entity, was declined. See Epic 10 item 1 above.
+
+- **HEA-199** - closed 2026-10-08, **and its own premise disproved.** The battery
+  loss was not 17% low and nothing was being carried: `_loss_balance` read zero at
+  every step of a traced replay, and flushing the tail published nothing. The
+  trace pointed somewhere narrower. The balance headroom is set per *priced*
+  interval and an interval where nothing moved is never priced, so it does not
+  exist until something moves - and the interval that brings it into existence is
+  already inside it when the baseline is finally taken. The baseline landed one
+  interval late and that interval's loss was never published. **The shortfall is a
+  flat 0.1 kWh at 3, 6, 12, 48 and 240 round trips**, so "17%" was 1 in 6, and
+  `_loss_baseline` persists, so it bit once per household at first configuration.
+  The fix takes the baseline at zero while the headroom is absent, which is what
+  has accumulated; the branch protecting a household who configure their battery
+  later is untouched and its test passes unchanged.
+
+- **HEA-203** - the rollover HEA-198 shipped re-laid the whole table out on hover,
+  which reached a release. `.revealed` went from `display: none` to
+  `display: inline`, putting the range *into* the cell, and a table sizes its
+  columns to their contents. Now absolutely positioned, out of flow, reading as a
+  boxed overlay beside the figure - left rather than above or below, because
+  `overflow-x: auto` makes the other axis clip, and left is the one side that does
+  not land on Would have paid. Verified as a number in a real browser: identical
+  column widths open and closed at 1600 px and at 390 px.
+
+- **HEA-204** - **the demo had never rendered a cost range at all**, which is why
+  nothing caught HEA-203. The range is opt-in, so `seed.mjs` wrote no bound
+  statistics and neither a screenshot nor any of the end-to-end checks could reach
+  it. `configure.mjs` now turns it on through the options flow once every device
+  exists and waits for the bound sensors before seeding; the seeded bounds bracket
+  the actual cost by construction rather than approximately. On in both passes,
+  because the bound sensors carry translated entity ids and the Spanish pass is
+  the only thing that would catch an id nothing reads. Two checks added, the
+  second being the one HEA-203 needed and the unit suite cannot make: revealing
+  the range changes no column's width.
+
+- **HEA-205** - raised Urgent on 2026-10-08 and **cancelled the same day**, which
+  is worth recording because the evidence runs the other way to the instinct. A
+  device's cost sat 12.4x above its own published ceiling on one day in September,
+  read inside a single bucket where all three accumulators were live, so not the
+  baseline artefact it first looked like. Paul identified the input: both hot water
+  heater plugs had their counters rescaled by firmware, and that device has not run
+  in months. Checked across all thirteen bounded devices for September and October,
+  every other one has its ceiling above its paid figure by 1.10x to 2.70x -
+  including the device with the coarsest counter on the instance, which is the one
+  most likely to accrue debt. One inversion, on the one corrupted counter. **The energy was
+  fiction, so the cost is fiction, and a bound that "contained" it would present a
+  fabricated figure as a well-bounded one** - the range failing to support it is
+  the disclosure working. Already guarded for the future by HEA-157 and HEA-159:
+  the step is refused against what the house meter saw over the same span, and a
+  `rescaled_source` Repair names the entity and the factor.
 
 - **HEA-187** - the generic-assertion audit, closed 2026-10-02 as mostly
   addressed, with the standard rather than a sweep as the live obligation.
