@@ -18,7 +18,7 @@
  * rerun against a half-built house finishes it rather than failing.
  */
 
-import { DEVICES, HOUSE } from "./house.mjs";
+import { BOUND_CONCEPTS, DEVICES, HOUSE } from "./house.mjs";
 import { BASE_URL, entityIdForUniqueId } from "./ha-client.mjs";
 import { describeHouse } from "./diagnose.mjs";
 import { giveUpReport, hasFigures, noted } from "./progress.mjs";
@@ -242,6 +242,82 @@ async function waitForDevices(token, expected, { timeoutMs = 180000 } = {}) {
   throw new Error(report.split("\n")[0]);
 }
 
+/**
+ * Turn the per-device cost range on, through the options flow a household uses.
+ *
+ * The range is opt-in (ADR-0016), so a demo house left alone publishes no bound
+ * statistics and the column and its rollover cannot appear at all. That is how
+ * the reveal reached a release laying the whole table out again on hover: no
+ * screenshot and none of the checks here had ever rendered one (HEA-203,
+ * HEA-204).
+ *
+ * On in both passes, English and Spanish. The bound sensors carry translated
+ * entity ids like every other concept, and a translated id nothing reads is the
+ * fault that rendered every card empty on a Spanish install (ADR-0018) - so the
+ * Spanish pass is the only thing that would catch it.
+ *
+ * The house still exercises the other path: the untracked remainder is derived
+ * rather than priced from a device's own energy, so it publishes no bounds and
+ * sits in the same table as a row without a range.
+ */
+async function enableCostBounds(token, entryId) {
+  const started = await api("/api/config/config_entries/options/flow", token, {
+    method: "POST",
+    body: { handler: entryId },
+  });
+  const menu = await api(
+    `/api/config/config_entries/options/flow/${started.flow_id}`,
+    token,
+    { method: "POST", body: { next_step_id: "cost_bounds" } },
+  );
+  if (menu.step_id !== "cost_bounds") {
+    throw new Error(
+      `Expected the cost_bounds form, got ${menu.step_id ?? menu.type}. The ` +
+        "options menu has changed shape and this is pointing at the wrong step.",
+    );
+  }
+  created(
+    await api(`/api/config/config_entries/options/flow/${started.flow_id}`, token, {
+      method: "POST",
+      body: { device_cost_bounds: true },
+    }),
+    "the cost range",
+  );
+}
+
+/**
+ * Wait until every row that can carry bounds names both of them.
+ *
+ * Enabling the option reloads the entry and registers two more sensors per
+ * device, and the devices sensor republishes on its own refresh rather than on
+ * the reload. Seeding before that lands writes no bound statistics and reports
+ * success, which is the shape of failure this harness keeps producing.
+ *
+ * Every row *except* the untracked remainder, which publishes no bounds by
+ * design - the card agrees, filtering to the rows that offer a range before
+ * asking whether all of them are complete.
+ */
+async function waitForBounds(token, expected, { timeoutMs = 180000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let ready = 0;
+  while (Date.now() < deadline) {
+    const rows = await publishedDevices(token);
+    ready = rows.filter((row) =>
+      BOUND_CONCEPTS.every((concept) => row.statistics?.[concept]),
+    ).length;
+    if (ready >= expected) {
+      console.log(`  cost range on, and ${ready} rows name both bounds`);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+  }
+  throw new Error(
+    `Gave up waiting for the cost bounds: ${ready} of ${expected} rows name ` +
+      "both. Seeding now would leave the range column empty and the rollover " +
+      "unreachable, which is the gap HEA-204 exists to close.",
+  );
+}
+
 /** How many native helpers the integration has created so far. */
 async function countHelpers(token) {
   const entries = await api("/api/config/config_entries/entry", token).catch(() => null);
@@ -262,6 +338,13 @@ export async function configureIntegration(token) {
   if (already) {
     console.log(`  integration already set up (${already.entry_id})`);
     await waitForDevices(token, DEVICES.length);
+    // Rerun against a house configured before this existed, or by a run that
+    // stopped between the two steps. Skipped where it is already on, because
+    // submitting the form reloads the entry for nothing.
+    if (!already.options?.device_cost_bounds) {
+      await enableCostBounds(token, already.entry_id);
+    }
+    await waitForBounds(token, DEVICES.length);
     return already.entry_id;
   }
 
@@ -286,5 +369,11 @@ export async function configureIntegration(token) {
 
   await waitForDevices(token, DEVICES.length);
   console.log(`  all ${DEVICES.length + 1} devices published, including Untracked`);
+
+  // Last, once every device exists. Enabling it reloads the entry and registers
+  // two more sensors per device, so doing it first would mean doing that work
+  // again for each device added afterwards.
+  await enableCostBounds(token, entryId);
+  await waitForBounds(token, DEVICES.length);
   return entryId;
 }

@@ -140,6 +140,37 @@ They assert **figures, never pixels**. A screenshot comparison rots against
 Home Assistant's own UI within a release or two, and then everyone learns to
 ignore it.
 
+There is one measurement here that is not a figure on the page: whether
+revealing a row's cost range changes any column's width. That is a layout
+question, a browser is the only thing that can answer it, and it is asserted as
+a number rather than compared as an image.
+
+### The house turns the cost range on
+
+The per-device range is opt-in (ADR-0016), so a demo house left alone publishes
+no bound statistics and the range cannot be rendered at all. `configure.mjs`
+turns it on through the options flow and `seed.mjs` writes the two bound
+statistics wherever the entity ids exist.
+
+In **both** passes. The bound sensors carry translated entity ids like every
+other concept, so the Spanish pass is the only thing that would catch a
+translated id nothing reads - the fault that rendered every card empty on a
+Spanish install.
+
+The house still covers the other path. The untracked remainder is derived rather
+than priced from a device's own energy, so it publishes no bounds and sits in
+the same table as a row without a range.
+
+The seeded bounds **bracket the actual cost by construction** rather than
+approximating it. Generation is free whichever way an hour went, so only the
+energy that came off a meter can be priced differently, and every price it could
+have carried lies between the cheapest and dearest the tariff and the stored
+energy allow. Pricing all of it at each end therefore contains the real figure,
+with nothing to drift out of step with the engine.
+
+`screenshots.mjs` drives its own flow and is untouched, so the README images
+still show the product as a household meets it.
+
 ### Why the Spanish pass rebuilds the instance
 
 Home Assistant builds an entity id from the entity's translated name, and it

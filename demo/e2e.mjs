@@ -417,6 +417,86 @@ async function figureChecks(page) {
     assert(empty === 0, "a card reported an empty period against a seeded week");
   });
   console.log("");
+
+  await costRangeChecks(page);
+}
+
+/**
+ * The cost range: that it can be reached, and that reaching it holds still.
+ *
+ * Both of these are checks only a browser can make, and the absence of either
+ * has already cost a release.
+ *
+ * The range column could never appear at all for as long as it existed, because
+ * the condition gating it could not be satisfied, and the unit test asserted the
+ * same wrong condition (HEA-194). Then the rollover that replaced it was shown
+ * by switching `display` from `none` to `inline`, which puts the text into the
+ * cell and re-sizes every column in the table (HEA-203). `happy-dom` has no
+ * layout engine, so a markup test passes whichever way the element displays, and
+ * there was no house with a bound figure on it to point a real browser at
+ * (HEA-204).
+ */
+async function costRangeChecks(page) {
+  console.log("The cost range:");
+
+  await check("the devices card offers a cost range to reveal", async () => {
+    const reveals = await page
+      .locator("hea-devices-card")
+      .first()
+      .locator(".reveal")
+      .count();
+    assert(
+      reveals > 0,
+      "no figure on the devices card offers a range. Either the option is off " +
+        "on this house, or the range is unreachable again (HEA-194).",
+    );
+  });
+
+  await check("revealing the range does not move the table", async () => {
+    const widths = () =>
+      page
+        .locator("hea-devices-card")
+        .first()
+        .evaluate((card) => {
+          const cells = card.shadowRoot.querySelectorAll(
+            "tbody tr:first-child th, tbody tr:first-child td",
+          );
+          return [...cells].map((cell) => Math.round(cell.getBoundingClientRect().width));
+        });
+
+    // Any row's cells give the table's column widths, so the first is as good
+    // as any to measure. What is hovered is the first figure that actually
+    // offers a range, which is not the first row: the untracked remainder
+    // publishes no bounds and so carries no reveal to hover.
+    const closed = await widths();
+    await page.locator("hea-devices-card").first().locator(".reveal").first().hover();
+    await page.waitForTimeout(400);
+    const open = await widths();
+
+    const moved = closed
+      .map((width, index) => [index, width, open[index]])
+      .filter(([, was, now]) => was !== now);
+    assert(
+      moved.length === 0,
+      "revealing the range re-laid the table out: " +
+        moved.map(([index, was, now]) => `column ${index} ${was} -> ${now}`).join(", "),
+    );
+
+    // On screen as well as out of flow. An overlay positioned off the left edge
+    // would satisfy the check above and be unreadable.
+    const box = await page
+      .locator("hea-devices-card")
+      .first()
+      .evaluate((card) => {
+        const shown = [...card.shadowRoot.querySelectorAll(".revealed")]
+          .map((element) => element.getBoundingClientRect())
+          .filter((rect) => rect.width > 0);
+        return shown.length ? { left: shown[0].left, width: shown[0].width } : null;
+      });
+    assert(box !== null, "nothing became visible when the range was revealed");
+    assert(box.left >= 0, `the revealed range sits off the left edge at ${box.left}px`);
+  });
+  console.log("");
 }
 
 /**

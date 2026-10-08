@@ -26,7 +26,14 @@
  * (ADR-0018).
  */
 
-import { DEVICES, HOUSE, TARIFF, UNTRACKED, WINDOW_DAYS } from "./house.mjs";
+import {
+  BOUND_CONCEPTS,
+  DEVICES,
+  HOUSE,
+  TARIFF,
+  UNTRACKED,
+  WINDOW_DAYS,
+} from "./house.mjs";
 import { HaSocket, freshAuth } from "./ha-client.mjs";
 
 /**
@@ -57,6 +64,20 @@ const CONCEPTS = [
   "cost_at_grid_price",
   "cost_savings",
 ];
+
+/**
+ * The cost range, kept out of `CONCEPTS` because it is not required.
+ *
+ * `CONCEPTS` is what every row must carry before the seed will run - a row short
+ * of one would be written past and the card would come up a device short. The
+ * bounds cannot join that list: they are opt-in (ADR-0016), the untracked
+ * remainder never publishes them at all, and a house configured without them is
+ * a house this seed still has to fill.
+ *
+ * So they are written where they exist and skipped where they do not, and the
+ * run says which it did rather than leaving it to be guessed at.
+ */
+const OPTIONAL_CONCEPTS = BOUND_CONCEPTS;
 
 async function main() {
   const auth = await freshAuth();
@@ -93,6 +114,18 @@ async function main() {
     console.log(
       `Seeded ${written} statistics across ${rows.length} devices, ` +
         `${WINDOW_DAYS} days to ${hours.at(-1).toISOString().slice(0, 10)}.`,
+    );
+    // Said out loud, because the alternative is a run that writes no bounds,
+    // reports success, and leaves the range column unreachable - which is how
+    // this went unnoticed in the first place (HEA-204).
+    const bounded = rows.filter((row) =>
+      OPTIONAL_CONCEPTS.every((concept) => row.statistics?.[concept]),
+    ).length;
+    console.log(
+      bounded === 0
+        ? "  no device publishes a cost range: the option is off, so the range " +
+            "column and its rollover cannot appear."
+        : `  ${bounded} of them carry a cost range.`,
     );
   } finally {
     socket.close();
@@ -195,8 +228,13 @@ const HOUSE_METERS = [
  * the demo's source sensors, and the house meters.
  */
 function statisticIds(rows) {
+  // The bounds are cleared with everything else where they exist. A reseed that
+  // left them behind would restart their running totals in front of the old
+  // ones, which Home Assistant reads as a week-sized negative hour (HEA-121).
   const concepts = rows.flatMap((row) =>
-    CONCEPTS.map((concept) => row.statistics?.[concept]).filter(Boolean),
+    [...CONCEPTS, ...OPTIONAL_CONCEPTS]
+      .map((concept) => row.statistics?.[concept])
+      .filter(Boolean),
   );
   const sources = rows.map((row) => row.profile.source).filter(Boolean);
   return [...new Set([...concepts, ...sources, ...HOUSE_METERS, HOUSE.importPrice])];
@@ -325,7 +363,9 @@ function daylight(hour) {
 function profileSeries(profile, hours) {
   const perDay = profile.weekKwh / WINDOW_DAYS;
   const shape = dailyShape(profile);
-  const series = Object.fromEntries(CONCEPTS.map((concept) => [concept, []]));
+  const series = Object.fromEntries(
+    [...CONCEPTS, ...OPTIONAL_CONCEPTS].map((concept) => [concept, []]),
+  );
 
   for (const start of hours) {
     const hour = start.getHours();
@@ -350,6 +390,19 @@ function profileSeries(profile, hours) {
     series.actual_cost.push(actual);
     series.cost_at_grid_price.push(atGridPrice);
     series.cost_savings.push(atGridPrice - actual);
+
+    // The cost range, which must bracket the actual cost rather than merely
+    // look like it does. Generation is free whichever way the hour went, so
+    // only the energy that came off a meter can be priced differently - and
+    // every price it could have carried lies between the cheapest and the
+    // dearest the household's tariff and stored energy allow. Pricing all of it
+    // at each end therefore contains the real figure by construction, with no
+    // fudge factor and nothing to drift out of step with the engine.
+    const offMeter = grid + battery;
+    const cheapest = Math.min(TARIFF.offPeak, stored);
+    const dearest = Math.max(TARIFF.peak, stored);
+    series.lowest_possible_cost.push(offMeter * cheapest);
+    series.highest_possible_cost.push(offMeter * dearest);
   }
   return series;
 }
@@ -382,7 +435,7 @@ function importOne(socket, statisticId, unit, stats, { mean = false } = {}) {
 /** The integration's own sensors: what the cards draw. */
 async function importConcepts(socket, statistics, series, hours) {
   let written = 0;
-  for (const concept of CONCEPTS) {
+  for (const concept of [...CONCEPTS, ...OPTIONAL_CONCEPTS]) {
     // A device only publishes the concepts it has. The cost bounds are opt-in,
     // so a missing entity id is the ordinary case, not a fault.
     const statisticId = statistics?.[concept];

@@ -276,3 +276,13 @@ export const UNTRACKED_SOURCES = [
  * a rerun on any day produces the same shape rather than a part-finished today.
  */
 export const WINDOW_DAYS = 7;
+
+/**
+ * The two cost-range concepts, named here because the seed and the setup both
+ * need them and `seed.mjs` runs on import.
+ *
+ * They read "lowest/highest possible cost" rather than floor and ceiling because
+ * that is what the sensors are keyed by - a mismatch between the two spellings
+ * is what made the range unreachable once already (HEA-84, HEA-194).
+ */
+export const BOUND_CONCEPTS = ["lowest_possible_cost", "highest_possible_cost"];
