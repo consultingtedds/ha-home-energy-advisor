@@ -32,6 +32,28 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you have a home battery, this is the release where 0.7.2's Battery Losses
+fix actually reaches you.** That release added a limit based on your battery's
+own charge and discharge meters, and it only ever switched itself on for somebody
+installing the integration for the first time. On an existing installation it
+waited for a starting point it was never given, so it did nothing at all - and
+the figure carried on reading as high as before. One household updated, saw no
+change, and was right to say so.
+
+It is on now. Energy going into a battery has to come out, stay in, or be lost,
+and the figure can no longer exceed what your own meters say is possible.
+
+**Reset totals now clears Battery Losses too.** It was clearing an older version
+of that figure and leaving the one on your dashboard untouched, so a household
+who reset everything found this single sensor still carrying its whole history.
+If you reset before and that sensor stayed where it was, resetting again will
+now take it to zero with the rest.
+
+As before, what is already recorded does not correct itself - these figures only
+count upwards, so an overstatement stops growing rather than being undone.
+
 ## 0.7.2
 
 **If you have a home battery, Battery Losses may stop climbing as quickly.** It
