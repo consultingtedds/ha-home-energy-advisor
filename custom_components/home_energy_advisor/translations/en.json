@@ -171,6 +171,9 @@
       "cost_savings": {
         "name": "Cost Savings"
       },
+      "forgone_export": {
+        "name": "Forgone Export"
+      },
       "energy_from_grid": {
         "name": "Energy From Grid"
       },
@@ -353,6 +356,10 @@
     "card_editor_sort_by": "Order by",
     "card_editor_layout": "Layout",
     "card_editor_metric": "Measure by",
+    "card_paid_with_forgone": "Cost of use",
+    "card_editor_forgone": "Count what your own generation could have earned",
+    "card_editor_forgone_include": "Include it in the cost",
+    "card_editor_forgone_exclude": "Show only what you paid",
     "card_editor_range": "Show the cost range as",
     "card_editor_range_rollover": "A rollover on Paid",
     "card_editor_range_column": "Its own column",

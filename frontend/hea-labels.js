@@ -62,6 +62,7 @@ export const DEFAULTS = Object.freeze({
   would_have_paid: "Would have paid",
   saved: "Saved",
   lost: "Lost",
+  paid_with_forgone: "Cost of use",
   range_column: "Paid (min-max)",
   range_note:
     "Paid (min-max) is the widest range these readings allow, not a typical " +
@@ -136,6 +137,9 @@ export const DEFAULTS = Object.freeze({
   editor_sort_by: "Order by",
   editor_layout: "Layout",
   editor_metric: "Measure by",
+  editor_forgone: "Count what your own generation could have earned",
+  editor_forgone_include: "Include it in the cost",
+  editor_forgone_exclude: "Show only what you paid",
   editor_range: "Show the cost range as",
   editor_range_rollover: "A rollover on Paid",
   editor_range_column: "Its own column",

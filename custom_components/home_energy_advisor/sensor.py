@@ -116,10 +116,13 @@ _MONEY_PRECISION = 4
 
 
 # Figures that can only carry information where the house has something besides
-# the grid. Two are always zero without generation or a battery, and three
+# the grid. Three are always zero without generation or a battery, and three
 # restate a sensor beside them: with one source, the blend *is* the import price,
 # so Cost at Grid Price equals Actual Cost, Cost Savings is their difference and
 # therefore zero, and Energy From Grid equals Energy Used.
+#
+# Forgone Export is the third of the always-zero ones: with no panels there is no
+# generation that could have been exported instead of used (ADR-0026).
 #
 # Created rather than withheld, and disabled rather than absent. Identity is
 # fixed from day one, so a household who fits panels later enables them instead
@@ -134,6 +137,7 @@ _SUPPLY_ONLY_CONCEPTS = frozenset(
         "energy_from_grid",
         "cost_at_grid_price",
         "cost_savings",
+        "forgone_export",
     }
 )
 
@@ -339,6 +343,22 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         suggested_display_precision=3,
         publish_precision=_ENERGY_PRECISION,
         value_fn=lambda totals: totals.energy_from_battery,
+    ),
+    # What the generation this device consumed would have earned had it been
+    # exported instead, at the export rate in force at the time (ADR-0026).
+    #
+    # Published *beside* Actual Cost and never inside it, so that figure stays
+    # what the household paid and ADR-0002's reconciliation keeps meaning what it
+    # says. Reads zero for a household who declare no export price, because for
+    # them self-consumed generation really is free.
+    HeaSensorDescription(
+        key="forgone_export",
+        translation_key="forgone_export",
+        device_class=SensorDeviceClass.MONETARY,
+        state_class=SensorStateClass.TOTAL,
+        suggested_display_precision=2,
+        publish_precision=_MONEY_PRECISION,
+        value_fn=lambda totals: totals.forgone_export,
     ),
 )
 

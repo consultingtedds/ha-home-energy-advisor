@@ -171,6 +171,9 @@
       "cost_savings": {
         "name": "Экономия"
       },
+      "forgone_export": {
+        "name": "Упущенный экспорт"
+      },
       "energy_from_grid": {
         "name": "Энергия из сети"
       },
@@ -353,6 +356,10 @@
     "card_editor_sort_by": "Сортировать по",
     "card_editor_layout": "Расположение",
     "card_editor_metric": "Показатель",
+    "card_paid_with_forgone": "Стоимость использования",
+    "card_editor_forgone": "Учитывать, сколько могла бы заработать ваша генерация",
+    "card_editor_forgone_include": "Включить в стоимость",
+    "card_editor_forgone_exclude": "Показывать только уплаченное",
     "card_editor_range": "Показывать диапазон стоимости как",
     "card_editor_range_rollover": "При наведении на «Заплачено»",
     "card_editor_range_column": "Отдельный столбец",

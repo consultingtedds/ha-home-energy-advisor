@@ -34,6 +34,23 @@ section is read as part of it and printed to a household.
 
 ## Unreleased
 
+**If you have solar panels and you export, Cost by device now counts what your
+own generation could have earned.** Energy your panels made and your house used
+was priced at nothing, which is right about your bank account and wrong about
+what it was worth: that unit could have been exported and paid you. The table's
+cost column now includes it, and says so by changing its heading - the figure is
+no longer what you paid, so it is no longer called Paid.
+
+The rate comes from the export price you already told the Energy Dashboard. There
+is nothing new to configure, and if you do not export, or have no panels, nothing
+changes for you at all.
+
+**Your sensors have not moved.** Actual Cost is still exactly what you paid, and
+every total still adds up the way it did. The new figure is published beside it
+as **Forgone Export**, per device, and the card simply chooses to show the two
+together. If you would rather see only what you paid, the card's own settings
+have a switch for it.
+
 **If you have a home battery, this is the release where 0.7.2's Battery Losses
 fix actually reaches you.** That release added a limit based on your battery's
 own charge and discharge meters, and it only ever switched itself on for somebody

@@ -21,6 +21,7 @@ import {
   anEnergyCollection,
   boundsFor,
   bucketsFor,
+  forgoneFor,
   JULY,
   MAY,
   mountCard,
@@ -1135,5 +1136,93 @@ describe("the table", () => {
 
     // Then
     expect(card.getCardSize()).toBeGreaterThan(3);
+  });
+});
+
+describe("what the household's own generation gave up", () => {
+  /**
+   * A solar household who export, so using a unit at home costs them the export
+   * they did not earn (ADR-0026). Only the two tracked devices: the Untracked
+   * remainder is derived and carries no such sensor, exactly as with the bounds.
+   */
+  const FORGOING = aHass({
+    devices: THREE_DEVICES,
+    response: {
+      ...THREE_RESPONSE,
+      ...forgoneFor("slow_poll_aircon", 0.25),
+      ...forgoneFor("fine_meter_aircon", 1.5),
+    },
+  });
+
+  const headingsOf = (card) =>
+    [...card.shadowRoot.querySelectorAll("thead th")].map((cell) =>
+      cell.textContent.trim(),
+    );
+
+  const paidCellOf = (card, name) => {
+    const row = [...card.shadowRoot.querySelectorAll("tbody tr")].find((candidate) =>
+      candidate.textContent.includes(name),
+    );
+    return row.querySelectorAll("td")[1].textContent.trim();
+  };
+
+  it("adds it to the cost by default, and says so in the heading", async () => {
+    // Given / When - a household who export, with the card left alone
+    const card = mount(FORGOING);
+    await ready(card);
+
+    // Then - the column is no longer called Paid, because the figure is no
+    // longer what they paid: 0.11 paid plus 0.25 of export not earned
+    expect(headingsOf(card)).toContain(LABELS.paid_with_forgone);
+    expect(headingsOf(card)).not.toContain(LABELS.paid);
+    expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]36/);
+  });
+
+  it("shows what they paid when asked to", async () => {
+    // Given / When - the household who wants the bank-account answer
+    const card = mount(FORGOING, { forgone: "exclude" });
+    await ready(card);
+
+    // Then - the heading and the figure are both back to what was paid
+    expect(headingsOf(card)).toContain(LABELS.paid);
+    expect(headingsOf(card)).not.toContain(LABELS.paid_with_forgone);
+    expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]11/);
+  });
+
+  it("leaves a household who forgo nothing entirely alone", async () => {
+    // Given / When - no panels, or panels and no export arrangement. Both
+    // forgo nothing, and changing a heading over a column of unchanged figures
+    // would be a worse answer than leaving it alone.
+    const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+    await ready(card);
+
+    // Then - the table they had before this existed
+    expect(headingsOf(card)).toContain(LABELS.paid);
+    expect(headingsOf(card)).not.toContain(LABELS.paid_with_forgone);
+    expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]11/);
+  });
+
+  it("keeps the range rollover on the figure it qualifies", async () => {
+    // Given / When - a household with both the range and something forgone.
+    // The reveal belongs to the cell whatever the cell is showing.
+    const card = mount(
+      aHass({
+        devices: THREE_DEVICES,
+        response: {
+          ...THREE_RESPONSE,
+          ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+          ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+          ...forgoneFor("slow_poll_aircon", 0.25),
+          ...forgoneFor("fine_meter_aircon", 1.5),
+        },
+      }),
+    );
+    await ready(card);
+
+    // Then - still reachable, and still reporting what was *paid* against its
+    // bounds, because the range brackets the cost rather than the reading
+    const reveal = revealIn(card, "Slow Poll Aircon");
+    expect(reveal).not.toBeNull();
+    expect(reveal.textContent).toMatch(/0[.,]02.+0[.,]40/);
   });
 });

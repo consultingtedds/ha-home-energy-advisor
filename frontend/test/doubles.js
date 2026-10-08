@@ -54,6 +54,9 @@ export const STAT_CONCEPTS = [
   "energy_from_grid",
   "energy_from_generation",
   "energy_from_battery",
+  // Published for every row including Untracked, unlike the bounds below:
+  // `_CONCEPTS` carries it, so `sensor.py` creates one per device (ADR-0026).
+  "forgone_export",
   "lowest_possible_cost",
   "highest_possible_cost",
 ];
@@ -153,6 +156,18 @@ export const boundsFor = (key, costFloor, costCeiling, at = MAY) => ({
   ],
   [`sensor.${key}_highest_possible_cost`]: [
     { start: at.getTime(), change: costCeiling },
+  ],
+});
+
+/**
+ * What a key's own generation could have earned had it been exported (ADR-0026).
+ *
+ * Absent for a household with no panels, and zero for one who export nothing -
+ * both of which mean the same thing here, unlike a missing bound.
+ */
+export const forgoneFor = (key, forgoneExport, at = MAY) => ({
+  [`sensor.${key}_forgone_export`]: [
+    { start: at.getTime(), change: forgoneExport },
   ],
 });
 

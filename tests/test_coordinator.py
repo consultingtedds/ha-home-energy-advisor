@@ -1701,16 +1701,16 @@ async def test_a_figure_that_arrived_disabled_is_named_in_repairs(
     # When - the health pass runs
     await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))
 
-    # Then - the Repair names how many figures are not reaching them. All 27 were
+    # Then - the Repair names how many figures are not reaching them. All 30 were
     # caught by the preference, but only the 11 we asked to be enabled are a
-    # fault: the other 16 are HEA-175's, disabled on purpose because this home
+    # fault: the other 19 are HEA-175's, disabled on purpose because this home
     # has no generation or battery to measure
     disabled = [
         ours
         for ours in _ours(hass, entry)
         if ours.disabled_by is er.RegistryEntryDisabler.INTEGRATION
     ]
-    assert len(disabled) == 27
+    assert len(disabled) == 30
     issue = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
     assert issue is not None
     assert issue.translation_placeholders == {"count": "11"}
@@ -1720,15 +1720,15 @@ async def test_a_grid_only_home_is_not_told_about_figures_we_switched_off(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
     # Given - the same home with the preference left alone, which is almost every
-    # household. HEA-175 still disables sixteen by-source and battery figures
-    # here, with the same `INTEGRATION` disabler the preference uses
+    # household. HEA-175 still disables nineteen by-source, battery and forgone
+    # figures here, with the same `INTEGRATION` disabler the preference uses
     entry = await _setup_running_home(hass, freezer)
     by_us = [
         ours
         for ours in _ours(hass, entry)
         if ours.disabled_by is er.RegistryEntryDisabler.INTEGRATION
     ]
-    assert len(by_us) == 16, "the fixture must be a home we deliberately quieten"
+    assert len(by_us) == 19, "the fixture must be a home we deliberately quieten"
 
     # When
     await _tick(hass, freezer, datetime(2026, 7, 8, 22, 6, tzinfo=UTC))

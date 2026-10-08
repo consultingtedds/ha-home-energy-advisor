@@ -111,13 +111,16 @@ def _entry(
 
 
 # Figures that cannot carry information for a household with neither generation
-# nor a battery: two are always zero, and three restate a sensor beside them.
+# nor a battery: three are always zero, and three restate a sensor beside them.
+# Spelled out rather than imported, so adding a concept to the production set
+# fails here until it has been thought about.
 _SUPPLY_ONLY_CONCEPTS = (
     "energy_from_generation",
     "energy_from_battery",
     "energy_from_grid",
     "cost_at_grid_price",
     "cost_savings",
+    "forgone_export",
 )
 
 

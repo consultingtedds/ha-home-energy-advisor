@@ -35,6 +35,13 @@ export const CONCEPTS = Object.freeze({
   energyFromGrid: "energy_from_grid",
   energyFromGeneration: "energy_from_generation",
   energyFromBattery: "energy_from_battery",
+  // What the generation a device consumed would have earned if exported instead
+  // (ADR-0026). Here rather than with the bounds, although it can also be
+  // missing, because **absent genuinely means zero**: a household with no panels
+  // forgoes nothing, and a household with panels and no export arrangement
+  // forgoes nothing either. A missing bound means "unknown", which is why those
+  // are kept apart and accumulate to `undefined`.
+  forgoneExport: "forgone_export",
 });
 
 /**

@@ -133,6 +133,22 @@ const PAID = {
   },
 };
 
+/**
+ * Paid, plus what the sunshine it used could have earned instead (ADR-0026).
+ *
+ * A separate column object rather than a flag on `PAID`, because the figure and
+ * its heading move together: a number that includes forgone revenue is not what
+ * the household paid, and calling it "Paid" would be the one thing ADR-0026
+ * refuses to do. The sensors are untouched either way - this is a reading of
+ * them, chosen on the card.
+ */
+const PAID_WITH_FORGONE = {
+  derive: (row) => row.actualCost + (row.forgoneExport ?? 0),
+  label: "paid_with_forgone",
+  format: formatMoney,
+  reveal: PAID.reveal,
+};
+
 const COLUMNS = [
   { field: "name", label: "device" },
   { field: "energyUsed", label: "energy", format: formatEnergy },
@@ -217,14 +233,21 @@ class HeaDevicesCard extends HeaTableCard {
     // entirely where no row can carry one, which is the condition HEA-194 fixed
     // and this does not reopen (HEA-198).
     const asColumn = this._config?.range === "column" && this._hasEveryBound();
+    // Included unless asked otherwise, and only where a household has something
+    // to have forgone. A home with no panels, or with panels and no export
+    // arrangement, gave nothing up - so the heading does not change under them
+    // and no reading of theirs moves (ADR-0026).
+    const withForgone = this._config?.forgone !== "exclude" && this._hasForgone();
+    const paid = withForgone ? PAID_WITH_FORGONE : PAID;
     const dropped = new Set();
     if (!asColumn) dropped.add(RANGE);
     if (!this._hasComparison()) dropped.add(CHANGE);
-    return COLUMNS.filter((column) => !dropped.has(column)).map((column) =>
+    return COLUMNS.filter((column) => !dropped.has(column)).map((column) => {
+      if (column !== PAID) return column;
       // Shown once or the other way, never both: a rollover repeating the column
       // beside it is noise, and the column is the explicit request.
-      column === PAID && asColumn ? { ...PAID, reveal: undefined } : column,
-    );
+      return asColumn ? { ...paid, reveal: undefined } : paid;
+    });
   }
 
   /**
@@ -238,6 +261,18 @@ class HeaDevicesCard extends HeaTableCard {
    */
   _hasComparison() {
     return (this._result?.devices ?? []).some((row) => row.before);
+  }
+
+  /**
+   * True once any row gave something up by using its own generation.
+   *
+   * Any, not every, and non-zero rather than merely present: the statistic
+   * exists on every solar household, and reads zero for one who export nothing.
+   * Changing a heading over a column of unchanged figures would be a worse
+   * answer than leaving it alone.
+   */
+  _hasForgone() {
+    return (this._result?.devices ?? []).some((row) => (row.forgoneExport ?? 0) > 0);
   }
 
   _hasEveryBound() {
@@ -288,6 +323,21 @@ class HeaDevicesCardEditor extends HeaCardEditor {
       // Offered rather than decided, because the two readings trade off: a
       // rollover keeps Paid as the single figure on the row, and a column can be
       // sorted and read down the page (HEA-198, HEA-100's precedent).
+      // Offered rather than decided for the same reason as the range: both
+      // readings are honest and answer different questions - what left the bank
+      // account, and what the energy was worth (ADR-0026 decision 4).
+      {
+        name: "forgone",
+        selector: {
+          select: {
+            mode: "dropdown",
+            options: [
+              { value: "include", label: labels.editor_forgone_include },
+              { value: "exclude", label: labels.editor_forgone_exclude },
+            ],
+          },
+        },
+      },
       {
         name: "range",
         selector: {
