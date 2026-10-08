@@ -361,6 +361,46 @@ def test_the_first_measurement_establishes_a_baseline_and_publishes_nothing() ->
     assert acc.totals().battery.energy_kwh == Decimal(0)
 
 
+def test_the_first_interval_of_a_fresh_install_is_measured_not_swallowed() -> None:
+    """A household whose battery is configured from the start loses nothing.
+
+    The test above protects a household that fills in their battery level after
+    the integration has been running: the headroom behind them is history nobody
+    measured, so the first reading only takes a baseline.
+
+    A fresh install is the opposite case and had the same treatment. The headroom
+    is set per priced interval, and an interval where nothing moved is never
+    priced - so it does not exist until something moves, and the interval that
+    brings it into existence is already inside it. The baseline landed one
+    interval late and that interval's loss was never published (HEA-199).
+
+    Nothing has accumulated while the headroom is absent, so zero is what the
+    baseline should hold, and the first interval is measurable like any other.
+    """
+    # Given - a fresh install, every counter at zero, whose household has their
+    # battery configured from the start: the level is read before anything moves
+    acc = _metered_home_at_rest()
+    acc.reconcile_battery(Decimal(0))
+    assert acc.totals().battery.energy_kwh == Decimal(0)
+
+    # When - it imports 2 kWh and puts all of it into the battery, which comes
+    # back holding 1.9. The house drew none of it, so the meters cannot explain
+    # 2.0 and the battery gained 1.9
+    for entity, value in (
+        ("sensor.grid_import", "2.0"),
+        ("sensor.battery_charge", "2.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("1.9"))
+
+    # Then - the 0.1 that went to heat is published, exactly. Before HEA-199 this
+    # read 0: the span became the baseline instead of being measured
+    assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
+        "0.100"
+    )
+
+
 def test_a_household_that_meters_too_little_is_not_capped() -> None:
     # Given - a household with no generation or export meter, so the balance
     # cannot be computed at all

@@ -1035,10 +1035,13 @@ class Accountant:
         meters, so nothing here assumes an efficiency, and nothing here depends
         on the charge and discharge counters agreeing with each other.
 
-        **The first call only takes a baseline.** The headroom accumulates from
-        the household's first interval, so measuring against it outright would
-        publish their whole history as one loss - which is the fault HEA-182 was
-        raised to stop, arriving by the other door.
+        **The first call only takes a baseline, against what has accumulated so
+        far.** On a household who fill their battery level in after the
+        integration has been running, the headroom behind them is history nobody
+        measured, and publishing it as one loss is the fault HEA-182 was raised
+        to stop arriving by the other door. On a fresh install nothing has
+        accumulated, so that baseline is zero and the first interval is
+        measurable like any other.
 
         **A negative measurement is carried, not clamped.** Meters tick at
         different moments and a level is a coarse percentage, so a span can
@@ -1052,6 +1055,17 @@ class Accountant:
         those there is no gain to subtract and no figure is published.
         """
         if self._balance_headroom is None:
+            # Nothing has been priced yet, so there is nothing accumulated to
+            # measure against - and zero is what the baseline should hold rather
+            # than nothing at all. The headroom is set per priced interval and an
+            # interval where nothing moved is never priced, so it does not exist
+            # until something moves, and the interval that brings it into
+            # existence is already inside it. Waiting for it meant the baseline
+            # landed one interval late and that interval's loss was never
+            # published (HEA-199). Kept current while the headroom is still
+            # absent, so the baseline holds the level just before the first one.
+            self._loss_baseline = (Decimal(0), available_kwh)
+            self._loss_meters_baseline = (self._metered_charge, self._metered_discharge)
             return
         if self._loss_baseline is None:
             self._loss_baseline = (self._balance_headroom, available_kwh)
