@@ -27,6 +27,7 @@ actually did, and that is HEA-182's subject.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -334,6 +335,73 @@ def test_the_loss_cannot_exceed_what_the_batterys_own_meters_allow() -> None:
     assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
         "0.800"
     )
+
+
+def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
+    """The bound has to reach the households who already have the fault (HEA-206).
+
+    The cap's own baseline was only ever taken on the branch that takes the
+    *loss* baseline, and that branch runs once per lifetime. A household who
+    upgraded already had a loss baseline, written before this bound existed, and
+    their snapshot carried no meter baseline - so the cap waited for a starting
+    point it would never be given and never applied at all.
+
+    `xamrex` on GitHub 34 reported exactly that: he updated, saw no change, and
+    his diagnostics said nothing had ever been refused. Over one day his battery
+    took in 10.0 kWh and gave back 9.6, so it could have lost at most 0.4, and
+    3.115 was published.
+
+    The snapshot here is a real one with the key removed, which is the shape a
+    release before the bound wrote - rather than a dictionary assembled to suit
+    the test.
+    """
+    # Given - a household who has been running long enough to hold a loss
+    # baseline, and whose snapshot predates the bound
+    before = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        before.observe(entity, at(45), Decimal(value))
+    before.finalize(at(85))
+    before.reconcile_battery(Decimal("2.5"))
+    carried = json.loads(json.dumps(before.snapshot()))
+    assert carried["battery_loss"]["baseline"] is not None
+    del carried["battery_loss"]["metered_baseline"]
+
+    acc = _metered_home_at_rest()
+    acc.restore(carried)
+
+    # When - the span HEA-196 was raised for: the generation meter reports 2 kWh
+    # that never reached the house, so the house balance cannot explain 3.5 and
+    # the residual alone would publish 2.3
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.generation", "2.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"))
+
+    # Then - bounded exactly as it is for a fresh install: the battery took in
+    # 2 kWh over the span, gave back none and gained 1.2, so 0.8 is the most it
+    # can have lost
+    assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
+        "0.800"
+    )
+
+    # And - the refusal is recorded. A cap that silently publishes the right
+    # figure is indistinguishable from one that never ran, which is the whole
+    # reason this defect survived a release.
+    #
+    # 0.5 rather than the fresh install's 1.5: this household's loss baseline was
+    # taken before the snapshot, so the residual over this span is 1.3 rather
+    # than 2.3, and 0.8 of it is allowed. The refusal is the difference.
+    refused = Decimal(acc.battery_diagnostics()["loss_refused_kwh"])
+    assert refused.quantize(Decimal("0.001")) == Decimal("0.500")
 
 
 def test_the_first_measurement_establishes_a_baseline_and_publishes_nothing() -> None:

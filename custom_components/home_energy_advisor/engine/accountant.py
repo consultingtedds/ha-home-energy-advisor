@@ -892,7 +892,24 @@ class Accountant:
             self._metered_discharge = Decimal(metered[1])
         meters_baseline = loss.get("metered_baseline")
         self._loss_meters_baseline = (
-            None
+            # Armed from the meters as restored, rather than left absent.
+            #
+            # A snapshot written before this bound existed carries a loss
+            # baseline and no meter baseline. Both places that take a meter
+            # baseline sit behind `_loss_baseline is None`, which has already
+            # run once for such a household and will never run again - so left
+            # as `None` the bound waits for a starting point it is never given
+            # and never applies at all. It shipped inert to every installation
+            # that upgraded into it, which is how a household came back with the
+            # same fourfold figure after the release that was meant to fix it
+            # (HEA-206, GitHub 34).
+            #
+            # The meters' own running totals *are* restored, so this is the one
+            # moment their value is known without a reconcile. Taking the
+            # baseline here bounds every span from the restore onwards; only the
+            # span already in progress goes unbounded, and nothing in the
+            # snapshot could have bounded that one.
+            (self._metered_charge, self._metered_discharge)
             if meters_baseline is None
             else (Decimal(meters_baseline[0]), Decimal(meters_baseline[1]))
         )
@@ -1231,9 +1248,13 @@ class Accountant:
         inherits every disagreement between them (HEA-196, GitHub 34, where a
         household saw four times what their battery could have lost).
 
-        `None` where there is nothing to compare against: a span before the first
-        measurement, or a snapshot written before this was tracked. Unbounded is
-        what the figure already was, so saying so is safer than guessing a bound.
+        `None` only for a span before the first measurement, where there is no
+        earlier meter reading to measure against. Unbounded is what the figure
+        already was, so saying so is safer than guessing a bound.
+
+        Not for a snapshot written before this was tracked, which used to leave
+        it `None` for ever and so left the bound inert on every household who
+        upgraded into it - `restore` arms it from the meters instead (HEA-206).
 
         **An upper bound and not the figure itself.** Where a discharge meter
         counts only what reached the house, this is loose by whatever it missed -
