@@ -404,6 +404,91 @@ def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
     assert refused.quantize(Decimal("0.001")) == Decimal("0.500")
 
 
+def test_reset_totals_rebases_the_published_battery_loss() -> None:
+    """A household who asked to start again starts again (HEA-207).
+
+    `reset_totals` cleared the *ledger's* write-down counters and not the
+    accountant's own published loss. The two were one figure until HEA-182 split
+    them, and the reset was left pointing at the old one - while its docstring
+    was updated to describe the behaviour it no longer had.
+
+    `xamrex` on GitHub 34: *"ONLY Battery loses DID NOT resets to zero."* Every
+    other figure restarting correctly is what made it obvious.
+    """
+    # Given - a household carrying a published battery loss
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("2.5"))
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"))
+    assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
+        "0.300"
+    )
+    stored_before = Decimal(acc.battery_diagnostics()["stored_kwh"])
+
+    # When - they ask for a clean slate
+    acc.reset_totals()
+
+    # Then - the figure they see is zero, like every other one
+    assert acc.totals().battery.energy_kwh == Decimal(0)
+    assert acc.totals().battery.actual_cost == Decimal(0)
+
+    # And - the energy the battery physically holds is untouched. That is fact
+    # about the present, not a running total of the past, and discharging it
+    # after a rebase is not free (ADR-0021).
+    assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == stored_before
+    assert stored_before > Decimal(0)
+
+
+def test_a_reset_does_not_republish_the_history_as_one_loss() -> None:
+    """The rebase must not re-arm the measurement onto an old baseline.
+
+    Zeroing the loss baseline along with the totals would make the next
+    reconcile measure against a headroom accumulated before the reset and
+    publish the gap as a single loss - the HEA-182 fault, arriving through the
+    reset. So the baselines survive and only the totals rebase.
+    """
+    # Given - a household who reset after accumulating a loss
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("2.5"))
+    acc.reset_totals()
+
+    # When - the next span loses 0.3, exactly as the unreset case does
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"))
+
+    # Then - that span's loss and nothing else. A figure carrying the history
+    # would read far above this.
+    assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
+        "0.300"
+    )
+
+
 def test_the_first_measurement_establishes_a_baseline_and_publishes_nothing() -> None:
     """The trap this ticket exists for, arriving by the other door.
 

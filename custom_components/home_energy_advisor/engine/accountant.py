@@ -643,6 +643,19 @@ class Accountant:
         self._running = {device: _Running() for device in self._running}
         self._house = _Running()
         self._battery.forget_losses()
+        # The figure a household actually sees. `forget_losses` rebases the
+        # ledger's write-down, which was the same figure until HEA-182 split the
+        # measured loss from it - and the reset was left pointing at the old one
+        # while this docstring was updated to describe the new behaviour. So a
+        # household who reset everything found this one sensor carrying its whole
+        # history, which is what they reported (HEA-207, GitHub 34).
+        self._battery_loss_kwh = Decimal(0)
+        self._battery_loss_cost = Decimal(0)
+        # A running total of the past like the two above, and rebased with them.
+        # It reaches nobody outside a diagnostics download, but a household who
+        # asked to start again should not be read against a refusal count that
+        # predates the request.
+        self._loss_refused_kwh = Decimal(0)
         self._raw.clear()
         self._draws.clear()
         self._retained.clear()
