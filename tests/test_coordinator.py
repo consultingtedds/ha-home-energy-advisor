@@ -23,6 +23,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
@@ -1772,3 +1773,210 @@ async def test_the_repair_waits_for_the_figures_not_for_the_setting(
 
     # Then - and only then - it clears
     assert not _has_issue(hass, issue_id)
+
+
+def _solar_entry() -> MockConfigEntry:
+    """A home whose panels serve the house, with one tracked device on them."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_load",
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title="Coarse Step Aircon",
+                data={
+                    CONF_NAME: "Coarse Step Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
+                },
+                unique_id=None,
+            )
+        ],
+    )
+
+
+def _export_prefs(
+    *, price_entity: str | None = None, number: float | None = None
+) -> MagicMock:
+    """An energy manager whose grid source declares what export earns.
+
+    Both shapes the preference is held in are exercised elsewhere; this builds
+    the flow-list one, which is what a household configured before 2026.9 has and
+    what a stored preference is migrated *from*.
+    """
+    flow: dict[str, object] = {"stat_energy_to": "sensor.grid_export"}
+    if price_entity is not None:
+        flow["entity_energy_price"] = price_entity
+    if number is not None:
+        flow["number_energy_price"] = number
+    manager = MagicMock()
+    manager.data = {
+        "energy_sources": [
+            {
+                "type": "grid",
+                "flow_from": [{"stat_energy_from": "sensor.grid_import"}],
+                "flow_to": [flow],
+            }
+        ],
+        "device_consumption": [],
+    }
+    return manager
+
+
+async def _run_solar(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, manager: MagicMock
+) -> MockConfigEntry:
+    """One interval the sun serves entirely, with the aircon taking 0.5 kWh.
+
+    The grid meter is present and never moves, so the interval's blend is the
+    sun alone and the device's generation share is exactly its own draw.
+    """
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.export_price", "0.05")
+    for entity in (
+        "sensor.grid_import",
+        "sensor.generation",
+        "sensor.house_load",
+        "sensor.coarse_step_energy",
+    ):
+        hass.states.async_set(entity, "0", _ENERGY)
+    entry = _solar_entry()
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+        hass.states.async_set("sensor.generation", "1.0", _ENERGY)
+        hass.states.async_set("sensor.house_load", "1.0", _ENERGY)
+        hass.states.async_set("sensor.coarse_step_energy", "0.5", _ENERGY)
+        await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+        async_fire_time_changed(hass, fire_all=True)
+        await hass.async_block_till_done()
+    return entry
+
+
+async def test_the_export_price_reaches_the_engine_from_the_energy_dashboard(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The rate is read where the household already declared it (ADR-0026).
+
+    No field of our own asks for it: a second copy would be a second source of
+    truth, and it would diverge the first time somebody edited one and not the
+    other with nothing on any screen to say which was in force.
+    """
+    # Given / When - a solar home whose Energy Dashboard names an export price
+    # entity reading five cents
+    entry = await _run_solar(
+        hass, freezer, _export_prefs(price_entity="sensor.export_price")
+    )
+
+    # Then - the half kilowatt hour of sunshine the aircon used is booked as
+    # having given up five cents a unit
+    coordinator = entry.runtime_data
+    aircon = next(iter(coordinator.data.devices.values()))
+    assert aircon.energy_from_generation == Decimal("0.5")
+    assert aircon.forgone_export == Decimal("0.025")
+    # And the cost itself has not moved: this is published beside it, never in it
+    assert aircon.actual_cost == Decimal(0)
+
+
+async def test_a_static_export_price_is_read_too(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A household can price export with a number instead of a sensor."""
+    # Given / When - the same home, priced at a flat twenty cents
+    entry = await _run_solar(hass, freezer, _export_prefs(number=0.2))
+
+    # Then - the same half kilowatt hour at that rate
+    coordinator = entry.runtime_data
+    aircon = next(iter(coordinator.data.devices.values()))
+    assert aircon.forgone_export == Decimal("0.1")
+
+
+async def test_a_household_who_declares_no_export_price_forgoes_nothing(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Today's behaviour, for a home with no export arrangement.
+
+    For them self-consumed generation really is free, and ADR-0026 promises them
+    no figure rather than a guessed rate.
+    """
+    # Given / When - a grid source that names no export price at all
+    entry = await _run_solar(hass, freezer, _export_prefs())
+
+    # Then - the sunshine was used, and nothing was given up
+    coordinator = entry.runtime_data
+    aircon = next(iter(coordinator.data.devices.values()))
+    assert aircon.energy_from_generation == Decimal("0.5")
+    assert aircon.forgone_export == Decimal(0)
+
+
+async def test_editing_the_export_price_reaches_the_engine_without_a_restart(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The claim that justifies reading it live rather than copying it.
+
+    A copy taken at setup would answer with the rate that was in force when the
+    integration last loaded, and nothing on any screen would say so. This is the
+    same contract the device hierarchy already has (HEA-153).
+
+    The edit lands before any generation has been served, so the figure below can
+    only have come from the new rate: there is no earlier energy for the old one
+    to have priced.
+    """
+    # Given - a solar home set up against a five-cent export price
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.export_price", "0.05")
+    for entity in (
+        "sensor.grid_import",
+        "sensor.generation",
+        "sensor.house_load",
+        "sensor.coarse_step_energy",
+    ):
+        hass.states.async_set(entity, "0", _ENERGY)
+    manager = _export_prefs(price_entity="sensor.export_price")
+    entry = _solar_entry()
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+        # When - the household repoints the Energy Dashboard at a dearer price
+        # and it tells its listeners, before any sunshine has been accounted for
+        hass.states.async_set("sensor.better_tariff", "0.20")
+        manager.data["energy_sources"][0]["flow_to"][0]["entity_energy_price"] = (
+            "sensor.better_tariff"
+        )
+        await manager.async_listen_updates.call_args[0][0]()
+        await hass.async_block_till_done()
+
+        # And - an interval the sun serves entirely, the aircon taking half of it
+        freezer.move_to(datetime(2026, 7, 8, 22, 5, tzinfo=UTC))
+        hass.states.async_set("sensor.generation", "1.0", _ENERGY)
+        hass.states.async_set("sensor.house_load", "1.0", _ENERGY)
+        hass.states.async_set("sensor.coarse_step_energy", "0.5", _ENERGY)
+        await hass.async_block_till_done()
+        freezer.move_to(datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+        async_fire_time_changed(hass, fire_all=True)
+        await hass.async_block_till_done()
+
+    # Then - twenty cents a unit, not five. A copy taken at setup would read
+    # 0.025 here, which is what makes this worth asserting.
+    aircon = next(iter(entry.runtime_data.data.devices.values()))
+    assert aircon.energy_from_generation == Decimal("0.5")
+    assert aircon.forgone_export == Decimal("0.5") * Decimal("0.20")
+    assert aircon.forgone_export == Decimal("0.100")

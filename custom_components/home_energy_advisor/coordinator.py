@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from homeassistant.core import (
+        CALLBACK_TYPE,
         Event,
         EventStateChangedData,
         EventStateReportedData,
@@ -211,15 +212,26 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._carried_a_snapshot = False
         self._snapshot_status = SnapshotStatus.ABSENT
         self._snapshot_age: timedelta | None = None
+        # Followed separately from the meters, because the Energy Dashboard can
+        # repoint it while we are running and the meter tracker is a fixed list.
+        self._export_price_entity: str | None = None
+        self._unfollow_export_price: CALLBACK_TYPE | None = None
 
-    async def _async_follow_nesting(self) -> None:
-        """Take the device hierarchy from the Energy Dashboard, and keep taking it.
+    async def _async_follow_energy_prefs(self) -> None:
+        """Take the hierarchy and the export price from the Energy Dashboard.
 
         A household describes their wiring once, where Home Assistant already
         asks for it: a device-consumption entry naming the device whose total
         already contains it. Holding a second copy here would be a maintenance
         burden with no case behind it - there is no hierarchy somebody would
         want only in this integration.
+
+        The export price is read for the same reason (ADR-0026). A household who
+        exports has already declared what they are paid, and a second copy would
+        diverge the first time one was edited and not the other, with nothing on
+        any screen to say which was in force. That is why the import price - a
+        precondition this cannot run without - is asked for and copied, while
+        these two are read where they live.
 
         Subscribed rather than read once, so re-nesting in the Energy Dashboard
         reaches the engine without a restart. `async_listen_updates` has **no
@@ -233,13 +245,14 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         """
         try:
             manager = await async_get_manager(self.hass)
-        except Exception:  # noqa: BLE001 - nesting is optional; never block setup
+        except Exception:  # noqa: BLE001 - both are optional; never block setup
             return
         self._apply_nesting(manager.data)
-        manager.async_listen_updates(self._async_nesting_changed)
+        self._apply_export_price(manager.data)
+        manager.async_listen_updates(self._async_energy_prefs_changed)
 
-    async def _async_nesting_changed(self) -> None:
-        """Re-read the hierarchy after the household edited the Energy Dashboard."""
+    async def _async_energy_prefs_changed(self) -> None:
+        """Re-read both after the household edited the Energy Dashboard."""
         if self._entry.state is not ConfigEntryState.LOADED:
             # The listener outlives the entry, so a reloaded or removed
             # household would otherwise be accounted by a dead coordinator.
@@ -249,9 +262,56 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         except Exception:  # noqa: BLE001 - as above; a failed re-read changes nothing
             return
         self._apply_nesting(manager.data)
+        self._apply_export_price(manager.data)
 
     def _apply_nesting(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
         self._accountant.set_nesting(_nesting_of(prefs, self._device_of_entity))
+
+    def _apply_export_price(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
+        """Point the engine at what exporting earns, however it is declared.
+
+        A flat number is recorded outright. An entity is followed, because a
+        household on a dynamic tariff has a rate that moves and the figure is
+        accumulated against the rate in force at the time rather than an average
+        (ADR-0026).
+
+        Re-subscribed rather than registered once: the entity can change under
+        us when the household edits the Energy Dashboard, and the tracker set up
+        at startup names a fixed list. Doing nothing where it has not changed
+        keeps an edit elsewhere in the preferences from dropping a reading.
+        """
+        entity, number = _export_price_of(prefs)
+        if number is not None:
+            self._accountant.record_export_price(dt_util.utcnow(), number)
+        if entity == self._export_price_entity:
+            return
+        if self._unfollow_export_price is not None:
+            self._unfollow_export_price()
+            self._unfollow_export_price = None
+        self._export_price_entity = entity
+        if entity is None:
+            return
+        self._feed_export_price(self.hass.states.get(entity))
+        self._unfollow_export_price = async_track_state_change_event(
+            self.hass, [entity], self._handle_export_price_change
+        )
+
+    @callback
+    def _handle_export_price_change(self, event: Event[EventStateChangedData]) -> None:
+        self._feed_export_price(event.data["new_state"])
+
+    def _feed_export_price(self, state: State | None) -> None:
+        """Record a rate, and say nothing where there is none to record.
+
+        An unavailable export price is not a fault to report. It leaves the
+        figure accumulating at the last rate known, which is the same treatment
+        every other price gets and better than claiming the energy was free.
+        """
+        if state is None or state.state in _UNAVAILABLE:
+            return
+        price = _to_decimal(state.state)
+        if price is not None:
+            self._accountant.record_export_price(state.last_updated, price)
 
     @property
     def nesting(self) -> Mapping[str, str]:
@@ -311,7 +371,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     async def async_start(self) -> None:
         """Restore, baseline current states, subscribe, and start the timer."""
         await self._async_restore_accounting()
-        await self._async_follow_nesting()
+        await self._async_follow_energy_prefs()
         self._adopt_standing_accusations()
         for entity_id in self._energy_entities:
             self._feed_energy(entity_id, self.hass.states.get(entity_id))
@@ -1089,6 +1149,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # entity ids and device names as field values without key collisions.
         return {
             "price_entity": self._price_entity,
+            # Which entity the export rate is being read from, or absent where
+            # the household declares none. Read live from the Energy Dashboard
+            # rather than configured here, so the download is the only place
+            # that can say what is actually in force (ADR-0026).
+            "export_price_entity": self._export_price_entity,
             "currency": data.get(CONF_CURRENCY, DEFAULT_CURRENCY),
             "house_sources": [
                 {"role": role.value, "entity": entity}
@@ -1151,6 +1216,38 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _device_name(self, sub_id: str) -> str:
         subentry = self._entry.subentries.get(sub_id)
         return subentry.title if subentry is not None else sub_id
+
+
+def _export_price_of(prefs: Any) -> tuple[str | None, Decimal | None]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    """What a household is paid for exporting, as an entity or a flat number.
+
+    Home Assistant holds a grid source's flows two ways: on the source itself
+    from 2026.9, and as lists before that, with `hacs.json` supporting back to
+    2026.7. A stored preference is migrated to the newer shape when it is loaded,
+    so both are live and neither can be assumed - the config flow's prefill reads
+    them the same way, for the same reason.
+
+    The first grid source that names a price wins. A household can hold more than
+    one - pricing a standing charge means declaring one - and a grid that exports
+    nothing simply offers neither answer.
+
+    Neither is returned for a household who tracks export as a compensation
+    statistic rather than a rate: there is no price in that, and a guessed one
+    would be worse than the honest nothing they get today.
+    """
+    # `prefs` is None on a household with no Energy Dashboard configured, which
+    # is ordinary - the nesting reader guards the same way for the same reason.
+    for source in (prefs.get("energy_sources") or []) if prefs else []:
+        if source.get("type") != "grid":
+            continue
+        exports = source.get("flow_to")
+        flow = exports[0] if exports else source
+        if entity := flow.get("entity_energy_price"):
+            return str(entity), None
+        number = flow.get("number_energy_price")
+        if number is not None:
+            return None, _to_decimal(str(number))
+    return None, None
 
 
 def _nesting_of(prefs: Any, device_of_entity: Mapping[str, str]) -> dict[str, str]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
@@ -1245,4 +1342,8 @@ def _totals_to_dict(totals: DeviceTotals) -> dict[str, str]:
         # look for when a cost is disputed (ADR-0016).
         "cost_floor": str(totals.cost_floor),
         "cost_ceiling": str(totals.cost_ceiling),
+        # Here whether or not the household publishes it, for the same reason as
+        # the bounds: a figure disputed as "my solar is not free" is answered by
+        # this one, and a download that omitted it could not say so (ADR-0026).
+        "forgone_export": str(totals.forgone_export),
     }
