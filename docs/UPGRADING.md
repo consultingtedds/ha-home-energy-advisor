@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.8.0
 
 **If you have solar panels and you export, Cost by device now counts what your
 own generation could have earned.** Energy your panels made and your house used
