@@ -1805,9 +1805,15 @@ def _export_prefs(
 ) -> MagicMock:
     """An energy manager whose grid source declares what export earns.
 
-    Both shapes the preference is held in are exercised elsewhere; this builds
-    the flow-list one, which is what a household configured before 2026.9 has and
-    what a stored preference is migrated *from*.
+    The **flow-list** shape, which is what a household configured before 2026.9
+    has and what a stored preference is migrated *from*. The newer on-source
+    shape is built by `_export_prefs_on_source` below.
+
+    This docstring used to say the other shape was "exercised elsewhere". It was
+    not: that was true of the *meter* reader in the config flow, which is safe
+    because `stat_energy_to` means the same thing in both. The prices do not, and
+    claiming coverage that did not exist is what let 0.8.0 ship reading the
+    import price as the export one (HEA-209).
     """
     flow: dict[str, object] = {"stat_energy_to": "sensor.grid_export"}
     if price_entity is not None:
@@ -1980,3 +1986,94 @@ async def test_editing_the_export_price_reaches_the_engine_without_a_restart(
     assert aircon.energy_from_generation == Decimal("0.5")
     assert aircon.forgone_export == Decimal("0.5") * Decimal("0.20")
     assert aircon.forgone_export == Decimal("0.100")
+
+
+def _export_prefs_on_source(
+    *, export_entity: str | None = None, export_number: float | None = None
+) -> MagicMock:
+    """The 2026.9 shape, where a grid source carries its flows itself.
+
+    Modelled on the reference instance's real preferences, which is where the
+    difference showed up. **The two shapes do not name the export price the
+    same.** In the flow lists above it is `entity_energy_price` on the `flow_to`
+    entry; here that key means the *import* price, and the export one has a
+    suffix of its own. Reading the source as though it were a flow therefore
+    picks up the import price and calls it export.
+
+    The import price is always present, because that is the case that made the
+    fault invisible: a fallback only misfires when there is something to fall
+    back onto (HEA-209).
+    """
+    manager = MagicMock()
+    manager.data = {
+        "energy_sources": [
+            {
+                "type": "grid",
+                "name": "Electricity",
+                "stat_energy_from": "sensor.grid_import",
+                "stat_energy_to": "sensor.grid_export",
+                "entity_energy_price": "sensor.price",
+                "number_energy_price": None,
+                "entity_energy_price_export": export_entity,
+                "number_energy_price_export": export_number,
+                "cost_adjustment_day": 0,
+            }
+        ],
+        "device_consumption": [],
+    }
+    return manager
+
+
+async def test_the_export_price_is_read_from_the_modern_preference_shape(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The shape most households are on, and the one 0.8.0 got wrong (HEA-209).
+
+    The import price is five cents dearer per unit than the export price here,
+    so the two readings are told apart by the figure rather than by inspection.
+    """
+    # Given / When - a grid source in the on-source shape, exporting at five
+    # cents while importing at thirty
+    entry = await _run_solar(
+        hass, freezer, _export_prefs_on_source(export_entity="sensor.export_price")
+    )
+
+    # Then - half a kilowatt hour of sunshine at the *export* rate
+    coordinator = entry.runtime_data
+    aircon = next(iter(coordinator.data.devices.values()))
+    assert aircon.forgone_export == Decimal("0.025")
+    # And - not at the import rate, which is what reading the source as though
+    # it were a flow produces, and which is six times the right answer
+    assert aircon.forgone_export != Decimal("0.5") * Decimal("0.30")
+
+
+async def test_an_import_price_is_never_mistaken_for_an_export_price(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A household who are paid nothing for export forgo nothing.
+
+    The reference instance is exactly this: an import price configured, no
+    export price, and a correct Forgone Export of zero throughout. 0.8.0 would
+    have valued every unit of their self-consumed generation at the import rate
+    and added it to the cost column, growing every sunny day.
+    """
+    # Given / When - an import price and no export price at all
+    entry = await _run_solar(hass, freezer, _export_prefs_on_source())
+
+    # Then - the sunshine was used, and nothing was given up
+    coordinator = entry.runtime_data
+    aircon = next(iter(coordinator.data.devices.values()))
+    assert aircon.energy_from_generation == Decimal("0.5")
+    assert aircon.forgone_export == Decimal(0)
+
+
+async def test_a_static_export_price_is_read_from_the_modern_shape_too(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the same shape, priced with a number rather than a sensor
+    entry = await _run_solar(hass, freezer, _export_prefs_on_source(export_number=0.2))
+
+    # Then
+    coordinator = entry.runtime_data
+    aircon = next(iter(coordinator.data.devices.values()))
+    assert aircon.forgone_export == Decimal("0.1")

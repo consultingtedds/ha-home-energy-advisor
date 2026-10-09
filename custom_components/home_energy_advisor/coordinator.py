@@ -1240,11 +1240,21 @@ def _export_price_of(prefs: Any) -> tuple[str | None, Decimal | None]:  # noqa: 
     for source in (prefs.get("energy_sources") or []) if prefs else []:
         if source.get("type") != "grid":
             continue
+        # Read by shape, never by falling back from one to the other. The two
+        # do not name this the same: on a `flow_to` entry the export price is
+        # `entity_energy_price`, while on the source that key is the *import*
+        # price and the export one carries a suffix. Treating the source as a
+        # flow therefore reads the import price and calls it export - which is
+        # what 0.8.0 did, on the shape most households are on (HEA-209).
         exports = source.get("flow_to")
-        flow = exports[0] if exports else source
-        if entity := flow.get("entity_energy_price"):
+        if exports:
+            entity = exports[0].get("entity_energy_price")
+            number = exports[0].get("number_energy_price")
+        else:
+            entity = source.get("entity_energy_price_export")
+            number = source.get("number_energy_price_export")
+        if entity:
             return str(entity), None
-        number = flow.get("number_energy_price")
         if number is not None:
             return None, _to_decimal(str(number))
     return None, None

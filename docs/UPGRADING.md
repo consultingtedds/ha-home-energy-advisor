@@ -32,6 +32,26 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you took 0.8.0 and have solar, update again.** The new Forgone Export
+figure was reading your *import* price instead of your export price, so it
+valued your own generation at what you pay for electricity rather than at what
+you are paid for selling it - several times too high for most tariffs, and not
+zero even for a household who are paid nothing for export.
+
+Home Assistant stores a grid source two ways and the newer one, which most
+installations are on, names the export price differently. We read the wrong key
+and fell back onto the import price sitting next to it.
+
+Cost by device adds this figure to the cost column by default, so the overstated
+amount was on the headline. **What was already recorded does not correct itself**
+- these figures only count upwards - so if the column looks high after taking
+0.8.0, that is why, and it stops growing from this release. Reset totals will
+clear it if you would rather start the figure again.
+
+If you never installed 0.8.0, nothing here affects you.
+
 ## 0.8.0
 
 **If you have solar panels and you export, Cost by device now counts what your
