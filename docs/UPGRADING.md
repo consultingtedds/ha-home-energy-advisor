@@ -41,6 +41,11 @@ what it was worth: that unit could have been exported and paid you. The table's
 cost column now includes it, and says so by changing its heading - the figure is
 no longer what you paid, so it is no longer called Paid.
 
+**Including the sunshine that went through your battery.** Generation stored and
+used later carries what it gave up at the moment it was stored - not whatever
+export pays when the battery is emptied, which is a rate you were never offered
+for that energy.
+
 The rate comes from the export price you already told the Energy Dashboard. There
 is nothing new to configure, and if you do not export, or have no panels, nothing
 changes for you at all.

@@ -459,7 +459,7 @@ consumed came from somewhere, and each of those sources has a price:
 ```mermaid
 flowchart LR
     G["Grid import<br/>priced at your tariff now"] --> M
-    S["Your own generation<br/>priced at zero"] --> M
+    S["Your own generation<br/>costs nothing, and gives up<br/>the export it would have earned"] --> M
     B["Battery discharge<br/>priced at what it cost to store"] --> M
     M["Cost of everything<br/>the house used"] --> D1["Tumble dryer<br/>its share of the draw"]
     M --> D2["Dishwasher<br/>its share of the draw"]
@@ -490,13 +490,17 @@ your bill. It leaves out:
 - **Standing charges.** The daily fee you pay whether you use anything or not.
 - **Payback for exported energy.** Money coming back to you, not a cost of
   running a device.
-- **The export revenue you gave up** by using your own generation instead of
-  selling it.
+Both are correct to leave out, because neither belongs to any particular
+device. It does mean your total will be short of your bill.
 
-All three are correct to leave out, because none of them belongs to any
-particular device. But it does mean your total will be short of your bill, and
-that the savings figures are on the optimistic side: generation is priced at
-zero, when in truth it could have been sold.
+**The export revenue you gave up** by using your own generation instead of
+selling it used to be a third item here, and is no longer. If you export, it is
+counted and shown as **Forgone Export** per device - including the generation
+that went into your battery first, valued at what export paid when it was
+stored. It sits beside what you paid rather than inside it, so Actual Cost is
+still exactly what left your account, and the table can show either reading.
+Without an export price in your Energy Dashboard there is nothing to count, and
+for you your own generation really is free.
 
 ### What the figures cannot know
 

@@ -20,7 +20,7 @@ def test_battery_grid_charge_is_returned_at_the_price_it_was_bought() -> None:
     ledger.charge_from_grid(Decimal(5), OVERNIGHT)
 
     # When - all of it is later discharged at peak time
-    cost = ledger.discharge(Decimal(5))
+    cost = ledger.discharge(Decimal(5)).cost
 
     # Then - it is priced at the overnight rate it was bought at, not the peak rate
     assert cost == Decimal("0.465")
@@ -32,7 +32,7 @@ def test_battery_solar_charge_is_free_on_discharge() -> None:
     ledger.charge_from_generation(Decimal(4))
 
     # When - it is discharged
-    cost = ledger.discharge(Decimal(4))
+    cost = ledger.discharge(Decimal(4)).cost
 
     # Then - solar-sourced energy costs nothing to draw back out
     assert cost == Decimal(0)
@@ -45,7 +45,7 @@ def test_battery_mixed_charge_discharges_at_the_weighted_average() -> None:
     ledger.charge_from_generation(Decimal(5))
 
     # When - 5 kWh is discharged
-    cost = ledger.discharge(Decimal(5))
+    cost = ledger.discharge(Decimal(5)).cost
 
     # Then - it is priced at the blended stored cost, €0.465 spread over 10 kWh
     assert ledger.unit_cost == Decimal("0.0465")
@@ -58,7 +58,7 @@ def test_battery_partial_discharge_leaves_the_unit_cost_unchanged() -> None:
     ledger.charge_from_grid(Decimal(10), Decimal("0.10"))
 
     # When - only part is discharged
-    cost = ledger.discharge(Decimal(3))
+    cost = ledger.discharge(Decimal(3)).cost
 
     # Then - the draw is priced at that rate and the rest keeps the same rate
     assert cost == Decimal("0.30")
@@ -81,7 +81,7 @@ def test_battery_discharge_from_empty_ledger_is_free() -> None:
     ledger = BatteryLedger()
 
     # When - the pre-existing charge of unknown cost is discharged
-    cost = ledger.discharge(Decimal(5))
+    cost = ledger.discharge(Decimal(5)).cost
 
     # Then - with no cost basis it is treated as solar-charged: free, and the
     # ledger stays empty rather than going negative
@@ -95,7 +95,7 @@ def test_battery_discharge_beyond_stored_prices_only_the_shortfall_at_zero() -> 
     ledger.charge_from_grid(Decimal(3), Decimal("0.10"))
 
     # When - 5 kWh is discharged, outrunning what the ledger has priced
-    cost = ledger.discharge(Decimal(5))
+    cost = ledger.discharge(Decimal(5)).cost
 
     # Then - the 3 tracked kWh cost their real rate; the 2 kWh excess is free
     assert cost == Decimal("0.30")
@@ -109,7 +109,7 @@ def test_battery_full_discharge_zeroes_the_ledger_exactly() -> None:
     ledger.discharge(Decimal(3))
 
     # When - the drained ledger is discharged again
-    cost = ledger.discharge(Decimal(1))
+    cost = ledger.discharge(Decimal(1)).cost
 
     # Then - nothing lingered on the books to misprice the next draw
     assert ledger.stored_kwh == Decimal(0)
@@ -125,7 +125,7 @@ def test_battery_simultaneous_charge_and_discharge_applies_charge_first() -> Non
 
     # When - the charge is applied before the discharge
     ledger.charge_from_grid(Decimal(5), Decimal("0.20"))
-    cost = ledger.discharge(Decimal(5))
+    cost = ledger.discharge(Decimal(5)).cost
 
     # Then - the discharge is priced against the blend including the fresh charge
     assert cost == Decimal("0.75")
@@ -137,7 +137,7 @@ def test_battery_round_trip_loss_is_not_inflated_leaving_stranded_cost() -> None
     ledger.charge_from_grid(Decimal(10), Decimal("0.10"))
 
     # When - the retrievable 9 kWh is discharged
-    cost = ledger.discharge(Decimal(9))
+    cost = ledger.discharge(Decimal(9)).cost
 
     # Then - discharge is not inflated for the loss: it is priced at the plain
     # weighted average, and the lost kWh's cost stays stranded on the books. This
@@ -164,7 +164,7 @@ def test_battery_charged_at_a_negative_price_discharges_as_a_credit() -> None:
     ledger.charge_from_grid(Decimal(5), NEGATIVE_SPOT)
 
     # When - it is discharged later
-    cost = ledger.discharge(Decimal(5))
+    cost = ledger.discharge(Decimal(5)).cost
 
     # Then - the credit is carried to where the energy is used, exactly as a
     # cost would be. Refusing the price, or flooring it at zero, would say the
@@ -191,7 +191,7 @@ def test_battery_credit_can_take_the_blend_below_zero() -> None:
     ledger.charge_from_grid(Decimal(9), NEGATIVE_SPOT)
 
     # When - a partial discharge draws on that blend
-    cost = ledger.discharge(Decimal(2))
+    cost = ledger.discharge(Decimal(2)).cost
 
     # Then - it is a credit, and the ledger says so rather than flooring at zero.
     # (0.093 - 0.72) / 10 = -0.0627 per kWh
@@ -216,7 +216,7 @@ def test_battery_zero_movements_are_harmless_no_ops() -> None:
 
     # When - zero-energy movements are recorded
     ledger.charge_from_generation(Decimal(0))
-    cost = ledger.discharge(Decimal(0))
+    cost = ledger.discharge(Decimal(0)).cost
 
     # Then - nothing changes and no cost is drawn
     assert cost == Decimal(0)
@@ -335,3 +335,87 @@ def test_reconciling_a_credited_charge_hands_back_a_credit() -> None:
     # store, which is the sign error HEA-165 fixed on the way in
     assert written_off == Decimal("-0.16")
     assert ledger.unit_cost == NEGATIVE_SPOT
+
+
+# What a kWh of export earned when the sun was stored, which is the revenue that
+# was actually given up - not whatever export pays when the battery is emptied.
+EXPORT_AT_NOON = Decimal("0.12")
+EXPORT_AT_DUSK = Decimal("0.04")
+
+
+def test_stored_sunshine_remembers_what_it_gave_up() -> None:
+    """ADR-0027: the ledger carries forgone revenue beside cost.
+
+    Sunshine put into a battery costs nothing and is not free: it could have been
+    exported. Without this the half of a household's generation that goes through
+    the battery is valued at nothing, which is the half the question came from.
+    """
+    # Given - 4 kWh of surplus sunshine stored at noon, when export paid 12c
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(4), EXPORT_AT_NOON)
+
+    # When - all of it is drawn back out in the evening
+    withdrawn = ledger.discharge(Decimal(4))
+
+    # Then - it still cost nothing, and it gave up 48c of export doing so
+    assert withdrawn.cost == Decimal(0)
+    assert withdrawn.forgone == Decimal("0.48")
+
+
+def test_grid_charge_gives_up_no_export() -> None:
+    # Given - 5 kWh bought from the grid overnight, with export priced
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(5), OVERNIGHT)
+
+    # When
+    withdrawn = ledger.discharge(Decimal(5))
+
+    # Then - it was paid for, and buying energy forgoes no export
+    assert withdrawn.cost == Decimal("0.465")
+    assert withdrawn.forgone == Decimal(0)
+
+
+def test_a_partial_discharge_takes_its_share_of_what_was_given_up() -> None:
+    """Drawn down by the same proportional rule as the cost beside it."""
+    # Given - a battery holding sunshine stored at two different export rates,
+    # so a share is the only honest answer: 2 kWh at 12c and 2 kWh at 4c, which
+    # is 32c of forgone revenue over 4 kWh
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(2), EXPORT_AT_NOON)
+    ledger.charge_from_generation(Decimal(2), EXPORT_AT_DUSK)
+
+    # When - half of it is used
+    withdrawn = ledger.discharge(Decimal(2))
+
+    # Then - half the blend, which is neither rate on its own
+    assert withdrawn.forgone == Decimal("0.16")
+    # And - the rest is still on the books for whatever uses it next
+    assert ledger.discharge(Decimal(2)).forgone == Decimal("0.16")
+
+
+def test_a_draw_beyond_what_is_stored_gives_up_nothing_extra() -> None:
+    """Energy the ledger never saw cannot have forgone anything."""
+    # Given - 1 kWh of stored sunshine
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(1), EXPORT_AT_NOON)
+
+    # When - 3 kWh are drawn, which the inventory cannot account for
+    withdrawn = ledger.discharge(Decimal(3))
+
+    # Then - the kilowatt hour it held, and nothing invented for the rest
+    assert withdrawn.forgone == Decimal("0.12")
+    assert ledger.stored_kwh == Decimal(0)
+
+
+def test_a_write_down_drops_what_was_given_up_with_the_inventory() -> None:
+    """A phantom's forgone revenue is as phantom as the energy (ADR-0027)."""
+    # Given - a ledger believing it holds 4 kWh of stored sunshine
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(4), EXPORT_AT_NOON)
+
+    # When - the battery reports it actually holds 1
+    ledger.reconcile(Decimal(1))
+
+    # Then - a quarter of the forgone revenue survives with the quarter of the
+    # energy, so the next discharge is not valued against energy that is not there
+    assert ledger.discharge(Decimal(1)).forgone == Decimal("0.12")

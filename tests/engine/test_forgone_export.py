@@ -237,3 +237,139 @@ def test_the_forgone_figure_sums_to_the_whole_home() -> None:
         == Decimal("2.0") * EARLY_EXPORT + Decimal("2.0") * LATE_EXPORT
     )
     assert totals.whole_home.forgone_export == Decimal("0.500")
+
+
+BATTERY_CHARGE = "sensor.battery_charge"
+BATTERY_DISCHARGE = "sensor.battery_discharge"
+EXPORT = "sensor.grid_export"
+
+
+def a_solar_home_with_a_battery() -> Accountant:
+    return Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: GRID,
+            SourceRole.GRID_EXPORT: EXPORT,
+            SourceRole.GENERATION: GENERATION,
+            SourceRole.BATTERY_CHARGE: BATTERY_CHARGE,
+            SourceRole.BATTERY_DISCHARGE: BATTERY_DISCHARGE,
+            SourceRole.HOUSE_CONSUMPTION: HOUSE,
+        },
+        device_energy_entities={"aircon": AIRCON},
+    )
+
+
+def test_sunshine_stored_in_the_battery_still_carries_what_it_gave_up() -> None:
+    """ADR-0027, and the half the question came from.
+
+    A device running on battery-stored sunshine was given a free ride: the
+    generation was valued at nothing going in, so the discharge inherited
+    nothing. That is the half h227's figures turn on, because it is what decides
+    whether storing sunshine or storing cheap import is the better move.
+    """
+    # Given - a solar home with a battery, exporting at ten cents
+    acc = a_solar_home_with_a_battery()
+    acc.record_price(at(0), IMPORT_PRICE)
+    acc.record_export_price(at(0), Decimal("0.10"))
+    for entity in (
+        GRID,
+        EXPORT,
+        GENERATION,
+        BATTERY_CHARGE,
+        BATTERY_DISCHARGE,
+        HOUSE,
+        AIRCON,
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+
+    # When - the sun makes 2 kWh: one serves the house and the aircon takes it,
+    # and the other is stored
+    acc.observe(GENERATION, at(5), Decimal("2.0"))
+    acc.observe(BATTERY_CHARGE, at(5), Decimal("1.0"))
+    acc.observe(HOUSE, at(5), Decimal("1.0"))
+    acc.observe(AIRCON, at(5), Decimal("1.0"))
+
+    # And - later the battery gives that kilowatt hour back, and the aircon
+    # takes that too
+    acc.observe(BATTERY_DISCHARGE, at(10), Decimal("1.0"))
+    acc.observe(HOUSE, at(10), Decimal("2.0"))
+    acc.observe(AIRCON, at(10), Decimal("2.0"))
+    acc.finalize(at(50))
+
+    aircon = acc.totals().devices["aircon"]
+
+    # Then - both kilowatt hours gave up ten cents of export, the one used
+    # directly and the one that went round through the battery
+    assert aircon.energy_from_generation == Decimal("1.0")
+    assert aircon.energy_from_battery == Decimal("1.0")
+    assert aircon.forgone_export == Decimal("0.20")
+
+
+def test_stored_sunshine_is_valued_when_it_was_stored_not_when_it_is_used() -> None:
+    """The rate that was actually forgone, which is the one at charge time.
+
+    A household who charged at noon and discharged at midnight did not give up
+    the midnight rate. Valuing the discharge at whatever export pays when the
+    battery is emptied would be simpler and wrong.
+    """
+    # Given - the same home, storing sunshine while export pays ten cents
+    acc = a_solar_home_with_a_battery()
+    acc.record_price(at(0), IMPORT_PRICE)
+    acc.record_export_price(at(0), Decimal("0.10"))
+    for entity in (
+        GRID,
+        EXPORT,
+        GENERATION,
+        BATTERY_CHARGE,
+        BATTERY_DISCHARGE,
+        HOUSE,
+        AIRCON,
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GENERATION, at(5), Decimal("1.0"))
+    acc.observe(BATTERY_CHARGE, at(5), Decimal("1.0"))
+
+    # When - export becomes five times dearer *after* it was stored, and only
+    # then is the battery drawn on
+    acc.record_export_price(at(6), Decimal("0.50"))
+    acc.observe(BATTERY_DISCHARGE, at(10), Decimal("1.0"))
+    acc.observe(HOUSE, at(10), Decimal("1.0"))
+    acc.observe(AIRCON, at(10), Decimal("1.0"))
+    acc.finalize(at(50))
+
+    # Then - ten cents, the revenue actually given up. Fifty would be a rate
+    # this household was never offered for that energy.
+    aircon = acc.totals().devices["aircon"]
+    assert aircon.energy_from_battery == Decimal("1.0")
+    assert aircon.forgone_export == Decimal("0.10")
+
+
+def test_a_battery_charged_from_the_grid_gives_up_nothing() -> None:
+    """Only sunshine forgoes export; bought energy was bought."""
+    # Given - a home that fills its battery from cheap overnight import, with
+    # export priced
+    acc = a_solar_home_with_a_battery()
+    acc.record_price(at(0), IMPORT_PRICE)
+    acc.record_export_price(at(0), Decimal("0.50"))
+    for entity in (
+        GRID,
+        EXPORT,
+        GENERATION,
+        BATTERY_CHARGE,
+        BATTERY_DISCHARGE,
+        HOUSE,
+        AIRCON,
+    ):
+        acc.observe(entity, at(0), Decimal(0))
+    acc.observe(GRID, at(5), Decimal("1.0"))
+    acc.observe(BATTERY_CHARGE, at(5), Decimal("1.0"))
+
+    # When - the aircon runs off it later
+    acc.observe(BATTERY_DISCHARGE, at(10), Decimal("1.0"))
+    acc.observe(HOUSE, at(10), Decimal("1.0"))
+    acc.observe(AIRCON, at(10), Decimal("1.0"))
+    acc.finalize(at(50))
+
+    # Then - it was paid for, and gave up no export at all
+    aircon = acc.totals().devices["aircon"]
+    assert aircon.energy_from_battery == Decimal("1.0")
+    assert aircon.forgone_export == Decimal(0)

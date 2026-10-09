@@ -184,8 +184,12 @@ place:
 - **Saved can be negative, and that is real.** Battery energy stored when
   electricity was expensive and used when it was cheap costs more than buying at
   the time. It is shown as a loss rather than floored at zero (ADR-0003).
-- **Saved is optimistic.** The model does not yet price the export revenue given
-  up by using your own generation, so savings are knowingly on the high side.
+- **Saved does not subtract the export you gave up.** Using your own generation
+  instead of selling it costs you the export it would have earned, and Saved
+  compares against the grid price rather than against that. The amount is
+  published separately as **Forgone Export**, and Cost by device adds it to the
+  cost column by default - so the comparison is available even though Saved does
+  not make it for you.
 - **Today's cost catches up rather than going backwards.** Energy your devices
   report before the house meter has accounted for it is held until its real
   price is known, so a figure read mid-hour can sit slightly low and rise later.
