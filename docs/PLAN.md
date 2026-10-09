@@ -601,6 +601,17 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
+- **GitHub 34** stays open until its reporter confirms on 0.8.0. His data found
+  a real defect twice, and the second time it was the fix for the first failing
+  to reach him, so his confirmation is worth more than our own measurement.
+- **HEA-188** - whether a battery charge should be priced marginally rather than
+  proportionally. Unblocked by ADR-0027, which defines what surplus solar is
+  worth on both sides of the battery, and still unbuilt on its own reasoning:
+  ADR-0002's proportional allocation is load-bearing and nobody has reported a
+  figure they believe is *wrong* because of it.
+- **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
+  payback remain, and the second is harder to leave alone now that a household
+  can see what their export was worth.
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
@@ -701,6 +712,70 @@ Closed since:
 - **HEA-151** - closed 2026-10-06 with nothing built. Everything it asked for had
   shipped under HEA-152, HEA-168, HEA-169 and HEA-153, tests included; its one
   remaining item, the gross entity, was declined. See Epic 10 item 1 above.
+
+- **HEA-38 and HEA-208 - the last documented accuracy bias, closed.** ADR-0002
+  priced self-consumed generation at zero and said openly that the saving figure
+  was optimistic because of it. That held for three months and stopped being
+  enough when `h227` derived the question independently on the forum, with
+  figures: solar from the battery at 13.333p/kWh against cheap import at
+  4.555p/kWh, which **reverses which source is worth storing**. A household
+  scheduling a charge was getting opposite advice from a convention they never
+  chose.
+
+  It is published as **Forgone Export**, per device, beside the cost and never
+  inside it, at the export rate the household already told the Energy Dashboard.
+  Cost by device adds it to the cost column by default and changes the heading
+  when it does, because a figure including forgone revenue is not what they
+  paid. ADR-0026 and ADR-0027 carry the reasoning.
+
+  **The shape of the answer is the interesting part.** HEA-208 was raised saying
+  the battery half needed the engine to carry two ledgers at once. That is only
+  true if the answer has to arrive by re-pricing the discharge; as a disclosure
+  beside the cost it is one accumulator on the ledger that already exists. So no
+  published cost moved, the reconciliation identity is untouched, and no
+  household's history stopped matching what follows.
+
+  Three things this turned up. The engine's one funnel for attributing energy to
+  its sources, `add_by_source`, made a money figure impossible to miss on any of
+  the four paths - where ADR-0025 threaded one by hand and silently lost
+  EUR 0.0705 per settlement. **A guard that broke setup for every household with
+  no Energy Dashboard** was caught by the diagnostics tests within a minute. And
+  a **rate read on restore but never written** meant a restored bucket valued
+  late generation at nothing - found a release after it shipped, by the work that
+  reused the same path.
+
+- **HEA-206 and HEA-207 - the household who came back.** `xamrex` updated to
+  0.7.2, saw the same fourfold battery-loss figure, and said so. He was right
+  twice over.
+
+  **The bound HEA-196 added had never applied to anybody who already had the
+  integration installed.** Both places that take its meter baseline sit behind a
+  branch that runs once in a household's lifetime and had already run for them,
+  so it waited for a starting point it would never be given. His diagnostics said
+  nothing had ever been refused, which is how it was found. It is now armed in
+  `restore`, from the meters as restored.
+
+  **And `reset_totals` cleared the wrong counter**, so the one figure he was
+  trying to reset carried on from where it was. The measured loss was split from
+  the ledger's write-down by HEA-182 and the reset was left pointing at the old
+  one - with its docstring updated to describe the behaviour it no longer had.
+
+  The lesson is one line: **every test built a fresh accountant, and a restored
+  snapshot is the only path a household is on after their first day.** Same shape
+  as HEA-194, where a condition that could never be met had a green test
+  asserting the met version.
+
+- **HEA-203 and HEA-204 - the rollover, and why nothing caught it.** HEA-198's
+  reveal was shown by switching `display` from `none` to `inline`, which puts the
+  text into the cell and re-sizes every column in the table. It reached a release.
+  It is now absolutely positioned, verified as a number rather than a look:
+  identical column widths open and closed at 1600 px and at 390 px.
+
+  Nothing caught it because **the demo had never rendered a cost range at all** -
+  the figure is opt-in and `seed.mjs` wrote none, so no screenshot and none of the
+  end-to-end checks could reach it. The demo now turns it on in both passes, and
+  one of the two new checks is the assertion the fault needed and the unit suite
+  cannot make.
 
 - **HEA-199** - closed 2026-10-08, **and its own premise disproved.** The battery
   loss was not 17% low and nothing was being carried: `_loss_balance` read zero at
