@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.8.1
 
 **If you took 0.8.0 and have solar, update again.** The new Forgone Export
 figure was reading your *import* price instead of your export price, so it
