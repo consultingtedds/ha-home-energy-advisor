@@ -601,9 +601,15 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
-- **GitHub 34** stays open until its reporter confirms on 0.8.0. His data found
+- **GitHub 34** stays open until its reporter confirms on 0.8.1. His data found
   a real defect twice, and the second time it was the fix for the first failing
   to reach him, so his confirmation is worth more than our own measurement.
+- **HEA-201** - the rollover-versus-column judgement, still blocked on one full
+  day of real activity on 0.8.1. Two things moved underneath it while it waited:
+  HEA-203 fixed the rollover that was visibly broken, so any earlier comparison
+  was against a handicapped option, and HEA-38 put a second thing in the same
+  column. The premise to check first is unchanged and still unconfirmed - whether
+  HEA-197 narrowed the band enough for a column to be reasonable.
 - **HEA-188** - whether a battery charge should be priced marginally rather than
   proportionally. Unblocked by ADR-0027, which defines what surplus solar is
   worth on both sides of the battery, and still unbuilt on its own reasoning:
@@ -630,13 +636,18 @@ Carried forward rather than closed:
   one of the few loads still running. The ticket's premise is also unproven - the real spread
   runs from 1.10x to 2.70x ceiling-over-paid rather than the tight band the case
   for a column rests on.
-- **HEA-202** - the battery ledger is still gaining inventory eight days after
-  HEA-178, measured at 11.89 kWh on the books of a 5 kWh battery holding about
-  2.6. Both inflows HEA-178 named are closed, yet outflows over those eight days
-  came to 13.67 kWh while the ledger fell only 3.80, which implies something
-  still adding roughly a quarter of the battery's capacity a day. **Opens with a
-  week of daily measurement rather than a fix**, because the arithmetic rests on
-  lifetime counters whose start dates are not known precisely.
+- **HEA-202** - the battery ledger holds far more than the pack does, and the
+  ticket's own claim that it was still *gaining* did not survive being measured.
+  Read directly rather than inferred from lifetime counters, `stored_kwh` has
+  gone 15.69 on 2026-09-29, to 11.89 on 10-07, to **9.55 on 10-09** - against a
+  pack holding 0.75 kWh at the time. Still twelve times its real contents, and
+  falling rather than climbing.
+
+  The measurement restarts from 0.8.1 whatever the trend, because HEA-206 found
+  that HEA-196's loss bound had been **inert on every upgraded installation** for
+  the whole period measured, and an uncapped loss is one of the inflows this was
+  looking for. `loss_refused_kwh` reads 0 at the restart and is the figure to
+  watch: the bound is armed for the first time.
 
 Closed since:
 
@@ -712,6 +723,30 @@ Closed since:
 - **HEA-151** - closed 2026-10-06 with nothing built. Everything it asked for had
   shipped under HEA-152, HEA-168, HEA-169 and HEA-153, tests included; its one
   remaining item, the gross entity, was declined. See Epic 10 item 1 above.
+
+- **HEA-209 - 0.8.0 read the import price and called it export**, found against the
+  reference instance's real Energy Dashboard minutes before it was updated, and
+  only because Paul asked whether anything should be checked first. Released as
+  0.8.1 the same hour.
+
+  Home Assistant stores a grid source's flows two ways and **they do not name the
+  prices the same**: on a `flow_to` entry the export price is
+  `entity_energy_price`, while on the source itself - the shape from 2026.9, and
+  the one most installations are on - that key means the *import* price and the
+  export one carries a suffix. The reader treated the source as a flow when no
+  `flow_to` was present, so it fell back onto the import price sitting beside it.
+
+  The reference household is paid nothing for export, so their correct figure was
+  zero throughout, and they would instead have had every self-consumed kWh valued
+  at 0.093 - on the Paid column, which includes it by default, growing every sunny
+  day and never correcting itself.
+
+  **The meter reader beside it is right to do exactly what this did**, because
+  `stat_energy_to` really is the same key in both shapes. Only the prices differ,
+  and that pattern was carried across on the strength of a sentence in the
+  fixture's own docstring claiming both shapes were "exercised elsewhere". They
+  were not. Three green tests covered the shape that had been imagined; one look
+  at a real `energy_sources` covered the shape households are on.
 
 - **HEA-38 and HEA-208 - the last documented accuracy bias, closed.** ADR-0002
   priced self-consumed generation at zero and said openly that the saving figure
