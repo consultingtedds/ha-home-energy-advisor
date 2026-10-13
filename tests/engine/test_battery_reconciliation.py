@@ -31,6 +31,8 @@ import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
+import pytest
+
 from custom_components.home_energy_advisor.engine.accountant import (
     Accountant,
     AccountingWindows,
@@ -218,9 +220,9 @@ def _fully_metered_home() -> Accountant:
     return acc
 
 
-def _metered_home_at_rest() -> Accountant:
-    """A fully metered home with every counter at zero and one interval closed."""
-    acc = Accountant(
+def _fully_metered_accountant() -> Accountant:
+    """An accountant for a household metering every house-level flow."""
+    return Accountant(
         house_sources={
             SourceRole.GRID_IMPORT: "sensor.grid_import",
             SourceRole.GRID_EXPORT: "sensor.grid_export",
@@ -232,6 +234,11 @@ def _metered_home_at_rest() -> Accountant:
         device_energy_entities={},
         windows=AccountingWindows(max_quiet_span=timedelta(0)),
     )
+
+
+def _metered_home_at_rest() -> Accountant:
+    """A fully metered home with every counter at zero and one interval closed."""
+    acc = _fully_metered_accountant()
     acc.record_price(at(0), OVERNIGHT)
     for entity in (
         "sensor.grid_import",
@@ -402,6 +409,108 @@ def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
     # than 2.3, and 0.8 of it is allowed. The refusal is the difference.
     refused = Decimal(acc.battery_diagnostics()["loss_refused_kwh"])
     assert refused.quantize(Decimal("0.001")) == Decimal("0.500")
+
+
+# A usable capacity whose 1% level step, 0.137 kWh, does not divide the 0.1 kWh
+# step of the battery's own counters - the ordinary case, and the one that shows
+# up any rule that rounds each span on its own.
+COARSE_LEVEL_CAPACITY = Decimal("13.7")
+
+
+def _charge_through_coarse_metered_mornings(
+    mornings: int, *, restart_after: int | None = None
+) -> Accountant:
+    """Charging mornings read the way an inverter reports them, tick by tick.
+
+    Each morning puts 6.0 kWh into the battery in 0.1 kWh counter steps while its
+    level rises 40% in 1% steps, and the generation meter reads 1.5 kWh that never
+    reached the house. Ticks are five minutes apart and each finalises and then
+    reconciles, as the coordinator does, so the house balance trails the level by
+    the lateness margin exactly as it does on a real instance.
+
+    `restart_after` rebuilds the engine from its own snapshot after that tick,
+    through JSON as the store writes it.
+    """
+    acc = _metered_home_at_rest()
+    acc.reconcile_battery(COARSE_LEVEL_CAPACITY * 30 / 100)
+    ticks = 60 * mornings
+    for k in range(1, ticks + 1):
+        if k - 1 == restart_after:
+            carried = json.loads(json.dumps(acc.snapshot()))
+            acc = _fully_metered_accountant()
+            acc.restore(carried)
+        level_percent = 30 + (k * 40 * mornings) // ticks
+        for entity, value in (
+            ("sensor.grid_import", Decimal("0.1") * k),
+            ("sensor.battery_charge", Decimal("0.1") * k),
+            ("sensor.generation", Decimal("0.1") * ((k * 15 * mornings) // ticks)),
+        ):
+            acc.observe(entity, at(40 + 5 * k), value)
+        acc.finalize(at(40 + 5 * k))
+        acc.reconcile_battery(COARSE_LEVEL_CAPACITY * level_percent / 100)
+    acc.finalize(at(40 + 5 * ticks + 60))
+    acc.reconcile_battery(COARSE_LEVEL_CAPACITY * (30 + 40 * mornings) / 100)
+    return acc
+
+
+@pytest.mark.parametrize(
+    ("mornings", "lost", "refused"),
+    [
+        (1, Decimal("0.52"), Decimal("1.5")),
+        (2, Decimal("1.04"), Decimal("3.0")),
+    ],
+)
+def test_the_cap_holds_over_a_morning_of_coarse_meters(
+    mornings: int, lost: Decimal, refused: Decimal
+) -> None:
+    """The bound has to hold over a morning, not only over one span (HEA-211).
+
+    It is measured every tick, and a tick sees the battery's counters and its
+    level move at different moments: the charge counter steps 0.1 while the level
+    has not moved, then the level steps 0.137 while the counter has not. Flooring
+    each tick at zero kept every allowance the first kind granted and took back
+    nothing the second kind owed, so over a morning the bound allowed nearly the
+    whole charge rather than what was left after the level's gain - and a
+    generation meter reading high was published as battery loss straight through
+    it. GitHub 34, on the release that first armed the bound for them.
+
+    Two mornings as well as one, because the fault grew with every one of them.
+    """
+    # Given / When - charging mornings read through coarse counters and a coarse
+    # level, with a generation meter reading high
+    acc = _charge_through_coarse_metered_mornings(mornings)
+
+    # Then - the loss is exactly what the battery's own meters allow: 6.0 kWh in
+    # each morning, less the 40% of 13.7 the level kept. Flooring each tick
+    # published 0.98 kWh beyond that on one morning and 1.90 on two
+    assert acc.totals().battery.energy_kwh == lost
+
+    # And - what was refused is exactly the generation that never reached the
+    # house, so the download names the meter disagreement rather than hiding it
+    assert Decimal(acc.battery_diagnostics()["loss_refused_kwh"]) == refused
+
+
+def test_a_restart_mid_morning_keeps_what_the_cap_allows() -> None:
+    """The carried allowance has to survive a restart, or the cap leaks again.
+
+    Mid-morning the bound is usually owed or owing a step: the counters and the
+    level are rarely level with each other. A restart that dropped that would
+    forgive whatever the level had not yet repaid, which is the per-span floor
+    returning once per restart - and a household on a busy instance restarts
+    often enough for it to matter (HEA-211).
+    """
+    # Given - a charging morning, and the same morning with Home Assistant
+    # restarted after its 25th tick
+    uninterrupted = _charge_through_coarse_metered_mornings(1)
+    restarted = _charge_through_coarse_metered_mornings(1, restart_after=25)
+
+    # When / Then - the restart changes nothing the household is shown, nor what
+    # the download says was refused
+    lost = restarted.totals().battery.energy_kwh
+    refused = Decimal(restarted.battery_diagnostics()["loss_refused_kwh"])
+    assert lost == Decimal("0.52")
+    assert lost == uninterrupted.totals().battery.energy_kwh
+    assert refused == Decimal("1.5")
 
 
 def test_reset_totals_rebases_the_published_battery_loss() -> None:

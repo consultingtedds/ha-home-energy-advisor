@@ -506,6 +506,12 @@ class Accountant:
         # `_loss_baseline`, and on a snapshot written before this existed, which
         # simply leaves the span unbounded as it was.
         self._loss_meters_baseline: tuple[Decimal, Decimal] | None = None
+        # What the battery's meters still allow to be published as loss: each
+        # span's `charge - discharge - gain`, less what has been published against
+        # it. Carried rather than floored, for the same reason as `_loss_balance` -
+        # the counters and the level step at different moments, and a span that
+        # owes is as real as one that allows (HEA-211).
+        self._loss_allowance = Decimal(0)
         # What the bound refused, for the diagnostics. A household seeing this
         # grow has meters that disagree with each other, which is worth knowing
         # and is not something the figures can fix.
@@ -786,6 +792,7 @@ class Accountant:
                     if self._loss_meters_baseline is None
                     else [str(part) for part in self._loss_meters_baseline]
                 ),
+                "allowance": str(self._loss_allowance),
                 "refused": str(self._loss_refused_kwh),
             },
             "balance": self._balance.snapshot(),
@@ -940,6 +947,10 @@ class Accountant:
             if meters_baseline is None
             else (Decimal(meters_baseline[0]), Decimal(meters_baseline[1]))
         )
+        # Absent from a snapshot written before it was carried, which starts the
+        # bound with nothing in hand: where flooring each span left it, and owing
+        # nothing that span never measured.
+        self._loss_allowance = Decimal(loss.get("allowance", "0"))
         self._loss_refused_kwh = Decimal(loss.get("refused", "0"))
         # A snapshot taken before the carries existed simply has none to restore.
         self._balance.restore(data.get("balance", {}))
@@ -1220,6 +1231,8 @@ class Accountant:
             # happened to leave room for it (HEA-196).
             self._loss_refused_kwh += lost - allowed
             lost = allowed
+        if allowed is not None:
+            self._loss_allowance -= lost
         self._loss_balance = Decimal(0)
         # Only the cost. The forgone revenue of energy lost to heat leaves the
         # ledger with it - it is gone either way - but nothing publishes it: no
@@ -1297,6 +1310,21 @@ class Accountant:
         balance rather than replacing it. Taking the lower of the two keeps both
         faults out: the house balance refuses a discharge the meter missed, and
         this refuses a disagreement between the house's own meters.
+
+        **Carried across spans, not floored per span.** It is measured every tick,
+        and the counters and the level step at different moments: a tick where the
+        charge counter moved and the level did not allows its whole step, and the
+        tick where the level catches up owes it back. Flooring each one kept every
+        allowance and forgave every debt, so over a charging morning the bound let
+        through nearly the whole charge rather than what the level did not keep -
+        about three times what the meters allowed, and growing with every morning
+        (HEA-211, GitHub 34). Carried, the rounding cancels instead of accumulating.
+
+        What carrying cannot remove is timing: the level is read live, and a
+        meter's energy is counted only once its interval closes. So a discharge
+        can lower the level a lateness margin before it is counted, and the gap
+        is published ahead of the meters as a debt the next allowance repays.
+        Bounded by what the meters have yet to report, and never growing.
         """
         if self._loss_meters_baseline is None:
             return None
@@ -1305,7 +1333,8 @@ class Accountant:
         carried = (self._metered_charge - charged_then) - (
             self._metered_discharge - discharged_then
         )
-        return max(Decimal(0), carried - gained)
+        self._loss_allowance += carried - gained
+        return max(Decimal(0), self._loss_allowance)
 
     def _loss_ceiling(self) -> Decimal | None:
         """The most the battery can still honestly be said to have lost.

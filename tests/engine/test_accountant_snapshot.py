@@ -174,6 +174,9 @@ _PERSISTED = frozenset(
         "_metered_charge",
         "_metered_discharge",
         "_loss_meters_baseline",
+        # What the bound still allows, carried across spans. A restart that lost
+        # it would forgive a debt the level has not yet repaid (HEA-211).
+        "_loss_allowance",
         # What the bound refused, which is a running diagnostics total and so
         # cannot restart either.
         "_loss_refused_kwh",
