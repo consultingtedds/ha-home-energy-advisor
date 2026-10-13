@@ -32,6 +32,21 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you have a home battery, Battery Losses should now read much lower, and a
+day behind.** Two things let it run well above what your battery's own meters
+allow: a limit that small mismatches between meters could slip past, and a
+battery level that drifts during the day and catches up when it charges. One
+household's figure was more than six times what their battery could have lost.
+
+A loss is now published only once your meters have shown it for a whole day, so
+today's loss appears tomorrow. **After updating, Battery Losses holds still for a
+day** before it moves again. Your whole-home total includes this figure and moves
+with it; nothing else changes.
+
+As before, what is already recorded does not correct itself.
+
 ## 0.8.1
 
 **If you took 0.8.0 and have solar, update again.** The new Forgone Export

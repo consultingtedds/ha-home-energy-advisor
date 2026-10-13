@@ -88,6 +88,15 @@ _DEFAULT_RETENTION = timedelta(hours=24)
 # so a fresh start never condemns a device on one interval's evidence.
 _PLAUSIBILITY_WINDOW = 12
 
+# How long the battery's meters must have allowed a loss, without a break, before
+# it is published (HEA-213). A battery's level is an estimate that drifts through
+# an evening and corrects itself at the next charge - a reference household's
+# runs about 1 kWh either side of its meters over a day - and a loss figure only
+# counts upwards, so anything published at the peak of that drift stays there. A
+# day covers the cycle the drift follows, and depends on nothing but time, so it
+# serves a battery that never reaches full as well as one that does.
+_LOSS_HOLD = timedelta(hours=24)
+
 
 @dataclass(frozen=True)
 class AccountingWindows:
@@ -266,6 +275,21 @@ class _PendingBound:
     device: str
     kwh: Decimal
     buckets: tuple[datetime, ...]
+
+
+@dataclass(frozen=True)
+class _LossAnchor:
+    """Where everything the battery's loss is read from stood when measuring began.
+
+    The loss is read from two running totals and both are taken from here: what
+    the house's meters cannot explain, and what the battery's own meters carried,
+    each less what the level gained since (HEA-213).
+    """
+
+    headroom: Decimal
+    available: Decimal
+    charged: Decimal
+    discharged: Decimal
 
 
 @dataclass
@@ -485,13 +509,18 @@ class Accountant:
         # the battery gained plus what it lost - and so a ceiling on the loss we
         # will publish. ``None`` until a household meters enough to ask (HEA-174).
         self._balance_headroom: Decimal | None = None
-        # Where the headroom and the battery's contents stood when the loss was
-        # last measured, so each measurement covers only the span since the last
-        # one. `None` until the household first tells us how full the battery is.
-        self._loss_baseline: tuple[Decimal, Decimal] | None = None
-        # A span can measure less loss than nothing, because meters tick at
-        # different moments. Carried rather than floored, for ADR-0015's reason.
-        self._loss_balance = Decimal(0)
+        # Where the loss is measured from. `None` until the household first tells
+        # us how full the battery is.
+        self._loss_anchor: _LossAnchor | None = None
+        # How much of the loss measured since the anchor has been published. Not
+        # the published figure itself: a reset rebases that and must not make the
+        # same loss publishable twice.
+        self._loss_published = Decimal(0)
+        # The lower of the two running totals over the last `_LOSS_HOLD`, as a
+        # sliding minimum: each entry is a value and the moment it took effect,
+        # values strictly rising, so the first entry is the least the totals have
+        # read across the window. Rarely more than a handful of entries.
+        self._loss_window: deque[tuple[datetime, Decimal]] = deque()
         self._battery_loss_kwh = Decimal(0)
         self._battery_loss_cost = Decimal(0)
         # What the battery's own meters have carried, which bounds the loss the
@@ -501,20 +530,10 @@ class Accountant:
         # is not independent of the figure it would be bounding.
         self._metered_charge = Decimal(0)
         self._metered_discharge = Decimal(0)
-        # Where those totals stood when the loss was last measured, so the bound
-        # covers the same span as the measurement. `None` alongside
-        # `_loss_baseline`, and on a snapshot written before this existed, which
-        # simply leaves the span unbounded as it was.
-        self._loss_meters_baseline: tuple[Decimal, Decimal] | None = None
-        # What the battery's meters still allow to be published as loss: each
-        # span's `charge - discharge - gain`, less what has been published against
-        # it. Carried rather than floored, for the same reason as `_loss_balance` -
-        # the counters and the level step at different moments, and a span that
-        # owes is as real as one that allows (HEA-211).
-        self._loss_allowance = Decimal(0)
-        # What the bound refused, for the diagnostics. A household seeing this
-        # grow has meters that disagree with each other, which is worth knowing
-        # and is not something the figures can fix.
+        # How far the house balance currently claims more than the battery's meters
+        # allow, for the diagnostics. A household seeing this grow has meters that
+        # disagree with each other, which is worth knowing and is not something
+        # the figures can fix.
         self._loss_refused_kwh = Decimal(0)
         # Energy charged before its meter reading arrived, awaiting the surplus
         # that repays it. Expiring at the span a coarse step is spread over is a
@@ -669,11 +688,9 @@ class Accountant:
         # history, which is what they reported (HEA-207, GitHub 34).
         self._battery_loss_kwh = Decimal(0)
         self._battery_loss_cost = Decimal(0)
-        # A running total of the past like the two above, and rebased with them.
-        # It reaches nobody outside a diagnostics download, but a household who
-        # asked to start again should not be read against a refusal count that
-        # predates the request.
-        self._loss_refused_kwh = Decimal(0)
+        # The measurement underneath carries on - anchor, published amount and the
+        # hold's window alike. Re-anchoring would publish nothing for a day, and
+        # forgetting what was published would publish the same loss twice.
         self._raw.clear()
         self._draws.clear()
         self._retained.clear()
@@ -771,28 +788,29 @@ class Accountant:
             "balance_headroom": (
                 None if self._balance_headroom is None else str(self._balance_headroom)
             ),
-            # The loss measurement's own state. All of it persists: a baseline
-            # that restarted would measure the next span against a headroom
-            # accumulated before it and publish the gap as loss, and the totals
-            # are published figures that cannot go backwards (ADR-0021).
+            # The loss measurement's own state. All of it persists: an anchor that
+            # restarted would forgive whatever the level had not yet caught up, a
+            # window that restarted would publish a peak it had kept out, and the
+            # totals are published figures that cannot go backwards (ADR-0021).
             "battery_loss": {
-                "baseline": (
+                "anchor": (
                     None
-                    if self._loss_baseline is None
-                    else [str(part) for part in self._loss_baseline]
+                    if self._loss_anchor is None
+                    else [
+                        str(self._loss_anchor.headroom),
+                        str(self._loss_anchor.available),
+                        str(self._loss_anchor.charged),
+                        str(self._loss_anchor.discharged),
+                    ]
                 ),
-                "balance": str(self._loss_balance),
+                "published": str(self._loss_published),
+                "window": [
+                    [moment.isoformat(), str(value)]
+                    for moment, value in self._loss_window
+                ],
                 "kwh": str(self._battery_loss_kwh),
                 "cost": str(self._battery_loss_cost),
-                # The bound's own state, for the same reason as the baseline: a
-                # restart that lost it would leave the next span unbounded.
                 "metered": [str(self._metered_charge), str(self._metered_discharge)],
-                "metered_baseline": (
-                    None
-                    if self._loss_meters_baseline is None
-                    else [str(part) for part in self._loss_meters_baseline]
-                ),
-                "allowance": str(self._loss_allowance),
                 "refused": str(self._loss_refused_kwh),
             },
             "balance": self._balance.snapshot(),
@@ -907,50 +925,28 @@ class Accountant:
         # Absent before this ceiling existed - see the ledger's own restore.
         headroom = data.get("balance_headroom")
         self._balance_headroom = None if headroom is None else Decimal(headroom)
-        # Absent from a snapshot written before the loss was measured, which
-        # simply means this household has not taken a baseline yet.
         loss = data.get("battery_loss", {})
-        baseline = loss.get("baseline")
-        self._loss_baseline = (
-            None if baseline is None else (Decimal(baseline[0]), Decimal(baseline[1]))
-        )
-        self._loss_balance = Decimal(loss.get("balance", "0"))
         self._battery_loss_kwh = Decimal(loss.get("kwh", "0"))
         self._battery_loss_cost = Decimal(loss.get("cost", "0"))
-        # Absent from a snapshot written before the bound existed, which leaves
-        # the first span after the upgrade unbounded - the state it was already
-        # in, rather than a bound guessed from totals that restarted at zero.
         metered = loss.get("metered")
         if metered is not None:
             self._metered_charge = Decimal(metered[0])
             self._metered_discharge = Decimal(metered[1])
-        meters_baseline = loss.get("metered_baseline")
-        self._loss_meters_baseline = (
-            # Armed from the meters as restored, rather than left absent.
-            #
-            # A snapshot written before this bound existed carries a loss
-            # baseline and no meter baseline. Both places that take a meter
-            # baseline sit behind `_loss_baseline is None`, which has already
-            # run once for such a household and will never run again - so left
-            # as `None` the bound waits for a starting point it is never given
-            # and never applies at all. It shipped inert to every installation
-            # that upgraded into it, which is how a household came back with the
-            # same fourfold figure after the release that was meant to fix it
-            # (HEA-206, GitHub 34).
-            #
-            # The meters' own running totals *are* restored, so this is the one
-            # moment their value is known without a reconcile. Taking the
-            # baseline here bounds every span from the restore onwards; only the
-            # span already in progress goes unbounded, and nothing in the
-            # snapshot could have bounded that one.
-            (self._metered_charge, self._metered_discharge)
-            if meters_baseline is None
-            else (Decimal(meters_baseline[0]), Decimal(meters_baseline[1]))
+        # Absent where measuring never began, and from a snapshot that measured
+        # span by span, whose state cannot be turned into a running total. Either
+        # way the anchor is taken at the next tick, which the coordinator runs
+        # within seconds of startup, so nobody waits for a starting point they
+        # are never given (HEA-206) - the cost is a day's hold before anything is
+        # published.
+        anchor = loss.get("anchor")
+        self._loss_anchor = (
+            None if anchor is None else _LossAnchor(*(Decimal(part) for part in anchor))
         )
-        # Absent from a snapshot written before it was carried, which starts the
-        # bound with nothing in hand: where flooring each span left it, and owing
-        # nothing that span never measured.
-        self._loss_allowance = Decimal(loss.get("allowance", "0"))
+        self._loss_published = Decimal(loss.get("published", "0"))
+        self._loss_window = deque(
+            (datetime.fromisoformat(moment), Decimal(value))
+            for moment, value in loss.get("window", [])
+        )
         self._loss_refused_kwh = Decimal(loss.get("refused", "0"))
         # A snapshot taken before the carries existed simply has none to restore.
         self._balance.restore(data.get("balance", {}))
@@ -1137,7 +1133,7 @@ class Accountant:
         """
         return self._balance.diagnostics()
 
-    def reconcile_battery(self, available_kwh: Decimal) -> None:
+    def reconcile_battery(self, available_kwh: Decimal, now: datetime) -> None:
         """Write the ledger down to what the battery holds.
 
         The inventory is inferred from the charge and discharge meters, so
@@ -1161,32 +1157,38 @@ class Accountant:
         here against what its level actually did (HEA-182).
         """
         self._battery.reconcile(available_kwh, ceiling=self._loss_ceiling())
-        self._measure_the_batterys_loss(available_kwh)
+        self._measure_the_batterys_loss(available_kwh, now)
 
-    def _measure_the_batterys_loss(self, available_kwh: Decimal) -> None:
-        """Book what the battery took in and never gave back, since last asked.
+    def _measure_the_batterys_loss(self, available_kwh: Decimal, now: datetime) -> None:
+        """Book what the battery took in and never gave back.
 
         `import + generation - export - house` is, by physics, whatever the
         battery gained plus whatever was lost inside it - which is why
         `_balance_headroom` accumulates it. Knowing how full the battery is
         supplies the gain, so the remainder is the loss. Both halves come from
-        meters, so nothing here assumes an efficiency, and nothing here depends
-        on the charge and discharge counters agreeing with each other.
+        meters, so nothing here assumes an efficiency.
 
-        **The first call only takes a baseline, against what has accumulated so
-        far.** On a household who fill their battery level in after the
-        integration has been running, the headroom behind them is history nobody
-        measured, and publishing it as one loss is the fault HEA-182 was raised
-        to stop arriving by the other door. On a fresh install nothing has
-        accumulated, so that baseline is zero and the first interval is
-        measurable like any other.
+        **The first call only anchors, against what has accumulated so far.** On
+        a household who fill their battery level in after the integration has
+        been running, the headroom behind them is history nobody measured, and
+        publishing it as one loss is the fault HEA-182 was raised to stop arriving
+        by the other door. On a fresh install nothing has accumulated, so the
+        anchor is zero and the first interval is measurable like any other.
 
-        **A negative measurement is carried, not clamped.** Meters tick at
-        different moments and a level is a coarse percentage, so a span can
-        legitimately measure less loss than nothing. Flooring each one at zero
-        would rectify that noise into a standing overstatement, which is the
-        whole subject of ADR-0015; the balance carries instead and the next span
-        repays it.
+        **Running totals, not spans.** Meters tick at different moments and a
+        level is a coarse percentage, so any one span can measure less loss than
+        nothing, or more than there was. Totals from a fixed anchor let that noise
+        cancel instead of rectifying into a standing overstatement, which is the
+        whole subject of ADR-0015 - and the one place it went wrong, a bound
+        floored span by span, let through three times what the meters allowed
+        (HEA-211).
+
+        **Published a day late, and only what held all day.** Both totals
+        subtract the level's gain, and the level is an estimate that drifts and
+        corrects itself. Published as soon as the meters allowed it, the peak of
+        that drift stayed in a figure that only counts upwards (HEA-213). So the
+        figure published is the least the lower total has read over the last
+        `_LOSS_HOLD`, which a drift lasting less than that cannot reach.
 
         Measurable only where the household meters enough for the headroom to
         exist at all - a house-consumption meter and metered generation. Without
@@ -1194,46 +1196,97 @@ class Accountant:
         """
         if self._balance_headroom is None:
             # Nothing has been priced yet, so there is nothing accumulated to
-            # measure against - and zero is what the baseline should hold rather
+            # measure against - and zero is what the anchor should hold rather
             # than nothing at all. The headroom is set per priced interval and an
             # interval where nothing moved is never priced, so it does not exist
             # until something moves, and the interval that brings it into
-            # existence is already inside it. Waiting for it meant the baseline
+            # existence is already inside it. Waiting for it meant the anchor
             # landed one interval late and that interval's loss was never
             # published (HEA-199). Kept current while the headroom is still
-            # absent, so the baseline holds the level just before the first one.
-            self._loss_baseline = (Decimal(0), available_kwh)
-            self._loss_meters_baseline = (self._metered_charge, self._metered_discharge)
+            # absent, so the anchor holds the level just before the first one.
+            self._anchor_the_loss(Decimal(0), available_kwh, now)
             return
-        if self._loss_baseline is None:
-            self._loss_baseline = (self._balance_headroom, available_kwh)
-            self._loss_meters_baseline = (self._metered_charge, self._metered_discharge)
+        if self._loss_anchor is None:
+            self._anchor_the_loss(self._balance_headroom, available_kwh, now)
             return
 
-        headroom_then, available_then = self._loss_baseline
-        self._loss_baseline = (self._balance_headroom, available_kwh)
-        unexplained = self._balance_headroom - headroom_then
-        gained = available_kwh - available_then
-        allowed = self._what_the_battery_can_have_lost(gained)
-        self._loss_balance += unexplained - gained
-        if self._loss_balance <= 0:
-            return
+        claimed, allowed = self._loss_since_the_anchor(
+            self._loss_anchor, self._balance_headroom, available_kwh
+        )
+        self._loss_refused_kwh = max(Decimal(0), claimed - allowed)
+        held = self._held_through_the_hold(min(claimed, allowed), now)
+        if held > self._loss_published:
+            self._publish_the_loss(held - self._loss_published)
 
-        # Taken out of the ledger because it really has left the battery, and
-        # priced at what it cost to put there - the blend of every charge still
-        # on the books, which is the only price this energy ever had.
-        lost = self._loss_balance
-        if allowed is not None and lost > allowed:
-            # The house balance is claiming more than the battery physically
-            # carried, so the excess is a disagreement between the household's
-            # meters rather than energy. Refused outright rather than carried:
-            # carrying it would publish the same phantom later, whenever a span
-            # happened to leave room for it (HEA-196).
-            self._loss_refused_kwh += lost - allowed
-            lost = allowed
-        if allowed is not None:
-            self._loss_allowance -= lost
-        self._loss_balance = Decimal(0)
+    def _anchor_the_loss(
+        self, headroom: Decimal, available_kwh: Decimal, now: datetime
+    ) -> None:
+        self._loss_anchor = _LossAnchor(
+            headroom=headroom,
+            available=available_kwh,
+            charged=self._metered_charge,
+            discharged=self._metered_discharge,
+        )
+        self._loss_published = Decimal(0)
+        # Nothing measured yet reads as zero, so the hold starts here: a total
+        # cannot have stood above zero for a day until a day has passed.
+        self._loss_window = deque([(now, Decimal(0))])
+
+    def _loss_since_the_anchor(
+        self, anchor: _LossAnchor, headroom: Decimal, available_kwh: Decimal
+    ) -> tuple[Decimal, Decimal]:
+        """What the house's meters claim was lost, and what the battery's allow.
+
+        The claim is what the house's meters cannot explain, less what the level
+        gained. It is a residual of four meters and inherits every disagreement
+        between them - a household whose generation is metered on the far side of
+        their inverter saw four times what their battery could have lost
+        (HEA-196, GitHub 34).
+
+        The allowance is the battery's own: energy in has to go somewhere, so
+        `charge = discharge + gain + loss` and the loss cannot exceed
+        `charge - discharge - gain`. Every term is metered, so it assumes nothing
+        about the hardware.
+
+        **Each is a bound on the other, not the figure itself.** Where a discharge
+        meter counts only what reached the house, the allowance is loose by
+        whatever it missed - the fault HEA-182 exists for. Taking the lower of the
+        two keeps both faults out: the claim refuses a discharge the meter missed,
+        and the allowance refuses a disagreement between the house's own meters.
+        """
+        gained = available_kwh - anchor.available
+        claimed = headroom - anchor.headroom - gained
+        carried = (self._metered_charge - anchor.charged) - (
+            self._metered_discharge - anchor.discharged
+        )
+        return claimed, carried - gained
+
+    def _held_through_the_hold(self, total: Decimal, now: datetime) -> Decimal:
+        """The least `total` has read since `_LOSS_HOLD` ago.
+
+        A sliding minimum. An entry the new value is no higher than can never be
+        the least again, so it goes - and the new value takes its moment, because
+        over any window reaching back past that moment the new value is the lower.
+        Entries that have left the window go too, keeping the last one that took
+        effect before it opened: that value held at the window's start.
+        """
+        since = now
+        while self._loss_window and self._loss_window[-1][1] >= total:
+            since = self._loss_window.pop()[0]
+        self._loss_window.append((since, total))
+        opened = now - _LOSS_HOLD
+        while len(self._loss_window) > 1 and self._loss_window[1][0] <= opened:
+            self._loss_window.popleft()
+        return self._loss_window[0][1]
+
+    def _publish_the_loss(self, lost: Decimal) -> None:
+        """Take `lost` out of the ledger and into the household's figures.
+
+        Taken out of the ledger because it really has left the battery, and
+        priced at what it cost to put there - the blend of every charge still on
+        the books, which is the only price this energy ever had.
+        """
+        self._loss_published += lost
         # Only the cost. The forgone revenue of energy lost to heat leaves the
         # ledger with it - it is gone either way - but nothing publishes it: no
         # device used that energy, and the whole-home figure it would have to
@@ -1286,56 +1339,6 @@ class Accountant:
         # the first in this order, which keeps the figure a bound either way.
         return total + remaining * ordered[0][0]
 
-    def _what_the_battery_can_have_lost(self, gained: Decimal) -> Decimal | None:
-        """The most the battery can have lost over the span just measured.
-
-        Energy in has to go somewhere: `charge = discharge + gain + loss`, so the
-        loss cannot exceed `charge - discharge - gain`. Every term is metered, so
-        this assumes nothing about the hardware, and it is the bound the house
-        balance lacks - that figure is a residual of four house meters and
-        inherits every disagreement between them (HEA-196, GitHub 34, where a
-        household saw four times what their battery could have lost).
-
-        `None` only for a span before the first measurement, where there is no
-        earlier meter reading to measure against. Unbounded is what the figure
-        already was, so saying so is safer than guessing a bound.
-
-        Not for a snapshot written before this was tracked, which used to leave
-        it `None` for ever and so left the bound inert on every household who
-        upgraded into it - `restore` arms it from the meters instead (HEA-206).
-
-        **An upper bound and not the figure itself.** Where a discharge meter
-        counts only what reached the house, this is loose by whatever it missed -
-        which is the fault HEA-182 exists for, and the reason this caps the house
-        balance rather than replacing it. Taking the lower of the two keeps both
-        faults out: the house balance refuses a discharge the meter missed, and
-        this refuses a disagreement between the house's own meters.
-
-        **Carried across spans, not floored per span.** It is measured every tick,
-        and the counters and the level step at different moments: a tick where the
-        charge counter moved and the level did not allows its whole step, and the
-        tick where the level catches up owes it back. Flooring each one kept every
-        allowance and forgave every debt, so over a charging morning the bound let
-        through nearly the whole charge rather than what the level did not keep -
-        about three times what the meters allowed, and growing with every morning
-        (HEA-211, GitHub 34). Carried, the rounding cancels instead of accumulating.
-
-        What carrying cannot remove is timing: the level is read live, and a
-        meter's energy is counted only once its interval closes. So a discharge
-        can lower the level a lateness margin before it is counted, and the gap
-        is published ahead of the meters as a debt the next allowance repays.
-        Bounded by what the meters have yet to report, and never growing.
-        """
-        if self._loss_meters_baseline is None:
-            return None
-        charged_then, discharged_then = self._loss_meters_baseline
-        self._loss_meters_baseline = (self._metered_charge, self._metered_discharge)
-        carried = (self._metered_charge - charged_then) - (
-            self._metered_discharge - discharged_then
-        )
-        self._loss_allowance += carried - gained
-        return max(Decimal(0), self._loss_allowance)
-
     def _loss_ceiling(self) -> Decimal | None:
         """The most the battery can still honestly be said to have lost.
 
@@ -1359,9 +1362,10 @@ class Accountant:
         discharge costed below the import rate cannot be explained from the
         download alone.
 
-        `loss_refused_kwh` is what the battery's own meters would not allow the
-        house balance to publish as loss. It grows only where a household's
-        meters disagree with each other, so a figure climbing here says their
+        `loss_refused_kwh` is how far the house balance claims more loss than the
+        battery's own meters allow, since measuring began. It is non-zero only
+        where a household's meters disagree with each other, so a figure here says
+        their
         metering wants looking at rather than that anything is wrong with the
         accounting - which is a distinction nothing else in the download could
         make (HEA-196).

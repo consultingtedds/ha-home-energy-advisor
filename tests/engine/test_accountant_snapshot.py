@@ -159,26 +159,24 @@ _PERSISTED = frozenset(
         # zero would refuse the next honest write-down (HEA-174).
         "_balance_headroom",
         "_battery",
-        # The loss measurement's state. The baseline must persist or the next
-        # span would be measured against a headroom accumulated before it and
-        # publish the gap as loss; the carried balance and the totals are the
-        # usual reasons - a published figure cannot go backwards (HEA-182).
+        # The loss measurement's state. The anchor must persist or the running
+        # totals would restart wherever the level happened to be, forgiving
+        # whatever it had not yet caught up (HEA-211); the published amount and
+        # the hold's window or the next tick would publish a peak the window had
+        # kept out (HEA-213); the totals are the usual reason - a published figure
+        # cannot go backwards (HEA-182).
         "_battery_loss_cost",
         "_battery_loss_kwh",
-        "_loss_balance",
-        "_loss_baseline",
-        # The bound on that measurement, and its own baseline, for the same
-        # reason: a metered total that restarted at zero would compute a negative
-        # span and refuse an honest loss, and a baseline that restarted would
-        # bound the next span against a charge accumulated before it (HEA-196).
+        "_loss_anchor",
+        "_loss_published",
+        "_loss_window",
+        # The battery's own metered totals, which the bound is read from. Ones
+        # that restarted at zero would read as a discharge and refuse an honest
+        # loss (HEA-196).
         "_metered_charge",
         "_metered_discharge",
-        "_loss_meters_baseline",
-        # What the bound still allows, carried across spans. A restart that lost
-        # it would forgive a debt the level has not yet repaid (HEA-211).
-        "_loss_allowance",
-        # What the bound refused, which is a running diagnostics total and so
-        # cannot restart either.
+        # The gap between the two running totals, for the diagnostics; kept so a
+        # download taken straight after a restart still shows it.
         "_loss_refused_kwh",
         "_debts",
         "_nesting_carry",

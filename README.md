@@ -431,6 +431,11 @@ cannot account for, less whatever the battery actually gained. Nothing in it
 assumes an efficiency figure, and nothing rests on your charge and discharge
 meters agreeing with each other.
 
+**It runs a day behind.** A battery's level is an estimate that drifts through
+the day and corrects itself when the battery charges, so a loss is published only
+once your meters have shown it for a whole day. Today's loss appears tomorrow,
+and the figure holds still for the first day after you fill in the battery level.
+
 That needs the full set - grid import, grid **export**, generation, your house
 consumption, and the battery's level with its capacity. Export is in the list
 because generation that went out never served the house, so without it the first

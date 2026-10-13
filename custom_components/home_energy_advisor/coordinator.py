@@ -481,7 +481,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._check_source_units(now)
         self._check_the_figures_reach_the_household()
         self._check_every_device_has_figures()
-        self._reconcile_battery()
+        self._reconcile_battery(now)
         self._refresh_source_health(now)
         self.async_set_updated_data(self._accountant.totals())
         self._store.async_schedule_save(
@@ -835,7 +835,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._unsupported_units = unsupported
         self._missing_units = missing
 
-    def _reconcile_battery(self) -> None:
+    def _reconcile_battery(self, now: datetime) -> None:
         """Tell the engine what the battery holds, where the household has said.
 
         Silence leaves the ledger exactly as it is, and that is the important
@@ -846,7 +846,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         """
         available = self._battery_available()
         if available is not None:
-            self._accountant.reconcile_battery(available)
+            self._accountant.reconcile_battery(available, now)
 
     def _battery_available(self) -> Decimal | None:
         """How much energy the battery holds, or ``None`` where it cannot say.

@@ -1993,6 +1993,9 @@ async def test_a_household_metering_everything_is_told_what_its_battery_lost(
 
     Every kilowatt-hour in the pack was bought at 30 c, and a write-down removes
     energy at the blend rather than changing it, so that 0.3 cost **9 c**.
+
+    A loss is published once the meters have allowed it for a whole day (HEA-213),
+    so the household reads it the next day.
     """
     # Given - a household metering consumption, generation and the pack's level
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
@@ -2025,6 +2028,11 @@ async def test_a_household_metering_everything_is_told_what_its_battery_lost(
     hass.states.async_set("sensor.battery_level", "74", {"device_class": "battery"})
     await hass.async_block_till_done()
     freezer.move_to(datetime(2026, 7, 8, 23, 20, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # ...and a day passes with nothing moving
+    freezer.move_to(datetime(2026, 7, 9, 23, 20, tzinfo=UTC))
     async_fire_time_changed(hass, fire_all=True)
     await hass.async_block_till_done()
 

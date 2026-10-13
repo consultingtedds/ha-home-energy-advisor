@@ -42,6 +42,9 @@ from custom_components.home_energy_advisor.engine.accountant import (
 BASE = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
 OVERNIGHT = Decimal("0.093")
 PEAK = Decimal("0.234")
+# How long a loss has to have been allowed before it is published (HEA-213).
+# Tests that assert a loss reconcile once more this far after the span.
+A_DAY = timedelta(hours=24)
 
 
 def at(minutes: int) -> datetime:
@@ -104,7 +107,7 @@ def test_the_write_down_corrects_the_ledger_and_publishes_nothing() -> None:
     acc = _home_with_a_charged_battery()
 
     # When - the battery reports itself flat
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - the books agree with the battery, and the household's row is silent
     assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == Decimal(0)
@@ -119,7 +122,7 @@ def test_the_battery_is_not_swept_into_untracked() -> None:
     untracked_before = acc.totals().untracked.actual_cost
 
     # When - the battery's loss is written off
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - Untracked is untouched. It means "energy you have not tracked yet",
     # and a household acting on it by adding devices can never reduce this
@@ -129,7 +132,7 @@ def test_the_battery_is_not_swept_into_untracked() -> None:
 def test_the_three_terms_still_account_for_the_whole_house() -> None:
     # Given / When - a household whose battery has lost something
     acc = _home_with_a_charged_battery()
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - devices, remainder and battery add up to the house exactly. This is
     # ADR-0002's exhaustiveness with a third term rather than an exception to it:
@@ -172,7 +175,7 @@ def test_a_loss_the_house_meters_cannot_explain_is_refused() -> None:
 
     # When - the battery claims to be empty, which would mean all 4 kWh it was
     # given vanished - one more than the house's meters can explain
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - only the explainable 3 is written off, and the fourth stays on the
     # books as the honest "we cannot tell". The ceiling still governs what may
@@ -275,7 +278,7 @@ def test_the_batterys_loss_is_what_the_meters_cannot_explain_less_what_it_gained
     ):
         acc.observe(entity, at(45), Decimal(value))
     acc.finalize(at(85))
-    acc.reconcile_battery(Decimal("2.5"))
+    acc.reconcile_battery(Decimal("2.5"), at(85))
     assert acc.totals().battery.energy_kwh == Decimal(0)
 
     # When - it imports 2 kWh more, puts all of it into the battery, and the
@@ -288,7 +291,8 @@ def test_the_batterys_loss_is_what_the_meters_cannot_explain_less_what_it_gained
     ):
         acc.observe(entity, at(90), Decimal(value))
     acc.finalize(at(130))
-    acc.reconcile_battery(Decimal("3.7"))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130) + A_DAY)
 
     # Then - the loss is published as the battery's own consumption, and it is
     # the span's figure rather than anything accumulated before the baseline
@@ -321,7 +325,7 @@ def test_the_loss_cannot_exceed_what_the_batterys_own_meters_allow() -> None:
     ):
         acc.observe(entity, at(45), Decimal(value))
     acc.finalize(at(85))
-    acc.reconcile_battery(Decimal("2.5"))
+    acc.reconcile_battery(Decimal("2.5"), at(85))
 
     # When - the same span as the test above, except the generation meter reports
     # 2 kWh that never reached the house. The house balance now cannot explain
@@ -334,7 +338,8 @@ def test_the_loss_cannot_exceed_what_the_batterys_own_meters_allow() -> None:
     ):
         acc.observe(entity, at(90), Decimal(value))
     acc.finalize(at(130))
-    acc.reconcile_battery(Decimal("3.7"))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130) + A_DAY)
 
     # Then - the battery took in 2 kWh over the span, gave back none, and gained
     # 1.2, so 0.8 is the most it can have lost. The phantom generation is refused
@@ -344,26 +349,22 @@ def test_the_loss_cannot_exceed_what_the_batterys_own_meters_allow() -> None:
     )
 
 
-def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
-    """The bound has to reach the households who already have the fault (HEA-206).
+def test_a_household_who_upgraded_is_bounded_from_their_first_tick() -> None:
+    """The bound has to reach the households who already have the fault.
 
-    The cap's own baseline was only ever taken on the branch that takes the
-    *loss* baseline, and that branch runs once per lifetime. A household who
-    upgraded already had a loss baseline, written before this bound existed, and
-    their snapshot carried no meter baseline - so the cap waited for a starting
-    point it would never be given and never applied at all.
+    A snapshot from an earlier release carries a measurement in a shape the
+    running totals cannot resume from, so it starts measuring again at the first
+    tick after the restore - which the coordinator runs within seconds of
+    startup. A bound that waited for a starting point an upgraded household is
+    never given would apply to nobody who already had the fault (HEA-206, where
+    exactly that shipped).
 
-    `xamrex` on GitHub 34 reported exactly that: he updated, saw no change, and
-    his diagnostics said nothing had ever been refused. Over one day his battery
-    took in 10.0 kWh and gave back 9.6, so it could have lost at most 0.4, and
-    3.115 was published.
-
-    The snapshot here is a real one with the key removed, which is the shape a
-    release before the bound wrote - rather than a dictionary assembled to suit
-    the test.
+    The snapshot here is a real one with the measurement's keys removed, which is
+    the shape an earlier release wrote - rather than a dictionary assembled to
+    suit the test.
     """
-    # Given - a household who has been running long enough to hold a loss
-    # baseline, and whose snapshot predates the bound
+    # Given - a household who has been measuring for a while, restored from a
+    # snapshot that carries none of the running totals
     before = _metered_home_at_rest()
     for entity, value in (
         ("sensor.grid_import", "4.0"),
@@ -372,17 +373,28 @@ def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
     ):
         before.observe(entity, at(45), Decimal(value))
     before.finalize(at(85))
-    before.reconcile_battery(Decimal("2.5"))
+    before.reconcile_battery(Decimal("2.5"), at(85))
     carried = json.loads(json.dumps(before.snapshot()))
-    assert carried["battery_loss"]["baseline"] is not None
-    del carried["battery_loss"]["metered_baseline"]
+    assert carried["battery_loss"]["anchor"] is not None
+    for key in ("anchor", "published", "window"):
+        del carried["battery_loss"][key]
 
     acc = _metered_home_at_rest()
     acc.restore(carried)
+    acc.reconcile_battery(Decimal("2.5"), at(85))
 
     # When - the span HEA-196 was raised for: the generation meter reports 2 kWh
     # that never reached the house, so the house balance cannot explain 3.5 and
-    # the residual alone would publish 2.3
+    # the residual alone would publish 2.3. Every meter reports just before it,
+    # as a polled meter does, so the step is counted whole rather than spread
+    # back over a quiet run
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.generation", "0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(85), Decimal(value))
     for entity, value in (
         ("sensor.grid_import", "6.0"),
         ("sensor.generation", "2.0"),
@@ -391,7 +403,8 @@ def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
     ):
         acc.observe(entity, at(90), Decimal(value))
     acc.finalize(at(130))
-    acc.reconcile_battery(Decimal("3.7"))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130) + A_DAY)
 
     # Then - bounded exactly as it is for a fresh install: the battery took in
     # 2 kWh over the span, gave back none and gained 1.2, so 0.8 is the most it
@@ -400,15 +413,12 @@ def test_the_cap_arms_itself_on_a_household_who_upgraded_into_it() -> None:
         "0.800"
     )
 
-    # And - the refusal is recorded. A cap that silently publishes the right
-    # figure is indistinguishable from one that never ran, which is the whole
-    # reason this defect survived a release.
-    #
-    # 0.5 rather than the fresh install's 1.5: this household's loss baseline was
-    # taken before the snapshot, so the residual over this span is 1.3 rather
-    # than 2.3, and 0.8 of it is allowed. The refusal is the difference.
+    # And - the refusal is recorded: the house balance claims 2.3 and the meters
+    # allow 0.8. A cap that silently publishes the right figure is
+    # indistinguishable from one that never ran, which is how HEA-206 survived a
+    # release.
     refused = Decimal(acc.battery_diagnostics()["loss_refused_kwh"])
-    assert refused.quantize(Decimal("0.001")) == Decimal("0.500")
+    assert refused.quantize(Decimal("0.001")) == Decimal("1.500")
 
 
 # A usable capacity whose 1% level step, 0.137 kWh, does not divide the 0.1 kWh
@@ -429,10 +439,11 @@ def _charge_through_coarse_metered_mornings(
     the lateness margin exactly as it does on a real instance.
 
     `restart_after` rebuilds the engine from its own snapshot after that tick,
-    through JSON as the store writes it.
+    through JSON as the store writes it. The last reconcile is a day after the
+    mornings, so whatever they allowed has been held long enough to publish.
     """
     acc = _metered_home_at_rest()
-    acc.reconcile_battery(COARSE_LEVEL_CAPACITY * 30 / 100)
+    acc.reconcile_battery(COARSE_LEVEL_CAPACITY * 30 / 100, at(40))
     ticks = 60 * mornings
     for k in range(1, ticks + 1):
         if k - 1 == restart_after:
@@ -447,9 +458,13 @@ def _charge_through_coarse_metered_mornings(
         ):
             acc.observe(entity, at(40 + 5 * k), value)
         acc.finalize(at(40 + 5 * k))
-        acc.reconcile_battery(COARSE_LEVEL_CAPACITY * level_percent / 100)
+        acc.reconcile_battery(
+            COARSE_LEVEL_CAPACITY * level_percent / 100, at(40 + 5 * k)
+        )
+    full = COARSE_LEVEL_CAPACITY * (30 + 40 * mornings) / 100
     acc.finalize(at(40 + 5 * ticks + 60))
-    acc.reconcile_battery(COARSE_LEVEL_CAPACITY * (30 + 40 * mornings) / 100)
+    acc.reconcile_battery(full, at(40 + 5 * ticks + 60))
+    acc.reconcile_battery(full, at(40 + 5 * ticks + 60) + A_DAY)
     return acc
 
 
@@ -491,13 +506,13 @@ def test_the_cap_holds_over_a_morning_of_coarse_meters(
 
 
 def test_a_restart_mid_morning_keeps_what_the_cap_allows() -> None:
-    """The carried allowance has to survive a restart, or the cap leaks again.
+    """What the cap has measured has to survive a restart, or it leaks again.
 
-    Mid-morning the bound is usually owed or owing a step: the counters and the
-    level are rarely level with each other. A restart that dropped that would
-    forgive whatever the level had not yet repaid, which is the per-span floor
-    returning once per restart - and a household on a busy instance restarts
-    often enough for it to matter (HEA-211).
+    Mid-morning the counters and the level are rarely level with each other, so
+    the running totals sit a step either side of the truth. A restart that
+    re-anchored there would forgive whatever the level had not yet caught up,
+    once per restart - and a household on a busy instance restarts often enough
+    for it to matter (HEA-211).
     """
     # Given - a charging morning, and the same morning with Home Assistant
     # restarted after its 25th tick
@@ -511,6 +526,104 @@ def test_a_restart_mid_morning_keeps_what_the_cap_allows() -> None:
     assert lost == Decimal("0.52")
     assert lost == uninterrupted.totals().battery.energy_kwh
     assert refused == Decimal("1.5")
+
+
+def _a_level_that_sags_overnight(
+    *, restart_mid_sag: bool = False
+) -> dict[int, Decimal]:
+    """Honest meters, and a level that reads low through an evening.
+
+    The battery takes in 5.0 kWh one morning and keeps 4.6 of it, so 0.4 is lost.
+    That evening it gives 2.0 to the house, losing nothing, but its level reads
+    1.0 kWh low until the next morning - a state-of-charge estimate drifting and
+    correcting itself, which every meter here is honest about. Each meter reports
+    just before it steps, as a polled meter does, so a step is counted whole
+    rather than spread back over the quiet hours. Returns the published loss at
+    each hour it was checked, counted from the start.
+    """
+    acc = _metered_home_at_rest()
+    acc.reconcile_battery(Decimal("2.0"), at(40))
+    published: dict[int, Decimal] = {}
+
+    def tick(hour: int, level: str) -> None:
+        acc.finalize(at(hour * 60 + 40))
+        acc.reconcile_battery(Decimal(level), at(hour * 60 + 40))
+        published[hour] = acc.totals().battery.energy_kwh
+
+    def step(hour: int, *moves: tuple[str, str, str]) -> None:
+        for entity, before, _ in moves:
+            acc.observe(entity, at(hour * 60 - 5), Decimal(before))
+        for entity, _, after in moves:
+            acc.observe(entity, at(hour * 60), Decimal(after))
+
+    step(
+        8,
+        ("sensor.grid_import", "0", "5.0"),
+        ("sensor.battery_charge", "0", "5.0"),
+    )
+    tick(8, "6.6")
+    step(
+        20,
+        ("sensor.battery_discharge", "0", "2.0"),
+        ("sensor.house_load", "0", "2.0"),
+    )
+    tick(20, "3.6")
+    if restart_mid_sag:
+        carried = json.loads(json.dumps(acc.snapshot()))
+        acc = _fully_metered_accountant()
+        acc.restore(carried)
+    tick(31, "3.6")
+    tick(32, "4.6")
+    tick(44, "4.6")
+    tick(60, "4.6")
+    return published
+
+
+def test_a_level_that_reads_low_for_a_while_is_not_published_as_loss() -> None:
+    """Publish only what the meters have allowed for a whole day (HEA-213).
+
+    Both figures the loss is read against subtract what the level gained, so a
+    level that reads low makes the battery look as though it lost what it still
+    holds. A state-of-charge estimate drifts like that through an evening and
+    corrects itself at the next charge: GitHub 34's runs about 1 kWh either side
+    of their meters over a day. Publishing as soon as the meters allowed it put
+    the peak of that drift into a figure that only counts upwards - 1.77 kWh
+    over two of their days, against 0.83 their meters allowed.
+
+    So a loss is published only once it has been allowed for 24 hours without a
+    break, which a drift lasting less than a day cannot do.
+    """
+    # Given / When - a day with a real 0.4 kWh loss, followed by an evening and a
+    # night when the level reads 1.0 kWh low
+    published = _a_level_that_sags_overnight()
+
+    # Then - nothing is published within a day of measuring starting, while the
+    # sag would have published 1.4 at the evening reading
+    assert published[20] == Decimal(0)
+    assert published[31] == Decimal(0)
+
+    # And - the real loss is published a day after it happened, and stays exactly
+    # that once the sag has passed through the window. Published at once, every
+    # one of these read 1.4
+    assert published[32] == Decimal("0.4")
+    assert published[44] == Decimal("0.4")
+    assert published[60] == Decimal("0.4")
+
+
+def test_a_restart_mid_sag_publishes_what_an_uninterrupted_run_does() -> None:
+    """The hold's history survives a restart.
+
+    The window is the only record that a figure dipped within the last day, so
+    a restart that lost it would publish whatever the totals read when it came
+    back - the peak this exists to keep out.
+    """
+    # Given / When - the same evening, with Home Assistant restarted in the middle
+    # of the sag
+    uninterrupted = _a_level_that_sags_overnight()
+    restarted = _a_level_that_sags_overnight(restart_mid_sag=True)
+
+    # Then - identical at every reading
+    assert restarted == uninterrupted
 
 
 def test_reset_totals_rebases_the_published_battery_loss() -> None:
@@ -533,7 +646,7 @@ def test_reset_totals_rebases_the_published_battery_loss() -> None:
     ):
         acc.observe(entity, at(45), Decimal(value))
     acc.finalize(at(85))
-    acc.reconcile_battery(Decimal("2.5"))
+    acc.reconcile_battery(Decimal("2.5"), at(85))
     for entity, value in (
         ("sensor.grid_import", "6.0"),
         ("sensor.battery_charge", "6.0"),
@@ -541,7 +654,8 @@ def test_reset_totals_rebases_the_published_battery_loss() -> None:
     ):
         acc.observe(entity, at(90), Decimal(value))
     acc.finalize(at(130))
-    acc.reconcile_battery(Decimal("3.7"))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130) + A_DAY)
     assert acc.totals().battery.energy_kwh.quantize(Decimal("0.001")) == Decimal(
         "0.300"
     )
@@ -578,7 +692,7 @@ def test_a_reset_does_not_republish_the_history_as_one_loss() -> None:
     ):
         acc.observe(entity, at(45), Decimal(value))
     acc.finalize(at(85))
-    acc.reconcile_battery(Decimal("2.5"))
+    acc.reconcile_battery(Decimal("2.5"), at(85))
     acc.reset_totals()
 
     # When - the next span loses 0.3, exactly as the unreset case does
@@ -589,7 +703,8 @@ def test_a_reset_does_not_republish_the_history_as_one_loss() -> None:
     ):
         acc.observe(entity, at(90), Decimal(value))
     acc.finalize(at(130))
-    acc.reconcile_battery(Decimal("3.7"))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130) + A_DAY)
 
     # Then - that span's loss and nothing else. A figure carrying the history
     # would read far above this.
@@ -615,8 +730,10 @@ def test_the_first_measurement_establishes_a_baseline_and_publishes_nothing() ->
         acc.observe(entity, at(45), Decimal(value))
     acc.finalize(at(85))
 
-    # When - the household fills in the battery level for the first time
-    acc.reconcile_battery(Decimal("2.5"))
+    # When - the household fills in the battery level for the first time, and a
+    # day passes with nothing moving
+    acc.reconcile_battery(Decimal("2.5"), at(85))
+    acc.reconcile_battery(Decimal("2.5"), at(85) + A_DAY)
 
     # Then - nothing is published. The history before the first reading is not a
     # loss anybody measured, and claiming it would repeat the fault
@@ -642,7 +759,7 @@ def test_the_first_interval_of_a_fresh_install_is_measured_not_swallowed() -> No
     # Given - a fresh install, every counter at zero, whose household has their
     # battery configured from the start: the level is read before anything moves
     acc = _metered_home_at_rest()
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
     assert acc.totals().battery.energy_kwh == Decimal(0)
 
     # When - it imports 2 kWh and puts all of it into the battery, which comes
@@ -654,7 +771,8 @@ def test_the_first_interval_of_a_fresh_install_is_measured_not_swallowed() -> No
     ):
         acc.observe(entity, at(45), Decimal(value))
     acc.finalize(at(85))
-    acc.reconcile_battery(Decimal("1.9"))
+    acc.reconcile_battery(Decimal("1.9"), at(85))
+    acc.reconcile_battery(Decimal("1.9"), at(85) + A_DAY)
 
     # Then - the 0.1 that went to heat is published, exactly. Before HEA-199 this
     # read 0: the span became the baseline instead of being measured
@@ -687,7 +805,7 @@ def test_a_household_that_meters_too_little_is_not_capped() -> None:
     acc.finalize(at(40))
 
     # When - the battery reports itself empty
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - the write-down happens anyway. A ceiling nobody can calculate is not
     # a reason to refuse the figure underneath it, and this household's ledger
@@ -703,7 +821,7 @@ def test_the_write_off_publishes_no_cost() -> None:
     assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == Decimal("2.0")
 
     # When - the battery reports itself flat
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - nothing is added to the bill. The money is real, but a write-down
     # cannot say whether it paid for a round-trip loss or for a discharge the
@@ -717,7 +835,7 @@ def test_the_write_off_invents_no_energy_the_house_never_used() -> None:
     energy_before = acc.totals().whole_home.energy_kwh
 
     # When - the inventory is written down
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - the published total does not move. A ledger correction is a
     # statement about what we wrongly believed, not about what the house drew,
@@ -732,7 +850,7 @@ def test_the_write_off_leaves_cost_savings_alone() -> None:
     savings_before = acc.totals().whole_home.cost_savings
 
     # When - the inventory is written down
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - unchanged, because the counterfactual moves with the cost: this
     # energy *was* bought from the grid, so what it would have cost from the grid
@@ -749,7 +867,7 @@ def test_the_write_off_charges_no_device_for_it() -> None:
     assert device_before > 0
 
     # When - the inventory is written down
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - the device is untouched. No appliance ran on the energy the battery
     # lost, so charging one for it would move money between households' devices
@@ -763,7 +881,7 @@ def test_a_battery_holding_what_the_ledger_thinks_books_nothing() -> None:
     before = acc.totals().whole_home.actual_cost
 
     # When - the battery confirms the 2 kWh on the books
-    acc.reconcile_battery(Decimal("2.0"))
+    acc.reconcile_battery(Decimal("2.0"), at(40))
 
     # Then - nothing is booked. The ordinary case has to cost nothing, or every
     # interval would publish a write-off it invented
@@ -773,8 +891,8 @@ def test_a_battery_holding_what_the_ledger_thinks_books_nothing() -> None:
 def test_the_written_off_cost_is_explainable_from_the_diagnostics() -> None:
     # Given / When - a household whose ledger is written down twice
     acc = _home_with_a_charged_battery()
-    acc.reconcile_battery(Decimal("1.0"))
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal("1.0"), at(40))
+    acc.reconcile_battery(Decimal(0), at(40))
 
     # Then - the running total is in the download. A cost that appears in the
     # household's total with nothing anywhere explaining it is exactly the kind of
@@ -785,7 +903,7 @@ def test_the_written_off_cost_is_explainable_from_the_diagnostics() -> None:
 def test_the_written_off_total_survives_a_restart() -> None:
     # Given - a household that has written some off
     acc = _home_with_a_charged_battery()
-    acc.reconcile_battery(Decimal(0))
+    acc.reconcile_battery(Decimal(0), at(40))
     snapshot = acc.snapshot()
 
     # When - the engine is rebuilt from the snapshot
@@ -821,7 +939,7 @@ def test_the_energy_written_off_is_the_loss_the_household_can_be_shown() -> None
     acc = _home_with_a_charged_battery()
 
     # When - the battery turns out to be holding half of that
-    acc.reconcile_battery(Decimal("1.0"))
+    acc.reconcile_battery(Decimal("1.0"), at(40))
 
     # Then - the kilowatt-hours are reported beside the money, because "your
     # battery lost this much" and "that cost you this much" answer different
@@ -832,8 +950,8 @@ def test_the_energy_written_off_is_the_loss_the_household_can_be_shown() -> None
 def test_battery_losses_accumulate_across_reconciliations() -> None:
     # Given / When - a household reconciled twice, as every interval does
     acc = _home_with_a_charged_battery()
-    acc.reconcile_battery(Decimal("1.5"))
-    acc.reconcile_battery(Decimal("0.5"))
+    acc.reconcile_battery(Decimal("1.5"), at(40))
+    acc.reconcile_battery(Decimal("0.5"), at(40))
 
     # Then - both figures are running totals, so a period's loss is the change
     # across it the way every other figure here works (ADR-0008)
@@ -843,7 +961,7 @@ def test_battery_losses_accumulate_across_reconciliations() -> None:
 def test_a_battery_that_holds_what_we_think_loses_nothing() -> None:
     # Given / When - the ordinary interval, where the books already agree
     acc = _home_with_a_charged_battery()
-    acc.reconcile_battery(Decimal("2.0"))
+    acc.reconcile_battery(Decimal("2.0"), at(40))
 
     # Then - nothing accrues. A loss figure that ticked up when nothing was lost
     # would be worse than none, because it is the kind of number a household
