@@ -601,15 +601,9 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
-- **GitHub 34** stays open until its reporter confirms on 0.8.1. His data found
-  a real defect twice, and the second time it was the fix for the first failing
-  to reach him, so his confirmation is worth more than our own measurement.
-- **HEA-201** - the rollover-versus-column judgement, still blocked on one full
-  day of real activity on 0.8.1. Two things moved underneath it while it waited:
-  HEA-203 fixed the rollover that was visibly broken, so any earlier comparison
-  was against a handicapped option, and HEA-38 put a second thing in the same
-  column. The premise to check first is unchanged and still unconfirmed - whether
-  HEA-197 narrowed the band enough for a column to be reasonable.
+- **GitHub 34** stays open until its reporter confirms on 0.8.2. His data has now
+  found a real defect four times - HEA-196, HEA-206, HEA-211 and HEA-213 - so
+  his confirmation is worth more than our own measurement.
 - **HEA-188** - whether a battery charge should be priced marginally rather than
   proportionally. Unblocked by ADR-0027, which defines what surplus solar is
   worth on both sides of the battery, and still unbuilt on its own reasoning:
@@ -628,7 +622,10 @@ Carried forward rather than closed:
   condition is exactly what should not become a Repair, and after HEA-196 their
   figures are right either way.
 - **HEA-201** - whether the cost range should default to the rollover or the
-  column. It cannot be judged yet, and the reason is now better evidenced than
+  column. Two things moved underneath it while it waited: HEA-203 fixed the
+  rollover that was visibly broken, so any earlier comparison was against a
+  handicapped option, and HEA-38 put a second thing in the same column. It cannot
+  be judged yet, and the reason is now better evidenced than
   "needs 0.7.2 deployed": the release restarted the instance mid-afternoon on
   2026-10-07, and every device reading since is either older than that or a
   trickle of a few hundredths of a cent, at which size a floor of zero proves
@@ -649,7 +646,58 @@ Carried forward rather than closed:
   looking for. `loss_refused_kwh` reads 0 at the restart and is the figure to
   watch: the bound is armed for the first time.
 
+  On 0.8.1, **6.76 on 10-13** against 1.4 in the pack, and `loss_refused_kwh` at
+  0.05 - the bound barely binds on this household's meters. The books close:
+  over 10-07 to 10-13 the battery's meters put about 5.3 kWh net into it, and
+  write-off plus published loss took 9.0 out, so the ledger falls by about 0.85
+  kWh a day with nothing unexplained arriving. At that rate it reaches the pack's
+  real contents in about a week. The published loss here is real, not
+  overstated: the pack cycles 15 to 90% daily, so charge less discharge over a
+  day is the loss, and it agrees with what was published (0.87 against 0.64,
+  0.83 against 0.74).
+
 Closed since:
+
+- **HEA-211 and HEA-213 - the battery loss, a third and fourth time.** `xamrex`
+  came back on 0.8.1 with the figure still climbing. The bound HEA-206 armed was
+  running, and barely binding.
+
+  **HEA-211: the bound was floored tick by tick.** It is measured every five
+  seconds, and a battery's counters (0.1 kWh steps) and its level (1% steps)
+  move at different moments. A tick where the charge counter moved and the level
+  had not allowed the whole step; the tick where the level caught up owed it
+  back, and flooring at zero forgave it. Against his own readings the floored
+  bound allowed **7.6 kWh over a morning his meters allowed 0.23** - the whole
+  ADR-0015 rectification, one layer down from where it was first fixed.
+
+  **HEA-213: the level is not a reliable instant reading.** With HEA-211 the
+  bound was carried, and the figure still came out at twice what his meters
+  allowed over two days, because it was published at the *peak* of the level's
+  drift against the meters - about 1 kWh either side over a day, low in the
+  evening and caught up at full, which fits an LFP charge estimate. A figure that
+  only counts upwards keeps a peak for ever. Both sides of the measurement are now
+  running totals from one anchor, and what is published is the least the lower
+  of them has read over the last 24 hours, so a drift shorter than a day never
+  arrives. Battery Losses runs a day behind, and holds still for a day after an
+  upgrade, a fresh install or first filling in the level. Holding a full charge
+  as the reference point instead was rejected because a battery capped below
+  full, the reference household's included, would never publish.
+
+  Replayed against his 48 hours: **0.875 kWh, exactly what his meters allow**,
+  against 5.52 published by 0.8.1 and 1.77 by HEA-211 alone.
+
+  How it went is worth recording as well as what shipped. **Two diagnoses were
+  wrong before the data came in**: the overnight rise was first put down to the
+  bound and then, wrongly, retracted - it was a steady ~95 W the house meters do
+  not see (inverter standby is the likely cause) getting through the same floored
+  bound. A reply had already told the household the night was "something
+  different". **The replay harness had a bug** that gave every reconcile the same
+  clock, and produced a confident zero. And the engine tests' `max_quiet_span=0`
+  counts only part of a step that follows a quiet run, which is what HEA-206's
+  test comment had mistaken for a property of the snapshot.
+
+  HEA-212 was raised alongside: the diagnostics carry neither the battery level
+  nor its capacity, which is why every round of this needed another CSV.
 
 - **HEA-196, HEA-197 and HEA-198** - the three fixes awaiting release as 0.7.2,
   all of them downstream of one household's report and one afternoon's
