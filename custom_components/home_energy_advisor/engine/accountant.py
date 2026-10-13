@@ -89,12 +89,13 @@ _DEFAULT_RETENTION = timedelta(hours=24)
 _PLAUSIBILITY_WINDOW = 12
 
 # How long the battery's meters must have allowed a loss, without a break, before
-# it is published (HEA-213). A battery's level is an estimate that drifts through
-# an evening and corrects itself at the next charge - a reference household's
-# runs about 1 kWh either side of its meters over a day - and a loss figure only
-# counts upwards, so anything published at the peak of that drift stays there. A
-# day covers the cycle the drift follows, and depends on nothing but time, so it
-# serves a battery that never reaches full as well as one that does.
+# it is published (HEA-213, ADR-0028). A battery's level is an estimate that
+# drifts through an evening and corrects itself at the next charge - a reference
+# household's runs about 1 kWh either side of its meters over a day - and a loss
+# figure only counts upwards, so anything published at the peak of that drift
+# stays there. A day covers the cycle the drift follows, and depends on nothing
+# but time, so it serves a battery that never reaches full as well as one that
+# does.
 _LOSS_HOLD = timedelta(hours=24)
 
 
