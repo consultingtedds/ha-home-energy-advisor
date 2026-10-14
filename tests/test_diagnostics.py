@@ -6,9 +6,14 @@ from typing import TYPE_CHECKING
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import entity_registry as er
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
@@ -27,13 +32,14 @@ if TYPE_CHECKING:
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 
 
-def _entry() -> MockConfigEntry:
+def _entry(extra_data: dict[str, object] | None = None) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            **(extra_data or {}),
         },
         subentries_data=[
             ConfigSubentryData(
@@ -150,22 +156,120 @@ async def test_diagnostics_expose_the_battery_ledger(
         # and the energy beside it is the round-trip loss published (HEA-174).
         "written_off_kwh": "0",
         "written_off_cost": "0",
-        # What the battery's own meters would not let the house balance publish
-        # as loss. It grows only where a household's meters disagree with each
-        # other, which is the one thing the download could not say before: a
-        # figure climbing here means their metering wants looking at, not that
-        # the accounting is wrong (HEA-196).
-        "loss_refused_kwh": "0",
+        # How far the house meters disagree with the battery's own, with what
+        # that means beside it - the only place it is visible at all (HEA-200).
+        "meter_disagreement": {
+            "kwh": "0",
+            "means": (
+                "How far the house meters claim more battery loss than the "
+                "battery's own meters allow, since measuring began. Non-zero only "
+                "where a household's meters disagree with each other; it never "
+                "reaches a published figure."
+            ),
+        },
+        # The loss measurement's own state, or none where nothing is being
+        # measured - as here, with no battery level configured (HEA-212).
+        "loss": None,
     }
 
-    # ...and it is the whole ledger, with nothing else smuggled in beside them
-    assert set(result["battery"]) == {
-        "stored_kwh",
-        "stored_cost",
-        "written_off_kwh",
-        "written_off_cost",
-        "loss_refused_kwh",
-    }
+
+async def test_diagnostics_say_which_battery_settings_are_set(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Absent should mean not set, and nothing else (HEA-212).
+
+    The battery level and its capacity decide whether the loss can be measured
+    at all, and the download carried neither. A triage once told a household they
+    had set none, from their absence in the file - and was wrong.
+    """
+    # Given - a household with no battery level configured
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    # Then - said outright as not set, and no readings to show
+    assert result["config"]["battery_level_entity"] is None
+    assert result["config"]["battery_capacity_kwh"] is None
+    assert result["battery_level"] == []
+
+
+async def test_diagnostics_carry_what_the_battery_level_read(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The history a household was asked to export by hand, three times (HEA-212).
+
+    The level is read once a minute and is unchanged almost every time, so a
+    reading is kept only when what was read, or what was made of it, changes.
+    """
+    # Given - a 5 kWh battery at 50%, then its level unavailable for two minutes,
+    # then reading 150 - not a percentage at all - then 51%
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    hass.states.async_set("sensor.battery_level", "50")
+    entry = _entry(
+        extra_data={
+            CONF_BATTERY_SOC_ENTITY: "sensor.battery_level",
+            CONF_BATTERY_CAPACITY_KWH: 5.0,
+        }
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    async def a_minute_later(minute: int, level: str) -> None:
+        hass.states.async_set("sensor.battery_level", level)
+        freezer.move_to(datetime(2026, 7, 8, 22, minute, tzinfo=UTC))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+
+    await a_minute_later(1, "50")
+    await a_minute_later(2, "unavailable")
+    await a_minute_later(3, "unavailable")
+    await a_minute_later(4, "150")
+    await a_minute_later(5, "51")
+
+    # When
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    # Then - the settings, and one reading per change, dated when it began
+    assert result["config"]["battery_level_entity"] == "sensor.battery_level"
+    assert result["config"]["battery_capacity_kwh"] == "5.0"
+    assert result["battery_level"] == [
+        {
+            "at": "2026-07-08T22:01:00+00:00",
+            "state": "50",
+            "kwh": "2.5",
+            "reason": "used",
+        },
+        {
+            "at": "2026-07-08T22:02:00+00:00",
+            "state": "unavailable",
+            "kwh": None,
+            "reason": "unavailable",
+        },
+        {
+            "at": "2026-07-08T22:04:00+00:00",
+            "state": "150",
+            "kwh": None,
+            "reason": "not_a_percentage",
+        },
+        {
+            "at": "2026-07-08T22:05:00+00:00",
+            "state": "51",
+            "kwh": "2.55",
+            "reason": "used",
+        },
+    ]
 
 
 async def test_diagnostics_say_why_the_previous_accounting_was_not_carried(

@@ -417,7 +417,7 @@ def test_a_household_who_upgraded_is_bounded_from_their_first_tick() -> None:
     # allow 0.8. A cap that silently publishes the right figure is
     # indistinguishable from one that never ran, which is how HEA-206 survived a
     # release.
-    refused = Decimal(acc.battery_diagnostics()["loss_refused_kwh"])
+    refused = Decimal(acc.battery_diagnostics()["meter_disagreement"]["kwh"])
     assert refused.quantize(Decimal("0.001")) == Decimal("1.500")
 
 
@@ -502,7 +502,7 @@ def test_the_cap_holds_over_a_morning_of_coarse_meters(
 
     # And - what was refused is exactly the generation that never reached the
     # house, so the download names the meter disagreement rather than hiding it
-    assert Decimal(acc.battery_diagnostics()["loss_refused_kwh"]) == refused
+    assert Decimal(acc.battery_diagnostics()["meter_disagreement"]["kwh"]) == refused
 
 
 def test_a_restart_mid_morning_keeps_what_the_cap_allows() -> None:
@@ -522,7 +522,7 @@ def test_a_restart_mid_morning_keeps_what_the_cap_allows() -> None:
     # When / Then - the restart changes nothing the household is shown, nor what
     # the download says was refused
     lost = restarted.totals().battery.energy_kwh
-    refused = Decimal(restarted.battery_diagnostics()["loss_refused_kwh"])
+    refused = Decimal(restarted.battery_diagnostics()["meter_disagreement"]["kwh"])
     assert lost == Decimal("0.52")
     assert lost == uninterrupted.totals().battery.energy_kwh
     assert refused == Decimal("1.5")
@@ -673,6 +673,106 @@ def test_reset_totals_rebases_the_published_battery_loss() -> None:
     # after a rebase is not free (ADR-0021).
     assert Decimal(acc.battery_diagnostics()["stored_kwh"]) == stored_before
     assert stored_before > Decimal(0)
+
+
+def test_the_download_shows_where_the_loss_measurement_stands() -> None:
+    """Every figure the published loss is read from, in one place (HEA-212).
+
+    On GitHub 34 nothing in the download could say how far the published loss
+    sat from what the battery's meters allowed, so each question needed the
+    household to export their history by hand.
+    """
+    # Given - a home that anchored at 85 minutes, then lost 0.3 kWh in a span its
+    # battery's own meters would have allowed up to 0.8 of
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("2.5"), at(85))
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+
+    # When - the battery's diagnostics are read, inside the day's hold
+    loss = acc.battery_diagnostics()["loss"]
+
+    # Then - where measuring began, what each side says since, what has been
+    # published, and the least the lower side has read across the hold - which
+    # is still the anchor's zero, so nothing is out yet. Figures to the
+    # thousandth: the engine carries Decimal's full precision through its
+    # interval arithmetic, and the download prints it as it is
+    def kwh(value: str) -> Decimal:
+        return Decimal(value).quantize(Decimal("0.001"))
+
+    assert {key: kwh(value) for key, value in loss["anchor"].items()} == {
+        "headroom_kwh": Decimal("3.000"),
+        "available_kwh": Decimal("2.500"),
+        "charged_kwh": Decimal("4.000"),
+        "discharged_kwh": Decimal("0.000"),
+    }
+    assert kwh(loss["claimed_kwh"]) == Decimal("0.300")
+    assert kwh(loss["allowed_kwh"]) == Decimal("0.800")
+    assert loss["published_kwh"] == "0"
+    assert loss["held_kwh"] == "0"
+    assert loss["held_since"] == "2026-07-08T23:25:00+00:00"
+
+
+def test_the_download_says_when_the_loss_is_not_being_measured() -> None:
+    # Given / When - a household whose battery level has never been read
+    acc = _metered_home_at_rest()
+
+    # Then - none, rather than a block of zeroes that reads like a measurement
+    assert acc.battery_diagnostics()["loss"] is None
+
+
+def test_the_download_says_what_the_meter_disagreement_means() -> None:
+    # Given / When - a household whose generation meter reads 2 kWh the house
+    # never saw: the house meters claim 2.3 and the battery's meters allow 0.8
+    acc = _metered_home_at_rest()
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(45), Decimal(value))
+    acc.finalize(at(85))
+    acc.reconcile_battery(Decimal("2.5"), at(85))
+    for entity, value in (
+        ("sensor.grid_import", "4.0"),
+        ("sensor.generation", "0"),
+        ("sensor.battery_charge", "4.0"),
+        ("sensor.house_load", "1.0"),
+    ):
+        acc.observe(entity, at(85), Decimal(value))
+    for entity, value in (
+        ("sensor.grid_import", "6.0"),
+        ("sensor.generation", "2.0"),
+        ("sensor.battery_charge", "6.0"),
+        ("sensor.house_load", "1.5"),
+    ):
+        acc.observe(entity, at(90), Decimal(value))
+    acc.finalize(at(130))
+    acc.reconcile_battery(Decimal("3.7"), at(130))
+
+    # Then - the gap, with a sentence beside it saying what it is. It is the only
+    # place a household's meter disagreement is visible at all (HEA-200), and a
+    # bare number named for a mechanism told nobody what it meant
+    disagreement = acc.battery_diagnostics()["meter_disagreement"]
+    assert Decimal(disagreement["kwh"]).quantize(Decimal("0.001")) == Decimal("1.500")
+    assert disagreement["means"] == (
+        "How far the house meters claim more battery loss than the battery's own "
+        "meters allow, since measuring began. Non-zero only where a household's "
+        "meters disagree with each other; it never reaches a published figure."
+    )
 
 
 def test_a_reset_does_not_republish_the_history_as_one_loss() -> None:

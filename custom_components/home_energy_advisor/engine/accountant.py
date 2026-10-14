@@ -98,6 +98,14 @@ _PLAUSIBILITY_WINDOW = 12
 # does.
 _LOSS_HOLD = timedelta(hours=24)
 
+# Printed beside the figure in the diagnostics download, because it is the only
+# place a household's meter disagreement is visible at all (HEA-200, HEA-212).
+_METER_DISAGREEMENT_MEANS = (
+    "How far the house meters claim more battery loss than the battery's own "
+    "meters allow, since measuring began. Non-zero only where a household's "
+    "meters disagree with each other; it never reaches a published figure."
+)
+
 
 @dataclass(frozen=True)
 class AccountingWindows:
@@ -536,6 +544,10 @@ class Accountant:
         # disagree with each other, which is worth knowing and is not something
         # the figures can fix.
         self._loss_refused_kwh = Decimal(0)
+        # What each side of the measurement said at the last tick - the house
+        # meters' claim and the battery meters' allowance since the anchor - for
+        # the diagnostics (HEA-212). Recomputed every tick, so not persisted.
+        self._loss_last_totals: tuple[Decimal, Decimal] | None = None
         # Energy charged before its meter reading arrived, awaiting the surplus
         # that repays it. Expiring at the span a coarse step is spread over is a
         # derivation, not a second knob: a deficit created by that spreading
@@ -1229,6 +1241,7 @@ class Accountant:
             self._loss_anchor, self._balance_headroom, available_kwh
         )
         self._loss_refused_kwh = max(Decimal(0), claimed - allowed)
+        self._loss_last_totals = (claimed, allowed)
         held = self._held_through_the_hold(min(claimed, allowed), now)
         if held > self._loss_published:
             self._publish_the_loss(held - self._loss_published)
@@ -1243,6 +1256,7 @@ class Accountant:
             discharged=self._metered_discharge,
         )
         self._loss_published = Decimal(0)
+        self._loss_last_totals = (Decimal(0), Decimal(0))
         # Nothing measured yet reads as zero, so the hold starts here: a total
         # cannot have stood above zero for a day until a day has passed.
         self._loss_window = deque([(now, Decimal(0))])
@@ -1370,23 +1384,52 @@ class Accountant:
         """Energy the battery never gave back, and what it cost (HEA-174)."""
         return self._battery.losses
 
-    def battery_diagnostics(self) -> dict[str, str]:
+    def battery_diagnostics(self) -> dict[str, Any]:
         """What the stored-cost ledger holds, for the diagnostics download.
 
         Discharge is priced from this and from nothing else, so without it a
         discharge costed below the import rate cannot be explained from the
         download alone.
 
-        `loss_refused_kwh` is how far the house balance claims more loss than the
-        battery's own meters allow, since measuring began. It is non-zero only
-        where a household's meters disagree with each other, so a figure here says
-        their
-        metering wants looking at rather than that anything is wrong with the
-        accounting - which is a distinction nothing else in the download could
-        make (HEA-196).
+        `meter_disagreement` carries the sentence that says what it is beside the
+        figure, because it is the only place a household's meter disagreement is
+        visible at all (HEA-200) and a bare number named for a mechanism told
+        nobody what it meant. `loss` is where the battery's loss measurement
+        stands, or ``None`` where nothing is being measured (HEA-212).
         """
         return self._battery.diagnostics() | {
-            "loss_refused_kwh": str(self._loss_refused_kwh),
+            "meter_disagreement": {
+                "kwh": str(self._loss_refused_kwh),
+                "means": _METER_DISAGREEMENT_MEANS,
+            },
+            "loss": self._loss_diagnostics(),
+        }
+
+    def _loss_diagnostics(self) -> dict[str, Any] | None:
+        """Every figure the published loss is read from, in one place.
+
+        Where measuring began, what the house meters claim and the battery's
+        meters allow since, what has been published, and the least the lower of
+        the two has read across the hold - which is what the next publication
+        can reach - with the moment it took that value.
+        """
+        anchor = self._loss_anchor
+        if anchor is None:
+            return None
+        claimed, allowed = self._loss_last_totals or (None, None)
+        held_since, held = self._loss_window[0] if self._loss_window else (None, None)
+        return {
+            "anchor": {
+                "headroom_kwh": str(anchor.headroom),
+                "available_kwh": str(anchor.available),
+                "charged_kwh": str(anchor.charged),
+                "discharged_kwh": str(anchor.discharged),
+            },
+            "claimed_kwh": None if claimed is None else str(claimed),
+            "allowed_kwh": None if allowed is None else str(allowed),
+            "published_kwh": str(self._loss_published),
+            "held_kwh": None if held is None else str(held),
+            "held_since": None if held_since is None else held_since.isoformat(),
         }
 
     def source_diagnostics(self) -> dict[str, SourceSnapshot]:

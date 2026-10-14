@@ -217,7 +217,16 @@ _CONFIG_DERIVED = frozenset(
 # state within one poll, and a restored value would accuse a healthy meter that
 # recovered while the host was down. ``_cold_start_logged`` only suppresses a
 # duplicate log line.
-_TRANSIENT = frozenset({"_cold_start_logged", "_unhealthy_roles"})
+_TRANSIENT = frozenset(
+    {
+        "_cold_start_logged",
+        "_unhealthy_roles",
+        # The loss measurement's two sides at the last tick, for the diagnostics.
+        # Recomputed on every tick from persisted state, so a restart loses
+        # nothing a figure depends on (HEA-212).
+        "_loss_last_totals",
+    }
+)
 
 
 def test_snapshot_survives_a_json_round_trip_unchanged() -> None:

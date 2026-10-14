@@ -58,6 +58,14 @@ changed.
 if you show the range as its own column, a Forgone export column now sits beside
 it, so the two parts of Cost of use can be read across the row.
 
+**The diagnostics download says more about prices and batteries.** It now shows
+the import and export rate in force and since when, so you can tell a new rate
+has taken without waiting for sunshine. And for a battery, it shows the level and
+capacity you set, what the level has read over the last couple of days, and where
+the loss measurement stands - which is what we otherwise have to ask you to
+export by hand. One field is renamed: `loss_refused_kwh` is now
+`meter_disagreement`, with a sentence beside the figure saying what it means.
+
 ## 0.8.1
 
 **If you took 0.8.0 and have solar, update again.** The new Forgone Export

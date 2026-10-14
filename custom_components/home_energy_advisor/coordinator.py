@@ -56,6 +56,7 @@ from .const import (
 )
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.energy_source import EnergyUnit
+from .engine.level_log import LevelLog, LevelReason
 from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
@@ -206,6 +207,8 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._battery_capacity = _to_decimal(
             str(entry.data.get(CONF_BATTERY_CAPACITY_KWH, ""))
         )
+        # What that level read, for the diagnostics (HEA-212).
+        self._level_log = LevelLog()
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
         self._restored: Totals | None = None
@@ -844,11 +847,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         corrects, with its sign reversed. A household who answered neither
         optional question is on the path they were on before it existed.
         """
-        available = self._battery_available()
+        available = self._battery_available(now)
         if available is not None:
             self._accountant.reconcile_battery(available, now)
 
-    def _battery_available(self) -> Decimal | None:
+    def _battery_available(self, now: datetime) -> Decimal | None:
         """How much energy the battery holds, or ``None`` where it cannot say.
 
         A percentage of a stated usable capacity, because that is the sensor
@@ -856,16 +859,24 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         refused rather than clamped: a reading that is not a percentage is not a
         percentage read badly, and guessing at it would write the ledger down on
         the strength of a misconfiguration.
+
+        Every reading is logged with what was made of it, for the diagnostics
+        (HEA-212).
         """
         if self._battery_soc_entity is None or self._battery_capacity is None:
             return None
         state = self.hass.states.get(self._battery_soc_entity)
         if state is None or state.state in _UNAVAILABLE:
+            read = None if state is None else state.state
+            self._level_log.record(now, read, None, LevelReason.UNAVAILABLE)
             return None
         percent = _to_decimal(state.state)
         if percent is None or not (0 <= percent <= 100):  # noqa: PLR2004 - a percentage
+            self._level_log.record(now, state.state, None, LevelReason.NOT_A_PERCENTAGE)
             return None
-        return self._battery_capacity * percent / 100
+        available = self._battery_capacity * percent / 100
+        self._level_log.record(now, state.state, available, LevelReason.USED)
+        return available
 
     def _refresh_source_health(self, now: datetime) -> None:
         """Take each device's last reading, and say whose has stopped (ADR-0024).
@@ -1069,6 +1080,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             "config": self._config_diagnostics(),
             "sources": self._source_diagnostics(),
             "battery": self._accountant.battery_diagnostics(),
+            "battery_level": self._level_log.diagnostics(),
             "balance": self._accountant.balance_diagnostics(),
             "snapshot": self._snapshot_diagnostics(),
             "totals": self._totals_diagnostics(),
@@ -1158,6 +1170,13 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             # download answers "did my new rate take?" without waiting for
             # generation to be used at it (HEA-210).
             "rates_in_force": self._accountant.rates_in_force(dt_util.utcnow()),
+            # The two settings the battery's loss is measured with. Said outright
+            # as none where they are not set: their absence from the file was once
+            # read as "not set" when it was not (HEA-212).
+            "battery_level_entity": self._battery_soc_entity,
+            "battery_capacity_kwh": (
+                None if self._battery_capacity is None else str(self._battery_capacity)
+            ),
             "currency": data.get(CONF_CURRENCY, DEFAULT_CURRENCY),
             "house_sources": [
                 {"role": role.value, "entity": entity}
