@@ -601,7 +601,7 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
-- **GitHub 34** stays open until its reporter confirms on 0.8.2. His data has now
+- **GitHub 34** stays open until its reporter confirms on 0.9.0. His data has now
   found a real defect four times - HEA-196, HEA-206, HEA-211 and HEA-213 - so
   his confirmation is worth more than our own measurement.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
@@ -611,10 +611,6 @@ Carried forward rather than closed:
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
 - **GitHub #22 and #29** remain open with their reporters.
-- **HEA-212** - the diagnostics download carries neither the battery level nor
-  its capacity, nor the loss measurement's own state, which is why every round of
-  GitHub 34 needed another export. It also takes the meter-disagreement gap,
-  under a name that explains itself, since HEA-200 decided that is where it lives.
 - **HEA-216** - count the battery's solar share towards self-sufficiency, from
   Discussion 35. The engine already splits every charge into grid and
   generation; the ledger does not yet keep the generation share in kWh, and
@@ -644,6 +640,16 @@ Carried forward rather than closed:
   0.83 against 0.74).
 
 Closed since:
+
+- **HEA-210 and HEA-212 - the diagnostics download answers what GitHub 34 kept
+  asking for.** It now carries the import and export rate in force and since
+  when, so a new rate can be confirmed without waiting for generation to be used
+  at it; the battery level entity and capacity, said as none where not set; the
+  level's own readings where they change, about two days of a cycling battery;
+  and where the loss measurement stands, from its anchor to what the hold is
+  holding. `loss_refused_kwh` became `meter_disagreement`, with a sentence beside
+  the figure. HEA-210 went in as `feat`, which makes the release 0.9.0 rather
+  than 0.8.2 - accepted, with 1.0.0 in view.
 
 - **HEA-214 and HEA-201 - Cost of use, and what the range is a range of.** The
   cost column has counted forgone export by default since 0.8.0, and its rollover

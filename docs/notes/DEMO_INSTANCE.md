@@ -243,6 +243,14 @@ README makes in words.
   only shows something where it is non-zero, such as Cost of use, quietly
   doesn't. The checks never meet it because they step back to yesterday before
   the first live hour compiles; under `--keep`, pick yesterday or earlier.
+- **Start `--engine` from a stopped container, never straight after `--keep`.**
+  On 2026-10-14 an engine run started over a kept instance that had been up for
+  hours failed the one check that matters - the card showed 0.34 where the
+  engine had computed 0.8089 - and the same code passed 20 of 20 from a removed
+  container. The reset deletes the database and `.storage` while Home Assistant
+  is running and then restarts it, and what survives that on a long-running
+  instance was not pinned down. `node demo/reset.mjs` and then stopping the
+  container first is enough.
 - **The recorder commits on its own schedule.** Counting the imports that were
   made says nothing about what is readable; the seed reads every statistic back
   before reporting success.
