@@ -604,11 +604,6 @@ Carried forward rather than closed:
 - **GitHub 34** stays open until its reporter confirms on 0.8.2. His data has now
   found a real defect four times - HEA-196, HEA-206, HEA-211 and HEA-213 - so
   his confirmation is worth more than our own measurement.
-- **HEA-188** - whether a battery charge should be priced marginally rather than
-  proportionally. Unblocked by ADR-0027, which defines what surplus solar is
-  worth on both sides of the battery, and still unbuilt on its own reasoning:
-  ADR-0002's proportional allocation is load-bearing and nobody has reported a
-  figure they believe is *wrong* because of it.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth.
@@ -616,23 +611,15 @@ Carried forward rather than closed:
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
 - **GitHub #22 and #29** remain open with their reporters.
-- **HEA-200** - whether a household should be told their meters disagree.
-  `loss_refused_kwh` is the only signal that can say so, and it reaches nobody
-  outside a diagnostics download. Argued both ways on the ticket: a standing
-  condition is exactly what should not become a Repair, and after HEA-196 their
-  figures are right either way.
-- **HEA-201** - whether the cost range should default to the rollover or the
-  column. Two things moved underneath it while it waited: HEA-203 fixed the
-  rollover that was visibly broken, so any earlier comparison was against a
-  handicapped option, and HEA-38 put a second thing in the same column. It cannot
-  be judged yet, and the reason is now better evidenced than
-  "needs 0.7.2 deployed": the release restarted the instance mid-afternoon on
-  2026-10-07, and every device reading since is either older than that or a
-  trickle of a few hundredths of a cent, at which size a floor of zero proves
-  nothing. In October most of the tracked fleet is idle, so a real day waits on
-  one of the few loads still running. The ticket's premise is also unproven - the real spread
-  runs from 1.10x to 2.70x ceiling-over-paid rather than the tight band the case
-  for a column rests on.
+- **HEA-212** - the diagnostics download carries neither the battery level nor
+  its capacity, nor the loss measurement's own state, which is why every round of
+  GitHub 34 needed another export. It also takes the meter-disagreement gap,
+  under a name that explains itself, since HEA-200 decided that is where it lives.
+- **HEA-216** - count the battery's solar share towards self-sufficiency, from
+  Discussion 35. The engine already splits every charge into grid and
+  generation; the ledger does not yet keep the generation share in kWh, and
+  nothing publishes it. Measured rather than declared, so it stays right when a
+  battery takes a little grid. Whether the headline changes is still to decide.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has
@@ -657,6 +644,50 @@ Carried forward rather than closed:
   0.83 against 0.74).
 
 Closed since:
+
+- **HEA-214 and HEA-201 - Cost of use, and what the range is a range of.** The
+  cost column has counted forgone export by default since 0.8.0, and its rollover
+  still showed the range of what was *paid*, so on a device running mostly on
+  sunshine the whole range sat below the figure it was qualifying: 1.32 against
+  0.00 to 0.79 on the reference instance. The rollover now breaks the figure
+  down - what was paid with its range, plus what the household's generation could
+  have earned - and the note under the table says where the range is and which
+  part it covers. Shifting the range up by the forgone amount was rejected: when a
+  coarse counter's energy was used is the very thing the range is uncertain about,
+  and it also decides whether that energy was sunshine.
+
+  HEA-201 was then judged on the demo with all of that in place. **The rollover
+  stays the default**; the band is still often wider than the figure. The column
+  layout gains a Forgone export column straight after the range, because with
+  the range as a column the cell's rollover goes and nothing on the row showed
+  what lay between Cost of use and what was paid. And the totals row turned out
+  to have shown a dash under Cost of use since 0.8.0: a derived column sums only
+  the fields it names, and this one named none.
+
+  The demo seed now writes forgone export, so the end-to-end suite hovers the
+  breakdown - the longest rollover the table has - in both languages. The
+  README says Forgone Export does not know about an export limit: it counts only
+  generation the house used, but values all of it as though it could have been
+  sold.
+
+- **HEA-200 and HEA-188 - two open questions, answered.** HEA-200 asked whether a
+  household should be told their meters disagree. After HEA-211 and HEA-213 the
+  disagreement cannot reach any published figure, and nothing a household could
+  change would move one, so it stays in the diagnostics; the threshold question
+  got its first two data points, two orders of magnitude apart (0.2% of battery
+  throughput on the reference instance, a quarter to a third on GitHub 34's).
+  HEA-188 asked whether a battery charge should be priced at the margin rather
+  than reprice a load already running on sunshine. **It already is**: the house
+  balance gives a charge the interval's import first and shares the blend only
+  after, which is the forum's rule exactly, measured through the engine with and
+  without a charge beside the load. The ticket's premise was wrong when it was
+  written, and ADR-0002 now carries an Update saying so.
+
+- **HEA-215** - GitHub 40 and Discussion 36: a household whose recorder keeps only
+  a chosen list of entities saw every sensor with a value and every card at zero,
+  because the cards read long-term statistics. The troubleshooting page now says
+  so, and to copy the integration's entity ids rather than write a pattern,
+  because entity ids follow the instance's language.
 
 - **HEA-211 and HEA-213 - the battery loss, a third and fourth time.** `xamrex`
   came back on 0.8.1 with the figure still climbing. The bound HEA-206 armed was
