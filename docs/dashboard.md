@@ -141,7 +141,9 @@ Two options every card accepts:
 
 ## The sensors behind it
 
-Each tracked device exposes four figures, named after the device:
+Each tracked device exposes its figures as sensors named after the device; the
+[README](../README.md#the-sensors-you-get) lists every one. The four the cards
+lean on most:
 
 | Sensor | Unit | Meaning |
 | --- | --- | --- |
@@ -150,7 +152,7 @@ Each tracked device exposes four figures, named after the device:
 | `<device> Cost at Grid Price` | currency | What it would have cost bought off the meter as used |
 | `<device> Cost Savings` | currency | The difference between the two |
 
-The cards say **Paid**, **Would have paid** and **Saved** for those three
+The cards say **Paid**, **Would have paid** and **Saved** for the three money
 figures. The sensors keep the longer names because an entity name has to stand
 alone in a template where a column heading does not (ADR-0018).
 
@@ -177,6 +179,12 @@ place:
   rather have the column - it can be sorted, and it announces that the figures
   carry a range at all - set **Show the cost range as** to **Its own column** in
   the card's settings.
+
+  If you export, the cost column reads **Cost of use** instead: what you paid,
+  plus what your own generation could have earned had you exported it. Hovering
+  it shows those two parts, with the range on what you paid, because only that
+  part has one. With the range as its own column, a **Forgone export** column
+  sits beside it instead, so the two parts can be read across the row.
 
   The range covers only where the energy can actually have been. A slice where
   your house used almost nothing cannot have supplied a whole kilowatt-hour, so

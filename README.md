@@ -345,11 +345,16 @@ Each tracked device gets its own device in Home Assistant, carrying these:
 | Energy From Grid | kWh | How much of Energy Used came off the meter |
 | Energy From Generation | kWh | How much came from your own generation |
 | Energy From Battery | kWh | How much came from the battery |
+| Forgone Export | your currency | What the generation it used could have earned exported instead, at your export rate at the time |
 
-**If you have no generation and no battery, five of those are switched off.**
+**If you have no generation and no battery, six of those are switched off.**
 Without a second source there is nothing to split: Cost at Grid Price would
 equal Actual Cost, Cost Savings would always be zero, Energy From Grid would
-equal Energy Used, and the other two would never move. They are still created,
+equal Energy Used, and the other three would never move.
+
+With **Publish a cost range for each device** turned on in the integration's
+options, each device also carries **Lowest Possible Cost** and **Highest Possible
+Cost**: the widest range the readings allow for what it cost. They are still created,
 so nothing changes if you fit panels later - you would just switch them back on
 in Home Assistant, and they carry the figures from then on.
 
@@ -375,7 +380,7 @@ sends nothing at all, and this can then read hours or days old with nothing
 whatever wrong. Read the time as when that device's figures last moved. The
 sensor going **Unavailable** is the part that says nobody is counting.
 
-Three more devices are created alongside them:
+More devices are created alongside them:
 
 - **Untracked Energy Devices** carries the same set for everything the house used
   that no tracked device claimed. It is what makes the parts add up to the whole,
