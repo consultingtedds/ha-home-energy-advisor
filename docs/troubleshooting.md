@@ -22,7 +22,32 @@ This is expected, and it takes a while.
   boundary after the twenty-minute wait.
 
 If the sensors still read zero after an hour, look for a notification from Home
-Energy Advisor, or see the next entry.
+Energy Advisor, or see the next entry. If the sensors have values and only the
+cards stay at zero, see
+[The sensors have values but the cards stay at zero](#the-sensors-have-values-but-the-cards-stay-at-zero).
+
+## The sensors have values but the cards stay at zero
+
+Check what your recorder keeps. The cards read Home Assistant's long-term
+statistics rather than the sensors' current values, and Home Assistant only
+keeps statistics for entities its recorder records. If your recorder keeps a
+list of chosen entities - an `include:` in its configuration, or an `exclude:`
+that happens to catch these - Home Energy Advisor's sensors show values while
+every card reads zero.
+
+Add Home Energy Advisor's sensors to what the recorder keeps:
+
+- **Copy their ids from the list, rather than guessing a pattern.** They are
+  under **Settings > Devices & services > Home Energy Advisor**, on the entities
+  page. Their ids follow your Home Assistant's language, so a pattern written in
+  English matches nothing on an instance set to another language.
+- **Keep all of them.** The cards use the energy, cost and source figures of
+  every device, and of Whole Home, Untracked and Battery Losses. Leaving one out
+  shows up as a device or a total stuck at zero.
+- **Restart Home Assistant** after changing the recorder's configuration.
+
+The cards fill from the next full hour after that. Anything from before cannot
+be recovered, because Home Assistant never recorded it.
 
 ## Nothing moves for about twenty minutes after a restart or an update
 
