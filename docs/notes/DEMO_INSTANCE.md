@@ -233,6 +233,16 @@ README makes in words.
   the current hour, which leaves today part-finished, and the screenshot run
   steps the picker back to the last complete day rather than photographing a
   morning where half the house has not run yet.
+- **A kept instance is only right for yesterday and earlier once it has been up
+  an hour.** The seed ends each statistic on a week's running total, while the
+  integration's own sensors started from zero when the container came up. The
+  first hour Home Assistant compiles from the live sensors books the drop from
+  one to the other as a change, so every figure falls back by its whole seeded
+  week in that hour - seen on 2026-10-14 as -6.52 on a cost and -41.6 kWh on its
+  energy. Any period including today then nets to about nothing, and a card that
+  only shows something where it is non-zero, such as Cost of use, quietly
+  doesn't. The checks never meet it because they step back to yesterday before
+  the first live hour compiles; under `--keep`, pick yesterday or earlier.
 - **The recorder commits on its own schedule.** Counting the imports that were
   made says nothing about what is readable; the seed reads every statistic back
   before reporting success.

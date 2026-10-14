@@ -184,3 +184,27 @@ physics, whatever the battery gained plus whatever it lost, so nothing above tha
 can honestly be called a loss and nothing above it is published. That ceiling is
 what stops a discharge meter counting only what reached the house from dressing
 the battery's exports up as consumption (HEA-174, HEA-178).
+
+## Update - 2026-10-14: a battery charge is priced at the margin, before the blend is shared
+
+The proportional split in the Decision shares what served the house - grid,
+generation and battery discharge - between the loads that drew it. **A battery
+charge is not one of those loads.** The house balance takes it out of the
+interval first, giving it the interval's import before any of its generation
+(`HouseBalance._attribute_charge`), and the blend is shared only after that.
+
+That is marginal pricing for the charge, and it is the right rule for it. A
+charge is discretionary - scheduled because energy is cheap, often by an
+optimiser - and taking import first means the house's own loads keep the
+sunshine they would have had without it. With no export the two rules are the
+same arithmetic: where generation covers the house, the charge receives the
+import plus the generation the house did not need; where it does not, the charge
+is all import. A fridge running on sunshine costs the same whether or not the
+battery starts charging beside it, measured on 2026-10-14 in both cases.
+
+A community member argued for exactly this on the forum, believing the engine
+did otherwise, and it did not (HEA-188). Ordinary loads still share the blend
+proportionally - an oven switched on makes the fridge beside it partly grid
+powered - which is this ADR's decision and unchanged. ADR-0014's marginal rate is
+a separate matter again: it prices energy the meters never accounted for, not how
+metered energy is shared.
