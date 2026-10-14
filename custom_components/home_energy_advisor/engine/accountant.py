@@ -577,6 +577,20 @@ class Accountant:
         """
         self._export_prices.append((at, price))
 
+    def rates_in_force(self, now: datetime) -> dict[str, dict[str, str] | None]:
+        """The import and export rate the engine holds at ``now``, and since when.
+
+        For the diagnostics (HEA-210). A forgone figure only moves when
+        generation is used, so on a dull morning a rate that took and a rate the
+        engine never saw look the same; the rate held and the moment it took
+        effect tell them apart. ``None`` where no rate has been received, which
+        is a different answer from a rate of zero.
+        """
+        return {
+            "import": _in_force(self._prices, now),
+            "export": _in_force(self._export_prices, now),
+        }
+
     def observe(
         self,
         entity_id: str,
@@ -2281,21 +2295,44 @@ class Accountant:
         return _rate_at(self._export_prices, when)
 
 
-def _rate_at(series: list[tuple[datetime, Decimal]], when: datetime) -> Decimal:
-    """The newest rate in ``series`` at or before ``when``, stepwise.
+def _entry_at(
+    series: list[tuple[datetime, Decimal]], when: datetime
+) -> tuple[datetime, Decimal] | None:
+    """The newest entry in ``series`` at or before ``when``, stepwise.
 
     The earliest recorded rate applies to anything before it, so a household
     whose first reading arrives a moment after the first interval is priced at
     the rate they were on rather than at nothing.
     """
     if not series:
-        return Decimal(0)
-    applicable = series[0][1]
-    for at, rate in series:
-        if at > when:
+        return None
+    applicable = series[0]
+    for entry in series:
+        if entry[0] > when:
             break
-        applicable = rate
+        applicable = entry
     return applicable
+
+
+def _rate_at(series: list[tuple[datetime, Decimal]], when: datetime) -> Decimal:
+    """The rate in ``series`` at ``when``, or zero where none was ever recorded."""
+    entry = _entry_at(series, when)
+    return Decimal(0) if entry is None else entry[1]
+
+
+def _in_force(
+    series: list[tuple[datetime, Decimal]], when: datetime
+) -> dict[str, str] | None:
+    """The rate at ``when`` and the moment it began, for the diagnostics.
+
+    Through the same lookup the figures are priced with, so the download cannot
+    report a different rate from the one that was applied.
+    """
+    entry = _entry_at(series, when)
+    if entry is None:
+        return None
+    since, rate = entry
+    return {"rate": str(rate), "since": since.isoformat()}
 
 
 def _withhold(

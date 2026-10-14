@@ -91,6 +91,38 @@ async def test_diagnostics_name_the_entity_behind_every_figure(
     assert "decisions" in source
 
 
+async def test_diagnostics_say_which_rates_are_in_force(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """Where the rate comes from, and what it is (HEA-210).
+
+    The download named the price entities and never the rates, so "did my new
+    export rate take?" could only be answered by waiting for generation to be
+    used at it.
+    """
+    # Given - a household whose import price sensor reads 0.30, and who declare no
+    # export price
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
+    entry = _entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the diagnostics download is produced
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    # Then - the import rate the engine holds and since when, beside the entity it
+    # came from, and no export rate said as none rather than as zero
+    assert result["config"]["price_entity"] == "sensor.price"
+    assert result["config"]["rates_in_force"] == {
+        "import": {"rate": "0.30", "since": "2026-07-08T22:00:00+00:00"},
+        "export": None,
+    }
+
+
 async def test_diagnostics_expose_the_battery_ledger(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:

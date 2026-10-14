@@ -163,6 +163,40 @@ def test_a_household_with_no_export_rate_sees_nothing_new() -> None:
     assert aircon.forgone_export == Decimal(0)
 
 
+def test_the_rates_in_force_say_which_rate_and_since_when() -> None:
+    """Whether a new rate took, answered without waiting for sunshine (HEA-210).
+
+    A forgone figure only moves when generation is used, so on a dull morning a
+    rate that took and a rate the engine never saw look the same. The rate the
+    engine holds, and the moment it took effect, tell them apart.
+    """
+    # Given - an import rate that changed once, and an export rate that is due to
+    # change later than the moment asked about
+    acc = a_solar_home()
+    acc.record_price(at(0), IMPORT_PRICE)
+    acc.record_price(at(60), Decimal("0.25"))
+    acc.record_export_price(at(0), EARLY_EXPORT)
+    acc.record_export_price(at(120), LATE_EXPORT)
+
+    # When - asked between the two export rates
+    rates = acc.rates_in_force(at(90))
+
+    # Then - each rate in force, from when, and not the export rate still to come
+    assert rates == {
+        "import": {"rate": "0.25", "since": "2026-07-08T23:00:00+00:00"},
+        "export": {"rate": "0.05", "since": "2026-07-08T22:00:00+00:00"},
+    }
+
+
+def test_no_export_rate_is_said_outright() -> None:
+    # Given / When - a household who has declared no export price
+    acc = a_solar_home()
+    acc.record_price(at(0), IMPORT_PRICE)
+
+    # Then - none, rather than a rate of nothing that reads like a real one
+    assert acc.rates_in_force(at(30))["export"] is None
+
+
 def test_grid_energy_forgoes_nothing() -> None:
     """Only generation the house consumed could have been exported instead."""
     # Given - a home running entirely off the meter, with an export rate set

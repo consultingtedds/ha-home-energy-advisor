@@ -1154,6 +1154,10 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             # rather than configured here, so the download is the only place
             # that can say what is actually in force (ADR-0026).
             "export_price_entity": self._export_price_entity,
+            # What those two entities last gave the engine, and since when - so a
+            # download answers "did my new rate take?" without waiting for
+            # generation to be used at it (HEA-210).
+            "rates_in_force": self._accountant.rates_in_force(dt_util.utcnow()),
             "currency": data.get(CONF_CURRENCY, DEFAULT_CURRENCY),
             "house_sources": [
                 {"role": role.value, "entity": entity}
