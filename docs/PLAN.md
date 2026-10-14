@@ -614,8 +614,18 @@ Carried forward rather than closed:
 - **HEA-216** - count the battery's solar share towards self-sufficiency, from
   Discussion 35. The engine already splits every charge into grid and
   generation; the ledger does not yet keep the generation share in kWh, and
-  nothing publishes it. Measured rather than declared, so it stays right when a
-  battery takes a little grid. Whether the headline changes is still to decide.
+  nothing publishes it. Whether the headline changes is still to decide, and the
+  split it counts has to follow HEA-217's order.
+- **HEA-217** - Discussion 35 again: a household whose solar all goes into the
+  battery while the grid runs the house sees a morning saving that belongs to
+  the evening. When import, generation and charging coincide, the house balance
+  gives the charge the import first (ADR-0002's Update), the right answer for a
+  battery that takes only surplus and the wrong one for this. It is a question of
+  the inverter's priority, not of whether it can charge from the grid, and only
+  that one case is ambiguous - a night charge has no generation beside it, a
+  surplus charge no import. So a setting says which way a household's battery
+  works, defaulting to today's. To be confirmed on the reporter's diagnostics
+  before it is built.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has
@@ -649,7 +659,8 @@ Closed since:
   and where the loss measurement stands, from its anchor to what the hold is
   holding. `loss_refused_kwh` became `meter_disagreement`, with a sentence beside
   the figure. HEA-210 went in as `feat`, which makes the release 0.9.0 rather
-  than 0.8.2 - accepted, with 1.0.0 in view.
+  than 0.8.2 - accepted, with 1.0.0 in view. **Released as 0.9.0 on
+  2026-10-14**, carrying everything in this list down to HEA-211.
 
 - **HEA-214 and HEA-201 - Cost of use, and what the range is a range of.** The
   cost column has counted forgone export by default since 0.8.0, and its rollover
