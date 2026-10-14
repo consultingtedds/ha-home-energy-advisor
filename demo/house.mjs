@@ -54,11 +54,18 @@ export const HOUSE = {
 };
 
 /**
- * The tariff the seeded week is priced against, matching the template sensor.
+ * The tariff the seeded week is priced against, matching the template sensors.
  * Two steps, because a flat rate makes the cost-over-time card a straight line
- * and takes the point out of "run it in the afternoon instead".
+ * and takes the point out of "run it in the afternoon instead". The export rate
+ * is what the seed values forgone export at.
  */
-export const TARIFF = { peak: 0.312, offPeak: 0.114, peakFrom: 8, peakUntil: 22 };
+export const TARIFF = {
+  peak: 0.312,
+  offPeak: 0.114,
+  peakFrom: 8,
+  peakUntil: 22,
+  export: 0.074,
+};
 
 /**
  * The devices the demo tracks.

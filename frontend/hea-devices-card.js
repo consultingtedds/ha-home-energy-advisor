@@ -146,7 +146,39 @@ const PAID_WITH_FORGONE = {
   derive: (row) => row.actualCost + (row.forgoneExport ?? 0),
   label: "paid_with_forgone",
   format: formatMoney,
-  reveal: PAID.reveal,
+  /**
+   * What the figure is made of, with the range on the part it bounds.
+   *
+   * The range brackets what was paid and nothing else, so rolled over a figure
+   * that also counts forgone export it sat wholly below it - 1.32 against a
+   * range of 0.00 to 0.79 on a reference-household device that runs mostly on
+   * sunshine (HEA-214).
+   * Shifting the range up by what was forgone would claim that part is exact,
+   * and it is not: the same uncertainty about when a coarse counter's energy was
+   * used decides whether it was sunshine. So the two parts are shown apart.
+   *
+   * A row that forwent nothing shows Paid's own range, because there the figure
+   * is what was paid. A row with no range of its own - the Untracked remainder -
+   * is broken down without one.
+   */
+  reveal: (row, locale, labels) => {
+    const forgone = row.forgoneExport ?? 0;
+    if (!Number.isFinite(forgone) || forgone <= 0) return PAID.reveal(row, locale);
+    const parts = {
+      paid: formatMoney(row.actualCost, locale),
+      forgone: formatMoney(forgone, locale),
+    };
+    const ranged =
+      offersARange(row) && RANGE.fields.every((f) => Number.isFinite(row[f]));
+    const text = ranged
+      ? fill(labels.paid_breakdown, {
+          ...parts,
+          range: formatMoneyRange(RANGE.derive(row), locale),
+        })
+      : fill(labels.paid_breakdown_unranged, parts);
+    const shown = formatMoney(row.actualCost + forgone, locale);
+    return { text, label: `${labels.paid_with_forgone} ${shown}: ${text}` };
+  },
 };
 
 const COLUMNS = [
@@ -232,13 +264,8 @@ class HeaDevicesCard extends HeaTableCard {
     // Opt-in now, and a rollover on Paid otherwise. The band is still dropped
     // entirely where no row can carry one, which is the condition HEA-194 fixed
     // and this does not reopen (HEA-198).
-    const asColumn = this._config?.range === "column" && this._hasEveryBound();
-    // Included unless asked otherwise, and only where a household has something
-    // to have forgone. A home with no panels, or with panels and no export
-    // arrangement, gave nothing up - so the heading does not change under them
-    // and no reading of theirs moves (ADR-0026).
-    const withForgone = this._config?.forgone !== "exclude" && this._hasForgone();
-    const paid = withForgone ? PAID_WITH_FORGONE : PAID;
+    const asColumn = this._rangeAsColumn();
+    const paid = this._withForgone() ? PAID_WITH_FORGONE : PAID;
     const dropped = new Set();
     if (!asColumn) dropped.add(RANGE);
     if (!this._hasComparison()) dropped.add(CHANGE);
@@ -248,6 +275,22 @@ class HeaDevicesCard extends HeaTableCard {
       // beside it is noise, and the column is the explicit request.
       return asColumn ? { ...paid, reveal: undefined } : paid;
     });
+  }
+
+  _rangeAsColumn() {
+    return this._config?.range === "column" && this._hasEveryBound();
+  }
+
+  /**
+   * Whether the cost column counts what the household's generation gave up.
+   *
+   * Included unless asked otherwise, and only where a household has something to
+   * have forgone. A home with no panels, or with panels and no export
+   * arrangement, gave nothing up - so the heading does not change under them and
+   * no reading of theirs moves (ADR-0026).
+   */
+  _withForgone() {
+    return this._config?.forgone !== "exclude" && this._hasForgone();
   }
 
   /**
@@ -298,7 +341,7 @@ class HeaDevicesCard extends HeaTableCard {
   _disclosure(locale) {
     const labels = this._labels;
     if (this._hasEveryBound()) {
-      return `<div class="disclosure">${labels.range_note}</div>`;
+      return `<div class="disclosure">${this._rangeNote()}</div>`;
     }
     const band = this._result?.wholeHome;
     if (!band) return "";
@@ -308,6 +351,27 @@ class HeaDevicesCard extends HeaTableCard {
     return `<div class="disclosure">
       ${fill(labels.range_whole_home, { range })}
     </div>`;
+  }
+
+  /**
+   * The note for whichever way the range is being shown, and under which figure.
+   *
+   * A rollover cannot be seen until it is asked for, so its note has to say
+   * where it is; a column is on the page, so its note names it. And under Cost of
+   * use the note has to say the range covers only what was paid, and that the
+   * rest is money not received rather than money paid - the confusion that
+   * raised HEA-214.
+   */
+  _rangeNote() {
+    const labels = this._labels;
+    if (!this._rangeAsColumn()) {
+      return this._withForgone()
+        ? labels.range_note_cost_of_use
+        : labels.range_note_rollover;
+    }
+    return this._withForgone()
+      ? `${labels.range_note} ${labels.range_note_not_cost_of_use}`
+      : labels.range_note;
   }
 }
 

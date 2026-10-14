@@ -324,7 +324,10 @@ export class HeaTableCard extends HeaCard {
     }
     const value = derive ? derive(device) : device[field];
     const mark = carriesVerdict ? this._verdictOn(verdict, locale) : "";
-    const body = this._revealed(format(value, locale), reveal?.(device, locale));
+    const body = this._revealed(
+      format(value, locale),
+      reveal?.(device, locale, this._labels),
+    );
     return `<td${classFor(field, tone, value)}${mark}>${body}</td>`;
   }
 

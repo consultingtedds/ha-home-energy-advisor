@@ -72,6 +72,24 @@ export const DEFAULTS = Object.freeze({
     "What you paid could honestly sit between {range} - the widest these " +
     "readings allow, not a typical error.",
   range_device: "What you paid could be between {range}.",
+  range_note_rollover:
+    "Hover over or tap a figure in Paid to see the range it could honestly " +
+    "have been. That range is the widest these readings allow, not a typical " +
+    "error: a meter that reports every 30-90 minutes leaves the exact moment " +
+    "of use unknown.",
+  range_note_cost_of_use:
+    "Hover over or tap a figure in Cost of use to see what it is made of: what " +
+    "you paid, with the range it could honestly have been, plus what your own " +
+    "generation could have earned by exporting instead, at your export rate at " +
+    "the time. That second part is not money you paid, but money you did not " +
+    "receive. The range covers only what you paid. It is the widest these " +
+    "readings allow, not a typical error: a meter that reports every 30-90 " +
+    "minutes leaves the exact moment of use unknown.",
+  range_note_not_cost_of_use:
+    "It ranges what you paid, not Cost of use, which also counts what your " +
+    "generation could have earned.",
+  paid_breakdown: "Paid {paid} ({range}) + {forgone} your generation could have earned",
+  paid_breakdown_unranged: "Paid {paid} + {forgone} your generation could have earned",
   compared: "{change} vs {before}",
   compared_period: "{period} vs {compared}",
   saved_share: "{percent} of what you would have paid was saved.",

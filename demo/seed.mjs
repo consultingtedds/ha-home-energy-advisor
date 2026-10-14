@@ -79,6 +79,15 @@ const CONCEPTS = [
  */
 const OPTIONAL_CONCEPTS = BOUND_CONCEPTS;
 
+/**
+ * What a device's share of generation could have earned exported, optional for
+ * the same reason as the bounds: it exists only where the household has an
+ * export price. Written, the devices card shows Cost of use and its breakdown -
+ * the longest rollover the table has, and the one most likely to overflow it
+ * (HEA-214).
+ */
+const FORGONE_CONCEPT = "forgone_export";
+
 async function main() {
   const auth = await freshAuth();
   const socket = await HaSocket.connect(auth.access_token);
@@ -228,11 +237,12 @@ const HOUSE_METERS = [
  * the demo's source sensors, and the house meters.
  */
 function statisticIds(rows) {
-  // The bounds are cleared with everything else where they exist. A reseed that
-  // left them behind would restart their running totals in front of the old
-  // ones, which Home Assistant reads as a week-sized negative hour (HEA-121).
+  // The bounds and forgone export are cleared with everything else where they
+  // exist. A reseed that left them behind would restart their running totals in
+  // front of the old ones, which Home Assistant reads as a week-sized negative
+  // hour (HEA-121).
   const concepts = rows.flatMap((row) =>
-    [...CONCEPTS, ...OPTIONAL_CONCEPTS]
+    [...CONCEPTS, ...OPTIONAL_CONCEPTS, FORGONE_CONCEPT]
       .map((concept) => row.statistics?.[concept])
       .filter(Boolean),
   );
@@ -364,7 +374,10 @@ function profileSeries(profile, hours) {
   const perDay = profile.weekKwh / WINDOW_DAYS;
   const shape = dailyShape(profile);
   const series = Object.fromEntries(
-    [...CONCEPTS, ...OPTIONAL_CONCEPTS].map((concept) => [concept, []]),
+    [...CONCEPTS, ...OPTIONAL_CONCEPTS, FORGONE_CONCEPT].map((concept) => [
+      concept,
+      [],
+    ]),
   );
 
   for (const start of hours) {
@@ -390,6 +403,10 @@ function profileSeries(profile, hours) {
     series.actual_cost.push(actual);
     series.cost_at_grid_price.push(atGridPrice);
     series.cost_savings.push(atGridPrice - actual);
+    // Only the generation this device used, valued at the export rate - the
+    // engine's own rule, with no battery share because the seed stores no
+    // sunshine in it.
+    series.forgone_export.push(solar * TARIFF.export);
 
     // The cost range, which must bracket the actual cost rather than merely
     // look like it does. Generation is free whichever way the hour went, so
@@ -435,9 +452,10 @@ function importOne(socket, statisticId, unit, stats, { mean = false } = {}) {
 /** The integration's own sensors: what the cards draw. */
 async function importConcepts(socket, statistics, series, hours) {
   let written = 0;
-  for (const concept of [...CONCEPTS, ...OPTIONAL_CONCEPTS]) {
-    // A device only publishes the concepts it has. The cost bounds are opt-in,
-    // so a missing entity id is the ordinary case, not a fault.
+  for (const concept of [...CONCEPTS, ...OPTIONAL_CONCEPTS, FORGONE_CONCEPT]) {
+    // A device only publishes the concepts it has. The cost bounds are opt-in
+    // and forgone export needs an export price, so a missing entity id is the
+    // ordinary case, not a fault.
     const statisticId = statistics?.[concept];
     if (!statisticId) continue;
     const unit = ENERGY_CONCEPTS.includes(concept) ? "kWh" : CURRENCY;

@@ -523,6 +523,12 @@ for you your own generation really is free.
   negative and you are paid to use electricity. Energy used or stored in those
   hours is carried at what it really cost, which is less than nothing, so a
   device that ran on it shows a credit rather than a zero.
+- **Forgone Export does not know about an export limit.** It counts only the
+  generation your house actually used, shared across everything running at the
+  time, and values it at your export rate as though all of it could have been
+  sold instead. If your inverter or your grid connection caps what you can
+  export, then on a strong-sun day some of that could never have gone out, and
+  the figure reads high by that much.
 - **Today's cost catches up rather than going backwards.** Energy a device
   reports before the house meter has accounted for it is held back until its
   real price is known. A figure read mid-hour can sit a little low and rise

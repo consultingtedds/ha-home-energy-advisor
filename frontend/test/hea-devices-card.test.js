@@ -92,6 +92,10 @@ const revealIn = (card, device) =>
     .find((row) => row.textContent.includes(device))
     ?.querySelector(".reveal") ?? null;
 
+/** The sentence under the table, or null where it says nothing. */
+const disclosureOf = (card) =>
+  card.shadowRoot.querySelector(".disclosure")?.textContent.trim() ?? null;
+
 /** The totals row's cells as elements, since some of them carry a verdict. */
 const totalCells = (card) => [
   ...card.shadowRoot.querySelectorAll("tfoot th, tfoot td"),
@@ -1008,28 +1012,49 @@ describe("the table", () => {
     expect(text(card)).not.toMatch(/These figures could/);
   });
 
-  it("says what the range is, so it is not read as an error bar", async () => {
-    // Given - summing each delta's worst case assumes every device's energy
-    // landed in its own dearest slice at once. That is an outer bound, not a
-    // confidence interval, and must never read as "the error is 28 %"
-    // (ADR-0016 decision 4).
-    const hass = aHass({
-      devices: THREE_DEVICES,
-      response: {
-        ...THREE_RESPONSE,
-        ...boundsFor("slow_poll_aircon", 0.02, 0.4),
-        ...boundsFor("fine_meter_aircon", 2.8, 3.1),
-        ...boundsFor("untracked_energy_devices", 1.5, 1.5),
-      },
-    });
+  /**
+   * Every device bounded. Summing each delta's worst case assumes every device's
+   * energy landed in its own dearest slice at once - an outer bound, not a
+   * confidence interval, which must never read as "the error is 28 %"
+   * (ADR-0016 decision 4).
+   */
+  const EVERY_DEVICE_BOUNDED = aHass({
+    devices: THREE_DEVICES,
+    response: {
+      ...THREE_RESPONSE,
+      ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+      ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+      ...boundsFor("untracked_energy_devices", 1.5, 1.5),
+    },
+  });
 
-    // When
-    const card = mount(hass);
+  it("says where the range is, and what it is, under a rollover", async () => {
+    // Given / When - the default, where the range is a rollover on Paid. The
+    // note was written for the column and named it, under a table with no such
+    // column, so nothing said the figures could be hovered at all (HEA-214)
+    const card = mount(EVERY_DEVICE_BOUNDED);
     await ready(card);
 
-    // Then - and it names the column it explains, so the two are read together
-    expect(text(card)).toMatch(/not a typical error/);
-    expect(text(card)).toContain(LABELS.range_column);
+    // Then - where to find it, and that it is an outer bound, not an error bar
+    expect(disclosureOf(card)).toBe(
+      "Hover over or tap a figure in Paid to see the range it could honestly " +
+        "have been. That range is the widest these readings allow, not a typical " +
+        "error: a meter that reports every 30-90 minutes leaves the exact moment " +
+        "of use unknown.",
+    );
+  });
+
+  it("explains the range column by name when it is asked for", async () => {
+    // Given / When - the column, opted into
+    const card = mount(EVERY_DEVICE_BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - named for the column beside it, so the two are read together
+    expect(disclosureOf(card)).toBe(
+      "Paid (min-max) is the widest range these readings allow, not a typical " +
+        "error: a meter that reports every 30-90 minutes leaves the exact moment " +
+        "of use unknown.",
+    );
   });
 
   it("says nothing about ranges on an integration too old to publish any", async () => {
@@ -1142,8 +1167,9 @@ describe("the table", () => {
 describe("what the household's own generation gave up", () => {
   /**
    * A solar household who export, so using a unit at home costs them the export
-   * they did not earn (ADR-0026). Only the two tracked devices: the Untracked
-   * remainder is derived and carries no such sensor, exactly as with the bounds.
+   * they did not earn (ADR-0026). Only the two tracked devices here; the Untracked
+   * remainder has its own forgone-export sensor too, and is given one below where
+   * a test turns on it.
    */
   const FORGOING = aHass({
     devices: THREE_DEVICES,
@@ -1202,9 +1228,70 @@ describe("what the household's own generation gave up", () => {
     expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]11/);
   });
 
-  it("keeps the range rollover on the figure it qualifies", async () => {
-    // Given / When - a household with both the range and something forgone.
-    // The reveal belongs to the cell whatever the cell is showing.
+  /**
+   * Both the range and something forgone, as a solar household who export sees
+   * it with per-device ranges on. The Untracked remainder forgoes too - it has
+   * its own sensor for it - but carries no bounds.
+   */
+  const FORGOING_AND_BOUNDED = aHass({
+    devices: THREE_DEVICES,
+    response: {
+      ...THREE_RESPONSE,
+      ...boundsFor("slow_poll_aircon", 0.02, 0.4),
+      ...boundsFor("fine_meter_aircon", 2.8, 3.1),
+      ...forgoneFor("slow_poll_aircon", 0.25),
+      ...forgoneFor("fine_meter_aircon", 1.5),
+      ...forgoneFor("untracked_energy_devices", 0.4),
+    },
+  });
+
+  /** The text shown on hover, without the figure it sits under. */
+  const revealedIn = (card, device) =>
+    revealIn(card, device).querySelector(".revealed").textContent;
+
+  it("breaks Cost of use down rather than ranging it as what was paid", async () => {
+    // Given / When - a device that paid 3.00, could honestly have paid anywhere
+    // from 2.80 to 3.10, and forwent 1.50 of export. Its Cost of use is 4.50,
+    // and rolling the range of what was paid over that put the whole range
+    // below the figure it was qualifying (HEA-214)
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then - what the figure is made of, with the range on the part it bounds
+    expect(paidCellOf(card, "Fine Meter Aircon")).toMatch(/^€4\.50/);
+    expect(revealedIn(card, "Fine Meter Aircon")).toBe(
+      "Paid €3.00 (€2.80 - €3.10) + €1.50 your generation could have earned",
+    );
+  });
+
+  it("reads the whole breakdown to a screen reader", async () => {
+    // Given / When - the same household, read without hovering
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then - the figure it qualifies, then what it is made of
+    expect(revealIn(card, "Slow Poll Aircon").getAttribute("aria-label")).toBe(
+      "Cost of use €0.36: Paid €0.11 (€0.02 - €0.40) + €0.25 your generation " +
+        "could have earned",
+    );
+  });
+
+  it("breaks down a row that has no range of its own", async () => {
+    // Given / When - the Untracked remainder, which forgoes like any device but
+    // carries no bounds, so before this it offered nothing to explain a Cost of
+    // use above what it paid
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then - the same breakdown, without a range it does not have
+    expect(revealedIn(card, "Untracked Energy Devices")).toBe(
+      "Paid €1.50 + €0.40 your generation could have earned",
+    );
+  });
+
+  it("keeps the plain range on a row that forwent nothing", async () => {
+    // Given / When - one device ran only on the grid, so its Cost of use is
+    // exactly what it paid
     const card = mount(
       aHass({
         devices: THREE_DEVICES,
@@ -1212,17 +1299,47 @@ describe("what the household's own generation gave up", () => {
           ...THREE_RESPONSE,
           ...boundsFor("slow_poll_aircon", 0.02, 0.4),
           ...boundsFor("fine_meter_aircon", 2.8, 3.1),
-          ...forgoneFor("slow_poll_aircon", 0.25),
+          ...forgoneFor("slow_poll_aircon", 0),
           ...forgoneFor("fine_meter_aircon", 1.5),
         },
       }),
     );
     await ready(card);
 
-    // Then - still reachable, and still reporting what was *paid* against its
-    // bounds, because the range brackets the cost rather than the reading
-    const reveal = revealIn(card, "Slow Poll Aircon");
-    expect(reveal).not.toBeNull();
-    expect(reveal.textContent).toMatch(/0[.,]02.+0[.,]40/);
+    // Then - the range alone, which brackets that figure as it stands
+    expect(revealedIn(card, "Slow Poll Aircon")).toBe("€0.02 - €0.40");
+  });
+
+  it("says what Cost of use is made of, and which part the range covers", async () => {
+    // Given / When - the default table for a household who export
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then - that the rollover breaks the figure down, that forgone export is
+    // money not received rather than money paid, and that the range is only on
+    // what was paid
+    expect(disclosureOf(card)).toBe(
+      "Hover over or tap a figure in Cost of use to see what it is made of: " +
+        "what you paid, with the range it could honestly have been, plus what " +
+        "your own generation could have earned by exporting instead, at your " +
+        "export rate at the time. That second part is not money you paid, but " +
+        "money you did not receive. The range covers only what you paid. It is " +
+        "the widest these readings allow, not a typical error: a meter that " +
+        "reports every 30-90 minutes leaves the exact moment of use unknown.",
+    );
+  });
+
+  it("says the range column is not a range of Cost of use", async () => {
+    // Given / When - the column, beside a Cost of use rather than a Paid
+    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - the column's own note, and which figure it does not bracket
+    expect(disclosureOf(card)).toBe(
+      "Paid (min-max) is the widest range these readings allow, not a typical " +
+        "error: a meter that reports every 30-90 minutes leaves the exact moment " +
+        "of use unknown. It ranges what you paid, not Cost of use, which also " +
+        "counts what your generation could have earned.",
+    );
   });
 });
