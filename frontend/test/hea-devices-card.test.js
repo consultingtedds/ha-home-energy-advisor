@@ -1334,12 +1334,68 @@ describe("what the household's own generation gave up", () => {
     const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
     await ready(card);
 
-    // Then - the column's own note, and which figure it does not bracket
+    // Then - the column's own note, and how the figure it does not bracket is
+    // made up from the columns beside it
     expect(disclosureOf(card)).toBe(
       "Paid (min-max) is the widest range these readings allow, not a typical " +
         "error: a meter that reports every 30-90 minutes leaves the exact moment " +
-        "of use unknown. It ranges what you paid, not Cost of use, which also " +
-        "counts what your generation could have earned.",
+        "of use unknown. It ranges what you paid, not Cost of use, which is what " +
+        "you paid plus Forgone export.",
     );
+  });
+
+  it("shows what was forgone as a column beside the range", async () => {
+    // Given / When - the range as a column, which drops the cost cell's
+    // rollover. Without another column, Cost of use 4.50 sat beside a range of
+    // 2.80 - 3.10 with nothing on the row showing the 1.50 between them
+    // (HEA-201)
+    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - straight after the range, so the two parts of Cost of use are read
+    // together
+    const headings = headingsOf(card);
+    const forgone = headings.indexOf(LABELS.forgone_column);
+    expect(LABELS.forgone_column).toBe("Forgone export");
+    expect(forgone).toBe(headings.indexOf(RANGE_COLUMN_LABEL) + 1);
+    const byDevice = Object.fromEntries(rows(card).map((row) => [row[0], row[forgone]]));
+    expect(byDevice["Fine Meter Aircon"]).toBe("€1.50");
+    expect(byDevice["Untracked Energy Devices"]).toBe("€0.40");
+
+    // And - summed in the totals row like every other money column:
+    // 0.25 + 1.50 + 0.40
+    expect(totalCells(card)[forgone].textContent.trim()).toBe("€2.15");
+  });
+
+  it("totals Cost of use as what was paid plus what was forgone", async () => {
+    // Given / When - the default table for a household who export
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then - (0.11 + 3.00 + 1.50) paid and (0.25 + 1.50 + 0.40) forgone. A
+    // derived column sums only the fields it names, so a total that named none
+    // would have nothing to add up
+    const cost = headingsOf(card).indexOf(LABELS.paid_with_forgone);
+    expect(totalCells(card)[cost].textContent.trim()).toBe("€6.76");
+  });
+
+  it("keeps the forgone column off the rollover layout", async () => {
+    // Given / When - the default, where the rollover already breaks Cost of use
+    // down, and on a small screen a column is the last thing the table needs
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then
+    expect(headingsOf(card)).not.toContain(LABELS.forgone_column);
+  });
+
+  it("keeps the forgone column off a table showing only what was paid", async () => {
+    // Given / When - the range as a column, with forgone export left out of the
+    // cost, so there is no gap for the column to explain
+    const card = mount(FORGOING_AND_BOUNDED, { range: "column", forgone: "exclude" });
+    await ready(card);
+
+    // Then
+    expect(headingsOf(card)).not.toContain(LABELS.forgone_column);
   });
 });

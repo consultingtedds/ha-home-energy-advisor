@@ -54,6 +54,10 @@ figure. It now breaks the figure down into those two parts, with the range on
 what you paid, and the note under the table says which is which. No figure has
 changed.
 
+**Its total is back, too:** the totals row showed a dash under Cost of use. And
+if you show the range as its own column, a Forgone export column now sits beside
+it, so the two parts of Cost of use can be read across the row.
+
 ## 0.8.1
 
 **If you took 0.8.0 and have solar, update again.** The new Forgone Export

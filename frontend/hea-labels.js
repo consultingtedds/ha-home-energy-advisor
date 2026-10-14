@@ -86,8 +86,9 @@ export const DEFAULTS = Object.freeze({
     "readings allow, not a typical error: a meter that reports every 30-90 " +
     "minutes leaves the exact moment of use unknown.",
   range_note_not_cost_of_use:
-    "It ranges what you paid, not Cost of use, which also counts what your " +
-    "generation could have earned.",
+    "It ranges what you paid, not Cost of use, which is what you paid plus " +
+    "Forgone export.",
+  forgone_column: "Forgone export",
   paid_breakdown: "Paid {paid} ({range}) + {forgone} your generation could have earned",
   paid_breakdown_unranged: "Paid {paid} + {forgone} your generation could have earned",
   compared: "{change} vs {before}",

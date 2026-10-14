@@ -143,6 +143,9 @@ const PAID = {
  * them, chosen on the card.
  */
 const PAID_WITH_FORGONE = {
+  // Named, or the totals row has nothing to sum and shows a dash: a derived
+  // column contributes only the fields it declares.
+  fields: ["actualCost", "forgoneExport"],
   derive: (row) => row.actualCost + (row.forgoneExport ?? 0),
   label: "paid_with_forgone",
   format: formatMoney,
@@ -181,12 +184,28 @@ const PAID_WITH_FORGONE = {
   },
 };
 
+/**
+ * What the household's generation could have earned, beside the range (HEA-201).
+ *
+ * With the range as a column the cost cell's rollover goes, and its breakdown
+ * with it - so Cost of use sat beside a range of what was paid with nothing on
+ * the row showing what lay between them. Shown only in that layout: the column
+ * is chosen on a large screen, where the figure is worth seeing outright, and
+ * the default rollover already breaks Cost of use down on a small one.
+ */
+const FORGONE = {
+  field: "forgoneExport",
+  label: "forgone_column",
+  format: formatMoney,
+};
+
 const COLUMNS = [
   { field: "name", label: "device" },
   { field: "energyUsed", label: "energy", format: formatEnergy },
   PAID,
   CHANGE,
   RANGE,
+  FORGONE,
   // The one column that carries how well the device did, not just what it came
   // to (HEA-106). Would have paid is the right home for it because the verdict
   // is precisely this figure measured against Paid beside it: a row where the
@@ -265,9 +284,11 @@ class HeaDevicesCard extends HeaTableCard {
     // entirely where no row can carry one, which is the condition HEA-194 fixed
     // and this does not reopen (HEA-198).
     const asColumn = this._rangeAsColumn();
-    const paid = this._withForgone() ? PAID_WITH_FORGONE : PAID;
+    const withForgone = this._withForgone();
+    const paid = withForgone ? PAID_WITH_FORGONE : PAID;
     const dropped = new Set();
     if (!asColumn) dropped.add(RANGE);
+    if (!(asColumn && withForgone)) dropped.add(FORGONE);
     if (!this._hasComparison()) dropped.add(CHANGE);
     return COLUMNS.filter((column) => !dropped.has(column)).map((column) => {
       if (column !== PAID) return column;
