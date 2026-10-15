@@ -206,6 +206,7 @@ _CONFIG_DERIVED = frozenset(
         "_import_entity",
         "_lateness",
         "_max_quiet_span",
+        "_meters_of",
         "_retention",
         "_role_of",
         "_strategy",
@@ -213,14 +214,14 @@ _CONFIG_DERIVED = frozenset(
         "_windows",
     }
 )
-# Deliberately allowed to reset. ``_unhealthy_roles`` is re-derived from live
+# Deliberately allowed to reset. ``_silent_meters`` is re-derived from live
 # state within one poll, and a restored value would accuse a healthy meter that
 # recovered while the host was down. ``_cold_start_logged`` only suppresses a
 # duplicate log line.
 _TRANSIENT = frozenset(
     {
         "_cold_start_logged",
-        "_unhealthy_roles",
+        "_silent_meters",
         # The loss measurement's two sides at the last tick, for the diagnostics.
         # Recomputed on every tick from persisted state, so a restart loses
         # nothing a figure depends on (HEA-212).

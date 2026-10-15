@@ -164,14 +164,33 @@ Nothing is lost.
 
 #### If you have more than one generation source
 
-The generation field takes one sensor, and plenty of houses have more than one
-source - two inverter strings, or solar plus wind. Add them together first with
-a helper Home Assistant already has:
+Choose them all. Plenty of houses have more than one source - two inverter
+strings, or solar plus wind - and the generation field takes as many sensors as
+you have, the way the Energy Dashboard takes several solar sources. If your
+Energy Dashboard already lists them, setup fills them all in for you.
 
-1. **Settings** > **Devices & services** > **Helpers** > **Create helper**.
-2. Choose **Group**, then **Sensor group**.
-3. Pick your generation sensors, and set the type to **Sum**.
-4. Choose that new sensor as your local generation energy.
+Each one is counted on its own and the results are added, so one of them
+resetting never counts the others twice. While any one of them is unavailable,
+generation is treated as unknown, exactly as a single generation sensor going
+offline is: a part of your generation counted as if it were all of it would be
+worse.
+
+If you already combined them with a Group helper, that still works and there is
+no need to change it.
+
+#### If you have more than one battery
+
+The battery fields take **one** battery: one charge sensor, one discharge
+sensor, and one charge level and capacity. Home Energy Advisor keeps a single
+record of what the energy stored in it cost, and that does not yet stretch to
+two batteries filling and emptying at different times.
+
+If you have two, combine their charge sensors into one with a **Group** helper
+of type **Sum** (**Settings** > **Devices & services** > **Helpers** > **Create
+helper** > **Group** > **Sensor group**), and their discharge sensors into
+another, leaving **Ignore non-numeric** off so the total goes unknown rather
+than dipping when one battery drops out. Leave the charge level and capacity
+empty unless your system also reports them for both batteries together.
 
 ### Your devices
 

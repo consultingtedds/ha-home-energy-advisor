@@ -33,6 +33,7 @@ from .const import (
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
 from .helper_ownership import helper_entry_id, helper_was_created
+from .house_inputs import house_entities
 from .integral_helper import async_sync_power_device_helpers
 
 if TYPE_CHECKING:
@@ -52,6 +53,7 @@ _LEGACY_GENERATION_KEY = "solar_entity"
 _RENAMED_GENERATION_KEY = 1
 _CYCLES_ALWAYS_CREATED = 2
 _CYCLES_OPTED_INTO = 3
+_SEVERAL_GENERATION_METERS = 4
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
@@ -89,6 +91,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
     - so without this an update would delete ninety helpers, and the history on
     them, from a household that never asked for either. What they already have
     is therefore opted in on their behalf, and stays until they say otherwise.
+
+    Version 3 held one generation meter. Generation is a list now, because the
+    Energy Dashboard takes several solar sources (HEA-219), so the one meter
+    becomes a list of one. A household with none is left with none rather than
+    an empty list. The version moving also stops an older release loading an
+    entry whose generation it would read as a single entity id.
     """
     if entry.version == _RENAMED_GENERATION_KEY:
         data = {**entry.data}
@@ -103,6 +111,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
             options = {**options, CONF_CYCLE_DAILY: True, CONF_CYCLE_MONTHLY: True}
         hass.config_entries.async_update_entry(
             entry, options=options, version=_CYCLES_OPTED_INTO
+        )
+    if entry.version == _CYCLES_OPTED_INTO:
+        data = {**entry.data}
+        if generation := house_entities(data, CONF_GENERATION_ENTITY):
+            data[CONF_GENERATION_ENTITY] = list(generation)
+        hass.config_entries.async_update_entry(
+            entry, data=data, version=_SEVERAL_GENERATION_METERS
         )
     return True
 

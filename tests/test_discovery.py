@@ -143,9 +143,10 @@ def _helper_output(  # noqa: PLR0913 - a test fixture builder; each kwarg is a d
     )
 
 
-def _entry(hass: HomeAssistant, **house_inputs: str) -> MockConfigEntry:
+def _entry(hass: HomeAssistant, **house_inputs: str | list[str]) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
+        version=4,
         data={
             CONF_PRICE_ENTITY: "sensor.electricity_price",
             CONF_CURRENCY: "EUR",
@@ -479,6 +480,39 @@ async def test_discovery_excludes_the_other_outputs_of_the_supply_hardware(
     candidates = async_discover_candidates(hass, entry)
 
     # Then - the whole family goes, including outputs never named in the config
+    assert [c.entity_id for c in candidates] == [dryer]
+
+
+async def test_discovery_offers_no_generation_meter_when_there_are_several(
+    hass: HomeAssistant,
+) -> None:
+    # Given - generation from two arrays, stored as the list setup now writes
+    # (HEA-219), each meter on its own device
+    entry = _entry(
+        hass,
+        **{
+            CONF_GENERATION_ENTITY: [
+                "sensor.east_array_energy",
+                "sensor.west_array_energy",
+            ]
+        },
+    )
+    registry = dr.async_get(hass)
+    for array in ("east_array", "west_array"):
+        device = registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={("demo", array)},
+            name=array,
+        )
+        _register(hass, f"{array}_energy", "energy", device_id=device.id)
+        _register(hass, f"{array}_power", "power", device_id=device.id)
+    dryer = _register(hass, "tumble_dryer_energy", "energy", name="Tumble Dryer Energy")
+
+    # When
+    candidates = async_discover_candidates(hass, entry)
+
+    # Then - neither array, nor anything else on their supply hardware, is
+    # mistaken for an appliance
     assert [c.entity_id for c in candidates] == [dryer]
 
 

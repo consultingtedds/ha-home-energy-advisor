@@ -32,6 +32,20 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If your generation comes from more than one sensor, you can now choose them
+all.** Open **Settings** > **Devices & services** > **Home Energy Advisor** >
+three-dot menu > **Reconfigure**, and pick every generation sensor you have. If
+you had chosen only one of several, your generation was being undercounted, and
+from then on it is counted in full; figures already recorded stay as they are.
+A Group helper you set up to add them together keeps working, so there is
+nothing to change if you have one.
+
+**This update changes how the settings are stored, so an older version will not
+load them.** Going back to an earlier release after this one means restoring a
+backup taken before the update.
+
 ## 0.9.0
 
 **If you have a home battery, Battery Losses should now read much lower, and a

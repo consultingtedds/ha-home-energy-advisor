@@ -57,6 +57,8 @@ def _register_source_sensors(hass: HomeAssistant) -> None:
         "sensor.grid_import",
         "sensor.grid_export",
         "sensor.generation",
+        "sensor.east_array_energy",
+        "sensor.west_array_energy",
         "sensor.battery_charge",
         "sensor.battery_discharge",
         "sensor.house_consumption",
@@ -243,12 +245,45 @@ async def test_a_net_counter_is_rejected_for_an_input_the_model_reads(
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
             CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
-            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_GENERATION_ENTITY: ["sensor.generation"],
         },
     )
 
     # Then - the form comes back with the error against that field. A bad house
     # input corrupts the whole ledger, not one device's share
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_GENERATION_ENTITY: "house_not_total_increasing"}
+
+
+async def test_a_net_counter_among_several_generation_meters_is_rejected(
+    hass: HomeAssistant,
+) -> None:
+    # Given - two arrays, the second published as a `total` net counter, in a
+    # household whose model reads generation
+    _register_source_sensors(hass)
+    _set_state_class(hass, "sensor.west_array_energy", "total")
+    _set_state_class(hass, "sensor.east_array_energy", "total_increasing")
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_GENERATION_ENTITY: [
+                "sensor.east_array_energy",
+                "sensor.west_array_energy",
+            ],
+        },
+    )
+
+    # Then - one bad meter is enough to refuse the field: the sum is only as
+    # sound as its worst member
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_GENERATION_ENTITY: "house_not_total_increasing"}
 
@@ -274,14 +309,14 @@ async def test_a_net_counter_is_accepted_for_an_input_the_model_ignores(
             CONF_PRICE_ENTITY: "sensor.electricity_price_import",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
-            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_GENERATION_ENTITY: ["sensor.generation"],
             CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
         },
     )
 
     # Then - accepted; validation follows what the model actually consumes
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_GENERATION_ENTITY] == "sensor.generation"
+    assert result["data"][CONF_GENERATION_ENTITY] == ["sensor.generation"]
 
 
 async def test_a_net_grid_import_counter_is_always_rejected(
@@ -427,7 +462,7 @@ async def test_user_flow_records_optional_generation_and_battery_inputs(
             CONF_PRICE_ENTITY: "sensor.electricity_price_import",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
-            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_GENERATION_ENTITY: ["sensor.generation"],
             CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
             CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
         },
@@ -435,9 +470,42 @@ async def test_user_flow_records_optional_generation_and_battery_inputs(
 
     # Then - they are stored alongside the required inputs
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_GENERATION_ENTITY] == "sensor.generation"
+    assert result["data"][CONF_GENERATION_ENTITY] == ["sensor.generation"]
     assert result["data"][CONF_BATTERY_CHARGE_ENTITY] == "sensor.battery_charge"
     assert result["data"][CONF_BATTERY_DISCHARGE_ENTITY] == "sensor.battery_discharge"
+
+
+async def test_user_flow_records_every_generation_meter_chosen(
+    hass: HomeAssistant,
+) -> None:
+    # Given - panels on two inverter inputs, with no one meter holding the lot,
+    # as HEA-219 found
+    _register_source_sensors(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When - both are chosen
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_GENERATION_ENTITY: [
+                "sensor.east_array_energy",
+                "sensor.west_array_energy",
+            ],
+        },
+    )
+
+    # Then - both are kept, in the order given
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_GENERATION_ENTITY] == [
+        "sensor.east_array_energy",
+        "sensor.west_array_energy",
+    ]
 
 
 async def test_only_one_instance_can_be_configured(hass: HomeAssistant) -> None:
@@ -498,9 +566,31 @@ async def test_prefill_reads_a_grid_source_carrying_its_own_meters(
     # Then - every source field arrives answered
     assert suggested[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
     assert suggested[CONF_GRID_EXPORT_ENTITY] == "sensor.grid_export"
-    assert suggested[CONF_GENERATION_ENTITY] == "sensor.generation"
+    assert suggested[CONF_GENERATION_ENTITY] == ["sensor.generation"]
     assert suggested[CONF_BATTERY_CHARGE_ENTITY] == "sensor.battery_charge"
     assert suggested[CONF_BATTERY_DISCHARGE_ENTITY] == "sensor.battery_discharge"
+
+
+async def test_prefill_offers_every_solar_source_not_only_the_last(
+    hass: HomeAssistant,
+) -> None:
+    # Given - an Energy Dashboard holding two solar sources, as Home Assistant
+    # allows. Keeping only the last silently dropped half the generation, as
+    # HEA-219 found
+    suggested = await _prefill_from(
+        hass,
+        [
+            {"type": "grid", "stat_energy_from": "sensor.grid_import"},
+            {"type": "solar", "stat_energy_from": "sensor.east_array_energy"},
+            {"type": "solar", "stat_energy_from": "sensor.west_array_energy"},
+        ],
+    )
+
+    # Then
+    assert suggested[CONF_GENERATION_ENTITY] == [
+        "sensor.east_array_energy",
+        "sensor.west_array_energy",
+    ]
 
 
 async def test_prefill_reads_a_grid_source_holding_flows_in_arrays(
@@ -800,7 +890,7 @@ async def test_reconfigure_updates_the_house_level_config(hass: HomeAssistant) -
             CONF_PRICE_ENTITY: "sensor.electricity_price_import",
             CONF_CURRENCY: "GBP",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
-            CONF_GENERATION_ENTITY: "sensor.generation",
+            CONF_GENERATION_ENTITY: ["sensor.generation"],
         },
     )
     await hass.async_block_till_done()
@@ -809,7 +899,59 @@ async def test_reconfigure_updates_the_house_level_config(hass: HomeAssistant) -
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     assert entry.data[CONF_CURRENCY] == "GBP"
-    assert entry.data[CONF_GENERATION_ENTITY] == "sensor.generation"
+    assert entry.data[CONF_GENERATION_ENTITY] == ["sensor.generation"]
+
+
+async def test_an_existing_generation_meter_becomes_a_list_of_one(
+    hass: HomeAssistant,
+) -> None:
+    # Given - an entry as the previous version stored it: one generation meter,
+    # held as a single entity id
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=3,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GENERATION_ENTITY: "sensor.generation",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    # When - it is brought up to the current schema and set up
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - the same meter, now in the shape every reader expects, and nothing
+    # else about the household touched
+    assert entry.version == 4
+    assert entry.data[CONF_GENERATION_ENTITY] == ["sensor.generation"]
+    assert entry.data[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
+
+
+async def test_an_entry_with_no_generation_gains_none(hass: HomeAssistant) -> None:
+    # Given - a grid-only household at the previous version
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=3,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - no empty list written for a meter they never had
+    assert entry.version == 4
+    assert CONF_GENERATION_ENTITY not in entry.data
 
 
 async def test_reconfigure_preserves_helper_bookkeeping(hass: HomeAssistant) -> None:

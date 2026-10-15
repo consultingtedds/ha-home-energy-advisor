@@ -62,6 +62,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
 )
 from .helper_ownership import helper_entry_id
+from .house_inputs import house_entities
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -464,8 +465,8 @@ def _is_reporting(hass: HomeAssistant, entity_id: str) -> bool:
 
 def _exclusions(entry: ConfigEntry, registry: er.EntityRegistry) -> _Exclusions:
     """Resolve, once per scan, everything that must not be offered as a device."""
-    house = {entry.data[key] for key in _HOUSE_CONF_KEYS if entry.data.get(key)}
-    supply = {entry.data[key] for key in _SUPPLY_CONF_KEYS if entry.data.get(key)}
+    house = {e for key in _HOUSE_CONF_KEYS for e in house_entities(entry.data, key)}
+    supply = {e for key in _SUPPLY_CONF_KEYS for e in house_entities(entry.data, key)}
     tracked_energy = _tracked_sources(entry, CONF_ENERGY_ENTITY)
     tracked_power = _tracked_sources(entry, CONF_POWER_ENTITY)
     owned_helpers = _owned_helper_entities(entry, registry)

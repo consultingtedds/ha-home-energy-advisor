@@ -87,7 +87,8 @@ async function createEntry(token) {
       currency: CURRENCY,
       grid_import_entity: HOUSE.gridImport,
       grid_export_entity: HOUSE.gridExport,
-      generation_entity: HOUSE.generation,
+      // A list: the field takes every generation meter a house has (HEA-219).
+      generation_entity: [HOUSE.generation],
       battery_charge_entity: HOUSE.batteryCharge,
       battery_discharge_entity: HOUSE.batteryDischarge,
       house_consumption_entity: HOUSE.houseConsumption,

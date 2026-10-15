@@ -24,6 +24,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
     CONF_GENERATION_ENTITY,
+    CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
@@ -1798,6 +1799,90 @@ def _solar_entry() -> MockConfigEntry:
             )
         ],
     )
+
+
+def _two_array_entry() -> MockConfigEntry:
+    """Panels on two inverter inputs, no single meter holding both (HEA-219).
+
+    At the current schema version, so the list is what the household stored
+    rather than something a migration made.
+    """
+    return MockConfigEntry(
+        domain=DOMAIN,
+        version=4,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_GENERATION_ENTITY: [
+                "sensor.east_array_energy",
+                "sensor.west_array_energy",
+            ],
+        },
+    )
+
+
+async def _two_arrays_at_zero(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> MockConfigEntry:
+    freezer.move_to(datetime(2026, 7, 8, 12, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    for meter in (
+        "sensor.grid_import",
+        "sensor.grid_export",
+        "sensor.east_array_energy",
+        "sensor.west_array_energy",
+    ):
+        hass.states.async_set(meter, "0", _ENERGY)
+    entry = _two_array_entry()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_every_generation_meter_reaches_the_accounting(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given
+    entry = await _two_arrays_at_zero(hass, freezer)
+
+    # When - the east array makes 1.5 kWh and the west 0.5, the house imports 1
+    # and exports 1
+    freezer.move_to(datetime(2026, 7, 8, 12, 5, tzinfo=UTC))
+    hass.states.async_set("sensor.east_array_energy", "1.5", _ENERGY)
+    hass.states.async_set("sensor.west_array_energy", "0.5", _ENERGY)
+    hass.states.async_set("sensor.grid_import", "1.0", _ENERGY)
+    hass.states.async_set("sensor.grid_export", "1.0", _ENERGY)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 7, 8, 12, 30, tzinfo=UTC))
+
+    # Then - the house used 1 imported plus 2 generated less 1 exported
+    untracked = entry.runtime_data.data.untracked
+    assert untracked.energy_kwh == Decimal("2.0")
+    assert untracked.energy_from_generation == Decimal("1.0")
+    # and the diagnostics name both arrays against the one role
+    house_sources = entry.runtime_data.diagnostics()["config"]["house_sources"]
+    assert {"role": "generation", "entity": "sensor.east_array_energy"} in house_sources
+    assert {"role": "generation", "entity": "sensor.west_array_energy"} in house_sources
+
+
+async def test_one_array_going_unavailable_raises_its_own_repair(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a running two-array home whose west meter then goes unavailable
+    await _two_arrays_at_zero(hass, freezer)
+    freezer.move_to(datetime(2026, 7, 8, 12, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.west_array_energy", "unavailable")
+    await hass.async_block_till_done()
+
+    # When - the outage passes the one-hour grace
+    await _tick(hass, freezer, datetime(2026, 7, 8, 13, 5, tzinfo=UTC))
+
+    # Then - the Repair names that meter, and not the one still reporting
+    assert _has_issue(hass, source_unavailable_issue_id("sensor.west_array_energy"))
+    assert not _has_issue(hass, source_unavailable_issue_id("sensor.east_array_energy"))
 
 
 def _export_prefs(

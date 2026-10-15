@@ -55,6 +55,7 @@ from .discovery import (
     source_state_class,
     source_unit,
 )
+from .house_inputs import house_entities
 from .reset import async_reset_totals
 
 if TYPE_CHECKING:
@@ -74,6 +75,11 @@ _PRICE_SELECTOR = selector.EntitySelector(
 )
 _ENERGY_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor", device_class="energy")
+)
+# Several, as the Energy Dashboard takes several solar sources: a household with
+# panels on two inverter inputs has no single meter holding the lot (HEA-219).
+_GENERATION_SELECTOR = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain="sensor", device_class="energy", multiple=True)
 )
 _POWER_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor", device_class="power")
@@ -104,7 +110,7 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 3
+    VERSION = 4
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -168,7 +174,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         return HomeEnergyAdvisorOptionsFlow()
 
 
-def _build_schema(defaults: dict[str, str]) -> vol.Schema:
+def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
     # `prefilled` rather than `source`: it was named for the source meters
     # because they were the only fields the Energy Dashboard could answer. The
     # import price is not a source and is answered the same way (HEA-118), so
@@ -187,7 +193,7 @@ def _build_schema(defaults: dict[str, str]) -> vol.Schema:
             ): selector.TextSelector(),
             prefilled(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
             prefilled(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
-            prefilled(CONF_GENERATION_ENTITY, required=False): _ENERGY_SELECTOR,
+            prefilled(CONF_GENERATION_ENTITY, required=False): _GENERATION_SELECTOR,
             prefilled(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
@@ -200,9 +206,9 @@ def _build_schema(defaults: dict[str, str]) -> vol.Schema:
     )
 
 
-async def _energy_prefs_defaults(hass: HomeAssistant) -> dict[str, str]:
+async def _energy_prefs_defaults(hass: HomeAssistant) -> dict[str, Any]:
     """Best-effort source defaults from the Energy Dashboard; empty if unset."""
-    defaults: dict[str, str] = {}
+    defaults: dict[str, Any] = {}
     try:
         manager = await async_get_manager(hass)
         data: Any = manager.data or {}
@@ -215,14 +221,16 @@ async def _energy_prefs_defaults(hass: HomeAssistant) -> dict[str, str]:
 
 def _collect_prefs_source(
     source: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
-    defaults: dict[str, str],
+    defaults: dict[str, Any],
 ) -> None:
     """Map one Energy Dashboard source onto the matching config defaults."""
     kind = source.get("type")
     if kind == "grid":
         _collect_grid_meters(source, defaults)
     elif kind == "solar" and (stat := source.get("stat_energy_from")):
-        defaults[CONF_GENERATION_ENTITY] = stat
+        # Every one, in the dashboard's order. Keeping only the last silently
+        # offered half the generation of a household with two arrays (HEA-219).
+        defaults.setdefault(CONF_GENERATION_ENTITY, []).append(stat)
     elif kind == "battery":
         if charge := source.get("stat_energy_to"):
             defaults[CONF_BATTERY_CHARGE_ENTITY] = charge
@@ -366,14 +374,21 @@ def _validate_house_sources(
         checked += _FULL_BALANCE_ONLY
     errors: dict[str, str] = {}
     for key in checked:
-        entity_id = user_input.get(key)
-        if not entity_id:
-            continue
-        if _wrong_state_class_error(hass, entity_id, CONF_ENERGY_ENTITY):
-            errors[key] = _HOUSE_STATE_CLASS_ERROR
-        elif _uncountable_unit_error(hass, entity_id):
-            errors[key] = _UNIT_ERROR
+        # Every meter under the input, so one bad array among several is caught:
+        # the sum is only as sound as its worst member.
+        if error := _house_input_error(hass, house_entities(user_input, key)):
+            errors[key] = error
     return errors
+
+
+def _house_input_error(hass: HomeAssistant, entity_ids: tuple[str, ...]) -> str | None:
+    """The first reason any of these meters cannot be counted, else ``None``."""
+    for entity_id in entity_ids:
+        if _wrong_state_class_error(hass, entity_id, CONF_ENERGY_ENTITY):
+            return _HOUSE_STATE_CLASS_ERROR
+        if _uncountable_unit_error(hass, entity_id):
+            return _UNIT_ERROR
+    return None
 
 
 _HOUSE_STATE_CLASS_ERROR = "house_not_total_increasing"

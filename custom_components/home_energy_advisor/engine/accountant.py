@@ -135,6 +135,20 @@ class SourceRole(Enum):
     HOUSE_CONSUMPTION = "house_consumption"
 
 
+type HouseMeters = str | tuple[str, ...]
+"""The meter, or meters, filling one role.
+
+Generation can come from several - Home Assistant's Energy Dashboard takes any
+number of solar sources (HEA-219) - and each is counted on its own and added, so
+one resetting never re-counts another's lifetime.
+"""
+
+
+def meters_of(meters: HouseMeters) -> tuple[str, ...]:
+    """Every meter filling a role, however it was given."""
+    return (meters,) if isinstance(meters, str) else meters
+
+
 @dataclass(frozen=True)
 class DeviceTotals:
     """Running since-startup figures for one device or the Untracked remainder.
@@ -474,7 +488,7 @@ class Accountant:
     def __init__(
         self,
         *,
-        house_sources: Mapping[SourceRole, str],
+        house_sources: Mapping[SourceRole, HouseMeters],
         device_energy_entities: Mapping[str, str],
         nested_devices: Mapping[str, str] | None = None,
         windows: AccountingWindows | None = None,
@@ -483,7 +497,12 @@ class Accountant:
         self._lateness = self._windows.lateness
         self._retention = self._windows.retention
         self._max_quiet_span = self._windows.max_quiet_span
-        self._role_of = {entity: role for role, entity in house_sources.items()}
+        self._meters_of = {role: meters_of(m) for role, m in house_sources.items()}
+        self._role_of = {
+            entity: role
+            for role, entities in self._meters_of.items()
+            for entity in entities
+        }
         self._device_of = {
             entity: device for device, entity in device_energy_entities.items()
         }
@@ -500,7 +519,9 @@ class Accountant:
         # the amount still owed and the instant it was first owed (HEA-169).
         self._nesting_carry: dict[str, tuple[Decimal, datetime]] = {}
         self._configured = set(house_sources)
-        self._import_entity = house_sources.get(SourceRole.GRID_IMPORT)
+        self._import_entity = next(
+            iter(self._meters_of.get(SourceRole.GRID_IMPORT, ())), None
+        )
         self._cold_start_logged = False
         self._sources: dict[str, CumulativeEnergySource] = {}
         self._raw: dict[datetime, dict[SourceRole, Decimal]] = {}
@@ -570,9 +591,11 @@ class Accountant:
         self._entity_of = dict(device_energy_entities)
         self._window: deque[_WindowBucket] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._implausible: frozenset[str] = frozenset()
-        # House inputs that are currently silent. Distinct from configured-but-
+        # House meters that are currently silent. Distinct from configured-but-
         # still: a meter that reports an unchanged reading is healthy (HEA-67).
-        self._unhealthy_roles: set[SourceRole] = set()
+        # Kept per meter, not per role: where a role has several, one reporting
+        # must not vouch for another that has gone quiet (HEA-219).
+        self._silent_meters: set[str] = set()
 
     def record_price(self, at: datetime, price: Decimal) -> None:
         """Records the import price active from ``at``."""
@@ -630,7 +653,7 @@ class Accountant:
         delta = source.observe(Reading(at=at, value=value, unit=unit))
         role = self._role_of.get(entity_id)
         if role is not None:
-            self._note_role_health(role, reporting=value is not None)
+            self._note_meter_health(entity_id, reporting=value is not None)
         if delta is None:
             return
         if role is not None:
@@ -638,8 +661,8 @@ class Accountant:
         elif (device := self._device_of.get(entity_id)) is not None:
             self._spread_device(device, delta, source)
 
-    def _note_role_health(self, role: SourceRole, *, reporting: bool) -> None:
-        """Track which house-level inputs are currently readable at all.
+    def _note_meter_health(self, entity_id: str, *, reporting: bool) -> None:
+        """Track which house-level meters are currently readable at all.
 
         ``value is None`` is the integration layer's signal that the state is
         ``unavailable`` or ``unknown`` - a genuinely silent meter. A meter that
@@ -652,9 +675,9 @@ class Accountant:
         reading produces no delta, so it leaves no trace there either (HEA-67).
         """
         if reporting:
-            self._unhealthy_roles.discard(role)
+            self._silent_meters.discard(entity_id)
         else:
-            self._unhealthy_roles.add(role)
+            self._silent_meters.add(entity_id)
 
     def finalize(self, now: datetime) -> None:
         """Finalises every interval that ended before the lateness margin."""
@@ -2019,7 +2042,7 @@ class Accountant:
         its energy refused by ``_believable``, so blaming devices for a house
         failure would quietly move real consumption into Untracked (HEA-67).
         """
-        if self._unhealthy_roles:
+        if self._silent_meters:
             self._implausible = frozenset()
             return
         consumption = served.grid + served.generation + served.battery
@@ -2217,9 +2240,15 @@ class Accountant:
             self._cold_start_logged = True
 
     def _is_readable(self, *roles: SourceRole) -> bool:
-        """Whether every named house input is both configured and reporting."""
+        """Whether every named house input is configured and all its meters report.
+
+        A role with several meters is readable only while every one of them is:
+        half a household's generation booked as though it were all of it is
+        worse than none, which is how a single silent meter is already treated.
+        """
         return all(
-            role in self._configured and role not in self._unhealthy_roles
+            role in self._configured
+            and self._silent_meters.isdisjoint(self._meters_of[role])
             for role in roles
         )
 

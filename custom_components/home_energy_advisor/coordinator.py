@@ -57,6 +57,7 @@ from .const import (
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.energy_source import EnergyUnit
 from .engine.level_log import LevelLog, LevelReason
+from .house_inputs import house_entities
 from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
@@ -138,10 +139,14 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         super().__init__(hass, _LOGGER, name=DOMAIN, config_entry=entry)
         self._entry = entry
         self._price_entity = entry.data[CONF_PRICE_ENTITY]
+        # Every meter under each role: generation can have several (HEA-219).
         house_sources = {
-            role: entry.data[conf]
+            role: meters
             for conf, role in _ROLE_BY_CONF.items()
-            if entry.data.get(conf)
+            if (meters := house_entities(entry.data, conf))
+        }
+        house_meters = {
+            entity for meters in house_sources.values() for entity in meters
         }
         devices = {
             subentry_id: subentry.data[CONF_ENERGY_ENTITY]
@@ -152,9 +157,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # Power-only devices reach the same pipeline through the energy sensor of
         # an auto-created native Integral helper (ADR-0004 / HEA-34).
         devices.update(power_energy_entities or {})
-        self._energy_entities = {*house_sources.values(), *devices.values()}
+        self._energy_entities = {*house_meters, *devices.values()}
         # Reverse maps label each observed meter for the diagnostics download.
-        self._role_of_entity = {entity: role for role, entity in house_sources.items()}
+        self._role_of_entity = {
+            entity: role for role, meters in house_sources.items() for entity in meters
+        }
         self._device_of_entity = {entity: sub for sub, entity in devices.items()}
         self._house_sources = house_sources
         # Repairs health monitoring (HEA-24). Critical inputs (price + house-level
@@ -163,7 +170,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # auto-created helper outputs of power-only devices are excluded - their
         # health is the helper's concern (surfaced via the helper-recreated Repair).
         helper_outputs = set((power_energy_entities or {}).values())
-        self._critical_entities = {*house_sources.values(), self._price_entity}
+        self._critical_entities = {*house_meters, self._price_entity}
         self._monitored_entities = self._critical_entities | (
             set(self._device_of_entity) - helper_outputs
         )
@@ -1180,7 +1187,8 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             "currency": data.get(CONF_CURRENCY, DEFAULT_CURRENCY),
             "house_sources": [
                 {"role": role.value, "entity": entity}
-                for role, entity in self._house_sources.items()
+                for role, meters in self._house_sources.items()
+                for entity in meters
             ],
             "opt_in_cycles": {
                 flag: bool(options.get(flag))
