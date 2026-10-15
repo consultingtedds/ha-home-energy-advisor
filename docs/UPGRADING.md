@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.10.0
 
 **If your generation comes from more than one sensor, you can now choose them
 all.** Open **Settings** > **Devices & services** > **Home Energy Advisor** >
