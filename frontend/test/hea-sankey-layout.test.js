@@ -562,6 +562,283 @@ describe("the energy metric", () => {
   });
 });
 
+/**
+ * A device inside another, as Home Assistant's own energy Sankey draws one
+ * (HEA-191): under the device containing it, whatever room it is in.
+ *
+ * Rows carry what the integration publishes - each device at what it used
+ * *itself*, the circuit already netted of what is metered inside it - so a
+ * circuit's node is rebuilt here as its own share plus everything beneath it.
+ */
+describe("a device inside another", () => {
+  const inside = (upstream, filing = inKitchen) => ({ ...filing, upstream });
+
+  /** A clamped circuit with two appliances on it, all in the kitchen. */
+  const circuit = () => [
+    aRow("kitchen_circuit", "Kitchen Circuit", 3, inKitchen),
+    aRow("dishwasher", "Dishwasher", 2, inside("kitchen_circuit")),
+    aRow("dryer", "Dryer", 4, inside("kitchen_circuit")),
+    aRow("lamp", "Lamp", 1, inLounge),
+  ];
+
+  it("draws the circuit as everything on it, with the appliances beneath it", () => {
+    // When
+    const result = build(circuit());
+    const nodes = byId(result);
+
+    // Then - the circuit carries its own 3 and the 6 metered inside it
+    expect(nodes.device_kitchen_circuit.value).toBe(9);
+    expect(result.links).toContainEqual({
+      source: "device_kitchen_circuit",
+      target: "device_dishwasher",
+      value: 2,
+    });
+    expect(result.links).toContainEqual({
+      source: "device_kitchen_circuit",
+      target: "device_dryer",
+      value: 4,
+    });
+    // and the room holds the circuit once, not the circuit and its appliances again
+    expect(nodes["area_a-kitchen"].value).toBe(9);
+    expect(nodes[HOUSEHOLD_ID].value).toBe(10);
+  });
+
+  it("shows the part of the circuit nothing else accounts for as a leaf of its own", () => {
+    // When
+    const result = build(circuit());
+
+    // Then - named as the table and the bars name it, so the cards agree
+    expect(byId(result)["device_kitchen_circuit__untracked"]).toMatchObject({
+      label: "Kitchen Circuit Untracked",
+      value: 3,
+    });
+    expect(result.links).toContainEqual({
+      source: "device_kitchen_circuit",
+      target: "device_kitchen_circuit__untracked",
+      value: 3,
+    });
+  });
+
+  it("hangs an appliance under its circuit even when it is in another room", () => {
+    // Given - a living-room light on the kitchen circuit
+    const rows = [
+      aRow("kitchen_circuit", "Kitchen Circuit", 3, inKitchen),
+      aRow("lamp", "Lamp", 1, inside("kitchen_circuit", inLounge)),
+    ];
+
+    // When
+    const result = build(rows);
+    const nodes = byId(result);
+
+    // Then - under the circuit, and its own room is not credited a second time
+    expect(result.links).toContainEqual({
+      source: "device_kitchen_circuit",
+      target: "device_lamp",
+      value: 1,
+    });
+    expect(nodes["area_a-lounge"]).toBeUndefined();
+    expect(nodes["area_a-kitchen"].value).toBe(4);
+  });
+
+  it("puts circuits a column ahead of everything they feed, and every leaf in the last", () => {
+    // When
+    const nodes = byId(build(circuit()));
+
+    // Then - Home Assistant's sections: parents first, leaves aligned at the end
+    expect(nodes.device_kitchen_circuit.index).toBe(COLUMN.device);
+    expect(nodes.device_dishwasher.index).toBe(COLUMN.device + 1);
+    expect(nodes["device_kitchen_circuit__untracked"].index).toBe(COLUMN.device + 1);
+    // An ordinary device joins the leaves rather than sitting beside the circuit
+    expect(nodes.device_lamp.index).toBe(COLUMN.device + 1);
+  });
+
+  it("follows nesting as deep as it goes, and every level balances", () => {
+    // Given - a board feeding a circuit feeding a socket strip
+    const rows = [
+      aRow("board", "Board", 1, inKitchen),
+      aRow("kitchen_circuit", "Kitchen Circuit", 2, inside("board")),
+      aRow("sockets", "Sockets", 0.5, inside("kitchen_circuit")),
+      aRow("dryer", "Dryer", 4, inside("sockets")),
+      aRow("lamp", "Lamp", 1, inLounge),
+    ];
+
+    // When
+    const result = build(rows);
+    const nodes = byId(result);
+
+    // Then
+    expect(nodes.device_board).toMatchObject({ value: 7.5, index: COLUMN.device });
+    expect(nodes.device_kitchen_circuit).toMatchObject({
+      value: 6.5,
+      index: COLUMN.device + 1,
+    });
+    expect(nodes.device_sockets).toMatchObject({ value: 4.5, index: COLUMN.device + 2 });
+    expect(nodes.device_dryer.index).toBe(COLUMN.device + 3);
+    expect(nodes.device_lamp.index).toBe(COLUMN.device + 3);
+    for (const node of result.nodes) {
+      if (node.id === HOUSEHOLD_ID) continue;
+      expect([node.id, flowInto(result, node.id)]).toEqual([node.id, node.value]);
+    }
+    expect(nodes[HOUSEHOLD_ID].value).toBe(8.5);
+  });
+
+  it("draws no leftover when the appliances account for the whole circuit", () => {
+    // Given
+    const rows = [
+      aRow("kitchen_circuit", "Kitchen Circuit", 0, inKitchen),
+      aRow("dryer", "Dryer", 4, inside("kitchen_circuit")),
+    ];
+
+    // When
+    const nodes = byId(build(rows));
+
+    // Then
+    expect(nodes["device_kitchen_circuit__untracked"]).toBeUndefined();
+    expect(nodes.device_kitchen_circuit.value).toBe(4);
+  });
+
+  it("drops a circuit's negative share rather than drawing it backwards", () => {
+    // Given - a correction can leave the circuit's own figure below zero
+    const rows = [
+      aRow("kitchen_circuit", "Kitchen Circuit", -1, inKitchen),
+      aRow("dryer", "Dryer", 4, inside("kitchen_circuit")),
+    ];
+
+    // When
+    const result = build(rows);
+    const nodes = byId(result);
+
+    // Then - the circuit is what flows out of it, so it still balances
+    expect(nodes.device_kitchen_circuit.value).toBe(4);
+    expect(flowOutOf(result, "device_kitchen_circuit")).toBe(4);
+    expect(nodes[HOUSEHOLD_ID].value).toBe(4);
+  });
+
+  it("treats a device whose container is not in the list as top level", () => {
+    // Given - the circuit was removed from the integration, the link was not
+    const rows = [aRow("dryer", "Dryer", 4, inside("gone_circuit"))];
+
+    // When
+    const result = build(rows);
+
+    // Then
+    expect(result.links).toContainEqual({
+      source: "area_a-kitchen",
+      target: "device_dryer",
+      value: 4,
+    });
+  });
+
+  it("survives two devices each claiming to contain the other", () => {
+    // Given - nothing in Home Assistant forbids a hand-edited loop
+    const rows = [
+      aRow("dryer", "Dryer", 4, inside("sockets")),
+      aRow("sockets", "Sockets", 1, inside("dryer")),
+    ];
+
+    // When
+    const nodes = byId(build(rows));
+
+    // Then - both drawn once, at the top level, and the total is still right
+    expect(nodes.device_dryer.value).toBe(4);
+    expect(nodes.device_sockets.value).toBe(1);
+    expect(nodes[HOUSEHOLD_ID].value).toBe(5);
+  });
+
+  it("colours the leftover as its circuit, and opens the circuit's sensor from both", () => {
+    // Given
+    const colour = (device) => `colour(${device.key})`;
+
+    // When
+    const nodes = byId(buildDistribution(circuit(), DEFAULTS, { deviceColour: colour }));
+
+    // Then
+    expect(nodes.device_kitchen_circuit.color).toBe("colour(kitchen_circuit)");
+    expect(nodes["device_kitchen_circuit__untracked"].color).toBe("colour(kitchen_circuit)");
+    expect(nodes.device_kitchen_circuit.entityId).toBe("sensor.kitchen_circuit_actual_cost");
+    expect(nodes["device_kitchen_circuit__untracked"].entityId).toBe(
+      "sensor.kitchen_circuit_actual_cost",
+    );
+  });
+
+  it("feeds the household from the sources exactly what the devices draw", () => {
+    // Given
+    const rows = [
+      anEnergyRow("kitchen_circuit", "Kitchen Circuit", { grid: 1, generation: 2 }, inKitchen),
+      anEnergyRow("dryer", "Dryer", { grid: 3, battery: 1 }, inside("kitchen_circuit")),
+    ];
+
+    // When
+    const result = buildDistribution(rows, DEFAULTS, { metric: "energy" });
+
+    // Then
+    expect(flowInto(result, HOUSEHOLD_ID)).toBe(7);
+    expect(byId(result).device_kitchen_circuit.value).toBe(7);
+  });
+});
+
+/**
+ * Home Assistant's two grouping options, under their names (HEA-191). Both off
+ * is the diagram of what everything ran through: devices and circuits alone.
+ */
+describe("grouping by floor and by room", () => {
+  const rows = () => [
+    aRow("lamp", "Lamp", 1, inLounge),
+    aRow("oven", "Oven", 4, inKitchen),
+    aRow("freezer", "Freezer", 2, inGarage),
+  ];
+  const grouped = (options) => buildDistribution(rows(), DEFAULTS, options);
+
+  it("groups by both unless told otherwise", () => {
+    // When
+    const nodes = byId(grouped({}));
+
+    // Then
+    expect(nodes["floor_f-up"].value).toBe(5);
+    expect(nodes["area_a-lounge"].value).toBe(1);
+  });
+
+  it("links devices to their floor when rooms are not wanted", () => {
+    // When
+    const result = grouped({ groupByArea: false });
+
+    // Then
+    expect(result.nodes.some((node) => node.id.startsWith("area_"))).toBe(false);
+    expect(result.links).toContainEqual({ source: "floor_f-up", target: "device_oven", value: 4 });
+    // A device in a room with no floor has nothing left between it and the house
+    expect(result.links).toContainEqual({
+      source: HOUSEHOLD_ID,
+      target: "device_freezer",
+      value: 2,
+    });
+  });
+
+  it("links rooms to the household when floors are not wanted", () => {
+    // When
+    const result = grouped({ groupByFloor: false });
+
+    // Then
+    expect(result.nodes.some((node) => node.id.startsWith("floor_"))).toBe(false);
+    expect(result.links).toContainEqual({
+      source: HOUSEHOLD_ID,
+      target: "area_a-kitchen",
+      value: 4,
+    });
+  });
+
+  it("links every top-level device to the household when neither is wanted", () => {
+    // When
+    const result = grouped({ groupByFloor: false, groupByArea: false });
+
+    // Then
+    expect(result.links.map((link) => [link.source, link.target, link.value])).toEqual([
+      [HOUSEHOLD_ID, "device_lamp", 1],
+      [HOUSEHOLD_ID, "device_oven", 4],
+      [HOUSEHOLD_ID, "device_freezer", 2],
+    ]);
+  });
+});
+
 describe("more of the shape Home Assistant's chart expects", () => {
   it("names two rooms that share a name apart, because ids differ", () => {
     // Given - two households' worth of "Bathroom" is ordinary

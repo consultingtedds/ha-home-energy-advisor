@@ -156,6 +156,8 @@ export const DEFAULTS = Object.freeze({
   editor_sort_by: "Order by",
   editor_layout: "Layout",
   editor_metric: "Measure by",
+  editor_group_by_floor: "Group by floor",
+  editor_group_by_area: "Group by area",
   editor_forgone: "Count what your own generation could have earned",
   editor_forgone_include: "Include it in the cost",
   editor_forgone_exclude: "Show only what you paid",

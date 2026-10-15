@@ -556,6 +556,17 @@ it open: a speculative follow-on nobody has asked for, whose own first step is a
 simulation that may conclude it is not worth building, was making six shipped
 items look unfinished. It stands on its own now, still deliberately last.
 
+**HEA-191 shipped 2026-10-15, as Home Assistant's design rather than a switch.**
+The simulation found the second view worth having where a circuit crosses rooms
+or nests deep, and adding little where it does not. Reading HA's own energy
+Sankey then showed it already draws `included_in_stat` - a device under its
+container, rooms and floors grouping only the top level, `group_by_floor` and
+`group_by_area` as card options - so the flow card copies that, and both
+options off is the electrical view. This revises item 7's "second view": the
+residual still keeps its area for every other card, but the flow card draws an
+appliance under its circuit wherever it stands. The simulation also found
+HEA-218, the grouped table's one-level limit.
+
 ### Epic 11 - Stabilising on households that are not this one
 
 Not planned. This is what the work has actually been since v0.1.1, and the plan

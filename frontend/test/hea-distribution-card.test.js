@@ -402,6 +402,86 @@ describe("measuring by energy instead of cost", () => {
   });
 });
 
+/**
+ * A device inside another, and Home Assistant's two grouping options (HEA-191).
+ * The layout's suite holds the arithmetic; this holds that the card reads the
+ * hierarchy from the published rows and the options from its configuration.
+ */
+describe("what each device ran through", () => {
+  /** The pump on the aircon's circuit, as the devices sensor publishes it. */
+  const nested = () =>
+    aHass({
+      devices: [AIRCON, { ...PUMP, upstream: "slow_poll_aircon" }],
+      response: SPENT,
+    });
+
+  it("hangs a device under the one the devices sensor says contains it", async () => {
+    // Given / When
+    const card = mount(nested());
+    await ready(card);
+
+    // Then - the aircon's own 3 and the pump's 1, with the pump beneath it
+    expect(nodeOf(card, "device_slow_poll_aircon").value).toBe(4);
+    expect(chartOf(card).data.links).toContainEqual({
+      source: "device_slow_poll_aircon",
+      target: "device_cloud_polled_pump",
+      value: 1,
+    });
+    // and the garage is not credited with a pump already counted in the lounge
+    expect(nodeOf(card, "area_a-garage")).toBeUndefined();
+    expect(nodeOf(card, "household").value).toBe(4);
+  });
+
+  it("groups by floor and room unless the configuration says otherwise", async () => {
+    // Given / When
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then
+    expect(nodeOf(card, "floor_f-up").value).toBe(3);
+    expect(nodeOf(card, "area_a-lounge").value).toBe(3);
+  });
+
+  it("leaves rooms out when group_by_area is off", async () => {
+    // Given / When
+    const card = mount(aHouse(), { group_by_area: false });
+    await ready(card);
+
+    // Then
+    expect(nodeOf(card, "area_a-lounge")).toBeUndefined();
+    expect(chartOf(card).data.links).toContainEqual({
+      source: "floor_f-up",
+      target: "device_slow_poll_aircon",
+      value: 3,
+    });
+  });
+
+  it("leaves floors out when group_by_floor is off", async () => {
+    // Given / When
+    const card = mount(aHouse(), { group_by_floor: false });
+    await ready(card);
+
+    // Then
+    expect(nodeOf(card, "floor_f-up")).toBeUndefined();
+    expect(nodeOf(card, "area_a-lounge").value).toBe(3);
+  });
+
+  it("draws devices and circuits alone with both off", async () => {
+    // Given / When
+    const card = mount(nested(), { group_by_floor: false, group_by_area: false });
+    await ready(card);
+
+    // Then - what everything ran through, and nothing about where it stands
+    expect(
+      chartOf(card).data.links.map((link) => [link.source, link.target, link.value]),
+    ).toEqual([
+      ["household", "device_slow_poll_aircon", 4],
+      ["device_slow_poll_aircon", "device_cloud_polled_pump", 1],
+      ["device_slow_poll_aircon", "device_slow_poll_aircon__untracked", 3],
+    ]);
+  });
+});
+
 describe("the words around the diagram", () => {
   it("titles itself from the household's own vocabulary", async () => {
     // Given / When

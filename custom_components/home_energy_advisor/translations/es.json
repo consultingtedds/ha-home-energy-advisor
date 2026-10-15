@@ -362,6 +362,8 @@
     "card_editor_sort_by": "Ordenar por",
     "card_editor_layout": "Disposición",
     "card_editor_metric": "Medir por",
+    "card_editor_group_by_floor": "Agrupar por planta",
+    "card_editor_group_by_area": "Agrupar por área",
     "card_paid_with_forgone": "Coste de uso",
     "card_editor_forgone": "Contar lo que tu propia generación podría haber ganado",
     "card_editor_forgone_include": "Incluirlo en el coste",

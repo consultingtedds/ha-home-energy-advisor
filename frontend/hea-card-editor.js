@@ -25,6 +25,8 @@ const FIELD_LABELS = {
   sort_by: "editor_sort_by",
   layout: "editor_layout",
   metric: "editor_metric",
+  group_by_floor: "editor_group_by_floor",
+  group_by_area: "editor_group_by_area",
   range: "editor_range",
 };
 

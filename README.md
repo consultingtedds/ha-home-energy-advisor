@@ -330,7 +330,8 @@ energy and in money.
 
 The same total, broken down by floor, then room, then device. Rooms and floors
 come from Home Assistant's own areas, so this needs nothing from you beyond
-having put your source sensors in rooms.
+having put your source sensors in rooms. A device nested inside another in the
+Energy Dashboard hangs under it, as on Home Assistant's own flow card.
 
 ## The sensors you get
 

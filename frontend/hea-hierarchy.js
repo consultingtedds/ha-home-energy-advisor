@@ -51,8 +51,11 @@ const childrenByParent = (devices) => {
  * it - so nothing is recomputed. What changes is the name and the key: it is a
  * leaf beside the devices inside it rather than the circuit itself, and a card
  * colouring or filtering by key must not confuse the two.
+ *
+ * Exported for the flow diagram, which draws the same leaf under the circuit and
+ * has to call it what the table and the bars call it (HEA-191).
  */
-const residualOf = (device, labels) => ({
+export const residualOf = (device, labels) => ({
   ...device,
   key: `${device.key}${RESIDUAL_SUFFIX}`,
   name: `${device.name} ${labels.device_untracked}`,

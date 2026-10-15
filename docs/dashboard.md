@@ -115,8 +115,14 @@ battery.
 The total broken down by floor, then room, then device. Floors and rooms come
 from Home Assistant's areas, via the source sensor you chose for each device.
 
+A device you have nested inside another in the Energy Dashboard - an appliance
+on a clamped circuit - is drawn under that circuit, wherever it stands, as Home
+Assistant's own energy flow card draws it. The circuit shows everything on it,
+and its own Untracked share is what is on it that nothing else measures.
+
 `metric`: `cost` (default), `energy`; `layout`: `auto`, `horizontal`,
-`vertical`
+`vertical`; `group_by_floor`, `group_by_area`: both `true` by default. Turn both
+off to see only what each device ran through.
 
 ### Self-sufficiency
 

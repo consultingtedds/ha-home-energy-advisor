@@ -1,5 +1,7 @@
 /**
- * Where the money went: household to floor to room to device (HEA-90).
+ * Where the money went: household to floor to room to device (HEA-90), with a
+ * device inside another drawn under it, as Home Assistant's own Sankey does
+ * (HEA-191).
  *
  * The last card in HEA-50's family, and the only one answering a different
  * question from the rest - not which device cost most, but which part of the
@@ -97,6 +99,9 @@ const VERTICAL_MIN_HEIGHT = 240;
 /** As Home Assistant's card names them, so a household meets one vocabulary. */
 const LAYOUTS = ["auto", "horizontal", "vertical"];
 
+/** Home Assistant's own Sankey options and defaults, under their own names. */
+const GROUPING_DEFAULTS = Object.freeze({ group_by_floor: true, group_by_area: true });
+
 class HeaDistributionCard extends HeaChartCard {
   static titleKey = "title_distribution";
 
@@ -172,6 +177,10 @@ class HeaDistributionCard extends HeaChartCard {
     const colours = coloursFor(readDevices(this._hass));
     return buildDistribution(this._result?.devices ?? [], this._labels, {
       metric: this._metric(),
+      // Home Assistant's own options under their own names, on unless turned
+      // off. Both off is the diagram of what everything ran through (HEA-191).
+      groupByFloor: this._config?.group_by_floor ?? GROUPING_DEFAULTS.group_by_floor,
+      groupByArea: this._config?.group_by_area ?? GROUPING_DEFAULTS.group_by_area,
       // The layout knows which token each source wants; only the card can read
       // one, so it resolves them against the household's theme (HEA-93).
       colour: (source) => this._colour(source),
@@ -229,7 +238,18 @@ class HeaDistributionCardEditor extends HeaCardEditor {
         name: "layout",
         selector: { select: { mode: "dropdown", options: LAYOUTS } },
       },
+      { name: "group_by_floor", selector: { boolean: {} } },
+      { name: "group_by_area", selector: { boolean: {} } },
     ];
+  }
+
+  /**
+   * On unless turned off, in the form as in the card, so an untouched switch
+   * shows what the diagram is actually doing. Merged into the configuration the
+   * way Home Assistant's own Sankey editor merges its `DEFAULT_CONFIG`.
+   */
+  setConfig(config) {
+    super.setConfig({ ...GROUPING_DEFAULTS, ...config });
   }
 }
 
@@ -237,7 +257,7 @@ export const register = () => {
   registerEditor(EDITOR_TAG, HeaDistributionCardEditor);
   registerCard(TAG, HeaDistributionCard, {
     name: "Home Energy Advisor: Cost distribution",
-    description: "Where the period's cost went, by floor, room and device.",
+    description: "Where the period's cost went, by floor, room, circuit and device.",
   });
 };
 

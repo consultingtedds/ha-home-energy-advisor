@@ -220,6 +220,45 @@ describe("the distribution card's own options", () => {
     ]);
     expect(formOf(editor).computeLabel({ name: "metric" })).toBe("Measure by");
   });
+
+  it("offers Home Assistant's two grouping switches, labelled as theirs are", () => {
+    // Given / When
+    const editor = anEditorFor(DISTRIBUTION_TAG);
+    const label = (name) => formOf(editor).computeLabel({ name });
+
+    // Then - the same names and meaning as the Energy Dashboard's Sankey (HEA-191)
+    expect(fieldOf(editor, "group_by_floor").selector).toEqual({ boolean: {} });
+    expect(fieldOf(editor, "group_by_area").selector).toEqual({ boolean: {} });
+    expect(label("group_by_floor")).toBe("Group by floor");
+    expect(label("group_by_area")).toBe("Group by area");
+  });
+
+  it("shows both switches on when the card has not set them, as the card draws it", () => {
+    // Given / When - an unset switch drawn off would contradict the diagram
+    const editor = anEditorFor(DISTRIBUTION_TAG, { group_by_area: false });
+
+    // Then
+    expect(formOf(editor).data).toEqual(
+      expect.objectContaining({ group_by_floor: true, group_by_area: false }),
+    );
+  });
+
+  it("writes a switch turned off, rather than dropping it as empty", () => {
+    // Given
+    const editor = anEditorFor(DISTRIBUTION_TAG);
+    const changed = vi.fn();
+    editor.addEventListener("config-changed", changed);
+
+    // When
+    userEdits(editor, { group_by_area: false });
+
+    // Then - false is a choice; only an empty value means "not set"
+    expect(changed.mock.calls[0][0].detail.config).toEqual({
+      type: `custom:${DISTRIBUTION_TAG}`,
+      group_by_floor: true,
+      group_by_area: false,
+    });
+  });
 });
 
 describe("reporting a change", () => {

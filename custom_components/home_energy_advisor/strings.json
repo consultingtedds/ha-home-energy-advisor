@@ -362,6 +362,8 @@
     "card_editor_sort_by": "Order by",
     "card_editor_layout": "Layout",
     "card_editor_metric": "Measure by",
+    "card_editor_group_by_floor": "Group by floor",
+    "card_editor_group_by_area": "Group by area",
     "card_paid_with_forgone": "Cost of use",
     "card_editor_forgone": "Count what your own generation could have earned",
     "card_editor_forgone_include": "Include it in the cost",
