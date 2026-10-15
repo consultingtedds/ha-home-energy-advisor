@@ -111,22 +111,25 @@ export const leavesOf = (devices, labels) => {
  *
  * `rank` orders both the top level and each group's children, so a table's own
  * sort still decides what comes first; only containment decides where.
+ *
+ * As deep as the nesting goes: a circuit inside a board is itself a subtotal of
+ * what is on it, with its own rows beneath it. Stopping at one level dropped the
+ * innermost devices from the table altogether (HEA-218).
  */
 export const groupedOf = (devices, labels, rank = (rows) => rows) => {
   const children = childrenByParent(devices);
   if (children.size === 0) return rank(devices).map((device) => ({ device, depth: 0 }));
 
-  const containers = new Set(children.keys());
-  const top = devices.filter((device) => !device.upstream);
-  return rank(top).flatMap((device) => {
-    if (!containers.has(device.key)) return [{ device, depth: 0 }];
-    // No fallback: `containers` is this map's own key set, so a container always
-    // has children to look up. A `?? []` here would be a branch nothing could
-    // reach, which reads as a guarded case and is really a dead one.
+  const group = (device, depth) => {
+    if (!children.has(device.key)) return [{ device, depth }];
     const inside = rank([...children.get(device.key), residualOf(device, labels)]);
-    return [
-      { device: { ...device, ...added(inside), subtotal: true }, depth: 0 },
-      ...inside.map((child) => ({ device: child, depth: 1 })),
-    ];
-  });
+    const rows = inside.flatMap((child) => group(child, depth + 1));
+    // The subtotal is everything beneath it that counts once: the rows that are
+    // not themselves subtotals, which is every device and residual below.
+    const counted = rows.filter((row) => !row.device.subtotal).map((row) => row.device);
+    return [{ device: { ...device, ...added(counted), subtotal: true }, depth }, ...rows];
+  };
+  return rank(devices.filter((device) => !device.upstream)).flatMap((device) =>
+    group(device, 0),
+  );
 };

@@ -112,10 +112,11 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
   thead th:first-child, tbody th:first-child, tfoot th:first-child {
     padding-left: 14px;
   }
-  /* A device that sits inside another one, indented under the row above it.
-     Added to the verdict band's own padding rather than replacing it, so the
-     band stays where it is on every row and only the name moves (HEA-153). */
-  tbody th.inside { padding-left: 30px; }
+  /* A device that sits inside another one, indented under the row above it,
+     one step further for each level it is nested (HEA-218). Added to the
+     verdict band's own padding rather than replacing it, so the band stays
+     where it is on every row and only the name moves (HEA-153). */
+  tbody th.inside { padding-left: calc(14px + 16px * var(--depth, 1)); }
   /* A circuit's own meter, which contains the rows under it. Weighted like the
      totals line it behaves like, so a reader can see it is a subtotal and not
      another device competing with its own children. */
@@ -319,7 +320,9 @@ export class HeaTableCard extends HeaCard {
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) {
-      const inside = depth ? ' class="inside"' : "";
+      // How deep, as a property the indent is computed from, so a circuit inside
+      // a circuit steps in again rather than lining up with its parent (HEA-218).
+      const inside = depth ? ` class="inside" style="--depth: ${depth}"` : "";
       return `<th scope="row"${inside}${edgeOf(verdict)}>${escapeText(device.name)}</th>`;
     }
     const value = derive ? derive(device) : device[field];

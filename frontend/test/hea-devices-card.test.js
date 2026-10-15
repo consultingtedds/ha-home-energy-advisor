@@ -1139,6 +1139,50 @@ describe("the table", () => {
     expect(totalCells(card)[1].textContent).toMatch(/50[.,]6/);
   });
 
+  it("shows a circuit inside a circuit, each level indented further", async () => {
+    // Given - the fine meter sits on the slow poll aircon's circuit, and a pump
+    // sits on the fine meter's (HEA-218)
+    const card = mount(
+      aHass({
+        devices: [
+          aDeviceRow("slow_poll_aircon", "Slow Poll Aircon"),
+          {
+            ...aDeviceRow("fine_meter_aircon", "Fine Meter Aircon"),
+            upstream: "slow_poll_aircon",
+          },
+          {
+            ...aDeviceRow("cloud_polled_pump", "Cloud Polled Pump"),
+            upstream: "fine_meter_aircon",
+          },
+        ],
+        response: {
+          ...THREE_RESPONSE,
+          ...bucketsFor("cloud_polled_pump", 5.0, 1.0, 1.5),
+        },
+      }),
+    );
+
+    // When
+    await ready(card);
+
+    // Then - the pump is listed, under its own circuit, and each row says how
+    // deep it sits so the indent can follow it. Within each circuit the rows
+    // still rank by cost: the fine meter's own share cost 3.00, the pump 1.00
+    const depths = [...card.shadowRoot.querySelectorAll("tbody th")].map((cell) => [
+      cell.textContent.trim(),
+      cell.style.getPropertyValue("--depth"),
+    ]);
+    expect(depths).toEqual([
+      ["Slow Poll Aircon", ""],
+      ["Fine Meter Aircon", "1"],
+      ["Fine Meter Aircon Untracked", "2"],
+      ["Cloud Polled Pump", "2"],
+      ["Slow Poll Aircon Untracked", "1"],
+    ]);
+    // and the outer circuit carries all three: 38.6 + 12.0 + 5.0
+    expect(rows(card)[0][1]).toMatch(/55[.,]6/);
+  });
+
   it("leaves the table exactly as it was when no hierarchy is declared", async () => {
     // Given / When - every household today, and the case that must not move
     const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));

@@ -177,6 +177,56 @@ describe("groupedOf", () => {
     expect(subtotal.costCeiling).toBeUndefined();
   });
 
+  it("follows a container inside a container, as deep as the nesting goes", () => {
+    // Given - a board holding a circuit holding a plug, each with a share of its
+    // own, and a lamp on nothing (HEA-218)
+    const devices = [
+      aDevice("board", "Board", 1, 1, 1),
+      aDevice("circuit", "Circuit", 2, 2, 2, { upstream: "board" }),
+      aDevice("plug", "Plug", 3, 3, 3, { upstream: "circuit" }),
+      aDevice("lamp", "Lamp", 4, 4, 4),
+    ];
+
+    // When
+    const grouped = groupedOf(devices, LABELS);
+
+    // Then - every container a subtotal of everything beneath it, each row
+    // directly under the one containing it, and the plug no longer lost
+    expect(
+      grouped.map(({ device, depth }) => [
+        device.name,
+        device.energyUsed,
+        depth,
+        Boolean(device.subtotal),
+      ]),
+    ).toEqual([
+      ["Board", 6, 0, true],
+      ["Circuit", 5, 1, true],
+      ["Plug", 3, 2, false],
+      ["Circuit Untracked", 2, 2, false],
+      ["Board Untracked", 1, 1, false],
+      ["Lamp", 4, 0, false],
+    ]);
+  });
+
+  it("keeps the rows that are not subtotals adding up to the household", () => {
+    // Given - the same three levels
+    const devices = [
+      aDevice("board", "Board", 1, 1, 1),
+      aDevice("circuit", "Circuit", 2, 2, 2, { upstream: "board" }),
+      aDevice("plug", "Plug", 3, 3, 3, { upstream: "circuit" }),
+      aDevice("lamp", "Lamp", 4, 4, 4),
+    ];
+
+    // When
+    const counted = groupedOf(devices, LABELS)
+      .filter(({ device }) => !device.subtotal)
+      .reduce((total, { device }) => total + device.energyUsed, 0);
+
+    // Then - what the published rows sum to, so the table agrees with its total
+    expect(counted).toBe(10);
+  });
+
   it("leaves a flat household as a flat list at depth zero", () => {
     // Given / When
     const grouped = groupedOf([aDevice("oven", "Oven", 9, 3, 3)], LABELS);
