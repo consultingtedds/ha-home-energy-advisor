@@ -617,7 +617,17 @@ Carried forward rather than closed:
   his confirmation is worth more than our own measurement.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
-  can see what their export was worth.
+  can see what their export was worth. ADR-0029 now frames the answer: both are
+  household-level add-ons, so if either is shown it is a labelled line beside
+  the household's Paid, never a device column. Targeted for after 0.11.0.
+- **Matching the Energy Dashboard's house configuration before 1.0** (Paul,
+  2026-10-15). Generation already takes several meters (HEA-219). **HEA-222**
+  decides the rest: the house inputs follow the Energy Dashboard live by default,
+  as the export price and nesting already do, and the form asks only for what it
+  does not hold or holds in a shape we cannot count - the middle path, chosen
+  2026-10-15, with an ADR to write when it is built. Then **HEA-220**, several
+  batteries as one pooled battery, and **HEA-221**, several grid meters, which
+  matters most for a dual-rate meter whose two registers are priced apart.
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
@@ -635,8 +645,11 @@ Carried forward rather than closed:
   the inverter's priority, not of whether it can charge from the grid, and only
   that one case is ambiguous - a night charge has no generation beside it, a
   surplus charge no import. So a setting says which way a household's battery
-  works, defaulting to today's. To be confirmed on the reporter's diagnostics
-  before it is built.
+  works, defaulting to today's. **Unblocked 2026-10-16**: the reporter turned out
+  to have two solar inputs and only one configured (which raised HEA-219), and
+  with both counted on 0.10.0 their morning still showed a saving and 91% from
+  the grid while all the sun went into the battery. Their new diagnostics upload
+  failed and has been asked for again; it is the fixture, not the evidence.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has
@@ -661,6 +674,35 @@ Carried forward rather than closed:
   0.83 against 0.74).
 
 Closed since:
+
+- **HEA-223 and HEA-224 - every card leads with what was paid** (awaiting
+  release as 0.11.0). Reviewing the dashboard after 0.10.0, Paul found the
+  summary reading Paid €0.78 and the device table beneath it €1.24: since 0.8.0
+  the table had added forgone export into its cost column by default for every
+  household that exports, and a row's Saved no longer followed from the figures
+  beside it. **ADR-0029** makes Paid the headline of every card and everything
+  else an add-on with its own name; configuration may add an add-on but never
+  changes what a column means. The table now shows Paid, with **Could have
+  earned** as its own column, and the setting that merged them is gone. A
+  page-wide switch to fold it in was considered and rejected as more confusing
+  than distinct columns.
+
+  The generated dashboard gives the summary and the table the full width, and
+  the table chooses its shape from the screen: every column where there is room,
+  with the range as its own column, and a reduced table on a phone, with the
+  range behind Paid and Could have earned left out. The verdict colour moved from
+  Would have paid onto Paid, the figure being judged, and the two figures that
+  are not money anyone paid are grey. On the way, the nested rows' coloured edge
+  turned out to have been lost since HEA-218: two `style` attributes on one cell,
+  of which the browser keeps the first.
+
+- **HEA-191, HEA-218 and HEA-219 - released as 0.10.0 on 2026-10-15.** The flow
+  card draws nested devices as Home Assistant's own does (see Epic 10); the
+  grouped table follows nesting to any depth; and generation takes every meter a
+  household has, prefilled from every solar source in the Energy Dashboard, with
+  the config entry moving to version 4. HEA-219 came from Discussion 35, where
+  one of two solar inputs had never been configured and a Group helper meant to
+  add them was refused.
 
 - **HEA-210 and HEA-212 - the diagnostics download answers what GitHub 34 kept
   asking for.** It now carries the import and export rate in force and since

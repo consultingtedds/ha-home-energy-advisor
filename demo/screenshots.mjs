@@ -138,18 +138,31 @@ async function captureSetup(page) {
   // the fields a moment to settle before the shutter.
   await page.waitForTimeout(2500);
 
-  // The one thing the Energy Dashboard cannot answer. Filling it before the
-  // shot means the image shows a house step that is ready to submit, which is
-  // what the README's caption claims it is.
-  await pickEntity(page, HOUSE.importPrice);
+  // The import price arrives with the Energy Dashboard's other answers now
+  // (HEA-118). The Energy Dashboard has no notion of a house-consumption meter,
+  // so that is the field it cannot answer. Worth setting rather than leaving: it
+  // is what puts the accounting on ADR-0005's residual branch, and without it
+  // the discovery screen quite correctly offers the house meter itself as a
+  // device to track, which reads as nonsense in a screenshot.
+  //
+  // Found by its label, not by counting empty pickers: which pickers are empty
+  // depends on what the Energy Dashboard prefilled, and generation's picker
+  // takes several meters and carries an empty one of its own (HEA-219).
+  await pickEntity(page, HOUSE.houseConsumption, {
+    field: "House consumption energy (optional)",
+  });
 
-  // The Energy Dashboard has no notion of a house-consumption meter, so this is
-  // the other field it cannot answer. Worth setting rather than leaving: it is
-  // what puts the accounting on ADR-0005's residual branch, and without it the
-  // discovery screen quite correctly offers the house meter itself as a device
-  // to track, which reads as nonsense in a screenshot.
-  await pickEntity(page, HOUSE.houseConsumption);
-
+  // Back to the top: filling house consumption scrolled the dialog down to it,
+  // and the caption promises the import price and grid import, which head it.
+  await page.evaluate(() => {
+    const walk = (root) => {
+      for (const el of root.querySelectorAll("*")) {
+        if (el.scrollHeight > el.clientHeight && el.scrollTop > 0) el.scrollTop = 0;
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    };
+    walk(document);
+  });
   await page.waitForTimeout(1000);
   await shot(page, "setup-house-inputs");
 
@@ -174,7 +187,7 @@ async function captureDevices(page) {
     await page.locator("step-flow-form input").first().fill(device.name);
     // A power sensor goes in the second picker, which is the branch that has
     // the integration create an Integral helper to turn watts into energy.
-    await pickEntity(page, device.source, device.kind === "power" ? 1 : 0);
+    await pickEntity(page, device.source, { nth: device.kind === "power" ? 1 : 0 });
 
     if (index === 0) await shot(page, "setup-add-device");
 
@@ -360,7 +373,10 @@ async function captureCards(browser, tokens) {
       console.log(`  ${tag} is not on the page`);
       continue;
     }
-    await card.scrollIntoViewIfNeeded();
+    // Centred, not merely brought into view: the page pins its period picker and
+    // filter to the bottom of the viewport, and a card scrolled only as far as
+    // its edge is photographed with them painted across it.
+    await card.evaluate((element) => element.scrollIntoView({ block: "center" }));
     await page.waitForTimeout(1200);
     await card.screenshot({ path: join(IMAGES, `${name}.png`) });
     console.log(`  ${name}.png`);
@@ -407,14 +423,17 @@ async function captureDiscovery(page) {
  * The picker is a field that opens a search dialog rather than a combo box, so
  * this clicks it open, searches, and takes the result. Setting a value directly
  * would not do: the picker only commits a choice that was actually chosen.
+ *
+ * `field` names the picker by the label the form gives it; without one, `nth`
+ * counts empty pickers, which is enough on a form with only one or two.
  */
-async function pickEntity(page, entityId, nth = 0) {
+async function pickEntity(page, entityId, { nth = 0, field } = {}) {
   // How many search boxes exist before the picker adds its own, so we can tell
   // when it has gone again.
   const searchBoxes = page.getByPlaceholder("Search", { exact: true });
   const before = await searchBoxes.count();
 
-  await page.getByText("Select an entity", { exact: false }).nth(nth).click();
+  await openPicker(page, { nth, field });
   // The last one on the page, not the first. The integration page has a search
   // box of its own, sitting behind the dialog and unclickable, and the picker's
   // is appended when it opens.
@@ -459,6 +478,40 @@ async function pickEntity(page, entityId, nth = 0) {
     await page.waitForTimeout(250);
   }
   await page.waitForTimeout(400);
+}
+
+/**
+ * Click an entity picker open, by its label where one is given.
+ *
+ * The label is a property of the selector element rather than an attribute, so
+ * nothing can locate it directly; the matching selector is tagged first, and the
+ * picker inside it opened. Playwright's CSS locators reach through the shadow
+ * roots the form is built from.
+ */
+async function openPicker(page, { nth, field }) {
+  if (!field) {
+    await page.getByText("Select an entity", { exact: false }).nth(nth).click();
+    return;
+  }
+  const found = await page.evaluate((label) => {
+    const walk = (root) => {
+      for (const el of root.querySelectorAll("*")) {
+        if (el.tagName.toLowerCase() === "ha-selector-entity" && el.label === label) {
+          el.setAttribute("data-shot-field", label);
+          return true;
+        }
+        if (el.shadowRoot && walk(el.shadowRoot)) return true;
+      }
+      return false;
+    };
+    return walk(document);
+  }, field);
+  if (!found) throw new Error(`no entity picker labelled "${field}" on the form`);
+  await page
+    .locator(`ha-selector-entity[data-shot-field="${field}"]`)
+    .getByText("Select an entity", { exact: false })
+    .first()
+    .click();
 }
 
 /**
