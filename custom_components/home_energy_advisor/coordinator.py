@@ -205,6 +205,10 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._history_probed: set[str] = set()
         self._unreconciled_raised = False
         self._implausible_sources: set[str] = set()
+        # Which of those this run has written, details and all. One standing from
+        # an earlier run, or an earlier version, is written once more so it
+        # carries what the current message needs (HEA-226).
+        self._implausible_written: set[str] = set()
         # Inputs whose counter leapt, so the Repair is raised once and cleared once.
         self._refused_steps: frozenset[str] = frozenset()
         # Inputs the engine cannot count because of their unit, and when each
@@ -621,7 +625,12 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             if device in self._entry.subentries
         }
         implausible = set(devices_by_name)
-        for name in implausible - self._implausible_sources:
+        # Written once per run, not once per accusation: a Repair standing from
+        # before a restart is still accused, but carries the details of the
+        # version that raised it, and the message names figures it may not hold.
+        # Once written it is left alone, so its figures do not move under a
+        # household reading them.
+        for name in implausible - self._implausible_written:
             issues.async_raise(
                 self.hass,
                 issues.implausible_source_issue_id(name),
@@ -632,6 +641,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         for name in self._implausible_sources - implausible:
             issues.async_clear(self.hass, issues.implausible_source_issue_id(name))
         self._implausible_sources = implausible
+        # Everything still accused has now been written in this run; a device
+        # cleared and accused again is written afresh.
+        self._implausible_written = set(implausible)
 
     def _implausible_details(self, name: str, device: str) -> dict[str, str]:
         """The Repair's evidence: the sensor, and the two figures it was judged on.

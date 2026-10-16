@@ -927,6 +927,62 @@ async def test_a_repair_left_by_a_previous_run_is_retracted_at_startup(
     assert not _has_issue(hass, departed)
 
 
+async def test_a_repair_standing_from_an_earlier_version_gains_its_details_once(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """A Repair outlives the version that raised it (HEA-226).
+
+    The message now names the sensor and quotes the figures it was judged on.
+    One raised before carries only the device's name, and Home Assistant renders
+    a translation with whatever details the Repair was raised with - so left
+    alone it would show the new text with its figures missing.
+    """
+    # Given - a condemnation from an earlier version, with only the name
+    entry = await _setup_running_home(hass, freezer)
+    coordinator = entry.runtime_data
+    subentry_id = next(iter(entry.subentries))
+    issue_id = issues.implausible_source_issue_id("Coarse Step Aircon")
+    issues.async_raise(
+        hass, issue_id, issues.ISSUE_IMPLAUSIBLE_SOURCE, {"name": "Coarse Step Aircon"}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+
+    # When - after the restart the device is still set aside
+    evidence = [(Decimal("4.20"), Decimal("1.50")), (Decimal("9.99"), Decimal("1.00"))]
+    with (
+        patch.object(
+            coordinator._accountant,  # noqa: SLF001
+            "implausible_devices",
+            return_value=frozenset({subentry_id}),
+        ),
+        patch.object(
+            coordinator._accountant,  # noqa: SLF001
+            "plausibility_evidence",
+            side_effect=evidence,
+        ),
+    ):
+        await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+        first = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+        await _tick(hass, freezer, datetime(2026, 7, 8, 22, 35, tzinfo=UTC))
+        second = ir.async_get(hass).async_get_issue(DOMAIN, issue_id)
+
+    # Then - refreshed with the sensor and the figures on the first check of the
+    # run, and then left alone: a Repair rewritten every tick would move its
+    # figures under a household reading it
+    expected = {
+        "name": "Coarse Step Aircon",
+        "entity": "sensor.coarse_step_energy",
+        "claimed": "4.20",
+        "house": "1.50",
+    }
+    assert first is not None
+    assert first.translation_placeholders == expected
+    assert second is not None
+    assert second.translation_placeholders == expected
+
+
 async def test_a_refused_step_left_by_a_previous_run_is_retracted_at_startup(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
