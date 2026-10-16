@@ -48,6 +48,11 @@ column there. On a phone the table is reduced instead - the range goes back
 behind a tap on Paid and Could have earned is left out. If you chose a layout
 for the range in the card's settings, that choice still holds.
 
+The colour that shows how well each device did - green where it paid little of
+what the grid would have charged, red where it paid more - has moved from Would
+have paid onto **Paid**, the figure it is judging. Would have paid and Could
+have earned are now grey, because neither is money anyone paid.
+
 ## 0.10.0
 
 **If your generation comes from more than one sensor, you can now choose them
