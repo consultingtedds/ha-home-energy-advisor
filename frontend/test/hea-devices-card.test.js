@@ -9,7 +9,7 @@
  * that a device name is the household's own text and must be escaped.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 
@@ -200,11 +200,17 @@ describe("how well each device did", () => {
     ...bucketsFor("cloud_polled_pump", 40, 9.5, 10),
   };
 
-  /** The Would-have-paid cell for one device, by its position in the row. */
-  const gridPriceCell = (card, name) =>
+  /** One device's cells by column: Energy, Paid, Would have paid, Saved, rate. */
+  const cellsOf = (card, name) =>
     [...card.shadowRoot.querySelectorAll("tbody tr")]
       .find((row) => row.querySelector("th").textContent.trim() === name)
-      ?.querySelectorAll("td")[2];
+      ?.querySelectorAll("td");
+
+  /**
+   * The Paid cell, which carries the verdict: it is the figure being judged,
+   * and the first one on the row (ADR-0029).
+   */
+  const paidCell = (card, name) => cellsOf(card, name)?.[1];
 
   const mountContrasting = () =>
     mount(aHass({ devices: CONTRASTING, response: CONTRASTING_RESPONSE }));
@@ -218,9 +224,9 @@ describe("how well each device did", () => {
     // When
     await ready(card);
 
-    // Then - the same figure, two verdicts
-    const good = gridPriceCell(card, "Coarse Step Aircon").style.color;
-    const bad = gridPriceCell(card, "Cloud Polled Pump").style.color;
+    // Then - what each paid, judged against what the grid would have charged
+    const good = paidCell(card, "Coarse Step Aircon").style.color;
+    const bad = paidCell(card, "Cloud Polled Pump").style.color;
     expect(good).toMatch(/^hsl/);
     expect(bad).toMatch(/^hsl/);
     expect(good).not.toBe(bad);
@@ -235,8 +241,8 @@ describe("how well each device did", () => {
     await ready(card);
 
     // Then
-    expect(gridPriceCell(card, "Coarse Step Aircon").title).toMatch(/96\s*%/);
-    expect(gridPriceCell(card, "Cloud Polled Pump").title).toMatch(/5\s*%/);
+    expect(paidCell(card, "Coarse Step Aircon").title).toMatch(/96\s*%/);
+    expect(paidCell(card, "Cloud Polled Pump").title).toMatch(/5\s*%/);
   });
 
   it("bands the row in the same verdict as the figure", async () => {
@@ -271,26 +277,29 @@ describe("how well each device did", () => {
     await ready(card);
 
     // Then
-    const quiet = gridPriceCell(card, "Cloud Polled Pump");
+    const quiet = paidCell(card, "Cloud Polled Pump");
     expect(quiet.style.color).toBe("");
     expect(quiet.title).toBe("");
   });
 
   it("leaves every other figure in the ordinary text colour", async () => {
-    // Given - one column carries the verdict. Paid, Energy and the rate are
-    // quantities, not judgements, and colouring them would make the table a
-    // wash of hues with nothing standing out
+    // Given - one column carries the verdict. Would have paid is the baseline
+    // the verdict is measured against, and Energy and the rate are quantities;
+    // colouring them too would make the table a wash of hues with nothing
+    // standing out
     const card = mountContrasting();
 
     // When
     await ready(card);
 
-    // Then
-    const row = card.shadowRoot.querySelector("tbody tr");
-    const tinted = [...row.querySelectorAll("td")].filter(
-      (cell) => cell.style.color !== "",
-    );
-    expect(tinted).toHaveLength(1);
+    // Then - Paid alone, on every row
+    for (const name of ["Coarse Step Aircon", "Cloud Polled Pump"]) {
+      const tinted = [...cellsOf(card, name)]
+        .map((cell, index) => [index, cell.style.color !== ""])
+        .filter(([, coloured]) => coloured)
+        .map(([index]) => index);
+      expect([name, tinted]).toEqual([name, [1]]);
+    }
   });
 
   it("turns the ramp over on a dark theme, so good news stays the loudest", async () => {
@@ -310,8 +319,8 @@ describe("how well each device did", () => {
     // everything is the brightest of it
     const lightnessOf = (cell) =>
       Number(/,\s*([\d.]+)%\)$/.exec(cell.style.color)[1]);
-    const good = lightnessOf(gridPriceCell(card, "Coarse Step Aircon"));
-    const bad = lightnessOf(gridPriceCell(card, "Cloud Polled Pump"));
+    const good = lightnessOf(paidCell(card, "Coarse Step Aircon"));
+    const bad = lightnessOf(paidCell(card, "Cloud Polled Pump"));
     expect(good).toBeGreaterThan(bad);
     expect(bad).toBeGreaterThan(50);
   });
@@ -322,8 +331,9 @@ describe("how well each device did", () => {
     const card = mountContrasting();
     await ready(card);
 
-    // Then
-    expect(totalCells(card).at(3).style.color).toMatch(/^hsl/);
+    // Then - on the total's Paid, and not on its Would have paid
+    expect(totalCells(card).at(2).style.color).toMatch(/^hsl/);
+    expect(totalCells(card).at(3).style.color).toBe("");
   });
 });
 
@@ -584,11 +594,11 @@ describe("the table", () => {
     },
   });
 
-  it("keeps the range off the table until it is asked for", async () => {
-    // Given / When - the default, with every device bounded. A column puts an
-    // uncertainty band at the same weight as the figure it qualifies, which read
-    // as a second headline rather than a footnote about the first (HEA-198)
-    const card = mount(BOUNDED);
+  it("keeps the range off the table when the rollover is chosen", async () => {
+    // Given / When - every device bounded, and the rollover asked for, which is
+    // also what a phone gets by default (HEA-224). A column puts an uncertainty
+    // band at the same weight as the figure it qualifies (HEA-198)
+    const card = mount(BOUNDED, { range: "rollover" });
     await ready(card);
 
     // Then - no column of its own
@@ -606,7 +616,7 @@ describe("the table", () => {
   it("offers the range to a reader who cannot hover", async () => {
     // Given / When - a phone, or a keyboard. A hover-only disclosure is simply
     // absent on a touch screen, which is where a dashboard is most read
-    const card = mount(BOUNDED);
+    const card = mount(BOUNDED, { range: "rollover" });
     await ready(card);
 
     // Then - it takes focus, which is what a tap gives it and what a keyboard
@@ -896,12 +906,12 @@ describe("the table", () => {
     const card = mount(hass);
     await ready(card);
 
-    // Then - energy, paid and would-have-paid carry no verdict
+    // Then - energy, paid and would-have-paid carry no gain or loss tone;
+    // Would have paid is muted, which is not a tone but a reading of it as
+    // context (ADR-0029)
     const [firstRow] = [...card.shadowRoot.querySelectorAll("tbody tr")];
     const cells = [...firstRow.querySelectorAll("td")];
-    for (const index of [0, 1, 2]) {
-      expect(cells[index].className, `column ${index}`).toBe("");
-    }
+    expect([0, 1, 2].map((index) => cells[index].className)).toEqual(["", "", "muted"]);
   });
 
   it("colours a total saving below zero as the loss it is", async () => {
@@ -1029,10 +1039,10 @@ describe("the table", () => {
   });
 
   it("says where the range is, and what it is, under a rollover", async () => {
-    // Given / When - the default, where the range is a rollover on Paid. The
-    // note was written for the column and named it, under a table with no such
-    // column, so nothing said the figures could be hovered at all (HEA-214)
-    const card = mount(EVERY_DEVICE_BOUNDED);
+    // Given / When - the range as a rollover on Paid. The note was written for
+    // the column and named it, under a table with no such column, so nothing
+    // said the figures could be hovered at all (HEA-214)
+    const card = mount(EVERY_DEVICE_BOUNDED, { range: "rollover" });
     await ready(card);
 
     // Then - where to find it, and that it is an outer bound, not an error bar
@@ -1115,6 +1125,26 @@ describe("the table", () => {
       "Slow Poll Aircon Untracked",
     ]);
     expect(card.shadowRoot.querySelectorAll("tbody tr.subtotal")).toHaveLength(1);
+  });
+
+  it("keeps the coloured edge on the rows inside a circuit", async () => {
+    // Given / When - the indent and the edge are both styles on the name cell,
+    // and written as two `style` attributes the browser kept the indent and
+    // dropped the edge, so every nested row lost its verdict (HEA-218's indent)
+    const card = mount(aCircuit());
+    await ready(card);
+
+    // Then - every row keeps its edge, and the nested ones their depth as well
+    const names = [...card.shadowRoot.querySelectorAll("tbody th")].map((cell) => [
+      cell.textContent.trim(),
+      cell.style.boxShadow.includes("inset"),
+      cell.style.getPropertyValue("--depth"),
+    ]);
+    expect(names).toEqual([
+      ["Slow Poll Aircon", true, ""],
+      ["Fine Meter Aircon", true, "1"],
+      ["Slow Poll Aircon Untracked", true, "1"],
+    ]);
   });
 
   it("shows the circuit carrying its children's energy as well as its own", async () => {
@@ -1298,8 +1328,8 @@ describe("what the household's own generation gave up", () => {
 
   it("ranges Paid alone, even on a row that forwent something", async () => {
     // Given / When - a device that paid 3.00, could honestly have paid anywhere
-    // from 2.80 to 3.10, and forwent 1.50 of export
-    const card = mount(FORGOING_AND_BOUNDED);
+    // from 2.80 to 3.10, and forwent 1.50 of export, with the range on Paid
+    const card = mount(FORGOING_AND_BOUNDED, { range: "rollover" });
     await ready(card);
 
     // Then - the rollover qualifies the figure it sits on and nothing else
@@ -1355,6 +1385,40 @@ describe("what the household's own generation gave up", () => {
     expect(totals[paid]).toMatch(/^€4\.61/);
   });
 
+  it("mutes the two figures that are not money anyone paid", async () => {
+    // Given / When - a wide table with every column
+    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - Would have paid and Could have earned are the comparison and the
+    // money not received, so they are greyed, in every row and in the total;
+    // Paid, the range of it and Saved are money that moved, and are not
+    const headings = headingsOf(card);
+    const mutedColumns = (cells) =>
+      cells
+        .map((cell, index) => [headings[index], cell.classList.contains("muted")])
+        .filter(([, muted]) => muted)
+        .map(([heading]) => heading);
+    for (const row of card.shadowRoot.querySelectorAll("tbody tr, tfoot tr")) {
+      expect(mutedColumns([...row.querySelectorAll("th, td")])).toEqual([
+        "Would have paid",
+        "Could have earned",
+      ]);
+    }
+  });
+
+  it("keeps a muted figure's own tone class beside it", async () => {
+    // Given / When - a cell may carry a tone class too, and two `class`
+    // attributes on one cell would drop one of them
+    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - every cell has at most one class attribute
+    const html = card.shadowRoot.innerHTML;
+    expect(html).not.toMatch(/class="[^"]*"[^>]*class="/);
+    expect(html).not.toMatch(/style="[^"]*"[^>]*style="/);
+  });
+
   it("shows the column whichever way the range is shown", async () => {
     // Given / When - the range as a column too
     const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
@@ -1367,8 +1431,8 @@ describe("what the household's own generation gave up", () => {
   });
 
   it("says what the column is, and that it is not money paid", async () => {
-    // Given / When - the default table for a household who export
-    const card = mount(FORGOING_AND_BOUNDED);
+    // Given / When - a household who export, with the range on Paid
+    const card = mount(FORGOING_AND_BOUNDED, { range: "rollover" });
     await ready(card);
 
     // Then - the range's own note, then one for the column
@@ -1387,5 +1451,121 @@ describe("what the household's own generation gave up", () => {
 
     // Then - the note is about the column, so it does not wait on a range
     expect(disclosureOf(card)).toContain("Could have earned is what the generation");
+  });
+
+  /**
+   * Every column where there is room, a reduced table where there is not
+   * (HEA-224). The breakpoint is Home Assistant's own phone width, which the
+   * chart cards already turn at.
+   */
+  describe("on a wide screen and a narrow one", () => {
+    let screen;
+    const onScreen = (narrow) => {
+      screen = {
+        matches: narrow,
+        listeners: [],
+        addEventListener(_type, listener) {
+          this.listeners.push(listener);
+        },
+        removeEventListener() {},
+      };
+      vi.stubGlobal("matchMedia", vi.fn().mockReturnValue(screen));
+    };
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    const WIDE = [
+      "Device",
+      "Energy",
+      "Paid",
+      RANGE_COLUMN_LABEL,
+      "Would have paid",
+      "Saved",
+      "Could have earned",
+      "Rate c/kWh",
+    ];
+    const NARROW = ["Device", "Energy", "Paid", "Would have paid", "Saved", "Rate c/kWh"];
+
+    it("shows every column on a wide screen", async () => {
+      // Given / When - the card left on its defaults
+      onScreen(false);
+      const card = mount(FORGOING_AND_BOUNDED);
+      await ready(card);
+
+      // Then - the range as a column, beside every add-on
+      expect(headingsOf(card)).toEqual(WIDE);
+    });
+
+    it("reduces the table on a narrow screen", async () => {
+      // Given / When
+      onScreen(true);
+      const card = mount(FORGOING_AND_BOUNDED);
+      await ready(card);
+
+      // Then - the range back behind Paid, and Could have earned left out
+      expect(headingsOf(card)).toEqual(NARROW);
+      expect(revealedIn(card, "Fine Meter Aircon")).toBe("€2.80 - €3.10");
+      // and the note says where the missing column went, so it is not read as gone
+      expect(disclosureOf(card)).toBe(
+        `${LABELS.range_note_rollover} Could have earned, what the generation ` +
+          "each device used could have earned had you exported it instead, is " +
+          "shown on a wider screen.",
+      );
+    });
+
+    it("says nothing about a hidden column a household never had", async () => {
+      // Given / When - a narrow screen and nothing forgone
+      onScreen(true);
+      const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
+      await ready(card);
+
+      // Then
+      expect(disclosureOf(card) ?? "").not.toContain("Could have earned");
+    });
+
+    it("redraws when the screen crosses the breakpoint", async () => {
+      // Given - wide, then the window narrows
+      onScreen(false);
+      const card = mount(FORGOING_AND_BOUNDED);
+      await ready(card);
+      expect(headingsOf(card)).toEqual(WIDE);
+
+      // When
+      screen.matches = true;
+      for (const listener of screen.listeners) listener();
+
+      // Then - read once at load and held, the setting would seem to do nothing
+      expect(headingsOf(card)).toEqual(NARROW);
+    });
+
+    it("keeps the range a column when asked to, even on a phone", async () => {
+      // Given / When
+      onScreen(true);
+      const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
+      await ready(card);
+
+      // Then - the range follows the setting; Could have earned still waits for room
+      expect(headingsOf(card)).toEqual([
+        "Device",
+        "Energy",
+        "Paid",
+        RANGE_COLUMN_LABEL,
+        "Would have paid",
+        "Saved",
+        "Rate c/kWh",
+      ]);
+    });
+
+    it("keeps the range a rollover when asked to, even on a wide screen", async () => {
+      // Given / When
+      onScreen(false);
+      const card = mount(FORGOING_AND_BOUNDED, { range: "rollover" });
+      await ready(card);
+
+      // Then
+      expect(headingsOf(card)).toEqual(
+        WIDE.filter((heading) => heading !== RANGE_COLUMN_LABEL),
+      );
+    });
   });
 });

@@ -319,10 +319,10 @@ the rest, and every option each of them takes.
 
 Every device, sorted by what it cost. *Would have paid* is the same energy
 bought off the meter at the price it was drawn, so the difference is what your
-own generation and battery were worth. The coloured edge tells you at a glance
-which devices are doing well: the water heater here runs on a timer at midday
-and pays about a tenth of grid price, while the tumble dryer runs in the evening
-and saves almost nothing.
+own generation and battery were worth. The coloured edge, and the colour of
+what each device paid, tell you at a glance which devices are doing well: the
+water heater here runs on a timer at midday and pays about a tenth of grid price,
+while the tumble dryer runs in the evening and saves almost nothing.
 
 A device can also cost **more** than the grid would have, and the table says so
 rather than hiding it. The car charger above is drawing stored energy that was

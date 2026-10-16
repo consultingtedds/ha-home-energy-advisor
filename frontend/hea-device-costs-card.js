@@ -42,7 +42,7 @@
  */
 
 import { withRoundedCaps } from "./hea-bars.js";
-import { registerCard } from "./hea-card-base.js";
+import { NARROW, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { drawsOnDark, tint } from "./hea-colour.js";
@@ -126,15 +126,6 @@ export const EARLIER_ID = "earlier-period";
  * to avoid the smudge.
  */
 const LAYOUTS = ["auto", "vertical", "horizontal"];
-
-/**
- * Where the standing bars stop fitting.
- *
- * Home Assistant's own `_isMobileSize` breakpoint, which the distribution card
- * already turns at - so the two cards on one screen turn together rather than
- * one going sideways beside another that has not.
- */
-const NARROW = "(max-width: 767px)";
 
 /** The series ids the horizontal layout uses, one per concept rather than per device. */
 const PAID_ID = "paid";
@@ -450,7 +441,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
     const layout = this._config?.layout;
     if (layout === "horizontal") return true;
     if (layout === "vertical") return false;
-    return Boolean(globalThis.matchMedia?.(NARROW)?.matches);
+    return this._isNarrow();
   }
 
   /** True once any device carries an earlier self, which adds a second bar. */

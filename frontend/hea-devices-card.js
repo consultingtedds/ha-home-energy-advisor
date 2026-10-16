@@ -7,7 +7,7 @@
  * device added to the integration appears without a dashboard edit.
  */
 
-import { registerCard } from "./hea-card-base.js";
+import { NARROW, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import {
   formatEnergy,
@@ -112,18 +112,21 @@ const CHANGE = {
 };
 
 /**
- * What was paid, with what it could honestly have been behind it.
+ * What was paid, coloured by how it compares with what the grid would have
+ * charged, with what it could honestly have been behind it on a phone.
  *
- * The range used to be a column of its own, and a column puts an uncertainty
- * band at the same weight as the figure it qualifies - which read as a second
- * headline rather than as a footnote about the first (HEA-198). It is a rollover
- * on Paid by default, which is where it was first asked for, and the column
- * remains available to anyone who wants to sort or scan by it.
+ * The one column that carries how well the device did, not just what it came to
+ * (HEA-106). It sat on Would have paid first, beside Paid; once the range became
+ * a column between them on a wide screen, the colour landed two columns from the
+ * figure it judged, and on the hypothetical rather than on the money that left
+ * the account. Paid is the headline (ADR-0029) and the first figure on the row,
+ * so the judgement goes where the reader starts.
  */
 const PAID = {
   field: "actualCost",
   label: "paid",
   format: formatMoney,
+  carriesVerdict: true,
   reveal: (row, locale) => {
     if (!offersARange(row) || !RANGE.fields.every((f) => Number.isFinite(row[f]))) {
       return null;
@@ -148,6 +151,8 @@ const FORGONE = {
   field: "forgoneExport",
   label: "forgone_column",
   format: formatMoney,
+  // Money not received, so it reads as context like Would have paid.
+  muted: true,
 };
 
 const COLUMNS = [
@@ -156,17 +161,9 @@ const COLUMNS = [
   PAID,
   CHANGE,
   RANGE,
-  // The one column that carries how well the device did, not just what it came
-  // to (HEA-106). Would have paid is the right home for it because the verdict
-  // is precisely this figure measured against Paid beside it: a row where the
-  // two nearly agree avoided nothing, and one where Paid is a fraction of it
-  // avoided almost everything.
-  {
-    field: "costAtGridPrice",
-    label: "would_have_paid",
-    format: formatMoney,
-    carriesVerdict: true,
-  },
+  // The baseline Paid is judged against: no verdict of its own, and muted, since
+  // it is a comparison rather than money anyone paid (ADR-0029).
+  { field: "costAtGridPrice", label: "would_have_paid", format: formatMoney, muted: true },
   { field: "costSavings", label: "saved", format: formatMoney },
   FORGONE,
   {
@@ -190,6 +187,10 @@ class HeaDevicesCard extends HeaTableCard {
   static columns = COLUMNS;
   static sorts = SORTS;
   static defaultSort = "actual_cost";
+
+  /** Wide and narrow draw different columns, so the card redraws between them. */
+  static narrowQuery = NARROW;
+
   static cardStyle = `${HeaTableCard.cardStyle}
     .disclosure {
       margin-top: var(--hea-space-m);
@@ -231,13 +232,14 @@ class HeaDevicesCard extends HeaTableCard {
    * put.
    */
   _columns() {
-    // Opt-in now, and a rollover on Paid otherwise. The band is still dropped
+    // A column where there is room and a rollover on Paid where there is not,
+    // unless the household chose one (HEA-224). The band is still dropped
     // entirely where no row can carry one, which is the condition HEA-194 fixed
-    // and this does not reopen (HEA-198).
+    // and this does not reopen.
     const asColumn = this._rangeAsColumn();
     const dropped = new Set();
     if (!asColumn) dropped.add(RANGE);
-    if (!this._hasForgone()) dropped.add(FORGONE);
+    if (!this._showsForgone()) dropped.add(FORGONE);
     if (!this._hasComparison()) dropped.add(CHANGE);
     return COLUMNS.filter((column) => !dropped.has(column)).map((column) => {
       if (column !== PAID) return column;
@@ -247,8 +249,27 @@ class HeaDevicesCard extends HeaTableCard {
     });
   }
 
+  /**
+   * Whether the range is a column: as chosen, or by the screen when left on
+   * Automatic. On a wide screen the table has room for every figure outright,
+   * and hiding the range behind a rollover there only made it harder to find.
+   */
   _rangeAsColumn() {
-    return this._config?.range === "column" && this._hasEveryBound();
+    const chosen = this._config?.range;
+    const asColumn =
+      chosen === "column" || (chosen !== "rollover" && !this._isNarrow());
+    return asColumn && this._hasEveryBound();
+  }
+
+  /**
+   * Could have earned where a row forwent something and there is room for it.
+   *
+   * Left out of the reduced table on a phone rather than squeezed in: it is the
+   * one add-on that is not about money paid, so it is the one to give up first,
+   * and the note under the table says where it went (HEA-224).
+   */
+  _showsForgone() {
+    return this._hasForgone() && !this._isNarrow();
   }
 
   /**
@@ -304,11 +325,16 @@ class HeaDevicesCard extends HeaTableCard {
    * money paid, and saying so is not something a range note can do for it.
    */
   _disclosure(locale) {
-    const notes = [
-      this._rangeDisclosure(locale),
-      this._hasForgone() ? this._labels.forgone_note : "",
-    ].filter(Boolean);
+    const notes = [this._rangeDisclosure(locale), this._forgoneNote()].filter(Boolean);
     return notes.length ? `<div class="disclosure">${notes.join(" ")}</div>` : "";
+  }
+
+  /** What the column is where it is shown, and where it went where it is not. */
+  _forgoneNote() {
+    if (!this._hasForgone()) return "";
+    return this._showsForgone()
+      ? this._labels.forgone_note
+      : this._labels.forgone_hidden_note;
   }
 
   _rangeDisclosure(locale) {
@@ -343,16 +369,17 @@ class HeaDevicesCardEditor extends HeaCardEditor {
     const labels = labelsFor(this._hass);
     return [
       ...sortSchemaFor(SORTS, labels),
-      // Offered rather than decided, because the two readings trade off: a
-      // rollover keeps Paid as the single figure on the row, and a column can be
-      // sorted and read down the page (HEA-198, HEA-100's precedent). Either way
-      // it is an add-on to Paid, never a change to what Paid means (ADR-0029).
+      // Automatic by default - a column where there is room, a rollover on a
+      // phone (HEA-224) - with either one available to a household who wants it
+      // everywhere. Either way it is an add-on to Paid, never a change to what
+      // Paid means (ADR-0029).
       {
         name: "range",
         selector: {
           select: {
             mode: "dropdown",
             options: [
+              { value: "auto", label: labels.editor_range_auto },
               { value: "rollover", label: labels.editor_range_rollover },
               { value: "column", label: labels.editor_range_column },
             ],

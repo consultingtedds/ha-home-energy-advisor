@@ -87,9 +87,28 @@ const TONE_STYLE = `
   .gain { color: var(--success-color, #4caf50); }
 `;
 
+/**
+ * Where a card stops having room for everything.
+ *
+ * Home Assistant's own Sankey card turns at its `_isMobileSize` breakpoint; this
+ * is that width, so every card that changes shape on a phone changes at the same
+ * moment as theirs rather than one going narrow beside another that has not.
+ */
+export const NARROW = "(max-width: 767px)";
+
 export class HeaCard extends HTMLElement {
   /** Extra CSS for the subclass's own markup. */
   static cardStyle = "";
+
+  /**
+   * A media query whose answer changes what this card draws, or nothing.
+   *
+   * Set it and the card redraws when that query starts or stops matching. A
+   * card that only reads the screen at render time answers `auto` once, on
+   * load, and then holds that answer however the window changes - which reads
+   * as the setting doing nothing at all, and is how it was reported (HEA-100).
+   */
+  static narrowQuery = "";
 
   /** The `cards` translation key naming this card when no title is configured. */
   static titleKey = "";
@@ -144,6 +163,7 @@ export class HeaCard extends HTMLElement {
   connectedCallback() {
     this._render();
     if (this._hass && !this._subscription) this._subscribe();
+    this._watchScreen();
   }
 
   disconnectedCallback() {
@@ -151,6 +171,37 @@ export class HeaCard extends HTMLElement {
     this._subscription = null;
     this._unfilter?.();
     this._unfilter = null;
+    // A detached card still subscribed would redraw for as long as the tab
+    // lived, and the listener would hold the card in memory with it.
+    this._screen?.removeEventListener?.("change", this._onScreenChange);
+    this._screen = null;
+  }
+
+  /**
+   * Redraw when the screen crosses the breakpoint this card cares about.
+   *
+   * `addEventListener` rather than the older `addListener`: the deprecated form
+   * is what a very old browser offers, and Home Assistant's own minimum is well
+   * past it. Optional throughout, because a test double and an unusual
+   * environment may both hand back something simpler than a MediaQueryList.
+   */
+  _watchScreen() {
+    const { narrowQuery } = this.constructor;
+    if (!narrowQuery || this._screen) return;
+    this._screen = globalThis.matchMedia?.(narrowQuery);
+    this._onScreenChange ??= () => this._render();
+    this._screen?.addEventListener?.("change", this._onScreenChange);
+  }
+
+  /**
+   * Whether the screen is narrow, for a card that changes shape on a phone.
+   *
+   * Where the browser cannot answer - `matchMedia` is not universally present -
+   * the answer is wide, because an unreadable screen size is not a reason to
+   * draw less.
+   */
+  _isNarrow() {
+    return Boolean(globalThis.matchMedia?.(NARROW)?.matches);
   }
 
   _subscribe() {

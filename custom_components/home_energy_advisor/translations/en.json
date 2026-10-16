@@ -309,6 +309,7 @@
     "card_range_note_rollover": "Hover over or tap a figure in Paid to see the range it could honestly have been. That range is the widest these readings allow, not a typical error: a meter that reports every 30-90 minutes leaves the exact moment of use unknown.",
     "card_forgone_column": "Could have earned",
     "card_forgone_note": "Could have earned is what the generation each device used could have earned had you exported it instead, at your export rate at the time. It is money you did not receive, not money you paid, and it is not part of Paid.",
+    "card_forgone_hidden_note": "Could have earned, what the generation each device used could have earned had you exported it instead, is shown on a wider screen.",
     "card_compared": "{change} vs {before}",
     "card_compared_period": "{period} vs {compared}",
     "card_saved_share": "{percent} of what you would have paid was saved.",
@@ -362,6 +363,7 @@
     "card_editor_group_by_floor": "Group by floor",
     "card_editor_group_by_area": "Group by area",
     "card_editor_range": "Show the cost range as",
+    "card_editor_range_auto": "Automatic: a column where there is room",
     "card_editor_range_rollover": "A rollover on Paid",
     "card_editor_range_column": "Its own column",
     "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report."

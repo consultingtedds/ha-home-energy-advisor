@@ -121,6 +121,9 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
      totals line it behaves like, so a reader can see it is a subtotal and not
      another device competing with its own children. */
   tbody tr.subtotal th, tbody tr.subtotal td { font-weight: 500; }
+  /* A figure that is not money anyone paid - the comparison, the money not
+     received - read as context beside the figures that moved (ADR-0029). */
+  td.muted { color: var(--secondary-text-color); }
   /*
    * A device name gets its own line on a phone. Wrapping it saves width the
    * table does not need - it already scrolls sideways - and spends height it
@@ -157,9 +160,24 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
  * in `tone` rather than the table guessing from a field it does not have
  * (HEA-99).
  */
-const classFor = (field, tone, value) => {
-  const verdict = field === "costSavings" ? savingTone(value) : changeTone(tone, value);
-  return verdict ? ` class="${verdict}"` : "";
+const toneOf = (field, tone, value) =>
+  (field === "costSavings" ? savingTone(value) : changeTone(tone, value)) ?? "";
+
+/**
+ * A cell's classes and styles, each written as one attribute.
+ *
+ * A cell can need several of either - a nested name cell carries its depth and
+ * its verdict edge, a muted figure its tone as well - and an element keeps only
+ * the first of two attributes with the same name. Written separately, the second
+ * was silently dropped, which is how every nested row lost its coloured edge.
+ */
+const attributes = ({ classes = [], styles = [] }) => {
+  const named = classes.filter(Boolean);
+  const styled = styles.filter(Boolean);
+  return (
+    (named.length ? ` class="${named.join(" ")}"` : "") +
+    (styled.length ? ` style="${styled.join("; ")}"` : "")
+  );
 };
 
 /**
@@ -175,7 +193,7 @@ const classFor = (field, tone, value) => {
  * shadow is painted inside the cell it already has.
  */
 const edgeOf = (verdict) =>
-  verdict ? ` style="box-shadow: inset ${EDGE_WIDTH} 0 0 ${verdict.edge}"` : "";
+  verdict ? `box-shadow: inset ${EDGE_WIDTH} 0 0 ${verdict.edge}` : "";
 
 const EDGE_WIDTH = "4px";
 
@@ -310,28 +328,44 @@ export class HeaTableCard extends HeaCard {
       .join("")}</tr>`;
   }
 
-  _cell(
-    { field, derive, format, tone, carriesVerdict, reveal },
-    device,
-    locale,
-    verdict,
-    depth,
-  ) {
+  _cell(column, device, locale, verdict, depth) {
+    const { field, derive, format, reveal } = column;
     // A device name is the household's own text, so it is escaped rather than
     // trusted; the figures are Intl output and carry no markup.
     if (!format) {
       // How deep, as a property the indent is computed from, so a circuit inside
       // a circuit steps in again rather than lining up with its parent (HEA-218).
-      const inside = depth ? ` class="inside" style="--depth: ${depth}"` : "";
-      return `<th scope="row"${inside}${edgeOf(verdict)}>${escapeText(device.name)}</th>`;
+      const cell = attributes({
+        classes: [depth ? "inside" : ""],
+        styles: [depth ? `--depth: ${depth}` : "", edgeOf(verdict)],
+      });
+      return `<th scope="row"${cell}>${escapeText(device.name)}</th>`;
     }
     const value = derive ? derive(device) : device[field];
-    const mark = carriesVerdict ? this._verdictOn(verdict, locale) : "";
     const body = this._revealed(
       format(value, locale),
       reveal?.(device, locale, this._labels),
     );
-    return `<td${classFor(field, tone, value)}${mark}>${body}</td>`;
+    return `<td${this._figureAttributes(column, value, verdict, locale)}>${body}</td>`;
+  }
+
+  /**
+   * A figure's tone, whether it is muted, and its verdict, as one set of
+   * attributes.
+   *
+   * Muted is for a figure that is not money anyone paid - the comparison and
+   * the money not received - so it reads as context beside the figures that
+   * moved (ADR-0029). Grey rather than a hue of its own, because a second colour
+   * on the row would compete with the verdict on Paid.
+   */
+  _figureAttributes({ field, tone, muted, carriesVerdict }, value, verdict, locale) {
+    const judged = carriesVerdict ? this._verdictOn(verdict, locale) : null;
+    return (
+      attributes({
+        classes: [toneOf(field, tone, value), muted ? "muted" : ""],
+        styles: [judged?.style],
+      }) + (judged ? ` title="${escapeText(judged.title)}"` : "")
+    );
   }
 
   /**
@@ -362,17 +396,19 @@ export class HeaTableCard extends HeaCard {
     // it, which is right: the summary line is the one row always worth reading.
     const overall = verdict?.(totals);
     const cells = this._columns()
-      .map(({ field, derive, format, tone, carriesVerdict }) => {
+      .map((column) => {
+        const { field, derive, format } = column;
         if (!format) {
-          return `<th scope="row"${edgeOf(overall)}>${this._labels.total}</th>`;
+          const edge = attributes({ styles: [edgeOf(overall)] });
+          return `<th scope="row"${edge}>${this._labels.total}</th>`;
         }
         // Derived from the summed fields, never from the rows' own derived
         // values: a table's rate is what the period came to overall.
         const value = derive ? derive(totals) : totals[field];
-        const mark = carriesVerdict ? this._verdictOn(overall, locale) : "";
         // Through the same verdict as every row above it. Rendered plain, the
         // total was the one uncoloured figure in a coloured column (HEA-99).
-        return `<td${classFor(field, tone, value)}${mark}>${format(value, locale)}</td>`;
+        const cell = this._figureAttributes(column, value, overall, locale);
+        return `<td${cell}>${format(value, locale)}</td>`;
       })
       .join("");
     return `<tr>${cells}</tr>`;
@@ -387,9 +423,11 @@ export class HeaTableCard extends HeaCard {
    * reader who would rather not take a hue's word for it.
    */
   _verdictOn(verdict, locale) {
-    if (!verdict) return "";
-    const said = verdictSentence(verdict.rate, this._labels, locale);
-    return ` style="color: ${verdict.text}" title="${escapeText(said)}"`;
+    if (!verdict) return null;
+    return {
+      style: `color: ${verdict.text}`,
+      title: verdictSentence(verdict.rate, this._labels, locale),
+    };
   }
 
   /**

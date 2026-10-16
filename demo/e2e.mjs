@@ -52,6 +52,9 @@ import {
 const DASHBOARD_PATH = "home-energy-advisor";
 const VIEWPORT = { width: 1600, height: 1200 };
 
+/** A phone in portrait, below the width at which the cards turn narrow. */
+const PHONE = { width: 390, height: 844 };
+
 /** Long enough for a cold module load, which is the slow path (HEA-114). */
 const PATIENCE_MS = 30000;
 
@@ -439,6 +442,37 @@ async function figureChecks(page) {
 async function costRangeChecks(page) {
   console.log("The cost range:");
 
+  // Where the table has room the range is a column of its own, and where it has
+  // not it moves behind Paid (HEA-224). The heading is matched by its shape -
+  // "Paid (min-max)", "Pagado (mín-máx)" - because the run is in two languages.
+  const rangeHeadings = () =>
+    page
+      .locator("hea-devices-card")
+      .first()
+      .evaluate((card) =>
+        [...card.shadowRoot.querySelectorAll("thead th")]
+          .map((cell) => cell.textContent.trim())
+          .filter((heading) => /\(.+-.+\)/.test(heading)),
+      );
+
+  await check("on a wide screen the cost range is a column of its own", async () => {
+    const headings = await rangeHeadings();
+    assert(
+      headings.length === 1,
+      `expected one range column at ${VIEWPORT.width}px, found ${JSON.stringify(headings)}`,
+    );
+  });
+
+  // A phone's width, below Home Assistant's own breakpoint, for the reduced
+  // table. The card redraws when the screen crosses it.
+  await page.setViewportSize(PHONE);
+  await page.waitForTimeout(1500);
+
+  await check("on a phone the range moves behind Paid", async () => {
+    const headings = await rangeHeadings();
+    assert(headings.length === 0, `a range column at phone width: ${headings}`);
+  });
+
   await check("the devices card offers a cost range to reveal", async () => {
     const reveals = await page
       .locator("hea-devices-card")
@@ -496,6 +530,10 @@ async function costRangeChecks(page) {
     assert(box !== null, "nothing became visible when the range was revealed");
     assert(box.left >= 0, `the revealed range sits off the left edge at ${box.left}px`);
   });
+
+  // Back to the width every other check expects.
+  await page.setViewportSize(VIEWPORT);
+  await page.waitForTimeout(1500);
   console.log("");
 }
 

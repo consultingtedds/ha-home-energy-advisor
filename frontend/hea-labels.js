@@ -81,6 +81,9 @@ export const DEFAULTS = Object.freeze({
     "Could have earned is what the generation each device used could have " +
     "earned had you exported it instead, at your export rate at the time. It is " +
     "money you did not receive, not money you paid, and it is not part of Paid.",
+  forgone_hidden_note:
+    "Could have earned, what the generation each device used could have earned " +
+    "had you exported it instead, is shown on a wider screen.",
   compared: "{change} vs {before}",
   compared_period: "{period} vs {compared}",
   saved_share: "{percent} of what you would have paid was saved.",
@@ -149,6 +152,7 @@ export const DEFAULTS = Object.freeze({
   editor_group_by_floor: "Group by floor",
   editor_group_by_area: "Group by area",
   editor_range: "Show the cost range as",
+  editor_range_auto: "Automatic: a column where there is room",
   editor_range_rollover: "A rollover on Paid",
   editor_range_column: "Its own column",
 });

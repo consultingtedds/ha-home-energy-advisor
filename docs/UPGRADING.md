@@ -42,7 +42,11 @@ earned** column beside Saved. No figure has changed; they are just no longer
 added together, and the setting that chose between the two readings has gone.
 
 On the generated dashboard the summary and the table now span the full width
-of a large screen, with the charts beneath them. On a phone nothing moves.
+of a large screen, with the charts beneath them, and the table uses the room:
+the range of what each device could have cost is its own **Paid (min-max)**
+column there. On a phone the table is reduced instead - the range goes back
+behind a tap on Paid and Could have earned is left out. If you chose a layout
+for the range in the card's settings, that choice still holds.
 
 ## 0.10.0
 

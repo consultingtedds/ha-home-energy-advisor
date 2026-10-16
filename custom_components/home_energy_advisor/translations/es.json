@@ -309,6 +309,7 @@
     "card_range_note_rollover": "Pasa el cursor o toca una cifra de Pagado para ver el rango en el que honestamente podría haber estado. Ese rango es el más amplio que permiten estas lecturas, no un error típico: un contador que informa cada 30-90 minutos deja sin determinar el momento exacto del consumo.",
     "card_forgone_column": "Podría haber ganado",
     "card_forgone_note": "Podría haber ganado es lo que la generación que usó cada dispositivo podría haber ganado si la hubieras exportado, a tu tarifa de exportación de ese momento. Es dinero que no recibiste, no dinero que pagaste, y no forma parte de Pagado.",
+    "card_forgone_hidden_note": "Podría haber ganado, lo que la generación que usó cada dispositivo podría haber ganado si la hubieras exportado, se muestra en una pantalla más ancha.",
     "card_compared": "{change} frente a {before}",
     "card_compared_period": "{period} frente a {compared}",
     "card_saved_share": "Se ahorró el {percent} de lo que habrías pagado.",
@@ -362,6 +363,7 @@
     "card_editor_group_by_floor": "Agrupar por planta",
     "card_editor_group_by_area": "Agrupar por área",
     "card_editor_range": "Mostrar el rango de coste como",
+    "card_editor_range_auto": "Automático: una columna donde haya espacio",
     "card_editor_range_rollover": "Al pasar sobre Pagado",
     "card_editor_range_column": "Su propia columna",
     "card_still_accruing": "El último intervalo aún se está contando, así que su barra crecerá. Las cifras están completas unos veinte minutos por detrás del reloj, que es el tiempo que se da a los contadores para informar."

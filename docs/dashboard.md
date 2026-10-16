@@ -77,7 +77,10 @@ every card takes.
 ![The device table: each device with its energy, cost, what it would have cost, its saving and an effective rate](images/card-devices.png)
 
 Every device as a row, with energy, money, and the rate per kWh it worked out
-at. The coloured edge compares that rate to grid price.
+at. The coloured edge, and the colour of each Paid figure, compare what was
+paid with what the grid would have charged; hover or tap a coloured Paid
+figure for the comparison in words. Would have paid and Could have earned are
+in grey, because neither is money anyone paid.
 
 `sort_by`: `actual_cost` (default), `cost_at_grid_price`, `cost_savings`,
 `energy_used`
@@ -179,18 +182,18 @@ place:
   data says where, so the cost is knowable only to a range. What is shown is the
   widest those readings allow, which is not a typical error (ADR-0016).
 
-  Hover a **Paid** figure on Cost by device, or tap it on a phone, and the range
-  appears beside it. It is a rollover rather than a column because a column gives
-  an uncertainty band the same weight as the figure it qualifies. If you would
-  rather have the column - it can be sorted, and it announces that the figures
-  carry a range at all - set **Show the cost range as** to **Its own column** in
-  the card's settings.
+  On a wide screen Cost by device shows it as a **Paid (min-max)** column beside
+  Paid. On a phone, where there is no room for it, it moves behind Paid: tap a
+  **Paid** figure and the range appears beside it. To have one or the other
+  everywhere, set **Show the cost range as** to **Its own column** or **A
+  rollover on Paid** in the card's settings; **Automatic** is the default.
 
   **Paid is always what you paid.** If you export, a **Could have earned**
   column appears beside Saved: what the generation each device used could have
   earned had you exported it instead. It is money you did not receive, not money
   you paid, so it is never added into Paid - and on every row, Would have paid
-  less Paid is the Saved beside it (ADR-0029).
+  less Paid is the Saved beside it (ADR-0029). On a phone the column is left
+  out to keep the table narrow, and the note under the table says so.
 
   The range covers only where the energy can actually have been. A slice where
   your house used almost nothing cannot have supplied a whole kilowatt-hour, so

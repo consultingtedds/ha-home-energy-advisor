@@ -173,6 +173,21 @@ describe("the devices card's own options", () => {
     ]);
   });
 
+  it("offers the range automatically first, then either layout everywhere", () => {
+    // Given / When
+    const range = fieldOf(anEditorFor(DEVICES_TAG), "range");
+
+    // Then - Automatic leads because it is the default: a column where there is
+    // room and a rollover on a phone (HEA-224). There is no choice about
+    // folding anything into Paid any more (ADR-0029)
+    expect(range.selector.select.options).toEqual([
+      { value: "auto", label: "Automatic: a column where there is room" },
+      { value: "rollover", label: "A rollover on Paid" },
+      { value: "column", label: "Its own column" },
+    ]);
+    expect(fieldOf(anEditorFor(DEVICES_TAG), "forgone")).toBeUndefined();
+  });
+
   it("is not offered on the totals card, which has nothing to sort", () => {
     // Given / When / Then
     expect(fieldOf(anEditorFor(TOTALS_TAG), "sort_by")).toBeUndefined();

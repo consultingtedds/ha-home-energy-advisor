@@ -24,7 +24,7 @@
  * diagram, and there is nowhere honest to draw it.
  */
 
-import { registerCard } from "./hea-card-base.js";
+import { NARROW, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
 import { formatEnergy, formatMoney } from "./hea-format.js";
@@ -61,15 +61,6 @@ const METRICS = {
     format: formatEnergy,
   },
 };
-
-/**
- * Where four columns stop fitting across a screen.
- *
- * Home Assistant's own Sankey card turns at its `_isMobileSize` breakpoint;
- * this is that width, so the two cards turn together rather than one going
- * sideways beside another that has not.
- */
-const NARROW = "(max-width: 767px)";
 
 /**
  * How tall the diagram stands, each way round.
@@ -223,7 +214,7 @@ class HeaDistributionCard extends HeaChartCard {
     const layout = this._config?.layout;
     if (layout === "vertical") return true;
     if (layout === "horizontal") return false;
-    return Boolean(globalThis.matchMedia?.(NARROW)?.matches);
+    return this._isNarrow();
   }
 }
 
