@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.11.0
 
 **If you export, Cost by device leads with what you paid again.** Its main
 column had been adding what your generation could have earned to what you
