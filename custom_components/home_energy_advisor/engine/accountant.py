@@ -396,10 +396,15 @@ class _WindowBucket:
     Judging on the claim is what lets a condemned device recover: its readings
     keep being weighed, so an honest source is believed again as soon as it is
     honest.
+
+    ``start`` is the interval it is evidence for, so energy that arrives late can
+    be weighed against the house in the interval it belongs to (HEA-225). ``None``
+    only for an entry restored from a snapshot written before it was kept.
     """
 
     consumption: Decimal
     claimed: dict[str, Decimal]
+    start: datetime | None = None
 
 
 @dataclass
@@ -921,6 +926,7 @@ class Accountant:
                     "claimed": {
                         device: str(kwh) for device, kwh in bucket.claimed.items()
                     },
+                    "start": None if bucket.start is None else bucket.start.isoformat(),
                 }
                 for bucket in self._window
             ],
@@ -1073,6 +1079,13 @@ class Accountant:
                         device: Decimal(kwh)
                         for device, kwh in bucket["claimed"].items()
                     },
+                    # Absent from a snapshot written before HEA-225; such a
+                    # window falls back to the newest entry until it refreshes.
+                    start=(
+                        None
+                        if bucket.get("start") is None
+                        else datetime.fromisoformat(bucket["start"])
+                    ),
                 )
                 for bucket in data["window"]
             ),
@@ -1674,7 +1687,7 @@ class Accountant:
         watermark - so the plausibility guard has to cover it too, or it would have
         missed the very case it exists for (HEA-60).
         """
-        self._claim(device, kwh)
+        self._claim(device, kwh, start)
         if device in self._implausible:
             self._note_implausible(device, start, kwh)
             return
@@ -1739,7 +1752,7 @@ class Accountant:
         raw = self._raw.pop(start, {})
         claimed = self._draws.pop(start, {})
         served = self._decompose(raw, start)
-        self._weigh_plausibility(served, claimed)
+        self._weigh_plausibility(served, claimed, start)
         draws = self._own_draws(self._believable(claimed, start), start)
         prices, sources, forgone_prices = self._price_sources(
             served, self._price_at(start), start
@@ -2014,21 +2027,48 @@ class Accountant:
             if (snapshot := source.snapshot()).scale_change is not None
         }
 
-    def _claim(self, device: str, kwh: Decimal) -> None:
-        """Add late-arriving energy to the newest window entry, as evidence.
+    def _claim(self, device: str, kwh: Decimal, start: datetime | None = None) -> None:
+        """Add late-arriving energy to the window, as evidence.
 
-        Attributed to the current window rather than the bucket it belongs to:
-        the guard asks "is this source telling the truth *now*", and a claim is
-        evidence whenever it lands. Recording it even while the device is
-        condemned is what lets an honest source earn its way back.
+        Against the interval it belongs to, where that interval is still in the
+        window, so the guard weighs a device against the house over the same
+        stretch of time. Piling it all onto the newest interval instead weighed a
+        two-hour step from a sparse counter against one hour of house, and
+        condemned a pump that never drew more than the house did (HEA-225).
+
+        A portion from before the window is left out of it: the window cannot
+        weigh it against the house it was used in, and the step it came in has
+        already been weighed over its whole span by `_within_the_house`. With no
+        interval named - a step refused whole for leaving the house - it is
+        evidence about the source now, and lands on the newest interval.
+
+        Recorded even while the device is condemned, which is what lets an
+        honest source earn its way back.
         """
         if not self._window:
             return
-        newest = self._window[-1].claimed
-        newest[device] = newest.get(device, Decimal(0)) + kwh
+        entry = self._window_entry(start)
+        if entry is None:
+            return
+        entry.claimed[device] = entry.claimed.get(device, Decimal(0)) + kwh
+
+    def _window_entry(self, start: datetime | None) -> _WindowBucket | None:
+        """The window entry for the interval at ``start``, if it is in the window.
+
+        The newest entry where no interval is named, or where the window holds
+        entries restored without one: the behaviour before intervals were kept,
+        for the hour it takes such a window to refresh.
+        """
+        newest = self._window[-1]
+        if start is None or self._window[0].start is None:
+            return newest
+        for entry in self._window:
+            if entry.start == start:
+                return entry
+        return None if start < self._window[0].start else newest
 
     def _weigh_plausibility(
-        self, served: Served, claimed: Mapping[str, Decimal]
+        self, served: Served, claimed: Mapping[str, Decimal], start: datetime
     ) -> None:
         """Record this interval's evidence and re-judge every device against it.
 
@@ -2047,9 +2087,22 @@ class Accountant:
             return
         consumption = served.grid + served.generation + served.battery
         self._window.append(
-            _WindowBucket(consumption=consumption, claimed=dict(claimed))
+            _WindowBucket(consumption=consumption, claimed=dict(claimed), start=start)
         )
         self._implausible = self._judge()
+
+    def plausibility_evidence(self, device: str) -> tuple[Decimal, Decimal]:
+        """What ``device`` claimed and what the house used, over the window weighed.
+
+        The two figures the guard compared, for the Repair that names a device
+        it set aside: concrete enough for a household to check against the
+        sensor's own history, and to quote in a report (HEA-226).
+        """
+        claimed = _sum(
+            bucket.claimed.get(device, Decimal(0)) for bucket in self._window
+        )
+        house = _sum(bucket.consumption for bucket in self._window)
+        return claimed, house
 
     def _judge(self) -> frozenset[str]:
         """Devices claiming more than the house across a *full* window.
