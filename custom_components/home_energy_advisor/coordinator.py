@@ -114,6 +114,19 @@ _SCALE_HELP_URL = (
     "/blob/main/docs/troubleshooting.md#a-device-paused-after-its-firmware-updated"
 )
 
+# Where the implausible-source Repair sends a household: what being set aside
+# does to their figures, and how to tell a faulty sensor from a sparse one
+# (HEA-226).
+_IMPLAUSIBLE_HELP_URL = (
+    "https://github.com/consultingtedds/ha-home-energy-advisor"
+    "/blob/main/docs/troubleshooting.md"
+    "#a-device-is-reporting-more-energy-than-the-whole-house"
+)
+
+# Two places, as kWh: enough to compare with a sensor's history, and no false
+# precision in a notification.
+_KWH_SHOWN = Decimal("0.01")
+
 _ROLE_BY_CONF: dict[str, SourceRole] = {
     CONF_GRID_IMPORT_ENTITY: SourceRole.GRID_IMPORT,
     CONF_GRID_EXPORT_ENTITY: SourceRole.GRID_EXPORT,
@@ -602,21 +615,38 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         name left to call it by is its subentry id, which means nothing to the
         household and names nothing they can open (HEA-146).
         """
-        implausible = {
-            self._device_name(device)
+        devices_by_name = {
+            self._device_name(device): device
             for device in self._accountant.implausible_devices()
             if device in self._entry.subentries
         }
+        implausible = set(devices_by_name)
         for name in implausible - self._implausible_sources:
             issues.async_raise(
                 self.hass,
                 issues.implausible_source_issue_id(name),
                 issues.ISSUE_IMPLAUSIBLE_SOURCE,
-                {"name": name},
+                self._implausible_details(name, devices_by_name[name]),
+                learn_more_url=_IMPLAUSIBLE_HELP_URL,
             )
         for name in self._implausible_sources - implausible:
             issues.async_clear(self.hass, issues.implausible_source_issue_id(name))
         self._implausible_sources = implausible
+
+    def _implausible_details(self, name: str, device: str) -> dict[str, str]:
+        """The Repair's evidence: the sensor, and the two figures it was judged on.
+
+        Given in the notification itself so a household can check them against
+        the sensor's own history without opening anything else, and so a report
+        quoting the notification carries what is needed to look into it.
+        """
+        claimed, house = self._accountant.plausibility_evidence(device)
+        return {
+            "name": name,
+            "entity": self._devices.get(device, ""),
+            "claimed": str(claimed.quantize(_KWH_SHOWN)),
+            "house": str(house.quantize(_KWH_SHOWN)),
+        }
 
     def _check_refused_steps(self) -> None:
         """Name, in Repairs, any input whose counter leapt and was refused.

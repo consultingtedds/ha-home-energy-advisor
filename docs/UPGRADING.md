@@ -32,6 +32,16 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you were told a device "is reporting more energy than the whole house",
+check whether its energy sensor only updates every hour or two.** Such a sensor
+could be set aside wrongly when one of its steps covered more than an hour,
+which moved that device's energy into Untracked for a while. It is now weighed
+against the hour each part of the step belongs to. Your totals were never
+affected, so there is nothing to reset; the notification now says what it was
+judged on and what to check.
+
 ## 0.11.0
 
 **If you export, Cost by device leads with what you paid again.** Its main

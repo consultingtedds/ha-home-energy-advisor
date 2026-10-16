@@ -83,9 +83,8 @@ if it is one device, or the entry above if it is all of them.
   that device's share is counted under Untracked instead. Choose a different
   sensor for the device, or check the integration that provides it.
 - **A notification says the device "is reporting more energy than the whole
-  house".** That sensor is faulty, so Home Energy Advisor has stopped counting it
-  to protect your other figures. It starts again by itself once the readings make
-  sense. If the device offers another energy sensor, choose that one instead.
+  house".** See [A device is reporting more energy than the whole
+  house](#a-device-is-reporting-more-energy-than-the-whole-house) below.
 - **Its sensor does not say what unit it is in.** Home Energy Advisor counts in
   kWh and Wh. A sensor reporting something else - MWh, or no unit at all - is
   left uncounted rather than guessed at, because a number whose size is unknown
@@ -97,6 +96,38 @@ if it is one device, or the entry above if it is all of them.
   lost contact - a cloud device that needs signing in again, say - looks exactly
   like a device that is switched off. Check whether that integration is asking
   you to reauthenticate.
+
+## A device is reporting more energy than the whole house
+
+The notification gives two figures: what the device's sensor reported over the
+last hour, and what your whole home used over the same hour. A device cannot use
+more than the house it is in, so Home Energy Advisor sets that sensor's readings
+aside until they fit again, and starts counting them by itself when they do.
+
+**Your totals are not affected.** While a sensor is set aside, what it reports
+is counted under Untracked Energy Devices, so the household's energy and cost
+stay correct. Only the split between that device and Untracked is off for the
+time it was set aside. **Do not reset your totals over this**: Reset totals
+clears the history of every device, to correct a split that sorts itself out.
+
+**Telling a faulty sensor from a slow one.** Open the sensor named in the
+notification in **History**, beside the appliance's power if it has a power
+sensor:
+
+- **The sensor's total leaps far beyond anything the appliance could use**, or
+  climbs while the appliance is off. The sensor is wrong. A counter that was
+  rescaled by a firmware update, or one that keeps adding its own total to
+  itself, looks like this. If the device offers another energy sensor, choose
+  that one instead; if it was rescaled, see [A device paused after its firmware
+  updated](#a-device-paused-after-its-firmware-updated).
+- **The sensor updates only every hour or two, in steps that match the
+  appliance's power over that time.** The sensor is fine and only slow. Versions
+  before 0.11.1 could set such a sensor aside wrongly when one step covered more
+  than an hour; update, and it is weighed against the right hour.
+
+If you report it on GitHub, include the two figures from the notification and a
+diagnostics download (Settings > Devices & services > Home Energy Advisor >
+three-dot menu > Download diagnostics).
 
 ## A device's figures have stopped moving
 

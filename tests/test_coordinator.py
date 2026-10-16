@@ -866,13 +866,24 @@ async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(
         await hass.async_block_till_done()
     await _tick(hass, freezer, start + timedelta(minutes=100))
 
-    # Then - a Repair names the offending device, so the user is told which source
-    # to look at rather than left to infer it from a flat cost figure
+    # Then - a Repair names the offending device and its sensor, and gives the
+    # evidence it was judged on: over the hour weighed, 0.5 kWh claimed every five
+    # minutes against 0.005 the house used. Concrete enough to check against the
+    # sensor's own history, and to quote in a report (HEA-226)
     issue = ir.async_get(hass).async_get_issue(
         DOMAIN, issues.implausible_source_issue_id("Coarse Step Aircon")
     )
     assert issue is not None
-    assert issue.translation_placeholders == {"name": "Coarse Step Aircon"}
+    assert issue.translation_placeholders == {
+        "name": "Coarse Step Aircon",
+        "entity": "sensor.coarse_step_energy",
+        "claimed": "6.00",
+        "house": "0.06",
+    }
+    assert issue.learn_more_url == (
+        "https://github.com/consultingtedds/ha-home-energy-advisor/blob/main/docs/"
+        "troubleshooting.md#a-device-is-reporting-more-energy-than-the-whole-house"
+    )
 
     # When - the source starts telling the truth again for a full window
     for index, minute in enumerate(range(105, 180, 5)):
