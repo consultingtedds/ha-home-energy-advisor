@@ -62,7 +62,6 @@ export const DEFAULTS = Object.freeze({
   would_have_paid: "Would have paid",
   saved: "Saved",
   lost: "Lost",
-  paid_with_forgone: "Cost of use",
   range_column: "Paid (min-max)",
   range_note:
     "Paid (min-max) is the widest range these readings allow, not a typical " +
@@ -77,20 +76,11 @@ export const DEFAULTS = Object.freeze({
     "have been. That range is the widest these readings allow, not a typical " +
     "error: a meter that reports every 30-90 minutes leaves the exact moment " +
     "of use unknown.",
-  range_note_cost_of_use:
-    "Hover over or tap a figure in Cost of use to see what it is made of: what " +
-    "you paid, with the range it could honestly have been, plus what your own " +
-    "generation could have earned by exporting instead, at your export rate at " +
-    "the time. That second part is not money you paid, but money you did not " +
-    "receive. The range covers only what you paid. It is the widest these " +
-    "readings allow, not a typical error: a meter that reports every 30-90 " +
-    "minutes leaves the exact moment of use unknown.",
-  range_note_not_cost_of_use:
-    "It ranges what you paid, not Cost of use, which is what you paid plus " +
-    "Forgone export.",
-  forgone_column: "Forgone export",
-  paid_breakdown: "Paid {paid} ({range}) + {forgone} your generation could have earned",
-  paid_breakdown_unranged: "Paid {paid} + {forgone} your generation could have earned",
+  forgone_column: "Could have earned",
+  forgone_note:
+    "Could have earned is what the generation each device used could have " +
+    "earned had you exported it instead, at your export rate at the time. It is " +
+    "money you did not receive, not money you paid, and it is not part of Paid.",
   compared: "{change} vs {before}",
   compared_period: "{period} vs {compared}",
   saved_share: "{percent} of what you would have paid was saved.",
@@ -158,9 +148,6 @@ export const DEFAULTS = Object.freeze({
   editor_metric: "Measure by",
   editor_group_by_floor: "Group by floor",
   editor_group_by_area: "Group by area",
-  editor_forgone: "Count what your own generation could have earned",
-  editor_forgone_include: "Include it in the cost",
-  editor_forgone_exclude: "Show only what you paid",
   editor_range: "Show the cost range as",
   editor_range_rollover: "A rollover on Paid",
   editor_range_column: "Its own column",

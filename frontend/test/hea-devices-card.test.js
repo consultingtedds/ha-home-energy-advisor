@@ -1236,40 +1236,43 @@ describe("what the household's own generation gave up", () => {
     return row.querySelectorAll("td")[1].textContent.trim();
   };
 
-  it("adds it to the cost by default, and says so in the heading", async () => {
+  it("keeps Paid as the headline for a household who export", async () => {
     // Given / When - a household who export, with the card left alone
     const card = mount(FORGOING);
     await ready(card);
 
-    // Then - the column is no longer called Paid, because the figure is no
-    // longer what they paid: 0.11 paid plus 0.25 of export not earned
-    expect(headingsOf(card)).toContain(LABELS.paid_with_forgone);
-    expect(headingsOf(card)).not.toContain(LABELS.paid);
-    expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]36/);
+    // Then - the money that left the bank account, under its own name, and the
+    // export not earned beside it rather than inside it (ADR-0029)
+    expect(headingsOf(card)).toContain(LABELS.paid);
+    expect(paidCellOf(card, "Slow Poll Aircon")).toBe("€0.11");
+    expect(headingsOf(card)).toContain("Could have earned");
   });
 
-  it("shows what they paid when asked to", async () => {
-    // Given / When - the household who wants the bank-account answer
-    const card = mount(FORGOING, { forgone: "exclude" });
-    await ready(card);
+  it("ignores a stored setting that used to fold it into the cost", async () => {
+    // Given / When - cards saved while the table could merge the two, either way
+    for (const forgone of ["include", "exclude"]) {
+      const card = mount(FORGOING, { forgone });
+      await ready(card);
 
-    // Then - the heading and the figure are both back to what was paid
-    expect(headingsOf(card)).toContain(LABELS.paid);
-    expect(headingsOf(card)).not.toContain(LABELS.paid_with_forgone);
-    expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]11/);
+      // Then - the same table either way: no configuration changes what a
+      // column means
+      expect([forgone, headingsOf(card)]).toEqual([
+        forgone,
+        ["Device", "Energy", "Paid", "Would have paid", "Saved", "Could have earned", "Rate c/kWh"],
+      ]);
+      expect(paidCellOf(card, "Slow Poll Aircon")).toBe("€0.11");
+    }
   });
 
   it("leaves a household who forgo nothing entirely alone", async () => {
     // Given / When - no panels, or panels and no export arrangement. Both
-    // forgo nothing, and changing a heading over a column of unchanged figures
-    // would be a worse answer than leaving it alone.
+    // forgo nothing, and a column of zeros would read as a fault.
     const card = mount(aHass({ devices: THREE_DEVICES, response: THREE_RESPONSE }));
     await ready(card);
 
     // Then - the table they had before this existed
-    expect(headingsOf(card)).toContain(LABELS.paid);
-    expect(headingsOf(card)).not.toContain(LABELS.paid_with_forgone);
-    expect(paidCellOf(card, "Slow Poll Aircon")).toMatch(/0[.,]11/);
+    expect(headingsOf(card)).not.toContain("Could have earned");
+    expect(paidCellOf(card, "Slow Poll Aircon")).toBe("€0.11");
   });
 
   /**
@@ -1293,153 +1296,96 @@ describe("what the household's own generation gave up", () => {
   const revealedIn = (card, device) =>
     revealIn(card, device).querySelector(".revealed").textContent;
 
-  it("breaks Cost of use down rather than ranging it as what was paid", async () => {
+  it("ranges Paid alone, even on a row that forwent something", async () => {
     // Given / When - a device that paid 3.00, could honestly have paid anywhere
-    // from 2.80 to 3.10, and forwent 1.50 of export. Its Cost of use is 4.50,
-    // and rolling the range of what was paid over that put the whole range
-    // below the figure it was qualifying (HEA-214)
+    // from 2.80 to 3.10, and forwent 1.50 of export
     const card = mount(FORGOING_AND_BOUNDED);
     await ready(card);
 
-    // Then - what the figure is made of, with the range on the part it bounds
-    expect(paidCellOf(card, "Fine Meter Aircon")).toMatch(/^€4\.50/);
-    expect(revealedIn(card, "Fine Meter Aircon")).toBe(
-      "Paid €3.00 (€2.80 - €3.10) + €1.50 your generation could have earned",
+    // Then - the rollover qualifies the figure it sits on and nothing else
+    expect(paidCellOf(card, "Fine Meter Aircon")).toMatch(/^€3\.00/);
+    expect(revealedIn(card, "Fine Meter Aircon")).toBe("€2.80 - €3.10");
+    expect(revealIn(card, "Fine Meter Aircon").getAttribute("aria-label")).toBe(
+      "€3.00 (€2.80 - €3.10)",
     );
   });
 
-  it("reads the whole breakdown to a screen reader", async () => {
-    // Given / When - the same household, read without hovering
+  it("shows what could have been earned as a column of its own", async () => {
+    // Given / When
     const card = mount(FORGOING_AND_BOUNDED);
     await ready(card);
 
-    // Then - the figure it qualifies, then what it is made of
-    expect(revealIn(card, "Slow Poll Aircon").getAttribute("aria-label")).toBe(
-      "Cost of use €0.36: Paid €0.11 (€0.02 - €0.40) + €0.25 your generation " +
-        "could have earned",
-    );
-  });
-
-  it("breaks down a row that has no range of its own", async () => {
-    // Given / When - the Untracked remainder, which forgoes like any device but
-    // carries no bounds, so before this it offered nothing to explain a Cost of
-    // use above what it paid
-    const card = mount(FORGOING_AND_BOUNDED);
-    await ready(card);
-
-    // Then - the same breakdown, without a range it does not have
-    expect(revealedIn(card, "Untracked Energy Devices")).toBe(
-      "Paid €1.50 + €0.40 your generation could have earned",
-    );
-  });
-
-  it("keeps the plain range on a row that forwent nothing", async () => {
-    // Given / When - one device ran only on the grid, so its Cost of use is
-    // exactly what it paid
-    const card = mount(
-      aHass({
-        devices: THREE_DEVICES,
-        response: {
-          ...THREE_RESPONSE,
-          ...boundsFor("slow_poll_aircon", 0.02, 0.4),
-          ...boundsFor("fine_meter_aircon", 2.8, 3.1),
-          ...forgoneFor("slow_poll_aircon", 0),
-          ...forgoneFor("fine_meter_aircon", 1.5),
-        },
-      }),
-    );
-    await ready(card);
-
-    // Then - the range alone, which brackets that figure as it stands
-    expect(revealedIn(card, "Slow Poll Aircon")).toBe("€0.02 - €0.40");
-  });
-
-  it("says what Cost of use is made of, and which part the range covers", async () => {
-    // Given / When - the default table for a household who export
-    const card = mount(FORGOING_AND_BOUNDED);
-    await ready(card);
-
-    // Then - that the rollover breaks the figure down, that forgone export is
-    // money not received rather than money paid, and that the range is only on
-    // what was paid
-    expect(disclosureOf(card)).toBe(
-      "Hover over or tap a figure in Cost of use to see what it is made of: " +
-        "what you paid, with the range it could honestly have been, plus what " +
-        "your own generation could have earned by exporting instead, at your " +
-        "export rate at the time. That second part is not money you paid, but " +
-        "money you did not receive. The range covers only what you paid. It is " +
-        "the widest these readings allow, not a typical error: a meter that " +
-        "reports every 30-90 minutes leaves the exact moment of use unknown.",
-    );
-  });
-
-  it("says the range column is not a range of Cost of use", async () => {
-    // Given / When - the column, beside a Cost of use rather than a Paid
-    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
-    await ready(card);
-
-    // Then - the column's own note, and how the figure it does not bracket is
-    // made up from the columns beside it
-    expect(disclosureOf(card)).toBe(
-      "Paid (min-max) is the widest range these readings allow, not a typical " +
-        "error: a meter that reports every 30-90 minutes leaves the exact moment " +
-        "of use unknown. It ranges what you paid, not Cost of use, which is what " +
-        "you paid plus Forgone export.",
-    );
-  });
-
-  it("shows what was forgone as a column beside the range", async () => {
-    // Given / When - the range as a column, which drops the cost cell's
-    // rollover. Without another column, Cost of use 4.50 sat beside a range of
-    // 2.80 - 3.10 with nothing on the row showing the 1.50 between them
-    // (HEA-201)
-    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
-    await ready(card);
-
-    // Then - straight after the range, so the two parts of Cost of use are read
-    // together
+    // Then - after the three figures every card shares, one figure per row
     const headings = headingsOf(card);
-    const forgone = headings.indexOf(LABELS.forgone_column);
-    expect(LABELS.forgone_column).toBe("Forgone export");
-    expect(forgone).toBe(headings.indexOf(RANGE_COLUMN_LABEL) + 1);
-    const byDevice = Object.fromEntries(rows(card).map((row) => [row[0], row[forgone]]));
-    expect(byDevice["Fine Meter Aircon"]).toBe("€1.50");
-    expect(byDevice["Untracked Energy Devices"]).toBe("€0.40");
+    const earned = headings.indexOf("Could have earned");
+    expect(earned).toBe(headings.indexOf("Saved") + 1);
+    const byDevice = Object.fromEntries(rows(card).map((row) => [row[0], row[earned]]));
+    expect(byDevice).toEqual({
+      "Slow Poll Aircon": "€0.25",
+      "Fine Meter Aircon": "€1.50",
+      "Untracked Energy Devices": "€0.40",
+    });
 
     // And - summed in the totals row like every other money column:
     // 0.25 + 1.50 + 0.40
-    expect(totalCells(card)[forgone].textContent.trim()).toBe("€2.15");
+    expect(totalCells(card)[earned].textContent.trim()).toBe("€2.15");
   });
 
-  it("totals Cost of use as what was paid plus what was forgone", async () => {
+  it("keeps every row adding up as it reads", async () => {
+    // Given / When - a household who export, which is where the merged column
+    // broke this: Would have paid less Cost of use was not the Saved beside it
+    const card = mount(FORGOING_AND_BOUNDED);
+    await ready(card);
+
+    // Then - on every row, and on the total, Would have paid less Paid is Saved
+    const headings = headingsOf(card);
+    // The first amount in the cell: a Paid cell also holds its range, unrevealed
+    const money = (text) => Number(text.match(/-?\d+\.\d+/)[0]);
+    const [paid, wouldHave, saved] = ["Paid", "Would have paid", "Saved"].map((h) =>
+      headings.indexOf(h),
+    );
+    const totals = totalCells(card).map((cell) => cell.textContent.trim());
+    for (const row of [...rows(card), totals]) {
+      expect([row[0], money(row[wouldHave]) - money(row[paid])]).toEqual([
+        row[0],
+        expect.closeTo(money(row[saved]), 2),
+      ]);
+    }
+    // and the total paid is what the summary card shows: 0.11 + 3.00 + 1.50
+    expect(totals[paid]).toMatch(/^€4\.61/);
+  });
+
+  it("shows the column whichever way the range is shown", async () => {
+    // Given / When - the range as a column too
+    const card = mount(FORGOING_AND_BOUNDED, { range: "column" });
+    await ready(card);
+
+    // Then - both add-ons, each under its own name
+    expect(headingsOf(card)).toEqual(
+      expect.arrayContaining(["Paid", RANGE_COLUMN_LABEL, "Could have earned"]),
+    );
+  });
+
+  it("says what the column is, and that it is not money paid", async () => {
     // Given / When - the default table for a household who export
     const card = mount(FORGOING_AND_BOUNDED);
     await ready(card);
 
-    // Then - (0.11 + 3.00 + 1.50) paid and (0.25 + 1.50 + 0.40) forgone. A
-    // derived column sums only the fields it names, so a total that named none
-    // would have nothing to add up
-    const cost = headingsOf(card).indexOf(LABELS.paid_with_forgone);
-    expect(totalCells(card)[cost].textContent.trim()).toBe("€6.76");
+    // Then - the range's own note, then one for the column
+    expect(disclosureOf(card)).toBe(
+      `${LABELS.range_note_rollover} Could have earned is what the generation ` +
+        "each device used could have earned had you exported it instead, at " +
+        "your export rate at the time. It is money you did not receive, not " +
+        "money you paid, and it is not part of Paid.",
+    );
   });
 
-  it("keeps the forgone column off the rollover layout", async () => {
-    // Given / When - the default, where the rollover already breaks Cost of use
-    // down, and on a small screen a column is the last thing the table needs
-    const card = mount(FORGOING_AND_BOUNDED);
+  it("explains the column even where no row carries a range", async () => {
+    // Given / When - forgone export, and per-device ranges left off
+    const card = mount(FORGOING);
     await ready(card);
 
-    // Then
-    expect(headingsOf(card)).not.toContain(LABELS.forgone_column);
-  });
-
-  it("keeps the forgone column off a table showing only what was paid", async () => {
-    // Given / When - the range as a column, with forgone export left out of the
-    // cost, so there is no gap for the column to explain
-    const card = mount(FORGOING_AND_BOUNDED, { range: "column", forgone: "exclude" });
-    await ready(card);
-
-    // Then
-    expect(headingsOf(card)).not.toContain(LABELS.forgone_column);
+    // Then - the note is about the column, so it does not wait on a range
+    expect(disclosureOf(card)).toContain("Could have earned is what the generation");
   });
 });

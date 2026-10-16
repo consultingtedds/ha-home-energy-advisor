@@ -81,6 +81,31 @@ describe("the dashboard strategy", () => {
     );
   });
 
+  it("gives the summary and the device table the full width, first", async () => {
+    // Given / When
+    const { views } = await generateDashboard(hass);
+    const [view] = views;
+
+    // Then - the figures a household came for lead the page, and the table has
+    // room for Paid and every add-on beside it on a large screen (ADR-0029).
+    // Home Assistant stacks sections on a narrow one, so a phone is unchanged
+    const [first, ...rest] = view.sections;
+    expect(first.column_span).toBe(view.max_columns);
+    expect(first.cards.map((card) => card.type)).toEqual([
+      "custom:hea-totals-card",
+      "custom:hea-devices-card",
+    ]);
+    expect(rest.map((section) => section.column_span)).toEqual([2, 2]);
+    expect(rest.map((section) => section.cards.map((card) => card.type))).toEqual([
+      ["custom:hea-cost-over-time-card", "custom:hea-sources-card"],
+      [
+        "custom:hea-device-costs-card",
+        "custom:hea-distribution-card",
+        "custom:hea-self-sufficiency-card",
+      ],
+    ]);
+  });
+
   it("pins the period picker and the filter in the view footer", async () => {
     // Given / When
     const { views } = await generateDashboard(hass);

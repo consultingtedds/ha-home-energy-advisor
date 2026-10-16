@@ -34,17 +34,26 @@ const ICON = "mdi:home-lightning-bolt";
 export const DASHBOARD_TAG = `ll-strategy-dashboard-${STRATEGY_TYPE}`;
 export const VIEW_TAG = `ll-strategy-view-${STRATEGY_TYPE}`;
 
+/** How many columns the view lays sections across on a large screen. */
+const MAX_COLUMNS = 4;
+
 /**
- * The cards, in reading order, split across two columns of a sections view.
+ * The cards, in reading order: the headline across the page, then two columns.
  *
  * Money first and largest: the figures a household came for are the summary and
- * the per-device table, and the charts explain them. No card carries a `title`,
- * because an absent one falls back to the card's own translated default and a
- * title written here would be English everywhere.
+ * the per-device table, and the charts explain them. The table takes the full
+ * width because it carries Paid and every add-on beside it in columns of their
+ * own (ADR-0029), and squeezing it into half a large screen is what tempts a card
+ * into folding them together. No card carries a `title`, because an absent one
+ * falls back to the card's own translated default and a title written here would
+ * be English everywhere.
  */
-const FIGURES = [
+const HEADLINE = [
   { type: "custom:hea-totals-card" },
   { type: "custom:hea-devices-card", sort_by: "actual_cost" },
+];
+
+const FIGURES = [
   { type: "custom:hea-cost-over-time-card" },
   { type: "custom:hea-sources-card", sort_by: "energy_used" },
 ];
@@ -60,9 +69,9 @@ const full = (card) => ({
   grid_options: { columns: "full", rows: "auto" },
 });
 
-const column = (cards) => ({
+const section = (cards, span) => ({
   type: "grid",
-  column_span: 2,
+  column_span: span,
   cards: cards.map(full),
 });
 
@@ -102,7 +111,7 @@ const footer = () => ({
  */
 const nothingTracked = (hass) => ({
   type: "sections",
-  max_columns: 4,
+  max_columns: MAX_COLUMNS,
   sections: [
     {
       type: "grid",
@@ -116,8 +125,14 @@ const heaView = (hass) =>
     ? nothingTracked(hass)
     : {
         type: "sections",
-        max_columns: 4,
-        sections: [column(FIGURES), column(CHARTS)],
+        max_columns: MAX_COLUMNS,
+        // Home Assistant stacks sections on a narrow screen, so on a phone this
+        // is one column in this order, exactly as before.
+        sections: [
+          section(HEADLINE, MAX_COLUMNS),
+          section(FIGURES, MAX_COLUMNS / 2),
+          section(CHARTS, MAX_COLUMNS / 2),
+        ],
         footer: footer(),
       };
 

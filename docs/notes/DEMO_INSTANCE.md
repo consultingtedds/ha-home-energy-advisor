@@ -240,7 +240,7 @@ README makes in words.
   one to the other as a change, so every figure falls back by its whole seeded
   week in that hour - seen on 2026-10-14 as -6.52 on a cost and -41.6 kWh on its
   energy. Any period including today then nets to about nothing, and a card that
-  only shows something where it is non-zero, such as Cost of use, quietly
+  only shows something where it is non-zero, such as Could have earned, quietly
   doesn't. The checks never meet it because they step back to yesterday before
   the first live hour compiles; under `--keep`, pick yesterday or earlier.
 - **Start `--engine` from a stopped container, never straight after `--keep`.**

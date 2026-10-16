@@ -528,7 +528,8 @@ selling it used to be a third item here, and is no longer. If you export, it is
 counted and shown as **Forgone Export** per device - including the generation
 that went into your battery first, valued at what export paid when it was
 stored. It sits beside what you paid rather than inside it, so Actual Cost is
-still exactly what left your account, and the table can show either reading.
+still exactly what left your account; the device table shows it as its own
+**Could have earned** column, never added into Paid.
 Without an export price in your Energy Dashboard there is nothing to count, and
 for you your own generation really is free.
 

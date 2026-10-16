@@ -82,9 +82,9 @@ const OPTIONAL_CONCEPTS = BOUND_CONCEPTS;
 /**
  * What a device's share of generation could have earned exported, optional for
  * the same reason as the bounds: it exists only where the household has an
- * export price. Written, the devices card shows Cost of use and its breakdown -
- * the longest rollover the table has, and the one most likely to overflow it
- * (HEA-214).
+ * export price. Written, the devices card shows its Could have earned column
+ * beside Saved - the widest the table gets, which is what the full-width layout
+ * is there for (ADR-0029).
  */
 const FORGONE_CONCEPT = "forgone_export";
 

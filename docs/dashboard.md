@@ -186,11 +186,11 @@ place:
   carry a range at all - set **Show the cost range as** to **Its own column** in
   the card's settings.
 
-  If you export, the cost column reads **Cost of use** instead: what you paid,
-  plus what your own generation could have earned had you exported it. Hovering
-  it shows those two parts, with the range on what you paid, because only that
-  part has one. With the range as its own column, a **Forgone export** column
-  sits beside it instead, so the two parts can be read across the row.
+  **Paid is always what you paid.** If you export, a **Could have earned**
+  column appears beside Saved: what the generation each device used could have
+  earned had you exported it instead. It is money you did not receive, not money
+  you paid, so it is never added into Paid - and on every row, Would have paid
+  less Paid is the Saved beside it (ADR-0029).
 
   The range covers only where the energy can actually have been. A slice where
   your house used almost nothing cannot have supplied a whole kilowatt-hour, so
@@ -201,9 +201,9 @@ place:
 - **Saved does not subtract the export you gave up.** Using your own generation
   instead of selling it costs you the export it would have earned, and Saved
   compares against the grid price rather than against that. The amount is
-  published separately as **Forgone Export**, and Cost by device adds it to the
-  cost column by default - so the comparison is available even though Saved does
-  not make it for you.
+  published separately as **Forgone Export**, and Cost by device shows it in its
+  own **Could have earned** column - so the comparison is available even though
+  Saved does not make it for you.
 - **Today's cost catches up rather than going backwards.** Energy your devices
   report before the house meter has accounted for it is held until its real
   price is known, so a figure read mid-hour can sit slightly low and rise later.

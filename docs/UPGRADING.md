@@ -32,6 +32,18 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you export, Cost by device leads with what you paid again.** Its main
+column had been adding what your generation could have earned to what you
+paid, under the heading Cost of use, so it disagreed with every other card. It
+now shows **Paid**, matching the summary above it, with a separate **Could have
+earned** column beside Saved. No figure has changed; they are just no longer
+added together, and the setting that chose between the two readings has gone.
+
+On the generated dashboard the summary and the table now span the full width
+of a large screen, with the charts beneath them. On a phone nothing moves.
+
 ## 0.10.0
 
 **If your generation comes from more than one sensor, you can now choose them
