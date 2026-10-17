@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.12.0
 
 **If you were told a device "is reporting more energy than the whole house",
 check whether its energy sensor only updates every hour or two.** Such a sensor
