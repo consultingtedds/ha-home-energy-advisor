@@ -612,47 +612,43 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
-- **GitHub 34** stays open until its reporter confirms on 0.9.0. His data has now
-  found a real defect four times - HEA-196, HEA-206, HEA-211 and HEA-213 - so
-  his confirmation is worth more than our own measurement.
-- **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
-  payback remain, and the second is harder to leave alone now that a household
-  can see what their export was worth. ADR-0029 now frames the answer: both are
-  household-level add-ons, so if either is shown it is a labelled line beside
-  the household's Paid, never a device column. Targeted for after 0.11.0.
+- **Next, in this order** (agreed 2026-10-17): two small fixes from what
+  households and the reference dashboard showed - **HEA-227**, a battery
+  capacity typed in Wh accepted as kWh, and **HEA-230**, a saving a fraction of a
+  cent below zero shown as a red "-€0.00" - then HEA-222, then HEA-220.
 - **Matching the Energy Dashboard's house configuration before 1.0** (Paul,
   2026-10-15). Generation already takes several meters (HEA-219). **HEA-222**
   decides the rest: the house inputs follow the Energy Dashboard live by default,
   as the export price and nesting already do, and the form asks only for what it
   does not hold or holds in a shape we cannot count - the middle path, chosen
-  2026-10-15, with an ADR to write when it is built. Then **HEA-220**, several
-  batteries as one pooled battery, and **HEA-221**, several grid meters, which
-  matters most for a dual-rate meter whose two registers are priced apart.
+  2026-10-15, with an ADR to write when it is built. It goes before HEA-220
+  because it settles how a battery is prefilled and where its settings live.
+  Then **HEA-220**, several batteries, now asked for directly by a two-battery
+  household in Discussion 42 (losses per battery, a charge source per battery),
+  and **HEA-221**, several grid meters, which matters most for a dual-rate meter
+  whose two registers are priced apart.
+- **HEA-228** - a third `solar_priority` answer for a battery whose grid charging
+  is off: never give a charge any import. Battery-first still hands import the
+  part of a charge that runs ahead of the generation meter in the same interval
+  (Discussion 35, a second household). May become per battery with HEA-220.
+- **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
+  payback remain, and the second is harder to leave alone now that a household
+  can see what their export was worth. ADR-0029 now frames the answer: both are
+  household-level add-ons, so if either is shown it is a labelled line beside
+  the household's Paid, never a device column. **HEA-229** is the first add-on a
+  household has asked for: the export value of Battery Losses under Could have
+  earned.
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
-- **GitHub #22 and #29** remain open with their reporters.
 - **HEA-216** - count the battery's solar share towards self-sufficiency, from
   Discussion 35. The engine already splits every charge into grid and
   generation; the ledger does not yet keep the generation share in kWh, and
   nothing publishes it. Whether the headline changes is still to decide, and the
-  split it counts has to follow HEA-217's order.
-- **HEA-217** - Discussion 35 again: a household whose solar all goes into the
-  battery while the grid runs the house sees a morning saving that belongs to
-  the evening. When import, generation and charging coincide, the house balance
-  gives the charge the import first (ADR-0002's Update), the right answer for a
-  battery that takes only surplus and the wrong one for this. It is a question of
-  the inverter's priority, not of whether it can charge from the grid, and only
-  that one case is ambiguous - a night charge has no generation beside it, a
-  surplus charge no import. So a setting says which way a household's battery
-  works, defaulting to today's. **Unblocked 2026-10-16**: the reporter turned out
-  to have two solar inputs and only one configured (which raised HEA-219), and
-  with both counted on 0.10.0 their morning still showed a saving and 91% from
-  the grid while all the sun went into the battery. Their second diagnostics
-  download confirmed it bucket by bucket and is the tests' fixture. **Built
-  2026-10-17** as `solar_priority` on the house form, below the battery's meters
-  (ADR-0002's second Update); it ships in the next release, and Discussion 35
-  stays open until the reporter has chosen it and read a morning back.
+  split it counts follows `solar_priority`. The self-sufficiency card's note
+  still says the readings cannot tell what charged the battery, which has not
+  been true for some time; the note changes with this ticket. It touches the
+  battery ledger, so it follows HEA-220.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has
@@ -678,8 +674,27 @@ Carried forward rather than closed:
 
 Closed since:
 
-- **HEA-223 and HEA-224 - every card leads with what was paid** (awaiting
-  release as 0.11.0). Reviewing the dashboard after 0.10.0, Paul found the
+- **HEA-217, HEA-225 and HEA-226 - released as 0.12.0 on 2026-10-17.**
+  HEA-217: a household whose solar all goes into the battery while the grid runs
+  the house saw a morning saving that belonged to the evening. When import,
+  generation and charging coincide the meters cannot say which supplied the
+  charge, and the engine gave it the import first (ADR-0002's Update). A house
+  setting, `solar_priority`, now says which way the inverter works, defaulting
+  to the old order; ADR-0002's second Update records where import-first stops
+  being right. The reporter's own diagnostics confirmed the case bucket by
+  bucket and are the tests' fixture, and a second household with the same
+  pattern raised HEA-228 and HEA-229. HEA-225: a device whose counter reports
+  every hour or two was refused by the plausibility guard, because a late step
+  was weighed against the newest hour alone. HEA-226: that guard's Repair
+  stopped suggesting Reset totals, which clears every figure's history, and now
+  says what it was judged on. 0.12.0 was verified on the reference instance the
+  same day.
+- **GitHub #22, #29 and #34 closed** by the maintainer on 2026-10-17. #34 was
+  closed as fixed in 0.9.0, with an invitation to reopen with data, rather than
+  confirmed by its reporter.
+- **HEA-223 and HEA-224 - every card leads with what was paid** (released as
+  0.11.0 on 2026-10-16; on the reference dashboard, checked on 0.12.0, the
+  table's total equals the summary on every figure). Reviewing the dashboard after 0.10.0, Paul found the
   summary reading Paid €0.78 and the device table beneath it €1.24: since 0.8.0
   the table had added forgone export into its cost column by default for every
   household that exports, and a row's Saved no longer followed from the figures
