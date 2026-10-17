@@ -648,8 +648,11 @@ Carried forward rather than closed:
   works, defaulting to today's. **Unblocked 2026-10-16**: the reporter turned out
   to have two solar inputs and only one configured (which raised HEA-219), and
   with both counted on 0.10.0 their morning still showed a saving and 91% from
-  the grid while all the sun went into the battery. Their new diagnostics upload
-  failed and has been asked for again; it is the fixture, not the evidence.
+  the grid while all the sun went into the battery. Their second diagnostics
+  download confirmed it bucket by bucket and is the tests' fixture. **Built
+  2026-10-17** as `solar_priority` on the house form, below the battery's meters
+  (ADR-0002's second Update); it ships in the next release, and Discussion 35
+  stays open until the reporter has chosen it and read a morning back.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has

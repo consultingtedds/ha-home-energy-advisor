@@ -42,6 +42,15 @@ against the hour each part of the step belongs to. Your totals were never
 affected, so there is nothing to reset; the notification now says what it was
 judged on and what to check.
 
+**If your inverter charges the battery from solar first and runs the house from
+the grid, say so.** There is a new choice on the house settings, below the
+battery's meters: open the integration, choose **Reconfigure**, and pick
+**Solar charges the battery first**. Until then your battery's stored energy is
+priced as if it came from the grid in the minutes it charged while you were
+also importing, which makes the devices it later runs look dearer than they
+were. Nothing changes for anyone who leaves it alone, and figures already
+recorded stay as they are.
+
 ## 0.11.0
 
 **If you export, Cost by device leads with what you paid again.** Its main

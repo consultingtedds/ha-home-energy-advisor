@@ -133,8 +133,9 @@ class _Carry:
 class HouseBalance:
     """Decomposes each interval's house meters into the sources that served it."""
 
-    def __init__(self, expiry: timedelta) -> None:
+    def __init__(self, expiry: timedelta, *, battery_first: bool = False) -> None:
         self._expiry = expiry
+        self._battery_first = battery_first
         self._export = _Carry()
         self._charge = _Carry()
 
@@ -179,15 +180,30 @@ class HouseBalance:
     ) -> tuple[Decimal, Decimal, Decimal]:
         """Where the energy that went into the battery came from.
 
-        Import first, because import measured beside a charge is the supply for
-        it, then generation. A charge with neither alongside it waits: the meter
-        that supplied it is quantised, and its tick is coming.
+        The meters cannot see where energy went inside one interval, so where
+        the house imports, the panels generate and the battery charges at once,
+        this is a choice. By default import first, then generation: import
+        measured beside a charge is the supply for it, which is right for a
+        battery that takes only what the house does not use. A household whose
+        inverter sends the panels to the battery first, and lets the grid run
+        the house, says so, and the order turns round (HEA-217). Either way only
+        that one case is affected: a charge with no generation beside it is
+        grid either way, and one with no import is generation either way.
+
+        A charge with neither alongside it waits: the meter that supplied it is
+        quantised, and its tick is coming.
         """
         waiting = charged + self._charge.available(at, self._expiry)
-        grid_charge = min(waiting, imported)
-        waiting -= grid_charge
-        generation_charge = min(waiting, generated)
-        waiting -= generation_charge
+        if self._battery_first:
+            generation_charge = min(waiting, generated)
+            waiting -= generation_charge
+            grid_charge = min(waiting, imported)
+            waiting -= grid_charge
+        else:
+            grid_charge = min(waiting, imported)
+            waiting -= grid_charge
+            generation_charge = min(waiting, generated)
+            waiting -= generation_charge
         self._charge.hold(waiting, at)
         return grid_charge, generation_charge, generated - generation_charge
 

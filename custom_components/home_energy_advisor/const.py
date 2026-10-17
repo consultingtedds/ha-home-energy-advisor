@@ -20,6 +20,11 @@ CONF_BATTERY_DISCHARGE_ENTITY: Final = "battery_discharge_entity"
 CONF_BATTERY_SOC_ENTITY: Final = "battery_soc_entity"
 CONF_BATTERY_CAPACITY_KWH: Final = "battery_capacity_kwh"
 CONF_HOUSE_CONSUMPTION_ENTITY: Final = "house_consumption_entity"
+# Where the panels go first when the house imports, generates and charges the
+# battery all at once - the meters cannot see it, so the household says (HEA-217).
+CONF_SOLAR_PRIORITY: Final = "solar_priority"
+SOLAR_PRIORITY_HOUSE: Final = "house"
+SOLAR_PRIORITY_BATTERY: Final = "battery"
 
 DEFAULT_CURRENCY: Final = "EUR"
 

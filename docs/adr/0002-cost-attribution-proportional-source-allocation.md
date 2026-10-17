@@ -208,3 +208,24 @@ proportionally - an oven switched on makes the fridge beside it partly grid
 powered - which is this ADR's decision and unchanged. ADR-0014's marginal rate is
 a separate matter again: it prices energy the meters never accounted for, not how
 metered energy is shared.
+
+## Update - 2026-10-17: where import first stops being right, the household says
+
+Import first is a choice the meters cannot check. It holds for a battery that
+takes only what the house does not use, which is most of them. It is wrong for
+an inverter told to fill the battery from the panels and run the house from the
+grid - EcoFlow's supply priority set that way, measured on a household's
+diagnostics: in three consecutive five-minute buckets generation and charge
+were nearly equal and the house was all import. Import first booked their
+battery as charged from the grid and the house as running on sunshine, so the
+battery's stored energy was priced at the grid rate and every device it later
+ran looked dearer than it was (HEA-217).
+
+The order is therefore a house setting, `solar_priority`: `house` (the default,
+and the order every entry had before it was asked) or `battery`, which turns
+`_attribute_charge` round to take generation first. It is asked rather than
+inferred because nothing in the readings tells the two apart; the same three
+numbers fit both. Only the interval where all three are busy at once is
+affected - a charge with no generation beside it is grid either way, and one
+with no import is generation either way - and the proportional split of what
+served the house is unchanged.

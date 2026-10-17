@@ -205,6 +205,7 @@ _CONFIG_DERIVED = frozenset(
         "_entity_of",
         "_import_entity",
         "_lateness",
+        "_battery_first",
         "_max_quiet_span",
         "_meters_of",
         "_retention",

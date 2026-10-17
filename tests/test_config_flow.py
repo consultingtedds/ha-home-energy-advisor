@@ -30,6 +30,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PRICE_ENTITY,
+    CONF_SOLAR_PRIORITY,
     DOMAIN,
 )
 from custom_components.home_energy_advisor.helper_ownership import helper_was_created
@@ -506,6 +507,57 @@ async def test_user_flow_records_every_generation_meter_chosen(
         "sensor.east_array_energy",
         "sensor.west_array_energy",
     ]
+
+
+async def test_the_household_says_whether_its_solar_charges_the_battery_first(
+    hass: HomeAssistant,
+) -> None:
+    # Given - an inverter set to fill the battery from the panels while the grid
+    # runs the house, which the meters cannot see (HEA-217)
+    _register_source_sensors(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+
+    # When
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+            CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+            CONF_SOLAR_PRIORITY: "battery",
+        },
+    )
+
+    # Then
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_SOLAR_PRIORITY] == "battery"
+
+
+async def test_solar_runs_the_house_first_unless_told_otherwise(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a household that leaves the choice alone
+    _register_source_sensors(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    data_schema = result["data_schema"]
+    assert data_schema is not None
+    field = next(
+        marker for marker in data_schema.schema if str(marker) == CONF_SOLAR_PRIORITY
+    )
+
+    # Then - today's order is the default, so no household's figures move, and
+    # the field sits straight after the battery's own meters
+    assert field.default() == "house"
+    fields = [str(marker) for marker in data_schema.schema]
+    assert fields.index(CONF_SOLAR_PRIORITY) == (
+        fields.index(CONF_BATTERY_DISCHARGE_ENTITY) + 1
+    )
 
 
 async def test_only_one_instance_can_be_configured(hass: HomeAssistant) -> None:

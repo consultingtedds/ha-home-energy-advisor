@@ -112,6 +112,7 @@ Energy Dashboard, most of them are filled in for you already.
 | Local generation energy | No | Cumulative generation of your own, whatever the source |
 | Battery charge energy | No | Cumulative energy charged into a home battery |
 | Battery discharge energy | No | Cumulative energy discharged from it - **all** of it, including any that went to the grid rather than to the house |
+| When the panels, the grid and the battery are all busy at once | Yes, preset | Whether your inverter sends solar to the house or to the battery first - see below |
 | House consumption energy | No | Total household consumption, if you measure it directly |
 | Battery level | No | How full the battery is, as a percentage |
 | Battery usable capacity | No | What it holds when full, in kWh |
@@ -177,6 +178,26 @@ worse.
 
 If you already combined them with a Group helper, that still works and there is
 no need to change it.
+
+#### Whether your solar goes to the house or the battery first
+
+Your meters say how much came in from the grid, how much the panels made and how
+much went into the battery, but not where each one went. When all three happen
+in the same few minutes, there are two ways to read them:
+
+- **Solar runs the house first (most systems).** The house used the panels, and
+  the battery was charged from the grid with whatever the house did not need.
+  This is the preset, and how every figure was worked out before the question
+  was asked.
+- **Solar charges the battery first.** The panels filled the battery, and the
+  house ran on the grid. Some inverters work this way, and some let you choose:
+  EcoFlow calls it supply priority, others call it charge priority.
+
+Pick the one your inverter does. It decides whether the energy in your battery
+cost what the grid charged or nothing, and so what your devices are charged when
+the battery later runs them. If you are not sure, leave the preset. It only
+makes a difference in those minutes when the battery charges while the house is
+also importing.
 
 #### If you have more than one battery
 

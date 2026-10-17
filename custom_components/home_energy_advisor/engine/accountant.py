@@ -497,8 +497,13 @@ class Accountant:
         device_energy_entities: Mapping[str, str],
         nested_devices: Mapping[str, str] | None = None,
         windows: AccountingWindows | None = None,
+        battery_first: bool = False,
     ) -> None:
         self._windows = windows or AccountingWindows()
+        # Whether the panels charge the battery before they run the house, where
+        # import, generation and charging coincide (HEA-217). How the household's
+        # inverter is set, which the meters cannot see.
+        self._battery_first = battery_first
         self._lateness = self._windows.lateness
         self._retention = self._windows.retention
         self._max_quiet_span = self._windows.max_quiet_span
@@ -583,7 +588,9 @@ class Accountant:
         # House meters that tick a whole unit at a time leave each interval's
         # balance half told; what is left over waits here for its counterpart
         # rather than being floored away (HEA-133).
-        self._balance = HouseBalance(expiry=self._max_quiet_span)
+        self._balance = HouseBalance(
+            expiry=self._max_quiet_span, battery_first=self._battery_first
+        )
         self._pending_bounds: list[_PendingBound] = []
         # Late corrections awaiting a remainder that can afford to hand them over,
         # oldest first so a device that has waited longest is paid first.
@@ -754,7 +761,9 @@ class Accountant:
         # value between figures that no longer share a baseline. A carried
         # balance is a claim on the same buckets, and goes for the same reason.
         self._debts = DebtLedger(expiry=self._max_quiet_span)
-        self._balance = HouseBalance(expiry=self._max_quiet_span)
+        self._balance = HouseBalance(
+            expiry=self._max_quiet_span, battery_first=self._battery_first
+        )
 
     @property
     def nesting(self) -> Mapping[str, str]:

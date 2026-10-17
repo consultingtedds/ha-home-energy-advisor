@@ -12,6 +12,7 @@
           "generation_entity": "Local generation energy (optional)",
           "battery_charge_entity": "Battery charge energy (optional)",
           "battery_discharge_entity": "Battery discharge energy (optional)",
+          "solar_priority": "When the panels, the grid and the battery are all busy at once",
           "house_consumption_entity": "House consumption energy (optional)",
           "battery_soc_entity": "Battery level (optional)",
           "battery_capacity_kwh": "Battery usable capacity (optional)"
@@ -24,6 +25,7 @@
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), choose them all and they are added together. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
+          "solar_priority": "Where your inverter sends the panels' energy first, while the house is also importing - some call it supply or charge priority. It decides whether the battery was charged from solar or from the grid, and so what its stored energy cost. If you are not sure, leave the first.",
           "house_consumption_entity": "Total household consumption, if measured directly.",
           "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
           "battery_capacity_kwh": "What the battery holds when full, in kWh. Only used together with the battery level above."
@@ -40,6 +42,7 @@
           "generation_entity": "Local generation energy (optional)",
           "battery_charge_entity": "Battery charge energy (optional)",
           "battery_discharge_entity": "Battery discharge energy (optional)",
+          "solar_priority": "When the panels, the grid and the battery are all busy at once",
           "house_consumption_entity": "House consumption energy (optional)",
           "battery_soc_entity": "Battery level (optional)",
           "battery_capacity_kwh": "Battery usable capacity (optional)"
@@ -52,6 +55,7 @@
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), choose them all and they are added together. (See the readme for more help)",
           "battery_charge_entity": "Cumulative energy charged into the battery.",
           "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
+          "solar_priority": "Where your inverter sends the panels' energy first, while the house is also importing - some call it supply or charge priority. It decides whether the battery was charged from solar or from the grid, and so what its stored energy cost. If you are not sure, leave the first.",
           "house_consumption_entity": "Total household consumption, if measured directly.",
           "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
           "battery_capacity_kwh": "What the battery holds when full, in kWh. Only used together with the battery level above."
@@ -215,6 +219,14 @@
     },
     "hub": {
       "name": "Home Energy Advisor"
+    }
+  },
+  "selector": {
+    "solar_priority": {
+      "options": {
+        "house": "Solar runs the house first (most systems)",
+        "battery": "Solar charges the battery first"
+      }
     }
   },
   "issues": {

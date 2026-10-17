@@ -29,6 +29,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
+    CONF_SOLAR_PRIORITY,
     DOMAIN,
     SERVICE_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
@@ -1950,6 +1951,79 @@ async def test_one_array_going_unavailable_raises_its_own_repair(
     # Then - the Repair names that meter, and not the one still reporting
     assert _has_issue(hass, source_unavailable_issue_id("sensor.west_array_energy"))
     assert not _has_issue(hass, source_unavailable_issue_id("sensor.east_array_energy"))
+
+
+async def _one_busy_interval(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, *, solar_priority: str | None
+) -> MockConfigEntry:
+    """One interval in which the house imports, generates and charges at once.
+
+    Discussion 35's household, 09:50: import 0.0117, generation 0.0204, charge
+    0.0212 kWh, and no house meter (HEA-217).
+    """
+    freezer.move_to(datetime(2026, 10, 16, 9, 50, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.3948")
+    meters = (
+        "grid_import",
+        "grid_export",
+        "solar",
+        "battery_charge",
+        "battery_discharge",
+    )
+    for meter in meters:
+        hass.states.async_set(f"sensor.{meter}", "0", _ENERGY)
+    data = {
+        CONF_PRICE_ENTITY: "sensor.price",
+        CONF_CURRENCY: "EUR",
+        CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+        CONF_GENERATION_ENTITY: ["sensor.solar"],
+        CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+        CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+    }
+    if solar_priority is not None:
+        data[CONF_SOLAR_PRIORITY] = solar_priority
+    entry = MockConfigEntry(domain=DOMAIN, version=4, data=data)
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    freezer.move_to(datetime(2026, 10, 16, 9, 55, tzinfo=UTC))
+    hass.states.async_set("sensor.grid_import", "0.0117", _ENERGY)
+    hass.states.async_set("sensor.solar", "0.0204", _ENERGY)
+    hass.states.async_set("sensor.battery_charge", "0.0212", _ENERGY)
+    await hass.async_block_till_done()
+    await _tick(hass, freezer, datetime(2026, 10, 16, 10, 20, tzinfo=UTC))
+    return entry
+
+
+async def test_a_battery_first_household_is_booked_as_its_inverter_works(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the household has said its solar charges the battery first
+    entry = await _one_busy_interval(hass, freezer, solar_priority="battery")
+
+    # Then - the house ran on the grid while the panels filled the battery
+    untracked = entry.runtime_data.data.untracked
+    assert untracked.energy_from_grid == Decimal("0.0109")
+    assert untracked.energy_from_generation == Decimal(0)
+    # and the diagnostics say which order is in force
+    config = entry.runtime_data.diagnostics()["config"]
+    assert config["solar_priority"] == "battery"
+
+
+async def test_a_household_that_never_chose_keeps_today_s_order(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - an entry from before the setting existed
+    entry = await _one_busy_interval(hass, freezer, solar_priority=None)
+
+    # Then - solar runs the house first, exactly as before, and the diagnostics
+    # name it rather than leaving the absence to be read as anything
+    untracked = entry.runtime_data.data.untracked
+    assert untracked.energy_from_generation == Decimal("0.0109")
+    assert untracked.energy_from_grid == Decimal(0)
+    assert entry.runtime_data.diagnostics()["config"]["solar_priority"] == "house"
 
 
 def _export_prefs(
