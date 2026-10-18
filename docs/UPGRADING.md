@@ -32,6 +32,14 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**If you filled in your battery's capacity, check it is in kWh.** The field now
+refuses anything above 200, because no home battery holds that much and the
+figure is almost always watt-hours: a 1500 Wh battery is 1.5. A capacity saved
+before this release is not checked until you next open **Reconfigure**, so if
+yours reads in the hundreds or thousands, change it there.
+
 ## 0.12.0
 
 **If you were told a device "is reporting more energy than the whole house",

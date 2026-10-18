@@ -67,7 +67,8 @@
     },
     "error": {
       "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, una sola entrada de la casa incorrecta hace que la cifra de todos los dispositivos sea incorrecta.",
-      "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla, lo que dejaría esta entrada sin aportar nada."
+      "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla, lo que dejaría esta entrada sin aportar nada.",
+      "capacity_not_kwh": "Este valor va en kWh, y ninguna batería doméstica almacena tanto, así que probablemente está en vatios hora. Una batería de 1500 Wh son 1,5 kWh."
     }
   },
   "options": {

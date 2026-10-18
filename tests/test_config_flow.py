@@ -19,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
@@ -38,6 +39,7 @@ from custom_components.home_energy_advisor.helper_ownership import helper_was_cr
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+    from homeassistant.config_entries import ConfigFlowResult
     from homeassistant.core import HomeAssistant
 
 _PATH = "custom_components.home_energy_advisor.config_flow.async_get_manager"
@@ -165,6 +167,108 @@ async def test_a_house_input_in_a_unit_the_engine_cannot_count_is_rejected(
     # nothing and a Repair a week later
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_GRID_IMPORT_ENTITY: "unit_not_energy"}
+
+
+async def _submit_capacity(hass: HomeAssistant, capacity: float) -> ConfigFlowResult:
+    _register_source_sensors(hass)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+            CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+            CONF_BATTERY_CAPACITY_KWH: capacity,
+        },
+    )
+
+
+async def test_a_battery_capacity_typed_in_watt_hours_is_refused(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a 1500 Wh portable battery entered as 1500 in the kWh field,
+    # as one household did (HEA-227). At a 32% level that reads as 480 kWh held
+    result = await _submit_capacity(hass, 1500)
+
+    # Then - refused on the field itself, while the household can still fix it
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_BATTERY_CAPACITY_KWH: "capacity_not_kwh"}
+
+
+async def test_a_home_battery_s_capacity_in_kwh_is_accepted(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a common home battery
+    result = await _submit_capacity(hass, 13.5)
+
+    # Then
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["data"][CONF_BATTERY_CAPACITY_KWH] == 13.5
+
+
+async def test_a_capacity_of_two_hundred_kwh_is_still_accepted(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - exactly at the limit, generous enough for several stacked
+    # home batteries entered as one
+    result = await _submit_capacity(hass, 200)
+
+    # Then
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_a_capacity_just_above_two_hundred_kwh_is_refused(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _submit_capacity(hass, 200.1)
+
+    # Then
+    assert result["errors"] == {CONF_BATTERY_CAPACITY_KWH: "capacity_not_kwh"}
+
+
+async def test_reconfigure_refuses_a_capacity_in_watt_hours_too(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a running household with a correct capacity
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=4,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_BATTERY_CAPACITY_KWH: 1.5,
+        },
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - it is edited to the figure in watt-hours
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_BATTERY_CAPACITY_KWH: 1500,
+        },
+    )
+
+    # Then - refused, and what the entry holds is untouched
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {CONF_BATTERY_CAPACITY_KWH: "capacity_not_kwh"}
+    assert entry.data[CONF_BATTERY_CAPACITY_KWH] == 1.5
 
 
 async def test_a_watt_hour_house_input_is_accepted_beside_kilowatt_hour_ones(

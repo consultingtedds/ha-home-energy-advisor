@@ -396,7 +396,19 @@ def _validate_house_sources(
         # the sum is only as sound as its worst member.
         if error := _house_input_error(hass, house_entities(user_input, key)):
             errors[key] = error
+    capacity = user_input.get(CONF_BATTERY_CAPACITY_KWH)
+    if capacity is not None and capacity > _MAX_HOME_BATTERY_KWH:
+        errors[CONF_BATTERY_CAPACITY_KWH] = _CAPACITY_ERROR
     return errors
+
+
+# Above this, a home battery's capacity is a figure in Wh typed into the kWh
+# field rather than a battery: the largest home systems are a few tens of kWh.
+# Left unchecked, a 1500 Wh battery at 32% reads as holding 480 kWh, and the
+# loss measurement and the stored-cost write-down are judged against that
+# (HEA-227).
+_MAX_HOME_BATTERY_KWH = 200
+_CAPACITY_ERROR = "capacity_not_kwh"
 
 
 def _house_input_error(hass: HomeAssistant, entity_ids: tuple[str, ...]) -> str | None:
