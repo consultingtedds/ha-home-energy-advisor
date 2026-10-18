@@ -17,6 +17,7 @@ turn every release into "nothing to release" and go unnoticed for weeks.
 from __future__ import annotations
 
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,9 @@ from scripts.release_version import (
     RELEASE_RULES,
     UPGRADING,
     Bump,
+    beta_version,
     bump_for,
+    latest_tag,
     next_version,
     pending_note,
     release_notes,
@@ -495,6 +498,126 @@ def test_the_workflow_writes_the_notes_before_it_tags() -> None:
     assert "--generate-notes" not in steps
     assert "--notes-file notes.md" in steps
     assert steps.index("Write the release notes") < steps.index("Commit, tag and push")
+
+
+def test_a_first_beta_is_the_next_version_with_beta_one() -> None:
+    # Given - a fix since 0.12.0 and no beta cut for what it earns (HEA-232)
+    # When / Then - Home Assistant's own spelling, which AwesomeVersion sorts
+    # below the stable it leads to
+    assert beta_version("0.12.0", ["fix: x"], ["v0.12.0"]) == "0.12.1b1"
+
+
+def test_the_next_beta_counts_on_from_the_ones_already_cut() -> None:
+    # Given - two betas of 0.12.1 already tagged, listed out of order
+    tags = ["v0.12.0", "v0.12.1b2", "v0.12.1b1"]
+
+    # When / Then
+    assert beta_version("0.12.0", ["fix: x"], tags) == "0.12.1b3"
+
+
+def test_a_beta_of_another_version_does_not_count() -> None:
+    # Given - betas of an older version and of one whose number merely starts
+    # the same way
+    tags = ["v0.11.1b4", "v0.12.10b2", "v0.12.0"]
+
+    # When / Then - the count is per version, so this is still the first
+    assert beta_version("0.12.0", ["fix: x"], tags) == "0.12.1b1"
+
+
+def test_a_feature_makes_the_beta_a_minor_one() -> None:
+    # Given / When / Then - the beta leads to the release the commits earn
+    assert beta_version("0.12.0", ["fix: x", "feat: y"], []) == "0.13.0b1"
+
+
+def test_nothing_releasable_produces_no_beta() -> None:
+    # Given / When / Then - a beta of nothing would offer testers the release
+    # they already have under another name
+    assert beta_version("0.12.0", ["docs: x", "test: y"], ["v0.12.0"]) is None
+
+
+def test_the_last_release_is_never_a_beta(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given - a history whose newest tag is a beta. A beta is kept off `main`, so
+    # this should never arise; if it ever did, measuring the next stable from the
+    # beta would leave everything between 0.12.0 and the beta out of its notes
+    def git(*args: str) -> None:
+        subprocess.run(  # noqa: S603 - fixed argv, no shell
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],  # noqa: S607
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "fix: one")
+    git("tag", "-a", "v0.12.0", "-m", "v0.12.0")
+    git("commit", "-q", "--allow-empty", "-m", "fix: two")
+    git("tag", "-a", "v0.12.1b1", "-m", "v0.12.1b1")
+    monkeypatch.chdir(tmp_path)
+
+    # When / Then
+    assert latest_tag() == "v0.12.0"
+
+
+def _workflow_steps() -> str:
+    """The release workflow as it will run, with the prose stripped out."""
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    return "\n".join(
+        line for line in workflow.splitlines() if not line.lstrip().startswith("#")
+    )
+
+
+def _step(name: str) -> str:
+    """One step of the release workflow, from its name to the next step."""
+    return _workflow_steps().split(f"- name: {name}")[1].split("- name:")[0]
+
+
+def test_a_beta_is_published_as_a_pre_release() -> None:
+    # Given / When
+    create = _step("Create the GitHub release")
+
+    # Then - marked so on the beta channel, which is the only thing that keeps
+    # HACS from offering it to a household that has not switched pre-releases on
+    assert "--prerelease" in create
+    assert "inputs.channel == 'beta'" in create
+
+
+def test_the_beta_version_comes_from_the_beta_rule() -> None:
+    # Given / When
+    version = _step("Work out whether this earns a release")
+
+    # Then
+    assert "release_version.py --beta" in version
+
+
+def test_a_beta_never_moves_main() -> None:
+    """What keeps a beta from changing the stable line at all.
+
+    `main` carries the stable version in its manifest, and the next stable is
+    measured from the last tag reachable from it. A beta commit pushed there
+    would do both wrong at once.
+    """
+    # Given / When
+    stable = _step("Commit, tag and push")
+    beta = _step("Tag the beta")
+
+    # Then - only the stable release commits to main and carries the paragraph;
+    # the beta pushes its tag alone and leaves the paragraph for the stable
+    assert "inputs.channel == 'stable'" in stable
+    assert "git push origin HEAD:main" in stable
+    assert "inputs.channel == 'beta'" in beta
+    assert "HEAD:main" not in beta
+    assert "docs/UPGRADING.md" not in beta
+    assert 'git push origin "$version"' in beta
+
+
+def test_a_beta_leaves_the_paragraph_pending_for_the_stable() -> None:
+    # Given / When
+    stamp = _step("Date the upgrade paragraph with this version")
+
+    # Then - stamped only by the release that will carry it on main
+    assert "inputs.channel == 'stable'" in stamp
 
 
 @pytest.fixture

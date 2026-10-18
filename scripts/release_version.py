@@ -15,6 +15,7 @@ Used by `.github/workflows/release.yml`:
     python scripts/release_version.py 0.4.2       # prints 0.5.0, or nothing
     python scripts/release_version.py --notes     # prints what went into it
     python scripts/release_version.py --stamp 0.5.0   # dates the paragraph
+    python scripts/release_version.py --beta 0.4.2    # prints 0.5.0b1, or nothing
 
 Printing nothing is a real answer, and the common one: a week of documentation
 and dependency work earns no release.
@@ -142,6 +143,26 @@ def next_version(current: str, messages: list[str]) -> str | None:
     if bump is Bump.MINOR:
         return f"{major}.{minor + 1}.0"
     return f"{major}.{minor}.{patch + 1}"
+
+
+def beta_version(current: str, messages: list[str], tags: list[str]) -> str | None:
+    """The next pre-release of the version these commits earn, or None.
+
+    A beta leads to a stable release, so it is numbered after it: `0.12.1b1`,
+    then `0.12.1b2`, counted from the beta tags already cut for that version.
+    This is Home Assistant's own spelling, and AwesomeVersion - which HACS and
+    the update entity compare with - sorts it above `0.12.0` and below `0.12.1`,
+    so a tester is offered the stable the moment it exists (HEA-232).
+
+    None where the commits earn no release: a beta of nothing would offer
+    testers the release they already have under a new name.
+    """
+    target = next_version(current, messages)
+    if target is None:
+        return None
+    ours = re.compile(rf"^v{re.escape(target)}b(?P<number>[1-9]\d*)$")
+    cut = [int(match["number"]) for tag in tags if (match := ours.match(tag))]
+    return f"{target}b{max(cut, default=0) + 1}"
 
 
 #: What each releasable type is called in front of a household. `perf` sits under
@@ -347,14 +368,38 @@ def commits_since(tag: str | None) -> list[str]:
 
 
 def latest_tag() -> str | None:
-    """The most recent version tag, or None before the first release."""
+    """The most recent stable release's tag, or None before the first release.
+
+    Never a beta. A beta's tag is kept off `main` so `describe` cannot reach it,
+    and it is excluded here as well: a stable measured from a beta would leave
+    out of its notes everything the beta already carried, and those are exactly
+    the changes most households have not seen.
+    """
     result = subprocess.run(
-        ["git", "describe", "--tags", "--abbrev=0", "--match=v[0-9]*"],
+        [
+            "git",
+            "describe",
+            "--tags",
+            "--abbrev=0",
+            "--match=v[0-9]*",
+            "--exclude=v*b[0-9]*",
+        ],
         capture_output=True,
         text=True,
         check=False,
     )
     return result.stdout.strip() or None
+
+
+def version_tags() -> list[str]:
+    """Every version tag in the repository, betas included, on any branch."""
+    result = subprocess.run(
+        ["git", "tag", "--list", "v[0-9]*"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.split()
 
 
 def main() -> int:
@@ -368,6 +413,10 @@ def main() -> int:
     paragraph the notes just printed, so the file becomes an archive and the next
     release does not print it again. It runs after the notes and before the
     release commit, which carries the rewritten file.
+
+    `--beta <current>` prints the next pre-release instead. A beta's notes are
+    the same `--notes`, and it is never stamped: the paragraph waits for the
+    stable release that will carry it on `main`.
     """
     match sys.argv[1:]:
         case ["--stamp", version]:
@@ -378,15 +427,18 @@ def main() -> int:
         case ["--notes", *_]:
             print(release_notes(commits_since(latest_tag()), _pending_paragraph()))
             return 0
+        case ["--beta", current]:
+            release = beta_version(current, commits_since(latest_tag()), version_tags())
+        case ["--beta", *_]:
+            print("--beta needs the current version, as the manifest states it.")
+            return 1
         case [current, *_]:
-            pass
+            release = next_version(current, commits_since(latest_tag()))
         case _:
-            current = "0.0.0"
+            release = next_version("0.0.0", commits_since(latest_tag()))
 
-    next_ = next_version(current, commits_since(latest_tag()))
-    if next_ is None:
-        return 0
-    print(next_)
+    if release is not None:
+        print(release)
     return 0
 
 

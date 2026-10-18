@@ -12,8 +12,21 @@ name: Release
 # urgent one is still released the same day - by asking for it (2026-09-16).
 #
 # The version still comes from the commits, never from a number typed here.
+#
+# The `beta` channel cuts a pre-release of the same version instead: 0.12.1b1,
+# then b2. HACS offers a GitHub pre-release only to a household that has turned
+# on the integration's Pre-release switch, so it reaches testers and nobody else
+# (HEA-232). Its manifest commit is tagged but never pushed to `main`, which
+# keeps the stable version, the next stable's notes and the pending upgrade
+# paragraph exactly as if the beta had never been cut.
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: "stable for every household, beta for those who opted in"
+        type: choice
+        options: [stable, beta]
+        default: stable
 
 # Never cancel a release in flight. A cancelled one can leave a tag pushed with
 # no release behind it, which is a worse state than a slow queue.
@@ -70,7 +83,11 @@ jobs:
             exit 0
           fi
 
-          next=$(python scripts/release_version.py "$current")
+          if [ "${{ inputs.channel }}" = "beta" ]; then
+            next=$(python scripts/release_version.py --beta "$current")
+          else
+            next=$(python scripts/release_version.py "$current")
+          fi
           echo "next=$next" >> "$GITHUB_OUTPUT"
           if [ -z "$next" ]; then
             echo "Nothing since the last release changes what a household sees."
@@ -151,9 +168,10 @@ jobs:
       # paragraph pending, and the next release would print it a second time.
       #
       # Nothing waiting is the ordinary case and not a failure: it says so and
-      # leaves the file alone.
+      # leaves the file alone. A beta prints the paragraph but leaves it pending,
+      # for the stable release that will carry it on `main`.
       - name: Date the upgrade paragraph with this version
-        if: steps.version.outputs.next != ''
+        if: steps.version.outputs.next != '' && inputs.channel == 'stable'
         run: python scripts/release_version.py --stamp "${{ steps.version.outputs.next }}"
 
       # The manifest is what HACS reads to decide whether a household is behind,
@@ -163,7 +181,7 @@ jobs:
       # to `--follow-tags`, so the obvious spelling of this pushes the commit,
       # reports success, and leaves the release with nothing to attach itself to.
       - name: Commit, tag and push
-        if: steps.version.outputs.next != ''
+        if: steps.version.outputs.next != '' && inputs.channel == 'stable'
         run: |
           version="v${{ steps.version.outputs.next }}"
           git config user.name "github-actions[bot]"
@@ -174,12 +192,34 @@ jobs:
           git push origin HEAD:main
           git push origin "$version"
 
+      # The tag alone. Its commit carries the beta's version in the manifest and
+      # sits beside `main` rather than on it: pushed there, the next stable would
+      # be measured from a beta and `main` would claim a version no household has
+      # been offered.
+      - name: Tag the beta
+        if: steps.version.outputs.next != '' && inputs.channel == 'beta'
+        run: |
+          version="v${{ steps.version.outputs.next }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add custom_components/home_energy_advisor/manifest.json
+          git commit -m "chore(release): $version"
+          git tag -a "$version" -m "$version"
+          git push origin "$version"
+
+      # A beta is marked a pre-release, and that mark is the whole of what keeps
+      # it from every household that has not switched pre-releases on.
       - name: Create the GitHub release
         if: steps.version.outputs.next != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          prerelease=""
+          if [ "${{ inputs.channel == 'beta' }}" = "true" ]; then
+            prerelease="--prerelease"
+          fi
           gh release create "v${{ steps.version.outputs.next }}" \
             --title "v${{ steps.version.outputs.next }}" \
             --notes-file notes.md \
-            --verify-tag
+            --verify-tag \
+            $prerelease

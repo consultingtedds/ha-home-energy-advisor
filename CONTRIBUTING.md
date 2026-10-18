@@ -149,6 +149,16 @@ every household as an update and cannot be withdrawn once an instance has taken
 it, so fixes are batched and released when a batch is worth shipping - an urgent
 one still goes the same day, by asking for it rather than by merging it.
 
+**A beta goes first when a change needs real homes before every home.** Start
+the Release workflow with the `beta` channel and it cuts a pre-release of the
+version the commits would earn: `0.12.1b1`, then `0.12.1b2`. GitHub marks it a
+pre-release, and HACS offers it only to a household that has switched
+pre-releases on for this integration (the README's *Testing a pre-release*), so
+nobody else sees it. Its manifest commit is tagged and never pushed to `main`,
+so the stable release that follows is worked out, and its notes and upgrade
+paragraph written, as though the beta had never been cut. A beta is a beta of
+the next stable; there is no separate line to keep in step.
+
 **The scope is optional for you.** The maintainer's commits carry the ticket id
 as the scope (`fix(HEA-59): …`), which is why the history looks like that; since
 you have no ticket number, a scope-less commit is correct and CI will not fail

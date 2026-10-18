@@ -74,6 +74,27 @@ Or add it by hand:
 4. Search for **Home Energy Advisor** in HACS, open it and select **Download**.
 5. Restart Home Assistant.
 
+### Testing a pre-release
+
+Before some releases there is a beta, such as `0.13.0b1`, for anyone willing to
+try it on their own home first:
+
+1. Go to **Settings** > **Devices & services** > **Entities** and search for
+   **Home Energy Advisor pre-release**. It is a HACS switch, and it starts
+   disabled: open it, select the cog, turn on **Enabled** and save.
+2. Turn the switch on. HACS now offers Home Energy Advisor's betas as updates,
+   the same way it offers releases.
+3. Install the update and restart Home Assistant, as for any release.
+
+When the release the beta led to comes out, HACS offers it to you as an
+ordinary update. Install it, then turn the switch off to go back to releases
+only.
+
+**A beta moves forward, not back.** If it changes how the integration stores its
+settings, an older release cannot read them, so the way off a beta is the
+release that follows it rather than the one before. Tell us on GitHub how it
+went, good or bad; that is what the beta is for.
+
 ### Without HACS
 
 Download the source code archive from the
