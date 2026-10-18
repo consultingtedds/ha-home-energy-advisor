@@ -20,6 +20,7 @@ import {
   formatRate,
   localeFrom,
   rateUnit,
+  savingTone,
 } from "../hea-format.js";
 
 const EURO = { language: "en-GB", currency: "EUR" };
@@ -175,6 +176,29 @@ describe("formatMoney", () => {
     // hiding that would be a lie in the user's favour
     // When / Then
     expect(formatMoney(-3.5, EURO)).toMatch(/-/);
+  });
+
+  it("shows a figure that rounds to nothing as nothing, not as a loss", () => {
+    // Given - a saving a third of a cent below zero (HEA-230). Rounded to the
+    // cent it is zero, and "-€0.00" tells the household they lost money that
+    // the figure itself says they did not
+    // When / Then
+    expect(formatMoney(-0.003, EURO)).toBe("€0.00");
+  });
+
+  it("still signs a loss of a single cent", () => {
+    // Given / When / Then - the smallest loss the household can see keeps its
+    // sign, which is what HEA-39 protects
+    expect(formatMoney(-0.01, EURO)).toBe("-€0.01");
+  });
+
+  it("rounds to the currency's own smallest unit before deciding the sign", () => {
+    // Given - a currency with no minor unit, where 0.4 rounds away entirely
+    const yen = { language: "en-GB", currency: "JPY" };
+
+    // When / Then
+    expect(formatMoney(-0.4, yen)).toBe(formatMoney(0, yen));
+    expect(formatMoney(-1, yen)).toMatch(/^-/);
   });
 
   it("still formats when the instance has no currency configured", () => {
@@ -407,5 +431,55 @@ describe("changeTone", () => {
     expect(changeTone("effectiveRate", -1)).toBe("");
     expect(changeTone("actualCost", undefined)).toBe("");
     expect(changeTone("actualCost", Number.NaN)).toBe("");
+  });
+
+  it("colours nothing where a change in money rounds to nothing", () => {
+    // Given / When / Then - the figure beside it reads "€0.00", so a colour
+    // would be a verdict on a change the household cannot see (HEA-230)
+    expect(changeTone("actualCost", 0.002, EURO)).toBe("");
+    expect(changeTone("costSavings", -0.004, EURO)).toBe("");
+    expect(changeTone("actualCost", 0.01, EURO)).toBe("loss");
+  });
+
+  it("does not round a change in energy as though it were money", () => {
+    // Given / When / Then - kWh are not cents
+    expect(changeTone("energyUsed", 0.002, EURO)).toBe("loss");
+  });
+});
+
+describe("savingTone", () => {
+  it("reads a saving as good news and a loss as bad", () => {
+    // Given / When / Then
+    expect(savingTone(1.2, EURO)).toBe("gain");
+    expect(savingTone(-0.01, EURO)).toBe("loss");
+  });
+
+  it("colours nothing where the saving rounds to nothing", () => {
+    // Given - the reference dashboard's Untracked row on 2026-10-17: a saving a
+    // fraction of a cent below zero, drawn in red beside "€0.00" (HEA-230)
+    // When / Then - judged as shown, both ways round
+    expect(savingTone(-0.003, EURO)).toBe("");
+    expect(savingTone(0.004, EURO)).toBe("");
+    expect(savingTone(0, EURO)).toBe("");
+  });
+
+  it("judges by the currency's own smallest unit", () => {
+    // Given
+    const yen = { language: "en-GB", currency: "JPY" };
+
+    // When / Then - 0.4 yen is nothing, one yen is a loss
+    expect(savingTone(-0.4, yen)).toBe("");
+    expect(savingTone(-1, yen)).toBe("loss");
+  });
+
+  it("rounds to the cent where no currency is configured", () => {
+    // Given / When / Then - the same two places formatMoney shows a bare number to
+    expect(savingTone(-0.003, { language: "en-GB" })).toBe("");
+  });
+
+  it("colours nothing where there is no figure", () => {
+    // Given / When / Then
+    expect(savingTone(undefined, EURO)).toBe("");
+    expect(savingTone(Number.NaN, EURO)).toBe("");
   });
 });

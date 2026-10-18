@@ -293,9 +293,9 @@ class HeaCostOverTimeCard extends HeaChartCard {
   /** One segment: its colour, what it is called, and what it came to. */
   _tooltipRowFor(param, locale) {
     const value = valueOf(param);
-    const losing = param.seriesId === SERIES.saved.id && value < 0;
-    const label = losing ? this._labels.lost : param.seriesName;
-    const tone = param.seriesId === SERIES.saved.id ? savingTone(value) : "";
+    const tone = param.seriesId === SERIES.saved.id ? savingTone(value, locale) : "";
+    // Named a loss only where the figure shown is one, the same test as its tone
+    const label = tone === "loss" ? this._labels.lost : param.seriesName;
     return tooltipKeyedRow(
       param.color,
       label,

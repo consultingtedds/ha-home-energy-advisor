@@ -99,14 +99,38 @@ export const formatBucketSpan = (start, bucketPeriod, locale) => {
  *
  * A negative amount keeps its sign: battery arbitrage can turn Cost Savings
  * into a loss (HEA-39), and hiding that would be a lie in the user's favour.
+ * But only one that is still negative once rounded: `signDisplay: "negative"`
+ * leaves a third of a cent below zero as "€0.00", where the default prints
+ * "-€0.00" and tells the household they lost money the figure says they did
+ * not (HEA-230).
  */
 export const formatMoney = (value, { language, currency }) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
-  const options = currency
+  return new Intl.NumberFormat(language, {
+    ...moneyOptions(currency),
+    signDisplay: "negative",
+  }).format(value);
+};
+
+// A bare number beats a wrong symbol.
+const moneyOptions = (currency) =>
+  currency
     ? { style: "currency", currency }
-    : // A bare number beats a wrong symbol.
-      { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-  return new Intl.NumberFormat(language, options).format(value);
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
+/**
+ * A money figure as `formatMoney` shows it: rounded to the currency's own
+ * smallest unit - the cent, or nothing at all for the yen.
+ *
+ * What a tone judges. A colour is a claim about the figure beside it, so it is
+ * made about that figure and not about the fractions of a cent behind it
+ * (HEA-230).
+ */
+const asShown = (value, { language, currency } = {}) => {
+  const digits = new Intl.NumberFormat(language, moneyOptions(currency))
+    .resolvedOptions().maximumFractionDigits;
+  const unit = 10 ** digits;
+  return Math.round(value * unit) / unit;
 };
 
 /**
@@ -171,24 +195,29 @@ const BETTER_WHEN_HIGHER = new Set(["costSavings"]);
  * direction: spending is the bill, not bad news, and only a change in it points
  * anywhere.
  *
- * Zero is uncoloured. Colour is a claim, and "you saved nothing" is neither.
+ * Zero is uncoloured. Colour is a claim, and "you saved nothing" is neither -
+ * and that includes a saving that only *shows* as zero, so it is judged as
+ * shown, in the household's `locale` (HEA-230).
  *
  * Only bad news was marked before this, so the absence of red meant either
  * "fine" or "no rule applies here" and a reader could not tell which (HEA-102).
  */
-export const savingTone = (saving) => {
-  if (typeof saving !== "number" || !Number.isFinite(saving) || saving === 0) {
-    return "";
-  }
-  return saving > 0 ? "gain" : "loss";
+export const savingTone = (saving, locale) => {
+  if (typeof saving !== "number" || !Number.isFinite(saving)) return "";
+  const shown = asShown(saving, locale);
+  if (shown === 0) return "";
+  return shown > 0 ? "gain" : "loss";
 };
 
-export const changeTone = (concept, change) => {
-  if (typeof change !== "number" || !Number.isFinite(change) || change === 0) {
-    return "";
-  }
-  if (BETTER_WHEN_LOWER.has(concept)) return change < 0 ? "gain" : "loss";
-  if (BETTER_WHEN_HIGHER.has(concept)) return change > 0 ? "gain" : "loss";
+/** The concepts measured in money, whose changes are judged as shown. */
+const MONEY = new Set(["actualCost", "costAtGridPrice", "costSavings"]);
+
+export const changeTone = (concept, change, locale) => {
+  if (typeof change !== "number" || !Number.isFinite(change)) return "";
+  const shown = MONEY.has(concept) ? asShown(change, locale) : change;
+  if (shown === 0) return "";
+  if (BETTER_WHEN_LOWER.has(concept)) return shown < 0 ? "gain" : "loss";
+  if (BETTER_WHEN_HIGHER.has(concept)) return shown > 0 ? "gain" : "loss";
   return "";
 };
 

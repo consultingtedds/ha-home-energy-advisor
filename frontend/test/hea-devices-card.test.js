@@ -548,6 +548,23 @@ describe("the table", () => {
     expect(saving.textContent).toMatch(/-/);
   });
 
+  it("shows a saving that rounds to nothing as nothing", async () => {
+    // Given - paid a third of a cent more than the grid would have charged, as
+    // the reference dashboard's Untracked row did on 2026-10-17 (HEA-230)
+    const hass = aHass({
+      devices: [aDeviceRow("slow_poll_aircon", "Slow Poll Aircon")],
+      response: bucketsFor("slow_poll_aircon", 10, 3.003, 3),
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - no minus sign and no red on a figure that reads as zero
+    expect(card.shadowRoot.querySelector("tbody tr .loss")).toBeNull();
+    expect(rows(card)[0]).toContain("€0.00");
+  });
+
   it("escapes a device name, which is the household's own text", async () => {
     // Given - a device a user named awkwardly
     const hass = aHass({

@@ -228,7 +228,7 @@ const TONE_COLOUR = {
  * registry.
  */
 const tooltipFor = (device, name, locale, labels, toneColour, verdict) => {
-  const savedTone = savingTone(device.costSavings);
+  const savedTone = savingTone(device.costSavings, locale);
   const box = document.createElement("div");
   box.append(
     // The shared heading rather than one built here, so this tooltip is centred
@@ -305,7 +305,7 @@ const changeRow = (device, locale, labels, toneColour) => {
   const change = device.actualCost - before;
   // A change in spend, so spend's polarity: down is good. Named rather than
   // assumed, because the same fall in Saved would be the opposite verdict.
-  const tone = changeTone("actualCost", change);
+  const tone = changeTone("actualCost", change, locale);
   return tooltipRow(
     labels.change,
     fill(labels.compared, {

@@ -160,8 +160,10 @@ export const TABLE_STYLE = `${CONCEPT_STYLE}
  * in `tone` rather than the table guessing from a field it does not have
  * (HEA-99).
  */
-const toneOf = (field, tone, value) =>
-  (field === "costSavings" ? savingTone(value) : changeTone(tone, value)) ?? "";
+const toneOf = (field, tone, value, locale) =>
+  (field === "costSavings"
+    ? savingTone(value, locale)
+    : changeTone(tone, value, locale)) ?? "";
 
 /**
  * A cell's classes and styles, each written as one attribute.
@@ -362,7 +364,7 @@ export class HeaTableCard extends HeaCard {
     const judged = carriesVerdict ? this._verdictOn(verdict, locale) : null;
     return (
       attributes({
-        classes: [toneOf(field, tone, value), muted ? "muted" : ""],
+        classes: [toneOf(field, tone, value, locale), muted ? "muted" : ""],
         styles: [judged?.style],
       }) + (judged ? ` title="${escapeText(judged.title)}"` : "")
     );

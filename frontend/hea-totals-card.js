@@ -101,7 +101,7 @@ class HeaTotalsCard extends HeaCard {
       // ways round, because marking only the loss left the absence of red
       // meaning either "fine" or "no rule here" (HEA-102). Paid and Would have
       // paid get nothing - spending is the bill, not bad news.
-      const verdict = key === "costSavings" ? savingTone(value) : "";
+      const verdict = key === "costSavings" ? savingTone(value, locale) : "";
       const tone = verdict ? ` ${verdict}` : "";
       // The mark says *which quantity* this is; the figure beside it says
       // whether the news is good. Two vocabularies that agree on Saved and are
@@ -137,7 +137,7 @@ class HeaTotalsCard extends HeaCard {
     // Which way is good news depends on the concept: a fall in what was paid
     // and a fall in what was saved are opposite verdicts, and rendering both
     // the same grey left the sign meaning nothing (HEA-99).
-    const tone = changeTone(key, value - before);
+    const tone = changeTone(key, value - before, locale);
     const classes = tone ? `compare ${tone}` : "compare";
     return `<span class="${classes}" data-compare="${key}">${fill(
       this._labels.compared,

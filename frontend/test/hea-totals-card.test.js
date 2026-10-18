@@ -340,6 +340,24 @@ describe("the figures", () => {
     expect(saved.contains("loss")).toBe(false);
   });
 
+  it("leaves a saving that only rounds to nothing uncoloured", async () => {
+    // Given - a third of a cent below zero, which the card shows as "€0.00"
+    // (HEA-230)
+    document.documentElement.style.setProperty("--primary-text-color", "#111111");
+    const hass = aHass({
+      response: bucketsFor("slow_poll_aircon", 10, 3.003, 3),
+    });
+
+    // When
+    const card = mount(hass);
+    await settled(card);
+
+    // Then
+    const saved = figure(card, "costSavings");
+    expect(saved.textContent).toBe("€0.00");
+    expect(saved.classList.contains("loss")).toBe(false);
+  });
+
   it("leaves what was paid uncoloured, whatever it was", async () => {
     // Given - spending money is not bad news, it is the bill. Only a *change*
     // in it has a direction, which `changeTone` handles per concept (HEA-99)
