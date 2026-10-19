@@ -1110,6 +1110,52 @@ async def test_an_entry_with_no_generation_gains_none(hass: HomeAssistant) -> No
     assert CONF_GENERATION_ENTITY not in entry.data
 
 
+async def test_reconfigure_removes_an_input_the_household_emptied(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a running house with an export meter and a battery capacity set,
+    # and cycle meters it created, which the form knows nothing about
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=4,
+        options={CONF_CYCLE_DAILY: True},
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_BATTERY_CAPACITY_KWH: 5.0,
+        },
+    )
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    owned_before = dict(entry.data[CONF_CYCLE_METERS])
+
+    # When - both fields are emptied and the form submitted, which Home
+    # Assistant's form sends as the fields being absent (HEA-231)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+        },
+    )
+    await hass.async_block_till_done()
+
+    # Then - both are gone, and what the form does not ask about is kept exactly
+    assert result["reason"] == "reconfigure_successful"
+    assert CONF_GRID_EXPORT_ENTITY not in entry.data
+    assert CONF_BATTERY_CAPACITY_KWH not in entry.data
+    assert entry.data[CONF_CYCLE_METERS] == owned_before
+
+
 async def test_reconfigure_preserves_helper_bookkeeping(hass: HomeAssistant) -> None:
     # Given - a running house-only install that has auto-created its cycle meters,
     # recorded on the entry as HEA-owned (created). Cycle totals are opted into

@@ -62,6 +62,8 @@ from .house_inputs import house_entities
 from .reset import async_reset_totals
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
@@ -154,11 +156,8 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = _validate_house_sources(self.hass, user_input)
             if not errors:
-                # Merge, don't replace: entry.data also holds the auto-created-
-                # helper bookkeeping (CONF_INTEGRAL_HELPERS / CONF_CYCLE_METERS),
-                # which a wholesale ``data=user_input`` would wipe (HEA-52).
                 return self.async_update_reload_and_abort(
-                    entry, data={**entry.data, **user_input}
+                    entry, data=_reconfigured(entry.data, user_input)
                 )
         return self.async_show_form(
             step_id="reconfigure",
@@ -184,6 +183,28 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> HomeEnergyAdvisorOptionsFlow:
         """Provide the options flow for the global cycle opt-ins."""
         return HomeEnergyAdvisorOptionsFlow()
+
+
+def _reconfigured(
+    stored: Mapping[str, Any], user_input: dict[str, Any]
+) -> dict[str, Any]:
+    """The entry's data after a Reconfigure.
+
+    Every field the form asks about comes from what was submitted, and a field
+    that is absent is unset: Home Assistant's form leaves an emptied field out
+    altogether rather than sending it empty, so merging over the stored data
+    kept an export meter or a battery capacity the household had removed
+    (HEA-231).
+
+    Everything else is kept as stored, because the entry also holds what the
+    form never shows - the helpers this integration created and owns
+    (CONF_INTEGRAL_HELPERS / CONF_CYCLE_METERS), which replacing the data
+    outright would forget (HEA-52). The form's fields are read off its own
+    schema, so a field added to it later is covered without anyone remembering.
+    """
+    asked = {str(marker) for marker in _build_schema({}).schema}
+    kept = {key: value for key, value in stored.items() if key not in asked}
+    return {**kept, **user_input}
 
 
 def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
