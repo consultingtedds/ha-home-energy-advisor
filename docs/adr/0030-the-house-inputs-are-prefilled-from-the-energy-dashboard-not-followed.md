@@ -79,3 +79,27 @@ Rejected:
 - Revisit if a household shows a real harm from the two drifting apart, or if
   Home Assistant itself starts treating the Energy Dashboard as the one
   register of meters that integrations are expected to follow.
+
+## Update - 2026-10-19: the Energy Dashboard is where things are entered, and a change there is offered, not imposed
+
+The decision above left one gap: a household that adds a battery or changes a
+meter in the Energy Dashboard is not told this integration still has the old
+one, and "why do I have to enter this when you already have it" is the
+complaint that follows. So the Energy Dashboard becomes the **recommended**
+place to enter the house's meters, and this integration takes changes from it
+with the household's consent:
+
+1. **Setup says where each answer came from** - taken from the Energy
+   Dashboard - and where the Energy Dashboard lacks something it can hold, such
+   as a battery's level and capacity, it says that is the place to add it.
+2. **A change there is noticed.** When the Energy Dashboard's batteries or
+   meters differ from what is saved here, a Repair lists the differences with
+   two answers: **take them**, which updates the saved inputs as a Reconfigure
+   would, or **keep mine**, which is remembered for exactly those differences so
+   the household is not asked again until the Energy Dashboard changes once
+   more.
+3. Nothing is applied without that answer. The reasons above for not following
+   live still hold: a household may keep better meters here on purpose, as the
+   reference household does, and the form's refusals stay refusals.
+
+Built with the battery work in HEA-220, and applied to grid meters by HEA-221.
