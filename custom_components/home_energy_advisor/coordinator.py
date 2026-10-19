@@ -36,6 +36,7 @@ from .accountant_store import AccountantStore, SnapshotStatus
 from .const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_CHARGING,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
@@ -49,16 +50,14 @@ from .const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_PRIORITY,
     DEFAULT_CURRENCY,
     DOMAIN,
     SIGNAL_RESET_TOTALS,
-    SOLAR_PRIORITY_BATTERY,
-    SOLAR_PRIORITY_HOUSE,
     SUBENTRY_TYPE_DEVICE,
 )
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.energy_source import EnergyUnit
+from .engine.house_balance import ChargeSource
 from .engine.level_log import LevelLog, LevelReason
 from .house_inputs import house_entities
 from .source_history import async_has_ever_reported
@@ -236,10 +235,10 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         )
         # What that level read, for the diagnostics (HEA-212).
         self._level_log = LevelLog()
-        # HEA-217. An entry from before the question was asked keeps the order
-        # it has always been booked in.
-        self._solar_priority: str = entry.data.get(
-            CONF_SOLAR_PRIORITY, SOLAR_PRIORITY_HOUSE
+        # HEA-233. An entry holding no answer is on the one true of most
+        # batteries.
+        self._charge_source = ChargeSource(
+            entry.data.get(CONF_BATTERY_CHARGING, ChargeSource.SPARE_SOLAR)
         )
         self._accountant = self._new_accountant()
         self._store = AccountantStore(self.hass, entry.entry_id)
@@ -366,7 +365,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         return Accountant(
             house_sources=self._house_sources,
             device_energy_entities=self._devices,
-            battery_first=self._solar_priority == SOLAR_PRIORITY_BATTERY,
+            charge_source=self._charge_source,
         )
 
     @property
@@ -1236,7 +1235,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                 None if self._battery_capacity is None else str(self._battery_capacity)
             ),
             # Named even where the household never chose, for the same reason.
-            "solar_priority": self._solar_priority,
+            "battery_charging": self._charge_source.value,
             "currency": data.get(CONF_CURRENCY, DEFAULT_CURRENCY),
             "house_sources": [
                 {"role": role.value, "entity": entity}

@@ -229,3 +229,43 @@ numbers fit both. Only the interval where all three are busy at once is
 affected - a charge with no generation beside it is grid either way, and one
 with no import is generation either way - and the proportional split of what
 served the house is unchanged.
+
+## Update - 2026-10-19: the question is how the battery charges, and generation first is the default
+
+The Update above said import first holds for a battery that takes only what the
+house does not use. **It does not.** Such a battery and an import never share a
+moment; they share a five-minute interval because the loads took turns inside
+it. On the reference household on 17 October, 34 intervals held import,
+generation and charge together, and in none did the charge exceed generation:
+a load came on and the house drew from the grid for part of the interval, and
+the spare sunshine went into the battery for the rest. Read that way, the
+battery holds generation and the house ran on the grid - generation first. It
+moved 0.087 of about 4.6 kWh charged that day, under a cent at a flat tariff,
+which is why it went unseen; a second household, with grid charging turned off,
+saw a quarter of its charge booked to the grid and Battery Losses priced at it.
+
+Import first is right only when the battery is charged from the grid **on
+purpose** while the sun is up - an optimiser, a cheap-rate schedule, a forced
+charge. That is the discretionary charge the 2026-10-14 Update priced at the
+margin, and the import exists because of it.
+
+What decides the order is therefore why the battery charges, so that is what
+the household is asked (`battery_charging`, HEA-233):
+
+- `spare_solar`, the default: generation first, then import;
+- `grid_too`: import first, then generation, as before;
+- `solar_only`: generation only. A charge generation has not yet covered waits
+  in the charge carry for the generation tick still to come, and expires as any
+  carry does; it is never given import.
+
+The magnitudes cannot decide it instead. A test such as "charge above
+generation means grid charging" fails on real meters: one household's
+solar-only battery showed a charge of 0.0216 kWh beside 0.0143 of generation in
+one interval, purely from the two meters' timing. A household whose battery
+does both - spare solar most of the day, an optimiser's grid charge sometimes -
+is described by neither single answer; an optional live signal from the
+optimiser is recorded as HEA-234, to be built if measurement shows it matters.
+
+Over a full charge and discharge the household's money is the same under every
+answer. What moves is which devices, and which hours, carry the grid share,
+which is what a per-device ledger exists to say.

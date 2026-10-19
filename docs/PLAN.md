@@ -612,10 +612,20 @@ holds that a winter battery regime has never been observed.
 
 Carried forward rather than closed:
 
-- **Next, in this order** (agreed 2026-10-17): two small fixes from what
-  households and the reference dashboard showed - **HEA-227**, a battery
-  capacity typed in Wh accepted as kWh, and **HEA-230**, a saving a fraction of a
-  cent below zero shown as a red "-€0.00" - then HEA-222, then HEA-220.
+- **Next, in this order** (agreed 2026-10-17, extended 2026-10-19): two small
+  fixes from what households and the reference dashboard showed - **HEA-227**, a
+  battery capacity typed in Wh accepted as kWh, and **HEA-230**, a saving a
+  fraction of a cent below zero shown as a red "-€0.00" - then **HEA-231**,
+  Reconfigure unable to remove an input once set, and **HEA-233**, which asks how
+  the battery charges and makes generation first the default (ADR-0002's
+  2026-10-19 Update; it absorbs HEA-228). Those four are built and ship together.
+  **HEA-232** lets that release go out as a beta first: a GitHub pre-release
+  that HACS offers only to a household that switches pre-releases on. Then
+  HEA-222, then HEA-220.
+- **HEA-234** - an optimiser's live "grid-charging now" signal for the charge
+  source, for a battery that charges from spare solar most of the day and from
+  the grid sometimes. Parked until the reference household's Predbat is out of
+  read-only and its daytime charges have been measured.
 - **Matching the Energy Dashboard's house configuration before 1.0** (Paul,
   2026-10-15). Generation already takes several meters (HEA-219). **HEA-222**
   decides the rest: the house inputs follow the Energy Dashboard live by default,
@@ -627,10 +637,6 @@ Carried forward rather than closed:
   household in Discussion 42 (losses per battery, a charge source per battery),
   and **HEA-221**, several grid meters, which matters most for a dual-rate meter
   whose two registers are priced apart.
-- **HEA-228** - a third `solar_priority` answer for a battery whose grid charging
-  is off: never give a charge any import. Battery-first still hands import the
-  part of a charge that runs ahead of the generation meter in the same interval
-  (Discussion 35, a second household). May become per battery with HEA-220.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are
@@ -645,7 +651,7 @@ Carried forward rather than closed:
   Discussion 35. The engine already splits every charge into grid and
   generation; the ledger does not yet keep the generation share in kWh, and
   nothing publishes it. Whether the headline changes is still to decide, and the
-  split it counts follows `solar_priority`. The self-sufficiency card's note
+  split it counts follows `battery_charging`. The self-sufficiency card's note
   still says the readings cannot tell what charged the battery, which has not
   been true for some time; the note changes with this ticket. It touches the
   battery ledger, so it follows HEA-220.

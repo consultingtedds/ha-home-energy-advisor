@@ -49,11 +49,34 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from datetime import timedelta
+
+
+class ChargeSource(StrEnum):
+    """How the household's battery charges, which the meters cannot see.
+
+    It only decides an interval in which the house imports, the panels generate
+    and the battery charges together: a charge with no generation beside it is
+    grid under every answer, and one with no import is generation (HEA-233).
+    """
+
+    #: Only from what the panels leave over - most batteries. An interval holding
+    #: all three is loads taking turns inside it: the battery charged in the
+    #: minutes of surplus and the grid fed the house in the others, so the panels
+    #: charged it first.
+    SPARE_SOLAR = "spare_solar"
+    #: From the grid as well, on a schedule or by an optimiser. The import exists
+    #: because of the charge, so the import charged it first (ADR-0002's first
+    #: Update): the house keeps the sunshine it would have had without it.
+    GRID_TOO = "grid_too"
+    #: Never from the grid. A charge the panels have not yet covered waits for
+    #: their next tick rather than being given import.
+    SOLAR_ONLY = "solar_only"
 
 
 @dataclass(frozen=True)
@@ -133,9 +156,14 @@ class _Carry:
 class HouseBalance:
     """Decomposes each interval's house meters into the sources that served it."""
 
-    def __init__(self, expiry: timedelta, *, battery_first: bool = False) -> None:
+    def __init__(
+        self,
+        expiry: timedelta,
+        *,
+        charge_source: ChargeSource = ChargeSource.SPARE_SOLAR,
+    ) -> None:
         self._expiry = expiry
-        self._battery_first = battery_first
+        self._charge_source = charge_source
         self._export = _Carry()
         self._charge = _Carry()
 
@@ -182,28 +210,30 @@ class HouseBalance:
 
         The meters cannot see where energy went inside one interval, so where
         the house imports, the panels generate and the battery charges at once,
-        this is a choice. By default import first, then generation: import
-        measured beside a charge is the supply for it, which is right for a
-        battery that takes only what the house does not use. A household whose
-        inverter sends the panels to the battery first, and lets the grid run
-        the house, says so, and the order turns round (HEA-217). Either way only
-        that one case is affected: a charge with no generation beside it is
-        grid either way, and one with no import is generation either way.
+        the household's answer to how its battery charges decides the order
+        (`ChargeSource`, HEA-233). Only that one case is affected: a charge with
+        no generation beside it is grid under every answer, and one with no
+        import is generation.
 
-        A charge with neither alongside it waits: the meter that supplied it is
-        quantised, and its tick is coming.
+        A charge that what it may draw on cannot yet cover waits: the meter
+        that supplied it is quantised, and its tick is coming. A battery that
+        never charges from the grid only ever waits for generation.
         """
         waiting = charged + self._charge.available(at, self._expiry)
-        if self._battery_first:
-            generation_charge = min(waiting, generated)
-            waiting -= generation_charge
+        if self._charge_source is ChargeSource.GRID_TOO:
             grid_charge = min(waiting, imported)
             waiting -= grid_charge
+            generation_charge = min(waiting, generated)
+            waiting -= generation_charge
         else:
-            grid_charge = min(waiting, imported)
-            waiting -= grid_charge
             generation_charge = min(waiting, generated)
             waiting -= generation_charge
+            grid_charge = (
+                Decimal(0)
+                if self._charge_source is ChargeSource.SOLAR_ONLY
+                else min(waiting, imported)
+            )
+            waiting -= grid_charge
         self._charge.hold(waiting, at)
         return grid_charge, generation_charge, generated - generation_charge
 

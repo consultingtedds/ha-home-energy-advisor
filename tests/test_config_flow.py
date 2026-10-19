@@ -21,6 +21,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_CHARGING,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
     CONF_CYCLE_DAILY,
@@ -31,7 +32,6 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_PRIORITY,
     DOMAIN,
 )
 from custom_components.home_energy_advisor.helper_ownership import helper_was_created
@@ -613,11 +613,11 @@ async def test_user_flow_records_every_generation_meter_chosen(
     ]
 
 
-async def test_the_household_says_whether_its_solar_charges_the_battery_first(
+async def test_the_household_says_its_battery_never_charges_from_the_grid(
     hass: HomeAssistant,
 ) -> None:
-    # Given - an inverter set to fill the battery from the panels while the grid
-    # runs the house, which the meters cannot see (HEA-217)
+    # Given - grid charging turned off on the battery, something the meters
+    # cannot see (HEA-233)
     _register_source_sensors(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -632,19 +632,19 @@ async def test_the_household_says_whether_its_solar_charges_the_battery_first(
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
             CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
             CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
-            CONF_SOLAR_PRIORITY: "battery",
+            CONF_BATTERY_CHARGING: "solar_only",
         },
     )
 
     # Then
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"][CONF_SOLAR_PRIORITY] == "battery"
+    assert result["data"][CONF_BATTERY_CHARGING] == "solar_only"
 
 
-async def test_solar_runs_the_house_first_unless_told_otherwise(
+async def test_a_battery_charges_from_spare_solar_unless_told_otherwise(
     hass: HomeAssistant,
 ) -> None:
-    # Given / When - a household that leaves the choice alone
+    # Given / When - a household that leaves the question alone
     _register_source_sensors(hass)
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
@@ -652,16 +652,50 @@ async def test_solar_runs_the_house_first_unless_told_otherwise(
     data_schema = result["data_schema"]
     assert data_schema is not None
     field = next(
-        marker for marker in data_schema.schema if str(marker) == CONF_SOLAR_PRIORITY
+        marker for marker in data_schema.schema if str(marker) == CONF_BATTERY_CHARGING
     )
 
-    # Then - today's order is the default, so no household's figures move, and
-    # the field sits straight after the battery's own meters
-    assert field.default() == "house"
+    # Then - the answer true of most batteries, offered beside the other two,
+    # straight after the battery's own meters
+    assert field.default() == "spare_solar"
+    options = data_schema.schema[field].config["options"]
+    assert options == ["spare_solar", "grid_too", "solar_only"]
     fields = [str(marker) for marker in data_schema.schema]
-    assert fields.index(CONF_SOLAR_PRIORITY) == (
+    assert fields.index(CONF_BATTERY_CHARGING) == (
         fields.index(CONF_BATTERY_DISCHARGE_ENTITY) + 1
     )
+
+
+@pytest.mark.parametrize("stored", ["house", "battery"])
+async def test_the_solar_priority_answer_gives_way_to_the_new_question(
+    hass: HomeAssistant, stored: str
+) -> None:
+    # Given - an entry from 0.12.0 holding either answer to the question it asked.
+    # "house" is also what anybody who opened Reconfigure stored without
+    # choosing, so neither can be read as a deliberate answer to the new one
+    _register_source_sensors(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        version=4,
+        data={
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            "solar_priority": stored,
+        },
+    )
+    entry.add_to_hass(hass)
+
+    # When
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - the old key is gone and the household is on the default, which the
+    # coordinator reads from the key's absence
+    assert entry.version == 5
+    assert "solar_priority" not in entry.data
+    assert CONF_BATTERY_CHARGING not in entry.data
+    assert entry.data[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
 
 
 async def test_only_one_instance_can_be_configured(hass: HomeAssistant) -> None:
@@ -1082,7 +1116,7 @@ async def test_an_existing_generation_meter_becomes_a_list_of_one(
 
     # Then - the same meter, now in the shape every reader expects, and nothing
     # else about the household touched
-    assert entry.version == 4
+    assert entry.version == 5
     assert entry.data[CONF_GENERATION_ENTITY] == ["sensor.generation"]
     assert entry.data[CONF_GRID_IMPORT_ENTITY] == "sensor.grid_import"
 
@@ -1106,7 +1140,7 @@ async def test_an_entry_with_no_generation_gains_none(hass: HomeAssistant) -> No
     await hass.async_block_till_done()
 
     # Then - no empty list written for a meter they never had
-    assert entry.version == 4
+    assert entry.version == 5
     assert CONF_GENERATION_ENTITY not in entry.data
 
 

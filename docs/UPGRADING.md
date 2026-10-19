@@ -34,6 +34,18 @@ section is read as part of it and printed to a household.
 
 ## Unreleased
 
+**If something charges your battery from the grid while the sun is up, say
+so.** The house settings now ask **How your battery charges**, in place of
+0.12.0's question about which the panels feed first. The preset has changed: it
+now assumes the battery charges mainly from solar the house doesn't need, which
+is true of most batteries. So in the minutes when the battery charges while the
+house is also using the grid, the battery is now taken to hold solar and the
+house to have run on the grid. If a cheap rate, a forced charge or an app such
+as Predbat charges your battery from the grid during the day, open
+**Reconfigure** and choose **From the grid as well**. If grid charging is turned
+off, choose **Only from solar**. Whatever you chose in 0.12.0 is replaced by the
+preset, and figures already recorded stay as they are.
+
 **If you filled in your battery's capacity, check it is in kWh.** The field now
 refuses anything above 200, because no home battery holds that much and the
 figure is almost always watt-hours: a 1500 Wh battery is 1.5. A capacity saved

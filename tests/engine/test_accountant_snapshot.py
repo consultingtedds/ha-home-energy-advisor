@@ -17,6 +17,7 @@ from custom_components.home_energy_advisor.engine.accountant import (
     SourceRole,
     Totals,
 )
+from custom_components.home_energy_advisor.engine.house_balance import ChargeSource
 
 BASE = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
 OFF_PEAK = Decimal("0.093")
@@ -36,7 +37,14 @@ def at(minutes: int) -> datetime:
 
 
 def _accountant() -> Accountant:
-    """A house with generation and a battery, and two differently-metered devices."""
+    """A house with generation and a battery, and two differently-metered devices.
+
+    The battery is force-charged from the grid at the cheap rate, so the
+    household says it charges from the grid too. That is not decoration: the
+    generation meter steps once at minute 15, and the step is spread back
+    across its quiet span over the overnight import, where only that answer
+    keeps the charge on the grid it was bought from (HEA-233).
+    """
     return Accountant(
         house_sources={
             SourceRole.GRID_IMPORT: GRID,
@@ -48,6 +56,7 @@ def _accountant() -> Accountant:
             "coarse_step_aircon": COARSE_AIRCON,
             "steady_pump": STEADY_PUMP,
         },
+        charge_source=ChargeSource.GRID_TOO,
     )
 
 
@@ -205,7 +214,7 @@ _CONFIG_DERIVED = frozenset(
         "_entity_of",
         "_import_entity",
         "_lateness",
-        "_battery_first",
+        "_charge_source",
         "_max_quiet_span",
         "_meters_of",
         "_retention",

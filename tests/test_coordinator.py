@@ -19,6 +19,7 @@ from custom_components.home_energy_advisor import issues
 from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_CHARGING,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
@@ -29,7 +30,6 @@ from custom_components.home_energy_advisor.const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_PRIORITY,
     DOMAIN,
     SERVICE_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
@@ -1954,12 +1954,12 @@ async def test_one_array_going_unavailable_raises_its_own_repair(
 
 
 async def _one_busy_interval(
-    hass: HomeAssistant, freezer: FrozenDateTimeFactory, *, solar_priority: str | None
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, *, charging: str | None
 ) -> MockConfigEntry:
     """One interval in which the house imports, generates and charges at once.
 
     Discussion 35's household, 09:50: import 0.0117, generation 0.0204, charge
-    0.0212 kWh, and no house meter (HEA-217).
+    0.0212 kWh, and no house meter (HEA-233).
     """
     freezer.move_to(datetime(2026, 10, 16, 9, 50, tzinfo=UTC))
     hass.states.async_set("sensor.price", "0.3948")
@@ -1981,9 +1981,9 @@ async def _one_busy_interval(
         CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
         CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
     }
-    if solar_priority is not None:
-        data[CONF_SOLAR_PRIORITY] = solar_priority
-    entry = MockConfigEntry(domain=DOMAIN, version=4, data=data)
+    if charging is not None:
+        data[CONF_BATTERY_CHARGING] = charging
+    entry = MockConfigEntry(domain=DOMAIN, version=5, data=data)
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -1997,33 +1997,34 @@ async def _one_busy_interval(
     return entry
 
 
-async def test_a_battery_first_household_is_booked_as_its_inverter_works(
+async def test_a_battery_charged_from_the_grid_too_is_booked_import_first(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given / When - the household has said its solar charges the battery first
-    entry = await _one_busy_interval(hass, freezer, solar_priority="battery")
+    # Given / When - the household says an optimiser charges it from the grid
+    entry = await _one_busy_interval(hass, freezer, charging="grid_too")
 
-    # Then - the house ran on the grid while the panels filled the battery
-    untracked = entry.runtime_data.data.untracked
-    assert untracked.energy_from_grid == Decimal("0.0109")
-    assert untracked.energy_from_generation == Decimal(0)
-    # and the diagnostics say which order is in force
-    config = entry.runtime_data.diagnostics()["config"]
-    assert config["solar_priority"] == "battery"
-
-
-async def test_a_household_that_never_chose_keeps_today_s_order(
-    hass: HomeAssistant, freezer: FrozenDateTimeFactory
-) -> None:
-    # Given / When - an entry from before the setting existed
-    entry = await _one_busy_interval(hass, freezer, solar_priority=None)
-
-    # Then - solar runs the house first, exactly as before, and the diagnostics
-    # name it rather than leaving the absence to be read as anything
+    # Then - the import went into the battery and the house kept the sunshine
     untracked = entry.runtime_data.data.untracked
     assert untracked.energy_from_generation == Decimal("0.0109")
     assert untracked.energy_from_grid == Decimal(0)
-    assert entry.runtime_data.diagnostics()["config"]["solar_priority"] == "house"
+    # and the diagnostics say which answer is in force
+    config = entry.runtime_data.diagnostics()["config"]
+    assert config["battery_charging"] == "grid_too"
+
+
+async def test_a_household_that_never_answered_charges_from_spare_solar(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - an entry that holds no answer
+    entry = await _one_busy_interval(hass, freezer, charging=None)
+
+    # Then - the panels filled the battery while the grid ran the house, and the
+    # diagnostics name the default rather than leaving its absence to be read
+    untracked = entry.runtime_data.data.untracked
+    assert untracked.energy_from_grid == Decimal("0.0109")
+    assert untracked.energy_from_generation == Decimal(0)
+    config = entry.runtime_data.diagnostics()["config"]
+    assert config["battery_charging"] == "spare_solar"
 
 
 def _export_prefs(

@@ -54,6 +54,11 @@ _RENAMED_GENERATION_KEY = 1
 _CYCLES_ALWAYS_CREATED = 2
 _CYCLES_OPTED_INTO = 3
 _SEVERAL_GENERATION_METERS = 4
+_BATTERY_CHARGING_ASKED = 5
+
+# The key 0.12.0 stored its answer to which the panels feed first under. Only the
+# migration below knows this name.
+_LEGACY_SOLAR_PRIORITY_KEY = "solar_priority"
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
@@ -97,6 +102,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
     becomes a list of one. A household with none is left with none rather than
     an empty list. The version moving also stops an older release loading an
     entry whose generation it would read as a single entity id.
+
+    Version 4 may hold an answer to which the panels feed first. The question
+    is now how the battery charges (HEA-233), and neither old answer reads as an
+    answer to it: "house" is also what anybody who opened Reconfigure stored
+    without choosing, and "battery" means the new default anyway. So the key
+    goes, and the household is on the default until they answer.
     """
     if entry.version == _RENAMED_GENERATION_KEY:
         data = {**entry.data}
@@ -118,6 +129,12 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
             data[CONF_GENERATION_ENTITY] = list(generation)
         hass.config_entries.async_update_entry(
             entry, data=data, version=_SEVERAL_GENERATION_METERS
+        )
+    if entry.version == _SEVERAL_GENERATION_METERS:
+        data = {**entry.data}
+        data.pop(_LEGACY_SOLAR_PRIORITY_KEY, None)
+        hass.config_entries.async_update_entry(
+            entry, data=data, version=_BATTERY_CHARGING_ASKED
         )
     return True
 

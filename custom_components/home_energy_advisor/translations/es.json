@@ -12,7 +12,7 @@
           "generation_entity": "Energía de generación local (opcional)",
           "battery_charge_entity": "Energía de carga de la batería (opcional)",
           "battery_discharge_entity": "Energía de descarga de la batería (opcional)",
-          "solar_priority": "Cuando los paneles, la red y la batería trabajan a la vez",
+          "battery_charging": "Cómo se carga tu batería",
           "house_consumption_entity": "Energía de consumo del hogar (opcional)",
           "battery_soc_entity": "Nivel de la batería (opcional)",
           "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
@@ -25,7 +25,7 @@
           "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), elígelas todas y se sumarán. (Consulta el readme para más ayuda)",
           "battery_charge_entity": "Energía acumulada cargada en la batería.",
           "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
-          "solar_priority": "Adónde envía primero tu inversor la energía de los paneles mientras la casa también importa; algunos lo llaman prioridad de suministro o de carga. Decide si la batería se cargó con energía solar o de la red, y por tanto cuánto costó lo que almacena. Si no estás seguro, deja la primera opción.",
+          "battery_charging": "Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente.",
           "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente.",
           "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Solo se usa junto con el nivel de arriba."
@@ -42,7 +42,7 @@
           "generation_entity": "Energía de generación local (opcional)",
           "battery_charge_entity": "Energía de carga de la batería (opcional)",
           "battery_discharge_entity": "Energía de descarga de la batería (opcional)",
-          "solar_priority": "Cuando los paneles, la red y la batería trabajan a la vez",
+          "battery_charging": "Cómo se carga tu batería",
           "house_consumption_entity": "Energía de consumo del hogar (opcional)",
           "battery_soc_entity": "Nivel de la batería (opcional)",
           "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
@@ -55,7 +55,7 @@
           "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), elígelas todas y se sumarán. (Consulta el readme para más ayuda)",
           "battery_charge_entity": "Energía acumulada cargada en la batería.",
           "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
-          "solar_priority": "Adónde envía primero tu inversor la energía de los paneles mientras la casa también importa; algunos lo llaman prioridad de suministro o de carga. Decide si la batería se cargó con energía solar o de la red, y por tanto cuánto costó lo que almacena. Si no estás seguro, deja la primera opción.",
+          "battery_charging": "Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente.",
           "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente.",
           "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Solo se usa junto con el nivel de arriba."
@@ -223,10 +223,11 @@
     }
   },
   "selector": {
-    "solar_priority": {
+    "battery_charging": {
       "options": {
-        "house": "La energía solar abastece primero la casa (la mayoría de sistemas)",
-        "battery": "La energía solar carga primero la batería"
+        "spare_solar": "Sobre todo con la energía solar que la casa no necesita (la mayoría de baterías)",
+        "grid_too": "También desde la red, con un horario o mediante un optimizador",
+        "solar_only": "Solo con energía solar: la carga desde la red está desactivada"
       }
     }
   },

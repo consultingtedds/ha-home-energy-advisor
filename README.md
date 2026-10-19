@@ -133,7 +133,7 @@ Energy Dashboard, most of them are filled in for you already.
 | Local generation energy | No | Cumulative generation of your own, whatever the source |
 | Battery charge energy | No | Cumulative energy charged into a home battery |
 | Battery discharge energy | No | Cumulative energy discharged from it - **all** of it, including any that went to the grid rather than to the house |
-| When the panels, the grid and the battery are all busy at once | Yes, preset | Whether your inverter sends solar to the house or to the battery first - see below |
+| How your battery charges | Yes, preset | Mainly from spare solar, from the grid as well, or only from solar - see below |
 | House consumption energy | No | Total household consumption, if you measure it directly |
 | Battery level | No | How full the battery is, as a percentage |
 | Battery usable capacity | No | What it holds when full, in kWh |
@@ -200,25 +200,31 @@ worse.
 If you already combined them with a Group helper, that still works and there is
 no need to change it.
 
-#### Whether your solar goes to the house or the battery first
+#### How your battery charges
 
 Your meters say how much came in from the grid, how much the panels made and how
-much went into the battery, but not where each one went. When all three happen
-in the same few minutes, there are two ways to read them:
+much went into the battery, but not where each one went. Usually that doesn't
+matter. It does in the few minutes when all three happen together - the battery
+charging while the house is also using the grid - and then the answer depends
+on why the battery was charging:
 
-- **Solar runs the house first (most systems).** The house used the panels, and
-  the battery was charged from the grid with whatever the house did not need.
-  This is the preset, and how every figure was worked out before the question
-  was asked.
-- **Solar charges the battery first.** The panels filled the battery, and the
-  house ran on the grid. Some inverters work this way, and some let you choose:
-  EcoFlow calls it supply priority, others call it charge priority.
+- **Mainly from solar the house doesn't need (most batteries).** In those
+  minutes the house and the battery took turns: a kettle or an oven came on and
+  the house drew from the grid, and the rest of the time the spare sunshine went
+  into the battery. So the battery holds solar, and the grid ran the house. This
+  is the preset, and it is also right for an inverter set to send solar to the
+  battery first, which EcoFlow calls supply priority.
+- **From the grid as well, on a schedule or by an optimiser.** If something
+  charges your battery from the grid on purpose while the sun is up - a cheap
+  rate, a forced charge, an app such as Predbat - the grid energy went into the
+  battery because of that charge, and the house kept the sunshine.
+- **Only from solar - grid charging is turned off.** The battery never takes
+  grid energy at all, even in a moment when its meter runs ahead of your
+  panels' meter.
 
-Pick the one your inverter does. It decides whether the energy in your battery
-cost what the grid charged or nothing, and so what your devices are charged when
-the battery later runs them. If you are not sure, leave the preset. It only
-makes a difference in those minutes when the battery charges while the house is
-also importing.
+It decides whether the energy in your battery cost what the grid charged or
+nothing, and so what your devices are charged when the battery later runs them.
+If you are not sure, leave the preset.
 
 #### If you have more than one battery
 

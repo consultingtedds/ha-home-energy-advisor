@@ -58,7 +58,7 @@ from .energy_source import (
     Reading,
     ScaleChange,
 )
-from .house_balance import HouseBalance, HouseReadings, Served
+from .house_balance import ChargeSource, HouseBalance, HouseReadings, Served
 from .interval_ledger import (
     BUCKET,
     IntervalBucket,
@@ -497,13 +497,13 @@ class Accountant:
         device_energy_entities: Mapping[str, str],
         nested_devices: Mapping[str, str] | None = None,
         windows: AccountingWindows | None = None,
-        battery_first: bool = False,
+        charge_source: ChargeSource = ChargeSource.SPARE_SOLAR,
     ) -> None:
         self._windows = windows or AccountingWindows()
-        # Whether the panels charge the battery before they run the house, where
-        # import, generation and charging coincide (HEA-217). How the household's
-        # inverter is set, which the meters cannot see.
-        self._battery_first = battery_first
+        # How the household's battery charges, which decides what charged it
+        # where import, generation and charging coincide (HEA-233). The meters
+        # cannot see it, so the household says.
+        self._charge_source = charge_source
         self._lateness = self._windows.lateness
         self._retention = self._windows.retention
         self._max_quiet_span = self._windows.max_quiet_span
@@ -589,7 +589,7 @@ class Accountant:
         # balance half told; what is left over waits here for its counterpart
         # rather than being floored away (HEA-133).
         self._balance = HouseBalance(
-            expiry=self._max_quiet_span, battery_first=self._battery_first
+            expiry=self._max_quiet_span, charge_source=self._charge_source
         )
         self._pending_bounds: list[_PendingBound] = []
         # Late corrections awaiting a remainder that can afford to hand them over,
@@ -762,7 +762,7 @@ class Accountant:
         # balance is a claim on the same buckets, and goes for the same reason.
         self._debts = DebtLedger(expiry=self._max_quiet_span)
         self._balance = HouseBalance(
-            expiry=self._max_quiet_span, battery_first=self._battery_first
+            expiry=self._max_quiet_span, charge_source=self._charge_source
         )
 
     @property

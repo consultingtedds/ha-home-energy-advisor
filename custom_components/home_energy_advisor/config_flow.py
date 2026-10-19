@@ -29,6 +29,7 @@ from homeassistant.helpers import selector, translation
 from .const import (
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_CHARGING,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
@@ -45,11 +46,8 @@ from .const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_POWER_ENTITY,
     CONF_PRICE_ENTITY,
-    CONF_SOLAR_PRIORITY,
     DEFAULT_CURRENCY,
     DOMAIN,
-    SOLAR_PRIORITY_BATTERY,
-    SOLAR_PRIORITY_HOUSE,
     SUBENTRY_TYPE_DEVICE,
 )
 from .discovery import (
@@ -58,6 +56,7 @@ from .discovery import (
     source_state_class,
     source_unit,
 )
+from .engine.house_balance import ChargeSource
 from .house_inputs import house_entities
 from .reset import async_reset_totals
 
@@ -103,13 +102,12 @@ _CAPACITY_SELECTOR = selector.NumberSelector(
         unit_of_measurement="kWh",
     )
 )
-# What the panels feed first when the house, the grid and the battery are all
-# busy at once (HEA-217). Inverters call it supply or charge priority.
-_SOLAR_PRIORITY_SELECTOR = selector.SelectSelector(
+# How the battery charges, in the engine's own terms, most common first (HEA-233).
+_BATTERY_CHARGING_SELECTOR = selector.SelectSelector(
     selector.SelectSelectorConfig(
-        options=[SOLAR_PRIORITY_HOUSE, SOLAR_PRIORITY_BATTERY],
+        options=[source.value for source in ChargeSource],
         mode=selector.SelectSelectorMode.LIST,
-        translation_key=CONF_SOLAR_PRIORITY,
+        translation_key=CONF_BATTERY_CHARGING,
     )
 )
 _DEVICE_SCHEMA = vol.Schema(
@@ -124,7 +122,7 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 4
+    VERSION = 5
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -230,11 +228,10 @@ def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
             prefilled(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
             # Beside the battery's meters, because it is a question about the
-            # battery's inverter. The default is the order every household had
-            # before it was asked, so nobody's figures move unless they choose.
+            # battery. The default is the answer true of most batteries.
             vol.Required(
-                CONF_SOLAR_PRIORITY, default=SOLAR_PRIORITY_HOUSE
-            ): _SOLAR_PRIORITY_SELECTOR,
+                CONF_BATTERY_CHARGING, default=ChargeSource.SPARE_SOLAR.value
+            ): _BATTERY_CHARGING_SELECTOR,
             prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
             # Not prefilled: the Energy Dashboard knows nothing about either, and
             # they are asked for together because neither means anything alone
