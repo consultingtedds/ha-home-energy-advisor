@@ -293,6 +293,12 @@ sits empty. That is a house with no labels, not a broken filter.
 
 ### Settings you can change later
 
+Everything on the house screen - the price, the meters, how your battery
+charges, its level and capacity - can be changed at any time: **Settings** >
+**Devices & services** > **Home Energy Advisor** > three-dot menu >
+**Reconfigure**. Empty a field to remove that input altogether. The change
+counts from then on; figures already recorded stay as they are.
+
 The integration's settings menu also carries:
 
 - **Cycle totals** - daily, monthly, weekly, quarterly and yearly totals as

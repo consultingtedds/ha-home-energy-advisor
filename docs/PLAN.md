@@ -618,10 +618,11 @@ Carried forward rather than closed:
   fraction of a cent below zero shown as a red "-€0.00" - then **HEA-231**,
   Reconfigure unable to remove an input once set, and **HEA-233**, which asks how
   the battery charges and makes generation first the default (ADR-0002's
-  2026-10-19 Update; it absorbs HEA-228). Those four are built and ship together.
-  **HEA-232** lets that release go out as a beta first: a GitHub pre-release
-  that HACS offers only to a household that switches pre-releases on. Then
-  HEA-222, then HEA-220.
+  2026-10-19 Update; it absorbs HEA-228). Those four went out together as
+  **0.13.0b1** on 2026-10-19, the first beta (**HEA-232**: a GitHub
+  pre-release that HACS offers only to a household that switches pre-releases
+  on). The reference home and two Discussion 35 households are testing it; the
+  stable 0.13.0 follows their reports. Then HEA-222, then HEA-220.
 - **HEA-234** - an optimiser's live "grid-charging now" signal for the charge
   source, for a battery that charges from spare solar most of the day and from
   the grid sometimes. Parked until the reference household's Predbat is out of
