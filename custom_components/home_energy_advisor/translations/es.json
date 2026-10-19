@@ -10,12 +10,8 @@
           "grid_import_entity": "Energía importada de la red",
           "grid_export_entity": "Energía exportada a la red (opcional)",
           "generation_entity": "Energía de generación local (opcional)",
-          "battery_charge_entity": "Energía de carga de la batería (opcional)",
-          "battery_discharge_entity": "Energía de descarga de la batería (opcional)",
-          "battery_charging": "Cómo se carga tu batería",
           "house_consumption_entity": "Energía de consumo del hogar (opcional)",
-          "battery_soc_entity": "Nivel de la batería (opcional)",
-          "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
+          "battery_charging": "Cómo se carga tu batería"
         },
         "data_description": {
           "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh.",
@@ -23,12 +19,18 @@
           "grid_import_entity": "Energía acumulada importada de la red.",
           "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
           "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), elígelas todas y se sumarán. (Consulta el readme para más ayuda)",
-          "battery_charge_entity": "Energía acumulada cargada en la batería.",
-          "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
-          "battery_charging": "Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente.",
-          "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente.",
-          "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Solo se usa junto con el nivel de arriba."
+          "battery_charging": "Solo importa si tienes una batería, que se añade por separado después. Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción."
+        }
+      },
+      "batteries": {
+        "title": "Tus baterías",
+        "description": "Estas baterías están en tu Panel de energía. Marca las que quieras incluir: cada una se toma con sus contadores, y con su nivel y capacidad cuando el Panel de energía los tiene. Puedes añadir, cambiar o quitar baterías más adelante.",
+        "data": {
+          "batteries": "Baterías"
+        },
+        "data_description": {
+          "batteries": "Si falta el nivel o la capacidad de una batería, el Panel de energía es el mejor sitio para añadirlos. Home Energy Advisor los rellenará la próxima vez que añadas o edites la batería."
         }
       },
       "reconfigure": {
@@ -40,12 +42,8 @@
           "grid_import_entity": "Energía importada de la red",
           "grid_export_entity": "Energía exportada a la red (opcional)",
           "generation_entity": "Energía de generación local (opcional)",
-          "battery_charge_entity": "Energía de carga de la batería (opcional)",
-          "battery_discharge_entity": "Energía de descarga de la batería (opcional)",
-          "battery_charging": "Cómo se carga tu batería",
           "house_consumption_entity": "Energía de consumo del hogar (opcional)",
-          "battery_soc_entity": "Nivel de la batería (opcional)",
-          "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
+          "battery_charging": "Cómo se carga tu batería"
         },
         "data_description": {
           "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh.",
@@ -53,12 +51,8 @@
           "grid_import_entity": "Energía acumulada importada de la red.",
           "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
           "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), elígelas todas y se sumarán. (Consulta el readme para más ayuda)",
-          "battery_charge_entity": "Energía acumulada cargada en la batería.",
-          "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
-          "battery_charging": "Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción.",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente.",
-          "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente.",
-          "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Solo se usa junto con el nivel de arriba."
+          "battery_charging": "Solo importa si tienes una batería, que se edita por separado. Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción."
         }
       }
     },
@@ -68,7 +62,7 @@
     "error": {
       "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, una sola entrada de la casa incorrecta hace que la cifra de todos los dispositivos sea incorrecta.",
       "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla, lo que dejaría esta entrada sin aportar nada.",
-      "capacity_not_kwh": "Este valor va en kWh, y ninguna batería doméstica almacena tanto, así que probablemente está en vatios hora. Una batería de 1500 Wh son 1,5 kWh."
+      "battery_not_countable": "Una de estas baterías tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Deja esa batería sin marcar y añádela después con Añadir batería, donde puedes elegir otro contador."
     }
   },
   "options": {
@@ -118,6 +112,57 @@
     }
   },
   "config_subentries": {
+    "battery": {
+      "initiate_flow": {
+        "user": "Añadir batería",
+        "reconfigure": "Editar batería"
+      },
+      "entry_type": "Batería",
+      "step": {
+        "user": {
+          "title": "Añadir una batería",
+          "description": "Los mismos datos que tu Panel de energía guarda para una batería. Una batería de tu Panel de energía que aún no se ha añadido se rellena por ti.",
+          "data": {
+            "name": "Nombre",
+            "battery_charge_entity": "Energía de carga de la batería",
+            "battery_discharge_entity": "Energía de descarga de la batería",
+            "battery_soc_entity": "Nivel de la batería (opcional)",
+            "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
+          },
+          "data_description": {
+            "name": "Cómo aparece esta batería en Home Assistant.",
+            "battery_charge_entity": "Energía acumulada cargada en la batería.",
+            "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
+            "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente. Si tu Panel de energía no lo tiene, es el mejor sitio para añadirlo.",
+            "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Necesaria junto con el nivel de arriba."
+          }
+        },
+        "reconfigure": {
+          "title": "Editar batería",
+          "description": "Cambia el nombre, los contadores, el nivel o la capacidad de la batería.",
+          "data": {
+            "name": "Nombre",
+            "battery_charge_entity": "Energía de carga de la batería",
+            "battery_discharge_entity": "Energía de descarga de la batería",
+            "battery_soc_entity": "Nivel de la batería (opcional)",
+            "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
+          },
+          "data_description": {
+            "name": "Cómo aparece esta batería en Home Assistant.",
+            "battery_charge_entity": "Energía acumulada cargada en la batería.",
+            "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
+            "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente.",
+            "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Necesaria junto con el nivel de arriba."
+          }
+        }
+      },
+      "error": {
+        "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, un solo contador de batería incorrecto hace que la cifra de todos los dispositivos sea incorrecta.",
+        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla.",
+        "capacity_needed": "El nivel de una batería es un porcentaje, así que necesita la capacidad de la que es porcentaje. Añade la capacidad en kWh o deja el nivel vacío.",
+        "capacity_not_kwh": "Este valor va en kWh, y ninguna batería doméstica almacena tanto, así que probablemente está en vatios hora. Una batería de 1500 Wh son 1,5 kWh."
+      }
+    },
     "device": {
       "initiate_flow": {
         "user": "Añadir dispositivo",

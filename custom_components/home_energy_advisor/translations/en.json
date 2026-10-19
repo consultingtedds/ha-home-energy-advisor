@@ -10,12 +10,8 @@
           "grid_import_entity": "Grid import energy",
           "grid_export_entity": "Grid export energy (optional)",
           "generation_entity": "Local generation energy (optional)",
-          "battery_charge_entity": "Battery charge energy (optional)",
-          "battery_discharge_entity": "Battery discharge energy (optional)",
-          "battery_charging": "How your battery charges",
           "house_consumption_entity": "House consumption energy (optional)",
-          "battery_soc_entity": "Battery level (optional)",
-          "battery_capacity_kwh": "Battery usable capacity (optional)"
+          "battery_charging": "How your battery charges"
         },
         "data_description": {
           "price_entity": "The sensor or Number helper giving the current import price per kWh.",
@@ -23,12 +19,18 @@
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), choose them all and they are added together. (See the readme for more help)",
-          "battery_charge_entity": "Cumulative energy charged into the battery.",
-          "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
-          "battery_charging": "This decides whether the battery was charged from your panels or from the grid in the minutes it charges while the house is also using the grid, and so what its stored energy cost. If you are not sure, leave the first.",
           "house_consumption_entity": "Total household consumption, if measured directly.",
-          "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
-          "battery_capacity_kwh": "What the battery holds when full, in kWh. Only used together with the battery level above."
+          "battery_charging": "Only matters if you have a battery, which you add on its own afterwards. This decides whether the battery was charged from your panels or from the grid in the minutes it charges while the house is also using the grid, and so what its stored energy cost. If you are not sure, leave the first."
+        }
+      },
+      "batteries": {
+        "title": "Your batteries",
+        "description": "These batteries are in your Energy Dashboard. Tick the ones to include: each is taken with its meters, and with its level and capacity where the Energy Dashboard has them. You can add, change or remove batteries later.",
+        "data": {
+          "batteries": "Batteries"
+        },
+        "data_description": {
+          "batteries": "If a battery's level or capacity is missing, the Energy Dashboard is the best place to add it. Home Energy Advisor fills it in for you when you next add or edit the battery."
         }
       },
       "reconfigure": {
@@ -40,12 +42,8 @@
           "grid_import_entity": "Grid import energy",
           "grid_export_entity": "Grid export energy (optional)",
           "generation_entity": "Local generation energy (optional)",
-          "battery_charge_entity": "Battery charge energy (optional)",
-          "battery_discharge_entity": "Battery discharge energy (optional)",
-          "battery_charging": "How your battery charges",
           "house_consumption_entity": "House consumption energy (optional)",
-          "battery_soc_entity": "Battery level (optional)",
-          "battery_capacity_kwh": "Battery usable capacity (optional)"
+          "battery_charging": "How your battery charges"
         },
         "data_description": {
           "price_entity": "The sensor or Number helper giving the current import price per kWh.",
@@ -53,19 +51,15 @@
           "grid_import_entity": "Cumulative energy imported from the grid.",
           "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), choose them all and they are added together. (See the readme for more help)",
-          "battery_charge_entity": "Cumulative energy charged into the battery.",
-          "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
-          "battery_charging": "This decides whether the battery was charged from your panels or from the grid in the minutes it charges while the house is also using the grid, and so what its stored energy cost. If you are not sure, leave the first.",
           "house_consumption_entity": "Total household consumption, if measured directly.",
-          "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
-          "battery_capacity_kwh": "What the battery holds when full, in kWh. Only used together with the battery level above."
+          "battery_charging": "Only matters if you have a battery, which is edited on its own. This decides whether the battery was charged from your panels or from the grid in the minutes it charges while the house is also using the grid, and so what its stored energy cost. If you are not sure, leave the first."
         }
       }
     },
     "error": {
       "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong house-level input makes every device's figure wrong.",
       "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at, which would leave this input contributing nothing.",
-      "capacity_not_kwh": "This is in kWh, and no home battery holds this much, so it is probably in watt-hours. A 1500 Wh battery is 1.5 kWh."
+      "battery_not_countable": "One of these batteries has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in kWh or Wh. Leave that battery unticked, and add it afterwards with Add battery, where you can choose another meter."
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
@@ -118,6 +112,57 @@
     }
   },
   "config_subentries": {
+    "battery": {
+      "initiate_flow": {
+        "user": "Add battery",
+        "reconfigure": "Edit battery"
+      },
+      "entry_type": "Battery",
+      "step": {
+        "user": {
+          "title": "Add a battery",
+          "description": "The same details your Energy Dashboard holds for a battery. A battery in your Energy Dashboard that isn't added yet is filled in for you.",
+          "data": {
+            "name": "Name",
+            "battery_charge_entity": "Battery charge energy",
+            "battery_discharge_entity": "Battery discharge energy",
+            "battery_soc_entity": "Battery level (optional)",
+            "battery_capacity_kwh": "Battery usable capacity (optional)"
+          },
+          "data_description": {
+            "name": "How this battery appears in Home Assistant.",
+            "battery_charge_entity": "Cumulative energy charged into the battery.",
+            "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
+            "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds. If your Energy Dashboard lacks it, that is the best place to add it.",
+            "battery_capacity_kwh": "What the battery holds when full, in kWh. Needed with the battery level above."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit battery",
+          "description": "Change the battery's name, meters, level or capacity.",
+          "data": {
+            "name": "Name",
+            "battery_charge_entity": "Battery charge energy",
+            "battery_discharge_entity": "Battery discharge energy",
+            "battery_soc_entity": "Battery level (optional)",
+            "battery_capacity_kwh": "Battery usable capacity (optional)"
+          },
+          "data_description": {
+            "name": "How this battery appears in Home Assistant.",
+            "battery_charge_entity": "Cumulative energy charged into the battery.",
+            "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
+            "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
+            "battery_capacity_kwh": "What the battery holds when full, in kWh. Needed with the battery level above."
+          }
+        }
+      },
+      "error": {
+        "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong battery meter makes every device's figure wrong.",
+        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at.",
+        "capacity_needed": "A battery level is a percentage, so it needs the capacity it is a percentage of. Add the capacity in kWh, or leave the level empty.",
+        "capacity_not_kwh": "This is in kWh, and no home battery holds this much, so it is probably in watt-hours. A 1500 Wh battery is 1.5 kWh."
+      }
+    },
     "device": {
       "initiate_flow": {
         "user": "Add device",

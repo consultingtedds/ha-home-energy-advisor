@@ -34,11 +34,9 @@ from homeassistant.util import dt as dt_util
 from . import issues
 from .accountant_store import AccountantStore, SnapshotStatus
 from .const import (
-    CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_CHARGING,
     CONF_BATTERY_DISCHARGE_ENTITY,
-    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_CYCLE_QUARTERLY,
     CONF_CYCLE_WEEKLY,
@@ -56,10 +54,11 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
 )
 from .engine.accountant import Accountant, SourceRole, Totals
+from .engine.battery_shares import BatteryMeters
 from .engine.energy_source import EnergyUnit
 from .engine.house_balance import ChargeSource
 from .engine.level_log import LevelLog, LevelReason
-from .house_inputs import house_entities
+from .house_inputs import Battery, batteries_of, battery_meters, house_entities
 from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
@@ -137,6 +136,8 @@ _ROLE_BY_CONF: dict[str, SourceRole] = {
     CONF_BATTERY_DISCHARGE_ENTITY: SourceRole.BATTERY_DISCHARGE,
     CONF_HOUSE_CONSUMPTION_ENTITY: SourceRole.HOUSE_CONSUMPTION,
 }
+# The roles whose meters live on the battery entries, not on the house's.
+_BATTERY_CONF = frozenset({CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY})
 
 type HeaConfigEntry = ConfigEntry[HeaCoordinator]
 
@@ -154,11 +155,18 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         super().__init__(hass, _LOGGER, name=DOMAIN, config_entry=entry)
         self._entry = entry
         self._price_entity = entry.data[CONF_PRICE_ENTITY]
-        # Every meter under each role: generation can have several (HEA-219).
+        # Every meter under each role: generation can have several (HEA-219), and
+        # the battery roles hold every battery's, from their own entries
+        # (ADR-0031).
+        self._batteries = batteries_of(entry)
         house_sources = {
             role: meters
             for conf, role in _ROLE_BY_CONF.items()
-            if (meters := house_entities(entry.data, conf))
+            if (
+                meters := battery_meters(entry, conf)
+                if conf in _BATTERY_CONF
+                else house_entities(entry.data, conf)
+            )
         }
         house_meters = {
             entity for meters in house_sources.values() for entity in meters
@@ -226,15 +234,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # mistaking an unbuilt platform for a suppressed one (HEA-190).
         self._should_reach_the_household: frozenset[str] = frozenset()
         self._devices = devices
-        # HEA-178. What the battery actually holds, so the stored-cost ledger can
-        # be written down to it. Optional and only useful as a pair: a percentage
-        # says nothing in kWh without the capacity to scale it by.
-        self._battery_soc_entity = entry.data.get(CONF_BATTERY_SOC_ENTITY)
-        self._battery_capacity = _to_decimal(
-            str(entry.data.get(CONF_BATTERY_CAPACITY_KWH, ""))
-        )
-        # What that level read, for the diagnostics (HEA-212).
-        self._level_log = LevelLog()
+        # HEA-178. What each battery actually holds, so the stored-cost ledger can
+        # be written down to it, and what each level read, for the diagnostics
+        # (HEA-212). Optional, and only useful as a pair: a percentage says
+        # nothing in kWh without the capacity to scale it by.
+        self._level_logs = {battery: LevelLog() for battery in self._batteries}
         # HEA-233. An entry holding no answer is on the one true of most
         # batteries.
         self._charge_source = ChargeSource(
@@ -366,6 +370,13 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             house_sources=self._house_sources,
             device_energy_entities=self._devices,
             charge_source=self._charge_source,
+            batteries={
+                battery_id: BatteryMeters(
+                    charge=tuple(filter(None, [battery.charge])),
+                    discharge=tuple(filter(None, [battery.discharge])),
+                )
+                for battery_id, battery in self._batteries.items()
+            },
         )
 
     @property
@@ -904,12 +915,39 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         corrects, with its sign reversed. A household who answered neither
         optional question is on the path they were on before it existed.
         """
-        available = self._battery_available(now)
-        if available is not None:
-            self._accountant.reconcile_battery(available, now)
+        levels = self._battery_levels(now)
+        if levels is not None:
+            self._accountant.reconcile_battery(
+                sum(levels.values(), Decimal(0)), now, levels=levels
+            )
 
-    def _battery_available(self, now: datetime) -> Decimal | None:
-        """How much energy the battery holds, or ``None`` where it cannot say.
+    def _battery_levels(self, now: datetime) -> dict[str, Decimal] | None:
+        """What each battery holds, or ``None`` where the pool's contents are unknown.
+
+        The pool holds the sum, weighted by each battery's capacity as Home
+        Assistant weights them (ADR-0031). So every battery has to be able to
+        say: one without a level and capacity, or whose level cannot be read
+        just now, leaves the pool's contents unknown, and the ledger is left as
+        it is rather than written down against part of a battery.
+        """
+        if not self._batteries or not all(
+            battery.knows_its_contents for battery in self._batteries.values()
+        ):
+            return None
+        read = {
+            battery_id: self._battery_available(battery_id, battery, now)
+            for battery_id, battery in self._batteries.items()
+        }
+        # An empty battery reads zero, which is a level like any other.
+        levels = {
+            battery_id: level for battery_id, level in read.items() if level is not None
+        }
+        return levels if len(levels) == len(read) else None
+
+    def _battery_available(
+        self, battery_id: str, battery: Battery, now: datetime
+    ) -> Decimal | None:
+        """How much energy one battery holds, or ``None`` where it cannot say.
 
         A percentage of a stated usable capacity, because that is the sensor
         almost every battery integration publishes. Anything outside 0-100 is
@@ -920,19 +958,20 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         Every reading is logged with what was made of it, for the diagnostics
         (HEA-212).
         """
-        if self._battery_soc_entity is None or self._battery_capacity is None:
+        log = self._level_logs[battery_id]
+        if battery.level is None or battery.capacity is None:
             return None
-        state = self.hass.states.get(self._battery_soc_entity)
+        state = self.hass.states.get(battery.level)
         if state is None or state.state in _UNAVAILABLE:
             read = None if state is None else state.state
-            self._level_log.record(now, read, None, LevelReason.UNAVAILABLE)
+            log.record(now, read, None, LevelReason.UNAVAILABLE)
             return None
         percent = _to_decimal(state.state)
         if percent is None or not (0 <= percent <= 100):  # noqa: PLR2004 - a percentage
-            self._level_log.record(now, state.state, None, LevelReason.NOT_A_PERCENTAGE)
+            log.record(now, state.state, None, LevelReason.NOT_A_PERCENTAGE)
             return None
-        available = self._battery_capacity * percent / 100
-        self._level_log.record(now, state.state, available, LevelReason.USED)
+        available = battery.capacity * percent / 100
+        log.record(now, state.state, available, LevelReason.USED)
         return available
 
     def _refresh_source_health(self, now: datetime) -> None:
@@ -1137,7 +1176,14 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             "config": self._config_diagnostics(),
             "sources": self._source_diagnostics(),
             "battery": self._accountant.battery_diagnostics(),
-            "battery_level": self._level_log.diagnostics(),
+            # What each battery's level read, and what was made of it (HEA-212).
+            "battery_level": [
+                {
+                    "battery": self._batteries[battery_id].name,
+                    "readings": log.diagnostics(),
+                }
+                for battery_id, log in self._level_logs.items()
+            ],
             "balance": self._accountant.balance_diagnostics(),
             "snapshot": self._snapshot_diagnostics(),
             "totals": self._totals_diagnostics(),
@@ -1227,13 +1273,22 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             # download answers "did my new rate take?" without waiting for
             # generation to be used at it (HEA-210).
             "rates_in_force": self._accountant.rates_in_force(dt_util.utcnow()),
-            # The two settings the battery's loss is measured with. Said outright
-            # as none where they are not set: their absence from the file was once
-            # read as "not set" when it was not (HEA-212).
-            "battery_level_entity": self._battery_soc_entity,
-            "battery_capacity_kwh": (
-                None if self._battery_capacity is None else str(self._battery_capacity)
-            ),
+            # Every battery and what it holds, including the two settings its loss
+            # is measured with. Said outright as none where they are not set: their
+            # absence from the file was once read as "not set" when it was not
+            # (HEA-212).
+            "batteries": [
+                {
+                    "name": battery.name,
+                    "charge": battery.charge,
+                    "discharge": battery.discharge,
+                    "level_entity": battery.level,
+                    "capacity_kwh": (
+                        None if battery.capacity is None else str(battery.capacity)
+                    ),
+                }
+                for battery in self._batteries.values()
+            ],
             # Named even where the household never chose, for the same reason.
             "battery_charging": self._charge_source.value,
             "currency": data.get(CONF_CURRENCY, DEFAULT_CURRENCY),

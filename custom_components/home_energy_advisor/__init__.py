@@ -15,20 +15,27 @@ per-device figures plus the Untracked remainder.
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
-from homeassistant.const import Platform
+from homeassistant.config_entries import ConfigSubentry
+from homeassistant.const import CONF_NAME, Platform
 
 from . import reset
 from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
+    CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CYCLE_DAILY,
     CONF_CYCLE_METERS,
     CONF_CYCLE_MONTHLY,
     CONF_GENERATION_ENTITY,
     CONF_INTEGRAL_HELPERS,
     DOMAIN,
+    SUBENTRY_TYPE_BATTERY,
 )
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
@@ -55,6 +62,7 @@ _CYCLES_ALWAYS_CREATED = 2
 _CYCLES_OPTED_INTO = 3
 _SEVERAL_GENERATION_METERS = 4
 _BATTERY_CHARGING_ASKED = 5
+_BATTERIES_ARE_ENTRIES = 6
 
 # The key 0.12.0 stored its answer to which the panels feed first under. Only the
 # migration below knows this name.
@@ -108,6 +116,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
     answer to it: "house" is also what anybody who opened Reconfigure stored
     without choosing, and "battery" means the new default anyway. So the key
     goes, and the household is on the default until they answer.
+
+    Version 5 held one battery on the house screen, which now has an entry of
+    its own (ADR-0031).
     """
     if entry.version == _RENAMED_GENERATION_KEY:
         data = {**entry.data}
@@ -136,7 +147,50 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
         hass.config_entries.async_update_entry(
             entry, data=data, version=_BATTERY_CHARGING_ASKED
         )
+    if entry.version == _BATTERY_CHARGING_ASKED:
+        _move_the_battery_into_its_own_entry(hass, entry)
     return True
+
+
+def _move_the_battery_into_its_own_entry(
+    hass: HomeAssistant, entry: HeaConfigEntry
+) -> None:
+    """Version 5 held one battery on the house screen; it becomes a battery entry.
+
+    Batteries are entered one per battery now, as Home Assistant's battery
+    systems are (ADR-0031). The household's one battery moves into an entry of
+    its own with every field it had, so its meters, level and capacity - and so
+    its figures - carry on unchanged. A level or capacity with no meter beside it
+    described no battery, and goes with the rest of the old fields.
+    """
+    data = {**entry.data}
+    battery = {key: data.pop(key) for key in _BATTERY_KEYS if key in data}
+    hass.config_entries.async_update_entry(
+        entry, data=data, version=_BATTERIES_ARE_ENTRIES
+    )
+    if not (
+        battery.get(CONF_BATTERY_CHARGE_ENTITY)
+        or battery.get(CONF_BATTERY_DISCHARGE_ENTITY)
+    ):
+        return
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType({CONF_NAME: _FIRST_BATTERY, **battery}),
+            subentry_type=SUBENTRY_TYPE_BATTERY,
+            title=_FIRST_BATTERY,
+            unique_id=None,
+        ),
+    )
+
+
+_FIRST_BATTERY = "Battery"
+_BATTERY_KEYS = (
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
+    CONF_BATTERY_CAPACITY_KWH,
+)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:

@@ -18,6 +18,7 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentry,
+    ConfigSubentryData,
     ConfigSubentryFlow,
     OptionsFlow,
     SubentryFlowResult,
@@ -48,6 +49,7 @@ from .const import (
     CONF_PRICE_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
+    SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_DEVICE,
 )
 from .discovery import (
@@ -57,7 +59,7 @@ from .discovery import (
     source_unit,
 )
 from .engine.house_balance import ChargeSource
-from .house_inputs import house_entities
+from .house_inputs import batteries_of, house_entities
 from .reset import async_reset_totals
 
 if TYPE_CHECKING:
@@ -122,7 +124,12 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 5
+    VERSION = 6
+
+    def __init__(self) -> None:
+        """Start with nothing answered."""
+        self._house: dict[str, Any] = {}
+        self._offered: list[dict[str, Any]] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -133,6 +140,10 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = _validate_house_sources(self.hass, user_input)
             if not errors:
+                self._house = user_input
+                self._offered = await _energy_dashboard_batteries(self.hass)
+                if self._offered:
+                    return await self.async_step_batteries()
                 return self.async_create_entry(title=_TITLE, data=user_input)
             return self.async_show_form(
                 step_id="user",
@@ -144,6 +155,64 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
 
         defaults = await _energy_prefs_defaults(self.hass)
         return self.async_show_form(step_id="user", data_schema=_build_schema(defaults))
+
+    async def async_step_batteries(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Offer the Energy Dashboard's battery systems, filled in, to take in one go.
+
+        Each one taken becomes a battery entry holding exactly what the Energy
+        Dashboard does (ADR-0030, ADR-0031). Its meters are checked as a battery
+        added by hand would be, so taking one cannot slip past the form's
+        refusals.
+        """
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            chosen = [self._offered[int(index)] for index in user_input["batteries"]]
+            refused = next(
+                (
+                    battery
+                    for battery in chosen
+                    if _validate_battery(self.hass, battery)
+                ),
+                None,
+            )
+            if refused is None:
+                return self.async_create_entry(
+                    title=_TITLE,
+                    data=self._house,
+                    subentries=[
+                        ConfigSubentryData(
+                            data=battery,
+                            subentry_type=SUBENTRY_TYPE_BATTERY,
+                            title=battery[CONF_NAME],
+                            unique_id=None,
+                        )
+                        for battery in chosen
+                    ],
+                )
+            errors["batteries"] = "battery_not_countable"
+        options = [
+            selector.SelectOptionDict(value=str(index), label=battery[CONF_NAME])
+            for index, battery in enumerate(self._offered)
+        ]
+        return self.async_show_form(
+            step_id="batteries",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        "batteries", default=[option["value"] for option in options]
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+            errors=errors,
+        )
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
@@ -171,8 +240,11 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         cls,
         config_entry: ConfigEntry,  # noqa: ARG003 - HA signature; the types are entry-independent
     ) -> dict[str, type[ConfigSubentryFlow]]:
-        """Register the per-device subentry flow."""
-        return {SUBENTRY_TYPE_DEVICE: DeviceSubentryFlowHandler}
+        """Register the per-device and per-battery subentry flows."""
+        return {
+            SUBENTRY_TYPE_DEVICE: DeviceSubentryFlowHandler,
+            SUBENTRY_TYPE_BATTERY: BatterySubentryFlowHandler,
+        }
 
     @staticmethod
     @callback
@@ -225,19 +297,13 @@ def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
             prefilled(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
             prefilled(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_GENERATION_ENTITY, required=False): _GENERATION_SELECTOR,
-            prefilled(CONF_BATTERY_CHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
-            prefilled(CONF_BATTERY_DISCHARGE_ENTITY, required=False): _ENERGY_SELECTOR,
-            # Beside the battery's meters, because it is a question about the
-            # battery. The default is the answer true of most batteries.
+            prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
+            # The batteries are entries of their own (ADR-0031). How they charge
+            # stays here, one answer for the household (HEA-233); the default is
+            # the answer true of most batteries.
             vol.Required(
                 CONF_BATTERY_CHARGING, default=ChargeSource.SPARE_SOLAR.value
             ): _BATTERY_CHARGING_SELECTOR,
-            prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
-            # Not prefilled: the Energy Dashboard knows nothing about either, and
-            # they are asked for together because neither means anything alone
-            # (HEA-178).
-            vol.Optional(CONF_BATTERY_SOC_ENTITY): _BATTERY_LEVEL_SELECTOR,
-            vol.Optional(CONF_BATTERY_CAPACITY_KWH): _CAPACITY_SELECTOR,
         }
     )
 
@@ -267,11 +333,53 @@ def _collect_prefs_source(
         # Every one, in the dashboard's order. Keeping only the last silently
         # offered half the generation of a household with two arrays (HEA-219).
         defaults.setdefault(CONF_GENERATION_ENTITY, []).append(stat)
-    elif kind == "battery":
-        if charge := source.get("stat_energy_to"):
-            defaults[CONF_BATTERY_CHARGE_ENTITY] = charge
-        if discharge := source.get("stat_energy_from"):
-            defaults[CONF_BATTERY_DISCHARGE_ENTITY] = discharge
+    # A battery is offered as an entry of its own, after this screen (ADR-0031).
+
+
+async def _energy_dashboard_batteries(hass: HomeAssistant) -> list[dict[str, Any]]:
+    """The Energy Dashboard's battery systems, each as a battery entry would hold it.
+
+    Only those with both meters: a battery system always has both, and one
+    without is not something this integration could count. Best-effort, as the
+    rest of the prefill is: a household with no Energy Dashboard simply gets none.
+    """
+    try:
+        manager = await async_get_manager(hass)
+        prefs: Any = manager.data or {}
+        sources: Any = prefs.get("energy_sources", [])
+    except Exception:  # noqa: BLE001 - prefill is optional; it must never block setup
+        return []
+    batteries = [
+        source
+        for source in sources
+        if source.get("type") == "battery"
+        and source.get("stat_energy_to")
+        and source.get("stat_energy_from")
+    ]
+    return [
+        _battery_answers(source, position)
+        for position, source in enumerate(batteries, start=1)
+    ]
+
+
+def _battery_answers(
+    source: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    position: int,
+) -> dict[str, Any]:
+    """One battery system's fields, under the names a battery entry uses."""
+    answers: dict[str, Any] = {
+        # Its own name where the Energy Dashboard has one; otherwise numbered,
+        # the first simply "Battery", which is what a one-battery house expects.
+        CONF_NAME: source.get("name")
+        or ("Battery" if position == 1 else f"Battery {position}"),
+        CONF_BATTERY_CHARGE_ENTITY: source["stat_energy_to"],
+        CONF_BATTERY_DISCHARGE_ENTITY: source["stat_energy_from"],
+    }
+    if level := source.get("stat_soc"):
+        answers[CONF_BATTERY_SOC_ENTITY] = level
+    if (capacity := source.get("capacity")) is not None:
+        answers[CONF_BATTERY_CAPACITY_KWH] = capacity
+    return answers
 
 
 def _collect_grid_meters(
@@ -373,12 +481,89 @@ class DeviceSubentryFlowHandler(ConfigSubentryFlow):
         )
 
 
+_BATTERY_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): selector.TextSelector(),
+        vol.Required(CONF_BATTERY_CHARGE_ENTITY): _ENERGY_SELECTOR,
+        vol.Required(CONF_BATTERY_DISCHARGE_ENTITY): _ENERGY_SELECTOR,
+        vol.Optional(CONF_BATTERY_SOC_ENTITY): _BATTERY_LEVEL_SELECTOR,
+        vol.Optional(CONF_BATTERY_CAPACITY_KWH): _CAPACITY_SELECTOR,
+    }
+)
+
+
+class BatterySubentryFlowHandler(ConfigSubentryFlow):
+    """Add one battery, in the shape of Home Assistant's battery system.
+
+    The same fields the Energy Dashboard holds for a battery: its charge and
+    discharge meters, and optionally its level and usable capacity (ADR-0031).
+    The Energy Dashboard's batteries not yet added are offered filled in, since
+    it is the place a household is encouraged to enter them (ADR-0030).
+    """
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect one battery, suggesting the next one the Energy Dashboard holds."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = _validate_battery(self.hass, user_input)
+            if not errors:
+                return self.async_create_entry(
+                    title=user_input[CONF_NAME], data=user_input
+                )
+        suggested = user_input or await self._next_from_the_energy_dashboard()
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(_BATTERY_SCHEMA, suggested),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit a battery's name, meters, level or capacity."""
+        subentry = self._get_reconfigure_subentry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = _validate_battery(self.hass, user_input)
+            if not errors:
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    subentry,
+                    title=user_input[CONF_NAME],
+                    data=user_input,
+                )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                _BATTERY_SCHEMA, user_input or subentry.data
+            ),
+            errors=errors,
+        )
+
+    async def _next_from_the_energy_dashboard(self) -> dict[str, Any]:
+        """The first Energy Dashboard battery whose meters no entry holds yet."""
+        entered = {
+            meter
+            for battery in batteries_of(self._get_entry()).values()
+            for meter in (battery.charge, battery.discharge)
+        }
+        offered = await _energy_dashboard_batteries(self.hass)
+        return next(
+            (
+                battery
+                for battery in offered
+                if battery[CONF_BATTERY_CHARGE_ENTITY] not in entered
+            ),
+            {},
+        )
+
+
 # House inputs every decomposition branch reads, whatever else is configured.
 _ALWAYS_READ = (
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
-    CONF_BATTERY_CHARGE_ENTITY,
-    CONF_BATTERY_DISCHARGE_ENTITY,
 )
 # Read only by ADR-0005's full-balance branch, which runs when no house-load
 # meter is configured. With one, the residual branch derives generation from the
@@ -414,10 +599,32 @@ def _validate_house_sources(
         # the sum is only as sound as its worst member.
         if error := _house_input_error(hass, house_entities(user_input, key)):
             errors[key] = error
-    capacity = user_input.get(CONF_BATTERY_CAPACITY_KWH)
-    if capacity is not None and capacity > _MAX_HOME_BATTERY_KWH:
+    return errors
+
+
+def _validate_battery(
+    hass: HomeAssistant, answers: Mapping[str, Any]
+) -> dict[str, str]:
+    """Refuse a battery whose meters, level or capacity would be misread.
+
+    Its meters feed the house balance, so they are held to the house's standard
+    (HEA-67): a net or uncountable counter here skews every figure. A level needs
+    the capacity it is a percentage of (HEA-178), and a capacity in watt-hours is
+    refused where it is typed (HEA-227).
+    """
+    errors: dict[str, str] = {}
+    for key in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY):
+        if error := _house_input_error(hass, house_entities(answers, key)):
+            errors[key] = error
+    capacity = answers.get(CONF_BATTERY_CAPACITY_KWH)
+    if answers.get(CONF_BATTERY_SOC_ENTITY) and capacity is None:
+        errors[CONF_BATTERY_CAPACITY_KWH] = _CAPACITY_NEEDED
+    elif capacity is not None and capacity > _MAX_HOME_BATTERY_KWH:
         errors[CONF_BATTERY_CAPACITY_KWH] = _CAPACITY_ERROR
     return errors
+
+
+_CAPACITY_NEEDED = "capacity_needed"
 
 
 # Above this, a home battery's capacity is a figure in Wh typed into the kWh

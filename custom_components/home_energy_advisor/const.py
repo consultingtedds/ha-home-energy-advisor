@@ -29,6 +29,10 @@ DEFAULT_CURRENCY: Final = "EUR"
 
 # Per-device configuration - one config subentry per tracked device.
 SUBENTRY_TYPE_DEVICE: Final = "device"
+# One config subentry per battery, holding a battery system's own fields: its
+# charge and discharge meters (the CONF_BATTERY_* keys above), and optionally its
+# level and capacity (ADR-0031).
+SUBENTRY_TYPE_BATTERY: Final = "battery"
 CONF_ENERGY_ENTITY: Final = "energy_entity"
 CONF_POWER_ENTITY: Final = "power_entity"
 

@@ -80,7 +80,7 @@ async function createEntry(token) {
     method: "POST",
     body: { handler: DOMAIN, show_advanced_options: false },
   });
-  const result = await api(`/api/config/config_entries/flow/${started.flow_id}`, token, {
+  const house = await api(`/api/config/config_entries/flow/${started.flow_id}`, token, {
     method: "POST",
     body: {
       price_entity: HOUSE.importPrice,
@@ -89,12 +89,26 @@ async function createEntry(token) {
       grid_export_entity: HOUSE.gridExport,
       // A list: the field takes every generation meter a house has (HEA-219).
       generation_entity: [HOUSE.generation],
-      battery_charge_entity: HOUSE.batteryCharge,
-      battery_discharge_entity: HOUSE.batteryDischarge,
       house_consumption_entity: HOUSE.houseConsumption,
     },
   });
+  // The battery is an entry of its own, offered from the Energy Dashboard on the
+  // step after the house's (ADR-0031). The demo's Energy Dashboard holds the
+  // one battery, so taking what it offers is taking that battery.
+  const result =
+    house.step_id === "batteries"
+      ? await api(`/api/config/config_entries/flow/${started.flow_id}`, token, {
+          method: "POST",
+          body: { batteries: offeredBatteries(house) },
+        })
+      : house;
   return created(result, "the household");
+}
+
+/** Every battery a batteries step offers, as the values it expects back. */
+function offeredBatteries(step) {
+  const field = step.data_schema.find((entry) => entry.name === "batteries");
+  return field.selector.select.options.map((option) => option.value);
 }
 
 /**

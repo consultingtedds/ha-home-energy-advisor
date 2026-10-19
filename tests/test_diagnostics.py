@@ -13,12 +13,15 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
+    SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_DEVICE,
 )
 from custom_components.home_energy_advisor.diagnostics import (
@@ -32,26 +35,40 @@ if TYPE_CHECKING:
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 
 
-def _entry(extra_data: dict[str, object] | None = None) -> MockConfigEntry:
+def _entry(
+    extra_data: dict[str, object] | None = None,
+    battery: dict[str, object] | None = None,
+) -> MockConfigEntry:
+    subentries = [
+        ConfigSubentryData(
+            subentry_type=SUBENTRY_TYPE_DEVICE,
+            title="Coarse Step Aircon",
+            data={
+                CONF_NAME: "Coarse Step Aircon",
+                CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
+            },
+            unique_id=None,
+        )
+    ]
+    if battery is not None:
+        subentries.append(
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BATTERY,
+                title="Battery",
+                data={CONF_NAME: "Battery", **battery},
+                unique_id=None,
+            )
+        )
     return MockConfigEntry(
         domain=DOMAIN,
+        version=6,
         data={
             CONF_PRICE_ENTITY: "sensor.price",
             CONF_CURRENCY: "EUR",
             CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
             **(extra_data or {}),
         },
-        subentries_data=[
-            ConfigSubentryData(
-                subentry_type=SUBENTRY_TYPE_DEVICE,
-                title="Coarse Step Aircon",
-                data={
-                    CONF_NAME: "Coarse Step Aircon",
-                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
-                },
-                unique_id=None,
-            )
-        ],
+        subentries_data=subentries,
     )
 
 
@@ -195,9 +212,8 @@ async def test_diagnostics_say_which_battery_settings_are_set(
     # When
     result = await async_get_config_entry_diagnostics(hass, entry)
 
-    # Then - said outright as not set, and no readings to show
-    assert result["config"]["battery_level_entity"] is None
-    assert result["config"]["battery_capacity_kwh"] is None
+    # Then - said outright as no battery, and no readings to show
+    assert result["config"]["batteries"] == []
     assert result["battery_level"] == []
 
 
@@ -216,8 +232,12 @@ async def test_diagnostics_carry_what_the_battery_level_read(
     hass.states.async_set("sensor.grid_import", "0", _ENERGY)
     hass.states.async_set("sensor.coarse_step_energy", "0", _ENERGY)
     hass.states.async_set("sensor.battery_level", "50")
+    hass.states.async_set("sensor.battery_charge", "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
     entry = _entry(
-        extra_data={
+        battery={
+            CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+            CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
             CONF_BATTERY_SOC_ENTITY: "sensor.battery_level",
             CONF_BATTERY_CAPACITY_KWH: 5.0,
         }
@@ -241,34 +261,47 @@ async def test_diagnostics_carry_what_the_battery_level_read(
     # When
     result = await async_get_config_entry_diagnostics(hass, entry)
 
-    # Then - the settings, and one reading per change, dated when it began
-    assert result["config"]["battery_level_entity"] == "sensor.battery_level"
-    assert result["config"]["battery_capacity_kwh"] == "5.0"
+    # Then - the battery and its settings, and one reading per change, dated
+    # when it began
+    assert result["config"]["batteries"] == [
+        {
+            "name": "Battery",
+            "charge": "sensor.battery_charge",
+            "discharge": "sensor.battery_discharge",
+            "level_entity": "sensor.battery_level",
+            "capacity_kwh": "5.0",
+        }
+    ]
     assert result["battery_level"] == [
         {
-            "at": "2026-07-08T22:01:00+00:00",
-            "state": "50",
-            "kwh": "2.5",
-            "reason": "used",
-        },
-        {
-            "at": "2026-07-08T22:02:00+00:00",
-            "state": "unavailable",
-            "kwh": None,
-            "reason": "unavailable",
-        },
-        {
-            "at": "2026-07-08T22:04:00+00:00",
-            "state": "150",
-            "kwh": None,
-            "reason": "not_a_percentage",
-        },
-        {
-            "at": "2026-07-08T22:05:00+00:00",
-            "state": "51",
-            "kwh": "2.55",
-            "reason": "used",
-        },
+            "battery": "Battery",
+            "readings": [
+                {
+                    "at": "2026-07-08T22:01:00+00:00",
+                    "state": "50",
+                    "kwh": "2.5",
+                    "reason": "used",
+                },
+                {
+                    "at": "2026-07-08T22:02:00+00:00",
+                    "state": "unavailable",
+                    "kwh": None,
+                    "reason": "unavailable",
+                },
+                {
+                    "at": "2026-07-08T22:04:00+00:00",
+                    "state": "150",
+                    "kwh": None,
+                    "reason": "not_a_percentage",
+                },
+                {
+                    "at": "2026-07-08T22:05:00+00:00",
+                    "state": "51",
+                    "kwh": "2.55",
+                    "reason": "used",
+                },
+            ],
+        }
     ]
 
 

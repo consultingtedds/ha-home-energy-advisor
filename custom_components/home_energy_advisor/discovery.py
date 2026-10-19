@@ -62,7 +62,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
 )
 from .helper_ownership import helper_entry_id
-from .house_inputs import house_entities
+from .house_inputs import battery_meters, house_entities
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -76,8 +76,6 @@ _HOUSE_CONF_KEYS = (
     CONF_GRID_IMPORT_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GENERATION_ENTITY,
-    CONF_BATTERY_CHARGE_ENTITY,
-    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
 )
 # The house inputs that identify their device as the *supply* system - an
@@ -85,11 +83,8 @@ _HOUSE_CONF_KEYS = (
 # than an appliance. Deliberately not the grid and house-consumption meters: on a
 # multi-channel CT clamp the mains channel sits on the same HA device as the
 # circuits feeding individual appliances, and those are real devices (HEA-66).
-_SUPPLY_CONF_KEYS = (
-    CONF_GENERATION_ENTITY,
-    CONF_BATTERY_CHARGE_ENTITY,
-    CONF_BATTERY_DISCHARGE_ENTITY,
-)
+# The batteries' meters are both, and are read from the battery entries.
+_SUPPLY_CONF_KEYS = (CONF_GENERATION_ENTITY,)
 # Where each helper integration records the sensor it derives its output from.
 # This is the only provenance Home Assistant states outright, and reading it is
 # proven in-repo (`cycle_meter`, `integral_helper` both match on it). A helper of
@@ -465,8 +460,19 @@ def _is_reporting(hass: HomeAssistant, entity_id: str) -> bool:
 
 def _exclusions(entry: ConfigEntry, registry: er.EntityRegistry) -> _Exclusions:
     """Resolve, once per scan, everything that must not be offered as a device."""
-    house = {e for key in _HOUSE_CONF_KEYS for e in house_entities(entry.data, key)}
-    supply = {e for key in _SUPPLY_CONF_KEYS for e in house_entities(entry.data, key)}
+    # Every battery's meters are house inputs and supply too, from their own
+    # entries (ADR-0031).
+    battery = {
+        meter
+        for key in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
+        for meter in battery_meters(entry, key)
+    }
+    house = {
+        e for key in _HOUSE_CONF_KEYS for e in house_entities(entry.data, key)
+    } | battery
+    supply = {
+        e for key in _SUPPLY_CONF_KEYS for e in house_entities(entry.data, key)
+    } | battery
     tracked_energy = _tracked_sources(entry, CONF_ENERGY_ENTITY)
     tracked_power = _tracked_sources(entry, CONF_POWER_ENTITY)
     owned_helpers = _owned_helper_entities(entry, registry)

@@ -51,10 +51,6 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import (
-    CONF_BATTERY_CAPACITY_KWH,
-    CONF_BATTERY_CHARGE_ENTITY,
-    CONF_BATTERY_DISCHARGE_ENTITY,
-    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_ENTITY,
@@ -68,6 +64,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
     WHOLE_HOME_KEY,
 )
+from .house_inputs import batteries_of
 from .recorded_baseline import async_last_recorded
 
 if TYPE_CHECKING:
@@ -149,23 +146,18 @@ def _has_a_battery(entry: HeaConfigEntry) -> bool:
     panels and no battery has plenty to decompose and still never time-shifts a
     kWh, so its battery saving can only ever read zero.
     """
-    return any(
-        entry.data.get(conf)
-        for conf in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
-    )
+    return bool(batteries_of(entry))
 
 
 def _knows_the_battery_level(entry: HeaConfigEntry) -> bool:
-    """Whether this household can tell us how much is actually in the battery.
+    """Whether this household can tell us how much is actually in its batteries.
 
-    Both halves or neither: a percentage says nothing in kWh without the capacity
-    to scale it by, and the reconciliation that makes a loss measurable needs the
-    answer in kWh (HEA-178).
+    Every one of them, each with both halves: a percentage says nothing in kWh
+    without the capacity to scale it by, and the pool's contents are only known
+    when every battery's are (HEA-178, ADR-0031).
     """
-    return all(
-        entry.data.get(conf)
-        for conf in (CONF_BATTERY_SOC_ENTITY, CONF_BATTERY_CAPACITY_KWH)
-    )
+    batteries = batteries_of(entry).values()
+    return bool(batteries) and all(battery.knows_its_contents for battery in batteries)
 
 
 def _can_measure_the_batterys_loss(entry: HeaConfigEntry) -> bool:
@@ -204,14 +196,7 @@ def _has_supply_beyond_the_grid(entry: HeaConfigEntry) -> bool:
     has told us about their panels has already answered it, and a setting nobody
     understands is a worse default than one that is simply right.
     """
-    return any(
-        entry.data.get(conf)
-        for conf in (
-            CONF_GENERATION_ENTITY,
-            CONF_BATTERY_CHARGE_ENTITY,
-            CONF_BATTERY_DISCHARGE_ENTITY,
-        )
-    )
+    return bool(entry.data.get(CONF_GENERATION_ENTITY)) or _has_a_battery(entry)
 
 
 def _home_concepts(*, has_a_battery: bool) -> tuple[HeaSensorDescription, ...]:
