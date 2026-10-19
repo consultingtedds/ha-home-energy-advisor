@@ -49,6 +49,7 @@ from .allocation import (
     split_by_source,
 )
 from .battery_ledger import BatteryLedger
+from .battery_shares import BatteryMeters, BatteryShares
 from .debt_ledger import DebtLedger, Settlement
 from .energy_source import (
     MAX_QUIET_SPAN,
@@ -232,6 +233,10 @@ class Totals:
     # devices, and nothing they track will ever shrink this (HEA-174).
     battery: DeviceTotals = field(default_factory=lambda: _ZERO_TOTALS)
     unreconciled_kwh: Decimal = Decimal(0)
+    # Each battery's share of `battery`, keyed by battery, where there are two or
+    # more. Not a fourth term: the shares add up to `battery` and sit beside it
+    # (ADR-0031). Empty for a household with one battery, whose pool is it.
+    batteries: Mapping[str, DeviceTotals] = field(default_factory=dict)
 
 
 @dataclass
@@ -490,7 +495,7 @@ class _Running:
 class Accountant:
     """Turns a stream of meter readings into per-device running cost."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - every argument is a keyword-only fact about the house
         self,
         *,
         house_sources: Mapping[SourceRole, HouseMeters],
@@ -498,8 +503,16 @@ class Accountant:
         nested_devices: Mapping[str, str] | None = None,
         windows: AccountingWindows | None = None,
         charge_source: ChargeSource = ChargeSource.SPARE_SOLAR,
+        batteries: Mapping[str, BatteryMeters] | None = None,
     ) -> None:
         self._windows = windows or AccountingWindows()
+        # Which battery each battery meter belongs to, so the pool's loss can be
+        # shared out among them (ADR-0031). The pool itself is accounted from the
+        # house's battery roles, which hold every battery's meters.
+        self._shares = BatteryShares(dict(batteries or {}))
+        # The levels the last reconcile was given, battery by battery, which the
+        # share of a loss is measured against.
+        self._levels: Mapping[str, Decimal] = {}
         # How the household's battery charges, which decides what charged it
         # where import, generation and charging coincide (HEA-233). The meters
         # cannot see it, so the household says.
@@ -669,6 +682,7 @@ class Accountant:
         if delta is None:
             return
         if role is not None:
+            self._shares.carried(entity_id, delta.kwh)
             self._spread_source(role, delta, source)
         elif (device := self._device_of.get(entity_id)) is not None:
             self._spread_device(device, delta, source)
@@ -750,6 +764,7 @@ class Accountant:
         # history, which is what they reported (HEA-207, GitHub 34).
         self._battery_loss_kwh = Decimal(0)
         self._battery_loss_cost = Decimal(0)
+        self._shares.forget_losses()
         # The measurement underneath carries on - anchor, published amount and the
         # hold's window alike. Re-anchoring would publish nothing for a day, and
         # forgetting what was published would publish the same loss twice.
@@ -877,6 +892,9 @@ class Accountant:
                 "metered": [str(self._metered_charge), str(self._metered_discharge)],
                 "refused": str(self._loss_refused_kwh),
             },
+            # Each battery's meters, anchor and share, for the same reason: a share
+            # is a published figure, and the split's anchor is the measurement's.
+            "battery_shares": self._shares.snapshot(),
             "balance": self._balance.snapshot(),
             "debts": self._debts.snapshot(),
             # What a parent still owes its children. Carried for the same reason
@@ -1007,6 +1025,10 @@ class Accountant:
         self._loss_anchor = (
             None if anchor is None else _LossAnchor(*(Decimal(part) for part in anchor))
         )
+        # Absent from a snapshot written before batteries were told apart. The
+        # pool's measurement above carries on regardless, and the split anchors at
+        # the next tick (ADR-0031).
+        self._shares.restore(data.get("battery_shares", {}))
         self._loss_published = Decimal(loss.get("published", "0"))
         self._loss_window = deque(
             (datetime.fromisoformat(moment), Decimal(value))
@@ -1131,6 +1153,7 @@ class Accountant:
             battery=battery,
             whole_home=replace(whole_home, cost_floor=bounded, cost_ceiling=capped),
             unreconciled_kwh=self.unreconciled_energy(),
+            batteries=self._battery_shares(),
         )
 
     def _battery_totals(self) -> DeviceTotals:
@@ -1140,30 +1163,15 @@ class Accountant:
         round-trip loss rather than the ledger's write-down - the two are not the
         same thing, and reporting the second as the first is what HEA-182 was
         raised about.
-
-        Its counterfactual equals its cost, so it shows no saving: this energy
-        really was bought, and what it would have cost is what it cost. Nothing
-        is attributed by source, because the split is the blend of every charge
-        that ever went in rather than anything one interval can say.
         """
-        # Spelled out rather than `replace`d from the zero constant, which types
-        # as a bare dataclass and loses what this returns.
-        return DeviceTotals(
-            energy_kwh=self._battery_loss_kwh,
-            actual_cost=self._battery_loss_cost,
-            naive_cost=self._battery_loss_cost,
-            cost_savings=Decimal(0),
-            battery_savings=Decimal(0),
-            energy_from_grid=Decimal(0),
-            energy_from_generation=Decimal(0),
-            energy_from_battery=Decimal(0),
-            cost_floor=Decimal(0),
-            cost_ceiling=Decimal(0),
-            # Nothing forgone: this energy went into the battery and never came
-            # out, so none of it was generation a device consumed instead of
-            # exporting (ADR-0026).
-            forgone_export=Decimal(0),
-        )
+        return _loss_totals(self._battery_loss_kwh, self._battery_loss_cost)
+
+    def _battery_shares(self) -> dict[str, DeviceTotals]:
+        """Each battery's share of that, built the same way (ADR-0031)."""
+        return {
+            battery: _loss_totals(kwh, cost)
+            for battery, (kwh, cost) in self._shares.losses().items()
+        }
 
     @staticmethod
     def _derive_untracked(
@@ -1205,8 +1213,17 @@ class Accountant:
         """
         return self._balance.diagnostics()
 
-    def reconcile_battery(self, available_kwh: Decimal, now: datetime) -> None:
+    def reconcile_battery(
+        self,
+        available_kwh: Decimal,
+        now: datetime,
+        levels: Mapping[str, Decimal] | None = None,
+    ) -> None:
         """Write the ledger down to what the battery holds.
+
+        `available_kwh` is the pool's contents. `levels` is each battery's own,
+        which adds up to it, and is what each battery's share of a loss is
+        measured against (ADR-0031); a caller with one battery may leave it out.
 
         The inventory is inferred from the charge and discharge meters, so
         anything that leaves the battery another way - round-trip losses, a
@@ -1228,6 +1245,7 @@ class Accountant:
         inventing energy. What the battery *lost* is a separate figure, measured
         here against what its level actually did (HEA-182).
         """
+        self._levels = dict(levels or {})
         self._battery.reconcile(available_kwh, ceiling=self._loss_ceiling())
         self._measure_the_batterys_loss(available_kwh, now)
 
@@ -1281,6 +1299,10 @@ class Accountant:
         if self._loss_anchor is None:
             self._anchor_the_loss(self._balance_headroom, available_kwh, now)
             return
+        if not self._shares.anchored:
+            # A snapshot from before batteries were told apart: the pool's
+            # measurement carries on, and the split starts from here.
+            self._shares.anchor(self._levels)
 
         claimed, allowed = self._loss_since_the_anchor(
             self._loss_anchor, self._balance_headroom, available_kwh
@@ -1302,6 +1324,7 @@ class Accountant:
         )
         self._loss_published = Decimal(0)
         self._loss_last_totals = (Decimal(0), Decimal(0))
+        self._shares.anchor(self._levels)
         # Nothing measured yet reads as zero, so the hold starts here: a total
         # cannot have stood above zero for a day until a day has passed.
         self._loss_window = deque([(now, Decimal(0))])
@@ -1369,6 +1392,7 @@ class Accountant:
         cost = self._battery.discharge(lost).cost
         self._battery_loss_kwh += lost
         self._battery_loss_cost += cost
+        self._shares.apportion(lost, cost, self._levels)
         self._house.energy_kwh += lost
         self._house.actual_cost += cost
         self._house.naive_cost += cost
@@ -1441,14 +1465,19 @@ class Accountant:
         visible at all (HEA-200) and a bare number named for a mechanism told
         nobody what it meant. `loss` is where the battery's loss measurement
         stands, or ``None`` where nothing is being measured (HEA-212).
+        `batteries`, where there are two or more, is each battery's own meters,
+        bound and share of that loss (ADR-0031).
         """
-        return self._battery.diagnostics() | {
+        diagnostics = self._battery.diagnostics() | {
             "meter_disagreement": {
                 "kwh": str(self._loss_refused_kwh),
                 "means": _METER_DISAGREEMENT_MEANS,
             },
             "loss": self._loss_diagnostics(),
         }
+        if self._shares.splits:
+            diagnostics["batteries"] = self._shares.diagnostics(self._levels)
+        return diagnostics
 
     def _loss_diagnostics(self) -> dict[str, Any] | None:
         """Every figure the published loss is read from, in one place.
@@ -2500,6 +2529,33 @@ def _withhold(
         # know.
         battery_savings=_scaled(remainder.battery_savings, kept, remainder.energy_kwh),
         energy_by_source=split_by_source(kept, sources, _sum(sources.values())),
+    )
+
+
+def _loss_totals(kwh: Decimal, cost: Decimal) -> DeviceTotals:
+    """A battery's loss as the consumer it is.
+
+    Its counterfactual equals its cost, so it shows no saving: this energy really
+    was bought, and what it would have cost is what it cost. Nothing is
+    attributed by source, because the split is the blend of every charge that
+    ever went in rather than anything one interval can say. And nothing forgone:
+    it went into the battery and never came out, so none of it was generation a
+    device used instead of exporting (ADR-0026).
+    """
+    # Spelled out rather than `replace`d from the zero constant, which types as a
+    # bare dataclass and loses what this returns.
+    return DeviceTotals(
+        energy_kwh=kwh,
+        actual_cost=cost,
+        naive_cost=cost,
+        cost_savings=Decimal(0),
+        battery_savings=Decimal(0),
+        energy_from_grid=Decimal(0),
+        energy_from_generation=Decimal(0),
+        energy_from_battery=Decimal(0),
+        cost_floor=Decimal(0),
+        cost_ceiling=Decimal(0),
+        forgone_export=Decimal(0),
     )
 
 

@@ -187,6 +187,9 @@ _PERSISTED = frozenset(
         # The gap between the two running totals, for the diagnostics; kept so a
         # download taken straight after a restart still shows it.
         "_loss_refused_kwh",
+        # Each battery's metered totals, anchor and published share: the bound a
+        # share is split by, and figures that cannot go backwards (ADR-0031).
+        "_shares",
         "_debts",
         "_nesting_carry",
         "_draws",
@@ -236,6 +239,9 @@ _TRANSIENT = frozenset(
         # Recomputed on every tick from persisted state, so a restart loses
         # nothing a figure depends on (HEA-212).
         "_loss_last_totals",
+        # Each battery's level at the last tick, which every tick passes in
+        # afresh before anything reads it (ADR-0031).
+        "_levels",
     }
 )
 
