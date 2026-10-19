@@ -622,22 +622,22 @@ Carried forward rather than closed:
   **0.13.0b1** on 2026-10-19, the first beta (**HEA-232**: a GitHub
   pre-release that HACS offers only to a household that switches pre-releases
   on). The reference home and two Discussion 35 households are testing it; the
-  stable 0.13.0 follows their reports. Then HEA-222, then HEA-220.
+  stable 0.13.0 follows their reports. Then HEA-220, then HEA-221.
 - **HEA-234** - an optimiser's live "grid-charging now" signal for the charge
   source, for a battery that charges from spare solar most of the day and from
   the grid sometimes. Parked until the reference household's Predbat is out of
   read-only and its daytime charges have been measured.
 - **Matching the Energy Dashboard's house configuration before 1.0** (Paul,
-  2026-10-15). Generation already takes several meters (HEA-219). **HEA-222**
-  decides the rest: the house inputs follow the Energy Dashboard live by default,
-  as the export price and nesting already do, and the form asks only for what it
-  does not hold or holds in a shape we cannot count - the middle path, chosen
-  2026-10-15, with an ADR to write when it is built. It goes before HEA-220
-  because it settles how a battery is prefilled and where its settings live.
-  Then **HEA-220**, several batteries, now asked for directly by a two-battery
-  household in Discussion 42 (losses per battery, a charge source per battery),
-  and **HEA-221**, several grid meters, which matters most for a dual-rate meter
-  whose two registers are priced apart.
+  2026-10-15). Generation already takes several meters (HEA-219). Following the
+  Energy Dashboard live (**HEA-222**) was cancelled on 2026-10-19 in favour of
+  prefilling it (**ADR-0030**): the households who entered things twice did so
+  because this integration took one battery and one grid meter, and the
+  reference household's two configurations differ on purpose, with better
+  meters here. So **HEA-220**, several batteries, asked for directly in
+  Discussion 42 (losses per battery, a charge source per battery), and
+  **HEA-221**, several grid meters, which matters most for a dual-rate meter
+  whose two registers are priced apart, each prefill in the Energy Dashboard's
+  shape, and Reconfigure gains the same suggestions.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are
