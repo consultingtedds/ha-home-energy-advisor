@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
@@ -42,7 +43,11 @@ from custom_components.home_energy_advisor.cycle_meter import (
     async_reset_cycle_meters,
     utility_meter_output_sensor,
 )
-from custom_components.home_energy_advisor.helper_ownership import owned_helper
+from custom_components.home_energy_advisor.helper_ownership import (
+    helper_entry_id,
+    helper_was_created,
+    owned_helper,
+)
 from custom_components.home_energy_advisor.issues import ISSUE_CYCLE_HELPER_RECREATED
 
 if TYPE_CHECKING:
@@ -69,44 +74,75 @@ _SAVINGS = {
     "state_class": "total",
     "unit_of_measurement": "EUR",
 }
+# A device's Actual Cost, a `total` since HEA-48, so its meters are net-consumption.
+_ACTUAL_COST = "sensor.coarse_step_aircon_actual_cost"
 
 
-async def test_reused_meter_reconciles_net_consumption_when_source_flips_to_total(
+async def test_a_meter_hea_created_follows_its_figure_once_that_can_fall(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a daily meter created while its source was total_increasing, so
-    # net_consumption is off (the pre-HEA-48 Untracked cost meters)
+    # Given - a daily meter HEA created over Actual Cost while that figure only
+    # rose, so it is not net-consumption (the pre-HEA-48 meters)
     freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
-    hass.states.async_set("sensor.untracked_actual_cost", "0", _COST)
-    entry_id = await async_ensure_utility_meter(
+    entry = _entry_with_one_device()
+    await _set_up(hass, entry)
+    record = entry.data[CONF_CYCLE_METERS][f"{_ACTUAL_COST}|daily"]
+    assert helper_was_created(record)
+    meter_id = helper_entry_id(record)
+    meter = hass.config_entries.async_get_entry(meter_id)
+    assert meter is not None
+    hass.config_entries.async_update_entry(
+        meter, options={**meter.options, "net_consumption": False}
+    )
+    await hass.async_block_till_done()
+
+    # When - the integration reconciles its meters again, on its next reload
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - the same meter, kept rather than recreated so its total survives,
+    # now follows a fall rather than reading it as a reset
+    reconciled = hass.config_entries.async_get_entry(meter_id)
+    assert reconciled is not None
+    assert reconciled.options["net_consumption"] is True
+
+
+async def test_a_households_own_meter_over_a_figure_is_left_as_they_built_it(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a household who built their own daily meter over a device's Actual
+    # Cost before opting in, as an ordinary consumption meter
+    freezer.move_to(datetime(2026, 7, 8, 0, 0, tzinfo=UTC))
+    await _set_up(hass, _entry_with_one_device(cycles=False))
+    theirs = await async_ensure_utility_meter(
         hass,
-        name="Untracked Actual Cost Daily",
-        source_entity="sensor.untracked_actual_cost",
+        name="My Own Aircon Meter",
+        source_entity=_ACTUAL_COST,
         cycle="daily",
         net_consumption=False,
     )
     await hass.async_block_till_done()
-    meter = hass.config_entries.async_get_entry(entry_id)
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+
+    # When - they opt into daily totals, and HEA finds their meter over the same
+    # figure and cycle
+    reload = AsyncMock(wraps=hass.config_entries.async_reload)
+    with patch.object(hass.config_entries, "async_reload", reload):
+        hass.config_entries.async_update_entry(
+            entry, options={**entry.options, CONF_CYCLE_DAILY: True}
+        )
+        await hass.async_block_till_done()
+
+    # Then - it is adopted as it stands: not reconfigured, not reloaded. A helper
+    # HEA did not make is the household's, as it is theirs to delete and to style
+    # (HEA-52; HACS review, HEA-235)
+    meter = hass.config_entries.async_get_entry(theirs)
     assert meter is not None
     assert meter.options["net_consumption"] is False
-
-    # When - reconciliation runs again after the source moved to `total` (HEA-48),
-    # now requesting net_consumption
-    reused = await async_ensure_utility_meter(
-        hass,
-        name="Untracked Actual Cost Daily",
-        source_entity="sensor.untracked_actual_cost",
-        cycle="daily",
-        net_consumption=True,
-    )
-    await hass.async_block_till_done()
-
-    # Then - the same meter is reused (no history-losing recreate), now switched to
-    # follow a fall rather than reading it as a reset
-    assert reused == entry_id
-    reconciled = hass.config_entries.async_get_entry(entry_id)
-    assert reconciled is not None
-    assert reconciled.options["net_consumption"] is True
+    assert theirs not in [call.args[0] for call in reload.call_args_list]
+    record = entry.data[CONF_CYCLE_METERS][f"{_ACTUAL_COST}|daily"]
+    assert helper_entry_id(record) == theirs
+    assert not helper_was_created(record)
 
 
 async def test_a_utility_meter_accumulates_its_source_within_the_cycle(

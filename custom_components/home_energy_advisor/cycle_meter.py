@@ -111,16 +111,14 @@ async def async_ensure_utility_meter(
     """Create a native utility_meter over ``source_entity`` for ``cycle``.
 
     Idempotent: an existing meter over the same source and cycle is reused rather
-    than duplicated. ``net_consumption`` is set for sources that can fall (the
-    Cost Savings figure under battery arbitrage); the lifetime sources never reset
-    on their own, so ``periodically_resetting`` is off. Returns the helper's
-    config entry id.
+    than duplicated, and returned exactly as it is - it may be the household's
+    own, which this does not know, so changing it is the caller's decision.
+    ``net_consumption`` is set for sources that can fall (the Cost Savings figure
+    under battery arbitrage); the lifetime sources never reset on their own, so
+    ``periodically_resetting`` is off. Returns the helper's config entry id.
     """
     existing = _utility_meter_for(hass, source_entity, cycle)
     if existing is not None:
-        await _reconcile_net_consumption(
-            hass, existing, net_consumption=net_consumption
-        )
         return existing
     result = await hass.config_entries.flow.async_init(
         UTILITY_METER_DOMAIN,
@@ -315,7 +313,13 @@ async def _ensure_meters(
             record = owned[key] = resolve_provenance(
                 owned.get(key), meter_id, pre_existing=pre_existing
             )
+            # Only a meter HEA made is brought up to date. One the household built
+            # is adopted as it stands - never reconfigured or reloaded, as it is
+            # never deleted, calibrated or styled (HEA-52; HACS review, HEA-235).
             if helper_was_created(record):
+                await _reconcile_net_consumption(
+                    hass, meter_id, net_consumption=net_consumption
+                )
                 _adopt_source_icon(hass, meter_id, icon)
 
 
@@ -366,7 +370,7 @@ def _persist_owned_meters(
 async def _reconcile_net_consumption(
     hass: HomeAssistant, entry_id: str, *, net_consumption: bool
 ) -> None:
-    """Switch a reused meter's net_consumption when its source's semantics change.
+    """Switch a reused HEA meter's net_consumption when its source's semantics change.
 
     A meter is reused across reloads by source + cycle, but its options are frozen
     at creation. The Untracked remainder's cost meters were created while its
