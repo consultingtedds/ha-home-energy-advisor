@@ -227,6 +227,52 @@ describe("groupedOf", () => {
     expect(counted).toBe(10);
   });
 
+  it("puts each battery under the pool, with no row for a pool holding nothing", () => {
+    // Given - a pool already netted of its two shares, which account for all of
+    // it (ADR-0031)
+    const devices = [
+      aDevice("battery_losses", "Battery Losses", 0, 0, 0, { gross: true }),
+      aDevice("anker", "Battery Losses (Anker)", 0.1125, 0.0338, 0.0338, {
+        upstream: "battery_losses",
+      }),
+      aDevice("growatt", "Battery Losses (Growatt)", 0.1875, 0.0562, 0.0562, {
+        upstream: "battery_losses",
+      }),
+    ];
+
+    // When
+    const grouped = groupedOf(devices, LABELS);
+
+    // Then - the subtotal is the pool's loss, and only the batteries sit under it
+    expect(
+      grouped.map(({ device, depth }) => [device.name, device.actualCost, depth]),
+    ).toEqual([
+      ["Battery Losses", expect.closeTo(0.09, 10), 0],
+      ["Battery Losses (Anker)", 0.0338, 1],
+      ["Battery Losses (Growatt)", 0.0562, 1],
+    ]);
+    expect(leavesOf(devices, LABELS).map((row) => row.name)).toEqual([
+      "Battery Losses (Anker)",
+      "Battery Losses (Growatt)",
+    ]);
+  });
+
+  it("shows a pool's own part when the loss predates the shares", () => {
+    // Given - 0.2 kWh lost before there were two batteries
+    const devices = [
+      aDevice("battery_losses", "Battery Losses", 0.2, 0.06, 0.06, { gross: true }),
+      aDevice("anker", "Battery Losses (Anker)", 0.3, 0.09, 0.09, {
+        upstream: "battery_losses",
+      }),
+    ];
+
+    // When / Then - the household's total keeps it, under the pool
+    expect(leavesOf(devices, LABELS).map((row) => [row.name, row.energyUsed])).toEqual([
+      ["Battery Losses Untracked", 0.2],
+      ["Battery Losses (Anker)", 0.3],
+    ]);
+  });
+
   it("leaves a flat household as a flat list at depth zero", () => {
     // Given / When
     const grouped = groupedOf([aDevice("oven", "Oven", 9, 3, 3)], LABELS);

@@ -263,6 +263,9 @@
     "battery": {
       "name": "Потери в батарее"
     },
+    "battery_share": {
+      "name": "Потери в батарее ({battery})"
+    },
     "hub": {
       "name": "Home Energy Advisor"
     }

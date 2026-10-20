@@ -747,6 +747,86 @@ describe("fetchDeviceStatistics", () => {
   });
 });
 
+describe("a pooled battery", () => {
+  // The pool's Battery Losses holds both batteries' shares (ADR-0031); a
+  // circuit's row would already be less what is metered inside it
+  const POOL = aDevice("battery_losses", "Battery Losses", { gross: true });
+  const ANKER = aDevice("battery_losses_anker", "Battery Losses (Anker)", {
+    upstream: "battery_losses",
+  });
+  const GROWATT = aDevice("battery_losses_growatt", "Battery Losses (Growatt)", {
+    upstream: "battery_losses",
+  });
+  const twoDays = aPeriod(new Date("2026-08-04T00:00:00Z"), new Date("2026-08-06T00:00:00Z"));
+  const DAY_ONE = new Date("2026-08-04T00:00:00Z");
+  const DAY_TWO = new Date("2026-08-05T00:00:00Z");
+
+  /** Each battery's day-two share, as published: rounded, like the pool's. */
+  const sharedOnDayTwo = {
+    "sensor.battery_losses_anker_energy_used": [aBucket(DAY_TWO, 0.1125)],
+    "sensor.battery_losses_anker_actual_cost": [aBucket(DAY_TWO, 0.0338)],
+    "sensor.battery_losses_growatt_energy_used": [aBucket(DAY_TWO, 0.1875)],
+    "sensor.battery_losses_growatt_actual_cost": [aBucket(DAY_TWO, 0.0562)],
+  };
+
+  it("counts the loss once, though the pool and its shares both publish it", async () => {
+    // Given - the pool lost 0.3 kWh on day two, worth 0.09, shared 3:5
+    const hass = aHass({
+      "sensor.battery_losses_energy_used": [aBucket(DAY_TWO, 0.3)],
+      "sensor.battery_losses_actual_cost": [aBucket(DAY_TWO, 0.09)],
+      ...sharedOnDayTwo,
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [POOL, ANKER, GROWATT], twoDays);
+
+    // Then - the household lost 0.3, not 0.6, in its totals and its series
+    // alike; the pool keeps nothing of its own, not a rounding step
+    expect(result.totals.energyUsed).toBeCloseTo(0.3, 10);
+    expect(result.totals.actualCost).toBeCloseTo(0.09, 10);
+    expect(result.series.map((bucket) => bucket.actualCost)).toEqual([
+      expect.closeTo(0.09, 10),
+    ]);
+    const pool = result.devices.find((row) => row.key === "battery_losses");
+    expect([pool.energyUsed, pool.actualCost]).toEqual([0, 0]);
+  });
+
+  it("keeps the loss from before there were two batteries as the pool's own", async () => {
+    // Given - 0.2 kWh lost on day one by the battery that was then the pool,
+    // worth 0.06, and the same shared day two as before
+    const hass = aHass({
+      "sensor.battery_losses_energy_used": [aBucket(DAY_ONE, 0.2), aBucket(DAY_TWO, 0.3)],
+      "sensor.battery_losses_actual_cost": [aBucket(DAY_ONE, 0.06), aBucket(DAY_TWO, 0.09)],
+      ...sharedOnDayTwo,
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [POOL, ANKER, GROWATT], twoDays);
+
+    // Then - nothing is lost from the household's total for having no share
+    const pool = result.devices.find((row) => row.key === "battery_losses");
+    expect(pool.energyUsed).toBeCloseTo(0.2, 10);
+    expect(pool.actualCost).toBeCloseTo(0.06, 10);
+    expect(result.totals.energyUsed).toBeCloseTo(0.5, 10);
+    expect(result.totals.actualCost).toBeCloseTo(0.15, 10);
+  });
+
+  it("keeps the pool's whole figure on a card narrowed to the pool alone", async () => {
+    // Given
+    const hass = aHass({
+      "sensor.battery_losses_energy_used": [aBucket(DAY_TWO, 0.3)],
+      "sensor.battery_losses_actual_cost": [aBucket(DAY_TWO, 0.09)],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [POOL], twoDays);
+
+    // Then - no share was asked about, so there is nothing to net it of
+    expect(result.devices[0].energyUsed).toBe(0.3);
+    expect(result.totals.actualCost).toBe(0.09);
+  });
+});
+
 describe("an interval still accruing", () => {
   const HOUR = 60 * 60 * 1000;
   const NOON = new Date("2026-05-20T12:00:00Z");

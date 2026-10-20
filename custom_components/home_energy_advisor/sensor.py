@@ -423,6 +423,56 @@ _BATTERY_CONCEPTS: tuple[HeaSensorDescription, ...] = tuple(
 )
 
 
+def add_battery_shares(
+    entry: HeaConfigEntry,
+    add: Callable[..., None],
+    coordinator: HeaCoordinator,
+    currency: str,
+) -> None:
+    """Each battery's own Battery Losses, where there are two or more (ADR-0031).
+
+    The pool's Battery Losses is measured; each battery's share of it is
+    apportioned by the room its own meters left for a loss. With one battery the
+    share would be the pool's figure under a second name, so nothing is added.
+
+    Each sits under its own battery entry, where a household looks for it, and
+    carries the pool's two figures for the same reason the pool does.
+    """
+    batteries = batteries_of(entry)
+    if len(batteries) < _BATTERIES_TO_SPLIT:
+        return
+    for battery_id, battery in batteries.items():
+        info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_{_share_key(battery_id)}")},
+            translation_key="battery_share",
+            translation_placeholders={"battery": battery.name},
+        )
+        add(
+            (
+                HeaCostSensor(
+                    coordinator,
+                    concept,
+                    device_key=_share_key(battery_id),
+                    device_info=info,
+                    currency=currency,
+                )
+                for concept in _BATTERY_CONCEPTS
+            ),
+            config_subentry_id=battery_id,
+        )
+
+
+# One battery is the pool itself, so there is nothing to split until there are two.
+_BATTERIES_TO_SPLIT = 2
+# A battery's share is keyed under the pool's own key, so it can never be
+# mistaken for a tracked device or the Untracked remainder.
+_SHARE_PREFIX = f"{_BATTERY_KEY}_"
+
+
+def _share_key(battery_id: str) -> str:
+    return f"{_SHARE_PREFIX}{battery_id}"
+
+
 async def async_setup_entry(
     hass: HomeAssistant,  # noqa: ARG001 - HA platform signature; state is on the entry
     entry: HeaConfigEntry,
@@ -543,6 +593,7 @@ async def async_setup_entry(
             )
             for concept in _BATTERY_CONCEPTS
         )
+        add_battery_shares(entry, add, coordinator, currency)
 
     device_concepts = _concepts_for("", supply_beyond_the_grid=supply)
     if entry.options.get(CONF_DEVICE_COST_BOUNDS):
@@ -812,6 +863,8 @@ class HeaCostSensor(_HeaRestoringSensor):
             return totals.whole_home
         if self._device_key == _BATTERY_KEY:
             return totals.battery
+        if self._device_key.startswith(_SHARE_PREFIX):
+            return totals.batteries.get(self._device_key.removeprefix(_SHARE_PREFIX))
         return totals.devices.get(self._device_key)
 
 
@@ -1034,9 +1087,37 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         # is now a term in that sum - a row left out here would make every card
         # disagree with Whole Home by whatever the battery lost (HEA-174).
         if self._battery_is_tracked():
-            rows.append(self._row(_BATTERY_KEY, None, source=None, untracked=False))
+            pool = self._row(_BATTERY_KEY, None, source=None, untracked=False)
+            rows.append(pool)
+            rows.extend(self._battery_shares(pool))
         rows.sort(key=lambda device: device["key"])
         return rows
+
+    def _battery_shares(self, pool: dict[str, Any]) -> list[dict[str, Any]]:
+        """Each battery's share of the pool's loss, sitting inside it (ADR-0031).
+
+        Inside rather than beside: the pool's figures already hold every share,
+        so a card adding both would count the loss twice. The pool is marked
+        ``gross`` because a circuit is published net of what is inside it and
+        this is not - the shares are apportioned *from* the pool's figure. A card
+        nets it once, and from then on it is a container like any other, whose
+        own part is whatever no share accounts for: the loss from before there
+        were two batteries to share it.
+        """
+        entry = cast("HeaConfigEntry", self.coordinator.config_entry)
+        batteries = batteries_of(entry)
+        if len(batteries) < _BATTERIES_TO_SPLIT:
+            return []
+        pool["gross"] = True
+        shares = [
+            self._row(
+                _share_key(battery_id), battery.name, source=None, untracked=False
+            )
+            for battery_id, battery in batteries.items()
+        ]
+        for share in shares:
+            share["upstream"] = pool["key"]
+        return shares
 
     def _battery_is_tracked(self) -> bool:
         """Whether this household's battery publishes figures of its own.
@@ -1234,6 +1315,9 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
             # nothing - which is every row on a household that has declared no
             # hierarchy, and every row that is not a device.
             "upstream": None,
+            # Whether this row's figures include the rows inside it. Only a
+            # pooled battery's do; see `_battery_shares`.
+            "gross": False,
             "statistics": self._statistic_ids(device_key),
             "area_id": location.area_id,
             "area_name": location.area_name,

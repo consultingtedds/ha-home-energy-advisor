@@ -9,7 +9,7 @@ battery for the accounting (ADR-0031).
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -19,6 +19,7 @@ import pytest
 from homeassistant.config_entries import SOURCE_USER, ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -30,7 +31,10 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
+    CONF_GENERATION_ENTITY,
+    CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
@@ -510,3 +514,194 @@ async def test_two_battery_entries_are_accounted_as_one_pool(
     } <= sources
     anchor = diagnostics["battery"]["loss"]["anchor"]
     assert Decimal(anchor["available_kwh"]) == Decimal("3.35")
+
+
+# Each battery's own Battery Losses
+
+
+def _metered_house_with(*batteries: dict[str, Any]) -> MockConfigEntry:
+    """A house metering everything a loss is measured from, with these batteries."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        version=6,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "EUR",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+            CONF_GENERATION_ENTITY: ["sensor.generation"],
+            CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_load",
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BATTERY,
+                title=battery[CONF_NAME],
+                data=battery,
+                unique_id=None,
+            )
+            for battery in batteries
+        ],
+    )
+
+
+_ANKER_ENTRY = {
+    CONF_NAME: "Anker Solix",
+    CONF_BATTERY_CHARGE_ENTITY: "sensor.anker_charge",
+    CONF_BATTERY_DISCHARGE_ENTITY: "sensor.anker_discharge",
+    CONF_BATTERY_SOC_ENTITY: "sensor.anker_level",
+    CONF_BATTERY_CAPACITY_KWH: 4.0,
+}
+_GROWATT_ENTRY = {
+    CONF_NAME: "Growatt",
+    CONF_BATTERY_CHARGE_ENTITY: "sensor.growatt_charge",
+    CONF_BATTERY_DISCHARGE_ENTITY: "sensor.growatt_discharge",
+    CONF_BATTERY_SOC_ENTITY: "sensor.growatt_level",
+    CONF_BATTERY_CAPACITY_KWH: 1.0,
+}
+
+
+async def _a_span_with_a_loss(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, entry: MockConfigEntry
+) -> None:
+    """The single-battery loss test (HEA-182), its charge split between two.
+
+    Overnight at 30 c the house imports 4 kWh, puts 3 into one battery and 1
+    into the other, and draws 1 itself; the levels read 2.0 and 0.5 kWh, which
+    only anchors the measurement. Then 2 kWh more is imported, 1.5 and 0.5 go
+    into the batteries, and the house draws 0.5. The first battery reaches 3.2
+    kWh and the second stays at 0.5, so the pool gained 1.2 of the 1.5 the
+    house's meters cannot account for: 0.3 lost, published a day later.
+    """
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    for meter in (
+        "sensor.grid_import",
+        "sensor.grid_export",
+        "sensor.generation",
+        "sensor.house_load",
+        "sensor.anker_charge",
+        "sensor.anker_discharge",
+        "sensor.growatt_charge",
+        "sensor.growatt_discharge",
+    ):
+        hass.states.async_set(meter, "0", _ENERGY)
+    for level in ("sensor.anker_level", "sensor.growatt_level"):
+        hass.states.async_set(level, "0", {"device_class": "battery"})
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    async def interval(at: datetime, readings: dict[str, str]) -> None:
+        freezer.move_to(at)
+        for meter, value in readings.items():
+            attributes = (
+                {"device_class": "battery"} if meter.endswith("_level") else _ENERGY
+            )
+            hass.states.async_set(meter, value, attributes)
+        await hass.async_block_till_done()
+        freezer.move_to(at + timedelta(minutes=35))
+        async_fire_time_changed(hass, fire_all=True)
+        await hass.async_block_till_done()
+
+    await interval(
+        datetime(2026, 7, 8, 22, 5, tzinfo=UTC),
+        {
+            "sensor.grid_import": "4.0",
+            "sensor.anker_charge": "3.0",
+            "sensor.growatt_charge": "1.0",
+            "sensor.house_load": "1.0",
+            "sensor.anker_level": "50",
+            "sensor.growatt_level": "50",
+        },
+    )
+    await interval(
+        datetime(2026, 7, 8, 22, 45, tzinfo=UTC),
+        {
+            "sensor.grid_import": "6.0",
+            "sensor.anker_charge": "4.5",
+            "sensor.growatt_charge": "1.5",
+            "sensor.house_load": "1.5",
+            "sensor.anker_level": "80",
+            "sensor.growatt_level": "50",
+        },
+    )
+    freezer.move_to(datetime(2026, 7, 9, 23, 20, tzinfo=UTC))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+
+async def test_two_batteries_each_publish_their_own_losses(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - two batteries, and a span in which the pool lost 0.3 kWh
+    await _a_span_with_a_loss(
+        hass, freezer, _metered_house_with(_ANKER_ENTRY, _GROWATT_ENTRY)
+    )
+
+    # Then - the pool's Battery Losses is the single-battery figure...
+    assert _state(hass, "sensor.battery_losses_energy_used") == "0.300000"
+    assert _state(hass, "sensor.battery_losses_actual_cost") == "0.0900"
+    # ...and each battery has its share, split 3:5 by the room its own meters
+    # left for a loss (1.5 in less 1.2 gained, against 0.5 in and nothing gained)
+    anker = "sensor.battery_losses_anker_solix"
+    growatt = "sensor.battery_losses_growatt"
+    assert _state(hass, f"{anker}_energy_used") == "0.112500"
+    assert _state(hass, f"{growatt}_energy_used") == "0.187500"
+    assert _state(hass, f"{anker}_actual_cost") == "0.0338"
+    assert _state(hass, f"{growatt}_actual_cost") == "0.0562"
+
+
+async def test_each_battery_sits_inside_the_pool_on_the_devices_list(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - two batteries
+    await _a_span_with_a_loss(
+        hass, freezer, _metered_house_with(_ANKER_ENTRY, _GROWATT_ENTRY)
+    )
+
+    # Then - each battery's row names the pool's, so a card adding the rows up
+    # counts the loss once, and the pool says its figures include theirs
+    rows = _device_rows(hass)
+    pool = rows["Battery Losses"]
+    assert (pool["upstream"], pool["gross"]) == (None, True)
+    for name in ("Battery Losses (Anker Solix)", "Battery Losses (Growatt)"):
+        assert (rows[name]["upstream"], rows[name]["gross"]) == (pool["key"], False)
+    assert rows["Battery Losses (Anker Solix)"]["statistics"]["actual_cost"] == (
+        "sensor.battery_losses_anker_solix_actual_cost"
+    )
+
+
+def _device_rows(hass: HomeAssistant) -> dict[str, dict[str, Any]]:
+    state = hass.states.get("sensor.home_energy_advisor_devices")
+    assert state is not None
+    return {row["name"]: row for row in state.attributes["devices"]}
+
+
+def _state(hass: HomeAssistant, entity_id: str) -> str:
+    state = hass.states.get(entity_id)
+    assert state is not None, f"{entity_id} was never created"
+    return state.state
+
+
+async def test_one_battery_has_no_second_battery_losses_device(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given / When - the same span through one battery
+    entry = _metered_house_with(_ANKER_ENTRY)
+    hass.states.async_set("sensor.growatt_charge", "0", _ENERGY)
+    await _a_span_with_a_loss(hass, freezer, entry)
+
+    # Then - its pool is the battery, and nothing repeats it under another name
+    registry = dr.async_get(hass)
+    names = {
+        device.name_by_user or device.name
+        for device in dr.async_entries_for_config_entry(registry, entry.entry_id)
+    }
+    assert "Battery Losses" in names
+    assert not any(name and name.startswith("Battery Losses (") for name in names)
+    # ...and its row is an ordinary one, with nothing inside it
+    rows = _device_rows(hass)
+    assert [name for name in rows if name.startswith("Battery Losses")] == [
+        "Battery Losses"
+    ]
+    assert rows["Battery Losses"]["gross"] is False

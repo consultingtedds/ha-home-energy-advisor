@@ -157,6 +157,10 @@ const toDevice = (row) => ({
   // which reads the same as a household who has declared no hierarchy - and both
   // should draw exactly what they drew before.
   upstream: row.upstream ?? null,
+  // Whether the row's figures include the rows inside it, which only a pooled
+  // battery's do (ADR-0031). False on an older integration, which published no
+  // such row.
+  gross: Boolean(row.gross),
   // Empty rather than absent on an integration published before labels
   // existed: a card may be newer than the instance it is running against, and
   // every reader wants a set to test membership against either way (HEA-95).

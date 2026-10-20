@@ -280,7 +280,7 @@ export const fetchDeviceStatistics = async (
       })
     : {};
 
-  const rows = devices.map((device) => totalsFor(device, buckets, period));
+  const rows = nettedOfInside(devices.map((device) => totalsFor(device, buckets, period)));
   return {
     period,
     devices: rows,
@@ -318,7 +318,9 @@ const boundsFor = (device, buckets, period) => {
  */
 const seriesFrom = (devices, buckets, period, settledUntil) => {
   const byStart = new Map();
-  for (const device of devices) {
+  // A row inside a gross one is already in that row's buckets.
+  const gross = new Set(devices.filter((device) => device.gross).map((device) => device.key));
+  for (const device of devices.filter((row) => !gross.has(row.upstream))) {
     for (const [field, concept] of Object.entries(CONCEPTS)) {
       const statistic = buckets?.[statisticIdFor(device, concept)];
       for (const bucket of bucketsWithin(statistic, period)) {
@@ -356,6 +358,48 @@ const totalsFor = (device, buckets, period) => {
     costSavings: totals.costAtGridPrice - totals.actualCost,
   };
 };
+
+/**
+ * Every row published gross made net of the rows inside it, as a circuit is.
+ *
+ * A pooled battery's Battery Losses holds every battery's share, because the
+ * shares are apportioned from it (ADR-0031). A circuit is published the other
+ * way, already less what is metered inside it, and everything that adds rows up
+ * or nests them assumes that. So the pool is netted here, once, and from then
+ * on it is a container like any other: its own part is whatever no share
+ * accounts for, which is the loss from before there were two batteries.
+ *
+ * Only the rows given count. A card narrowed to the pool alone keeps its whole
+ * figure, and one narrowed to a single battery never sees the pool.
+ *
+ * Each figure is published rounded, the pool and every share separately, so
+ * what is left can be a rounding step rather than nothing. Below what a card
+ * displays it is called nothing, or every pooled household would carry a row
+ * of zeroes.
+ */
+export const nettedOfInside = (rows) => {
+  const inside = new Map();
+  for (const row of rows) {
+    if (!row.upstream) continue;
+    inside.set(row.upstream, [...(inside.get(row.upstream) ?? []), row]);
+  }
+  return rows.map((row) => {
+    if (!row.gross) return row;
+    const netted = { ...row };
+    for (const field of Object.keys(CONCEPTS)) {
+      const own = (inside.get(row.key) ?? []).reduce(
+        (rest, child) => rest - child[field],
+        row[field],
+      );
+      netted[field] = Math.abs(own) < displaysAsZero(field) ? 0 : own;
+    }
+    netted.costSavings = netted.costAtGridPrice - netted.actualCost;
+    return netted;
+  });
+};
+
+/** Half the last place a card shows: three for energy, two for money. */
+const displaysAsZero = (field) => (field.startsWith("energy") ? 0.0005 : 0.005);
 
 /**
  * The buckets a statistic recorded inside the period, as `{start, change}`.

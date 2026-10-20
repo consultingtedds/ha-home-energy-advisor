@@ -63,11 +63,23 @@ export const residualOf = (device, labels) => ({
   // Not the household's Untracked remainder, which is a different row and a
   // different claim. This is one circuit's.
   untracked: false,
+  gross: false,
   residualOf: device.key,
 });
 
 /** How a residual row's key is built, so a reader can recognise one. */
 export const RESIDUAL_SUFFIX = "__untracked";
+
+/**
+ * A container's own part, as the rows it takes: one, or none for an empty pool.
+ *
+ * A circuit keeps its row at zero, because a circuit with nothing unmetered on
+ * it is worth seeing. A pooled battery's own part is only the loss from before
+ * its batteries were shared (ADR-0031), so at zero it is a row that would sit
+ * under every pool for good saying nothing.
+ */
+const ownPartOf = (device, labels) =>
+  device.gross && ADDS.every((field) => !device[field]) ? [] : [residualOf(device, labels)];
 
 /** Those figures summed across rows, with the derived ones derived again. */
 const added = (rows) => {
@@ -97,7 +109,7 @@ export const leavesOf = (devices, labels) => {
   const children = childrenByParent(devices);
   if (children.size === 0) return devices;
   return devices.flatMap((device) =>
-    children.has(device.key) ? [residualOf(device, labels)] : [device],
+    children.has(device.key) ? ownPartOf(device, labels) : [device],
   );
 };
 
@@ -122,7 +134,7 @@ export const groupedOf = (devices, labels, rank = (rows) => rows) => {
 
   const group = (device, depth) => {
     if (!children.has(device.key)) return [{ device, depth }];
-    const inside = rank([...children.get(device.key), residualOf(device, labels)]);
+    const inside = rank([...children.get(device.key), ...ownPartOf(device, labels)]);
     const rows = inside.flatMap((child) => group(child, depth + 1));
     // The subtotal is everything beneath it that counts once: the rows that are
     // not themselves subtotals, which is every device and residual below.

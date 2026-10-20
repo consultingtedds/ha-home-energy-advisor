@@ -263,6 +263,9 @@
     "battery": {
       "name": "Pérdidas de la batería"
     },
+    "battery_share": {
+      "name": "Pérdidas de la batería ({battery})"
+    },
     "hub": {
       "name": "Home Energy Advisor"
     }

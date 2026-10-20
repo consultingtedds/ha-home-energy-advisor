@@ -73,6 +73,9 @@ describe("readDevices", () => {
         // carried: it has to read the same as a household who has declared none,
         // so a card draws what it always drew (HEA-153).
         upstream: null,
+        // False for the same reason: only a pooled battery is published gross
+        // (ADR-0031), and this integration publishes none.
+        gross: false,
       },
     ]);
   });
@@ -204,6 +207,22 @@ describe("the link to what contains a device", () => {
     const [circuit, dishwasher] = readDevices(hass);
     expect(circuit.upstream).toBeNull();
     expect(dishwasher.upstream).toBe("kitchen_circuit");
+  });
+
+  it("says which container's figures include the rows inside it", () => {
+    // Given - a pooled battery, whose shares are apportioned from its own
+    // figure rather than metered out of it (ADR-0031)
+    const hass = aHass({
+      devices: [
+        aRow("battery_losses", "Battery Losses", { gross: true }),
+        aRow("battery_losses_anker", "Battery Losses (Anker)", {
+          upstream: "battery_losses",
+        }),
+      ],
+    });
+
+    // When / Then - so the statistics layer knows to net the pool, and nothing else
+    expect(readDevices(hass).map((device) => device.gross)).toEqual([true, false]);
   });
 });
 
