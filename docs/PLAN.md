@@ -637,7 +637,19 @@ Carried forward rather than closed:
   Discussion 42 (losses per battery, a charge source per battery), and
   **HEA-221**, several grid meters, which matters most for a dual-rate meter
   whose two registers are priced apart, each prefill in the Energy Dashboard's
-  shape, and Reconfigure gains the same suggestions.
+  shape, and Reconfigure gains the same suggestions. ADR-0030's Update makes the
+  Energy Dashboard the recommended place to enter meters, with a change there
+  offered as a Repair (take them / keep mine) rather than followed.
+- **HEA-220 is built** (ADR-0031): each battery a config subentry shaped like
+  Home Assistant's battery system (config entry v6 moves the old fields into
+  one), one pool with one stored-cost ledger and a pool-measured loss, a Battery
+  Losses device per battery where there are two or more, apportioned by each
+  battery's own bound and nested under the pool on the cards (the pool row is
+  published `gross` and the cards net it once), and the Energy Dashboard change
+  Repair for batteries. One charge source for the household stays; a battery
+  that charges differently from its neighbour is ADR-0031's revisit condition.
+  It goes out as a beta for the Discussion 42 household and the reference home
+  before 0.13.0 stable. HEA-221 extends the same Repair to grid meters.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are

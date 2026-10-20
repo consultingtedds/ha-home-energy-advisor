@@ -27,6 +27,7 @@
  */
 
 import {
+  BATTERIES,
   BOUND_CONCEPTS,
   DEVICES,
   HOUSE,
@@ -106,14 +107,27 @@ async function main() {
     const house = { used: zeros(hours), grid: zeros(hours), solar: zeros(hours), battery: zeros(hours) };
 
     let written = 0;
+    const seriesByKey = new Map();
     for (const row of rows) {
+      // A pooled battery is written after the batteries inside it, as their sum.
+      if (row.gross) continue;
       const series = profileSeries(row.profile, hours);
-      addInto(house.used, series.energy_used);
-      addInto(house.grid, series.energy_from_grid);
-      addInto(house.solar, series.energy_from_generation);
-      addInto(house.battery, series.energy_from_battery);
+      seriesByKey.set(row.key, series);
+      // A battery's loss never reached the house, so it is in no house meter.
+      if (!row.profile.lost) {
+        addInto(house.used, series.energy_used);
+        addInto(house.grid, series.energy_from_grid);
+        addInto(house.solar, series.energy_from_generation);
+        addInto(house.battery, series.energy_from_battery);
+      }
       written += await importConcepts(socket, row.statistics, series, hours);
       written += await importSource(socket, row.profile, series, hours);
+    }
+    for (const pool of rows.filter((row) => row.gross)) {
+      const inside = rows
+        .filter((row) => row.upstream === pool.key)
+        .map((row) => seriesByKey.get(row.key));
+      written += await importConcepts(socket, pool.statistics, summed(inside), hours);
     }
 
     written += await importHouse(socket, house, hours);
@@ -147,10 +161,16 @@ async function main() {
  * Profiles are matched to rows by name. A row with no profile is the untracked
  * remainder, which the integration creates itself and which is what makes the
  * shares add up to the whole bill.
+ *
+ * The batteries' losses are the exception. Their rows are named in the
+ * instance's language around the battery's own name, so each is matched by the
+ * name it carries in brackets, and the pool by being published `gross`. They
+ * carry only Energy Used and Actual Cost, which is all a battery loss publishes.
  */
 async function readDeviceRows(socket) {
   const byName = new Map(DEVICES.map((device) => [device.name, device]));
-  const wanted = DEVICES.length + 1; // the tracked devices, plus Untracked
+  // The tracked devices, Untracked, the batteries' pool and each battery in it.
+  const wanted = DEVICES.length + 1 + 1 + BATTERIES.length;
 
   // Polled, because a device added a moment ago is not finished. The sensors
   // behind a power source are derived through an Integral helper, which appears
@@ -181,22 +201,62 @@ async function readDeviceRows(socket) {
     if (!sensor) {
       throw new Error(`${registered.entity_id} is registered but has no state yet.`);
     }
-    rows = (sensor.attributes.devices ?? []).map((row) => ({
+    const published = sensor.attributes.devices ?? [];
+    const pool = published.find((row) => row.gross);
+    rows = published.map((row) => ({
       ...row,
-      profile: byName.get(row.name) ?? UNTRACKED,
+      profile:
+        byName.get(row.name) ??
+        (row.upstream && row.upstream === pool?.key ? lossOf(row) : null) ??
+        UNTRACKED,
     }));
-    const ready = rows.filter((row) => CONCEPTS.every((key) => row.statistics?.[key]));
+    const ready = rows.filter((row) => isReady(row, pool));
     if (rows.length >= wanted && ready.length === rows.length) return rows;
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
-  const missing = rows
-    .filter((row) => !CONCEPTS.every((key) => row.statistics?.[key]))
-    .map((row) => row.name);
+  const pool = rows.find((row) => row.gross);
+  const missing = rows.filter((row) => !isReady(row, pool)).map((row) => row.name);
   throw new Error(
     `${rows.length - missing.length} of ${wanted} devices are ready` +
       (missing.length ? `; still without entity ids: ${missing.join(", ")}` : "") +
       ". Seeding now would silently leave them out of every card.",
+  );
+}
+
+/** What a battery loss publishes: the energy it lost, and what that cost. */
+const LOSS_CONCEPTS = ["energy_used", "actual_cost"];
+
+/** Whether a row names every statistic it publishes. */
+function isReady(row, pool) {
+  const isLoss = row.gross || (row.upstream && row.upstream === pool?.key);
+  return (isLoss ? LOSS_CONCEPTS : CONCEPTS).every((key) => row.statistics?.[key]);
+}
+
+/**
+ * A battery's loss as a profile: energy that went in and never came out, spread
+ * over the day and priced at what it cost to store.
+ */
+function lossOf(row) {
+  const battery = BATTERIES.find((candidate) => row.name.includes(`(${candidate.name})`));
+  if (!battery) return null;
+  return {
+    weekKwh: battery.lossWeekKwh,
+    share: { grid: 0, generation: 0, battery: 1 },
+    hours: [0, 24],
+    lost: true,
+  };
+}
+
+/** Several devices' series added hour by hour, concept by concept. */
+function summed(series) {
+  return Object.fromEntries(
+    Object.keys(series[0]).map((concept) => [
+      concept,
+      series[0][concept].map((_, hour) =>
+        series.reduce((total, one) => total + one[concept][hour], 0),
+      ),
+    ]),
   );
 }
 

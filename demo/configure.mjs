@@ -93,8 +93,8 @@ async function createEntry(token) {
     },
   });
   // The battery is an entry of its own, offered from the Energy Dashboard on the
-  // step after the house's (ADR-0031). The demo's Energy Dashboard holds the
-  // one battery, so taking what it offers is taking that battery.
+  // step after the house's (ADR-0031). The demo's Energy Dashboard holds both of
+  // its batteries, so taking everything offered is taking the two.
   const result =
     house.step_id === "batteries"
       ? await api(`/api/config/config_entries/flow/${started.flow_id}`, token, {

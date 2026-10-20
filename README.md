@@ -49,9 +49,10 @@ figures sit at zero because there is nothing to save against.
   everything, or even most things - whatever you do not track is grouped into a
   single "Untracked" figure so the totals still add up.
 
-Local generation, a battery and a whole-house consumption meter are all
+Local generation, batteries and a whole-house consumption meter are all
 optional. Generation means anything of your own that produces a cumulative kWh
-figure - solar, wind, hydro - and several sources can be added together.
+figure - solar, wind, hydro - and several sources can be added together, as can
+several batteries.
 
 Off-grid homes are not supported: see
 [What it does not do](#what-it-does-not-do).
@@ -121,8 +122,14 @@ Go to **Settings** > **Devices & services** > **Add integration** and search for
 
 The first screen asks about your house as a whole. **Only two of these are
 required: the import price and the grid import meter.** Every other field is
-optional, and the accounting adapts to what you give it. If you have set up the
-Energy Dashboard, most of them are filled in for you already.
+optional, and the accounting adapts to what you give it.
+
+**The Energy Dashboard is the best place to enter your meters.** Whatever it
+holds is filled in for you here, and if you change it there later, Home Energy
+Advisor notices and offers you the change - see
+[When the Energy Dashboard changes](#when-the-energy-dashboard-changes). What you
+save here is still your own: you can choose different meters, and nothing
+changes without you saying so.
 
 | Input | Required | What to choose |
 | --- | --- | --- |
@@ -131,34 +138,13 @@ Energy Dashboard, most of them are filled in for you already.
 | Grid import energy | Yes | Your cumulative import meter, in kWh or Wh |
 | Grid export energy | No | Your cumulative export meter |
 | Local generation energy | No | Cumulative generation of your own, whatever the source |
-| Battery charge energy | No | Cumulative energy charged into a home battery |
-| Battery discharge energy | No | Cumulative energy discharged from it - **all** of it, including any that went to the grid rather than to the house |
-| How your battery charges | Yes, preset | Mainly from spare solar, from the grid as well, or only from solar - see below |
 | House consumption energy | No | Total household consumption, if you measure it directly |
-| Battery level | No | How full the battery is, as a percentage |
-| Battery usable capacity | No | What it holds when full, in kWh |
+| How your battery charges | Yes, preset | Mainly from spare solar, from the grid as well, or only from solar - see below |
 
 Every energy input has to be a cumulative counter that only rises, which is what
 Home Assistant calls a `total_increasing` sensor. The setup screen rejects
 anything else rather than quietly misreading it: costs are shared out in
 proportion, so one wrong house-level input makes every device's figure wrong.
-
-#### The last two, and why they are worth filling in
-
-Battery energy is priced at what it cost to put in, so the integration keeps a
-running note of how much is in your battery and what it cost. It works that out
-by watching energy go in and come out - and some energy never comes back out. A
-battery gives up a few percent to heat on every round trip, so that note drifts
-upwards, and it has no way of noticing.
-
-Telling it how full the battery is, and how much it holds when full, lets it
-correct that note against reality. Without them nothing breaks, and the drift
-stays what it has always been; with them, what your battery energy is priced at
-follows the last few days rather than the last few months.
-
-If you fill these in, check the discharge field above as well. If it is measuring
-only what the battery sent to the *house*, anything it sent to the grid is
-invisible and adds to the same drift.
 
 #### When generation and export actually matter
 
@@ -226,19 +212,51 @@ It decides whether the energy in your battery cost what the grid charged or
 nothing, and so what your devices are charged when the battery later runs them.
 If you are not sure, leave the preset.
 
-#### If you have more than one battery
+### Your batteries
 
-The battery fields take **one** battery: one charge sensor, one discharge
-sensor, and one charge level and capacity. Home Energy Advisor keeps a single
-record of what the energy stored in it cost, and that does not yet stretch to
-two batteries filling and emptying at different times.
+Each battery is entered on its own, with the same details the Energy Dashboard
+holds for a battery system:
 
-If you have two, combine their charge sensors into one with a **Group** helper
-of type **Sum** (**Settings** > **Devices & services** > **Helpers** > **Create
-helper** > **Group** > **Sensor group**), and their discharge sensors into
-another, leaving **Ignore non-numeric** off so the total goes unknown rather
-than dipping when one battery drops out. Leave the charge level and capacity
-empty unless your system also reports them for both batteries together.
+| Input | Required | What to choose |
+| --- | --- | --- |
+| Name | Yes | How the battery appears in Home Assistant |
+| Battery charge energy | Yes | Cumulative energy charged into it |
+| Battery discharge energy | Yes | Cumulative energy discharged from it - **all** of it, including any that went to the grid rather than to the house |
+| Battery level | No | How full it is, as a percentage |
+| Battery usable capacity | No | What it holds when full, in kWh |
+
+![The batteries step of the setup, listing the two batteries from the Energy Dashboard, both ticked](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-batteries.png)
+
+If your Energy Dashboard has batteries, setup lists them after the house screen,
+filled in, and you tick the ones to include. To add one later, select **Add
+battery** on the Home Energy Advisor card in **Settings** > **Devices &
+services**; a battery in your Energy Dashboard that is not added yet is filled in
+for you.
+
+**Two or more batteries are counted as one.** Their meters are added together,
+and how full they are is weighted by their capacities, which is how the Energy
+Dashboard combines them too. One record is kept of what the energy stored in them
+cost, since energy can move between them and the house cannot tell which battery
+it came from.
+
+#### Level and capacity, and why they are worth filling in
+
+Battery energy is priced at what it cost to put in, so the integration keeps a
+running note of how much is in your batteries and what it cost. It works that
+out by watching energy go in and come out - and some energy never comes back
+out. A battery gives up a few percent to heat on every round trip, so that note
+drifts upwards, and it has no way of noticing.
+
+Telling it how full each battery is, and how much it holds when full, lets it
+correct that note against reality. Without them nothing breaks, and the drift
+stays what it has always been; with them, what your battery energy is priced at
+follows the last few days rather than the last few months. With several
+batteries it needs both for every one of them.
+
+The Energy Dashboard can hold both, so if yours lacks them, that is the best
+place to add them. Then check the discharge meter as well: if it measures only
+what the battery sent to the *house*, anything it sent to the grid is invisible
+and adds to the same drift.
 
 ### Your devices
 
@@ -294,10 +312,26 @@ sits empty. That is a house with no labels, not a broken filter.
 ### Settings you can change later
 
 Everything on the house screen - the price, the meters, how your battery
-charges, its level and capacity - can be changed at any time: **Settings** >
-**Devices & services** > **Home Energy Advisor** > three-dot menu >
-**Reconfigure**. Empty a field to remove that input altogether. The change
-counts from then on; figures already recorded stay as they are.
+charges - can be changed at any time: **Settings** > **Devices & services** >
+**Home Energy Advisor** > three-dot menu > **Reconfigure**. Empty a field to
+remove that input altogether. Each battery is changed or removed on its own entry
+under the integration, with **Edit battery**. Either way the change counts from
+then on; figures already recorded stay as they are.
+
+#### When the Energy Dashboard changes
+
+If the batteries in your Energy Dashboard stop matching the ones entered here -
+you added one there, or gave one a level and capacity - a notice appears in
+**Settings** > **Repairs** listing both, with two answers:
+
+- **Take the Energy Dashboard's batteries.** They are entered here exactly as if
+  you had edited them yourself. A battery with the same meters keeps its name and
+  its figures.
+- **Keep mine.** Nothing changes. You may have chosen different meters here on
+  purpose - a lifetime counter rather than a daily one, say - and you are not
+  asked again until the Energy Dashboard changes once more.
+
+Nothing changes without one of those answers.
 
 The integration's settings menu also carries:
 
@@ -464,7 +498,8 @@ More devices are created alongside them:
   Savings**.
 - **Battery Losses** appears only where the loss can be measured - see below. It
   carries Energy Used and Actual Cost for the energy the battery took in and
-  never gave back.
+  never gave back. With two or more batteries, each also gets its own, named
+  after it, such as **Battery Losses (Garage)**.
 - **Home Energy Advisor** carries **Unreconciled Energy**, which should read
   zero, and a diagnostic list of tracked devices that the cards read.
 
@@ -524,6 +559,15 @@ appear, rather than showing you a guess.
 Your whole-home total then reads a little **above** a house consumption meter, by
 the losses, which is correct: that meter measures what reached the house, and
 this energy never did.
+
+**With two or more batteries, the loss is measured for them together and then
+shared out.** Each battery's share follows how much went into it that it did not
+give back or keep, going by its own meters and level, and is priced at what the
+stored energy cost. So it tells you which battery is losing more, though it is a
+share of a measured figure rather than a measurement of its own. On the
+dashboard each battery sits under Battery Losses, and the totals count the loss
+once. A loss from before you had a second battery stays with Battery Losses
+itself, as there was nothing to share it between.
 
 Energy Used, Actual Cost and Cost at Grid Price also come as daily and monthly
 totals, named after the sensor and the period - `Tumble Dryer Actual Cost Daily`

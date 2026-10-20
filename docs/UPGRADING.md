@@ -46,11 +46,27 @@ as Predbat charges your battery from the grid during the day, open
 off, choose **Only from solar**. Whatever you chose in 0.12.0 is replaced by the
 preset, and figures already recorded stay as they are.
 
+**Your battery now has an entry of its own**, under the integration beside your
+devices, and its meters, level and capacity have moved there from the house
+settings. Nothing about it changes, and its figures carry on. To change it,
+open it and choose **Edit battery**.
+
+**If you have two batteries summed with a Group helper, you can enter each one
+now.** Several batteries are counted as one, as the Energy Dashboard counts
+them, and with two or more each gets its own Battery Losses. If your Energy
+Dashboard already lists them, a notice in **Settings** > **Repairs** offers to
+take them in place of the summed one. Your figures carry on either way.
+
+**You may see that notice even with one battery.** It appears whenever the
+batteries in your Energy Dashboard differ from the ones here. If you chose
+different meters here on purpose, choose **Keep mine**, and you will not be
+asked again until the Energy Dashboard changes.
+
 **If you filled in your battery's capacity, check it is in kWh.** The field now
 refuses anything above 200, because no home battery holds that much and the
 figure is almost always watt-hours: a 1500 Wh battery is 1.5. A capacity saved
-before this release is not checked until you next open **Reconfigure**, so if
-yours reads in the hundreds or thousands, change it there.
+before this release is not checked until you next edit the battery, so if yours
+reads in the hundreds or thousands, change it there.
 
 ## 0.12.0
 

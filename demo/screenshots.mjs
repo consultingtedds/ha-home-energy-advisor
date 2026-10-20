@@ -167,6 +167,13 @@ async function captureSetup(page) {
   await shot(page, "setup-house-inputs");
 
   await page.getByRole("button", { name: "Submit" }).click({ force: true });
+
+  // Then the Energy Dashboard's batteries, offered filled in and all ticked
+  // (ADR-0031). Taken as offered: the house has two, and both are wanted.
+  await page.getByText("Your batteries").first().waitFor({ state: "visible", timeout: 20000 });
+  await page.waitForTimeout(1500);
+  await shot(page, "setup-batteries");
+  await page.getByRole("button", { name: "Submit" }).click({ force: true });
   await finish(page);
 }
 

@@ -54,6 +54,38 @@ export const HOUSE = {
 };
 
 /**
+ * Two batteries, as the Energy Dashboard holds them, each with a level and a
+ * capacity (ADR-0031).
+ *
+ * Two because one hides everything this exists to show: the batteries are
+ * counted as one pool, and only with a second does each get a Battery Losses of
+ * its own, nested under the pool's. The levels and capacities are what let the
+ * loss be measured at all, so without them neither device appears.
+ *
+ * `lossWeekKwh` is what each is seeded as having lost over the week, unequal so
+ * the two rows can be told apart. The pool's figure is their sum, which is how
+ * the integration publishes it.
+ */
+export const BATTERIES = [
+  {
+    name: "Main Battery",
+    charge: HOUSE.batteryCharge,
+    discharge: HOUSE.batteryDischarge,
+    level: "sensor.battery_level",
+    capacity: 10,
+    lossWeekKwh: 1.9,
+  },
+  {
+    name: "Second Battery",
+    charge: "sensor.second_battery_charge",
+    discharge: "sensor.second_battery_discharge",
+    level: "sensor.second_battery_level",
+    capacity: 5,
+    lossWeekKwh: 1.1,
+  },
+];
+
+/**
  * The tariff the seeded week is priced against, matching the template sensors.
  * Two steps, because a flat rate makes the cost-over-time card a straight line
  * and takes the point out of "run it in the afternoon instead". The export rate

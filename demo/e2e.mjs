@@ -36,7 +36,7 @@ import {
   entityIdForUniqueId,
   freshAuth,
 } from "./ha-client.mjs";
-import { DEVICES } from "./house.mjs";
+import { BATTERIES, DEVICES } from "./house.mjs";
 import {
   cardText,
   chartSeriesNames,
@@ -390,6 +390,28 @@ async function figureChecks(page) {
           `which draws that energy twice`,
       );
     }
+  });
+
+  await check("each battery's loss has a bar, and the pool's is not drawn again", async () => {
+    // The pool's Battery Losses holds every battery's share (ADR-0031), so a bar
+    // for it beside theirs would draw the loss twice. Matched on the battery's
+    // own name in brackets, which is the part of the row's name that is not
+    // translated.
+    const drawn = [...new Set(await chartSeriesNames(page, "hea-device-costs-card"))];
+    const shares = BATTERIES.map((battery) =>
+      drawn.find((name) => name.endsWith(`(${battery.name})`)),
+    );
+    assert(
+      shares.every(Boolean),
+      `no bar for a battery's loss; drawn: ${drawn.join(", ")}`,
+    );
+    const pool = shares[0].slice(0, shares[0].lastIndexOf(" ("));
+    assert(
+      !drawn.some(
+        (name) => name === pool || (name.startsWith(`${pool} `) && !shares.includes(name)),
+      ),
+      `"${pool}" is drawn as well as the batteries inside it; drawn: ${drawn.join(", ")}`,
+    );
   });
 
   await check("the devices card shows a figure for every device", async () => {

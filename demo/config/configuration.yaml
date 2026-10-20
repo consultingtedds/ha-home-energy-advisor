@@ -95,6 +95,44 @@ template:
           {{ (590 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
               / 3600 * 0.22) | round(3) }}
 
+      # A second battery, smaller, so the two are counted as one pool and each
+      # gets a Battery Losses of its own (ADR-0031). Each holds a little less
+      # than went in, which is the loss the pool measures.
+      - name: Second Battery Charge
+        unique_id: demo_second_battery_charge
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (210 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.10) | round(3) }}
+
+      - name: Second Battery Discharge
+        unique_id: demo_second_battery_discharge
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (190 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.09) | round(3) }}
+
+      # How full each one is. Steady, because the loss is what went in less what
+      # came out less what the level gained, and a level that never moves makes
+      # that the difference of the two meters.
+      - name: Battery Level
+        unique_id: demo_battery_level
+        device_class: battery
+        state_class: measurement
+        unit_of_measurement: "%"
+        state: "60"
+
+      - name: Second Battery Level
+        unique_id: demo_second_battery_level
+        device_class: battery
+        state_class: measurement
+        unit_of_measurement: "%"
+        state: "40"
+
       - name: House Consumption
         unique_id: demo_house_consumption
         device_class: energy

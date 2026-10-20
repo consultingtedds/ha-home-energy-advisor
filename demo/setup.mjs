@@ -14,6 +14,7 @@
 
 import {
   AREAS,
+  BATTERIES,
   DEVICES,
   FLOORS,
   HOUSE,
@@ -69,6 +70,7 @@ async function assertSourcesExist(socket) {
   const present = new Set(states.map((state) => state.entity_id));
   const wanted = [
     ...Object.values(HOUSE),
+    ...BATTERIES.flatMap((battery) => [battery.charge, battery.discharge, battery.level]),
     ...DEVICES.map((device) => device.source),
     ...UNTRACKED_SOURCES,
   ];
@@ -169,11 +171,14 @@ function setEnergyPreferences(socket) {
         stat_energy_from: HOUSE.generation,
         config_entry_solar_forecast: null,
       },
-      {
+      ...BATTERIES.map((battery) => ({
         type: "battery",
-        stat_energy_from: HOUSE.batteryDischarge,
-        stat_energy_to: HOUSE.batteryCharge,
-      },
+        name: battery.name,
+        stat_energy_from: battery.discharge,
+        stat_energy_to: battery.charge,
+        stat_soc: battery.level,
+        capacity: battery.capacity,
+      })),
     ],
     device_consumption: deviceConsumption(),
   });
