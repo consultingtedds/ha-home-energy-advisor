@@ -699,6 +699,14 @@ Carried forward rather than closed:
   day is the loss, and it agrees with what was published (0.87 against 0.64,
   0.83 against 0.74).
 
+  **Closed 2026-10-20 without a fix.** 5.28 on 10-20 against 0.80 in the pack,
+  and the cause is this home's history. The write-down is capped at the house
+  meters' unexplained balance less everything written off, and here the lifetime
+  write-offs (15.89) include HEA-178's from before HEA-182 began accumulating that
+  balance (14.18). So the cap reads zero until real losses refill it, which is
+  the steady fall. A new install starts both at zero together and can never write
+  off past the balance, so it cannot reach this state.
+
 Closed since:
 
 - **HEA-217, HEA-225 and HEA-226 - released as 0.12.0 on 2026-10-17.**
