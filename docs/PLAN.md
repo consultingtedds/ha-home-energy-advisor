@@ -656,6 +656,13 @@ Carried forward rather than closed:
   and stayed cleared across the reload. The Discussion 42 household's two
   batteries are the test that matters; stable 0.13.0 waits on their report.
   HEA-221 extends the same Repair to grid meters.
+- **HEA-221 is decided** (ADR-0032): each grid source a config subentry, its
+  price a sensor, Number helper or plain number, prefilled from the Energy
+  Dashboard with a source that is not an energy counter (a standing charge)
+  left out. Each interval's import is priced per register and blended, with the
+  plain average where nothing imported. Export meters add up and the export
+  price stays the one read live today. The code waits for 0.13.0, because a
+  release is cut from `main`.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are
