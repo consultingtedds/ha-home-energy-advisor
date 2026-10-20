@@ -20,8 +20,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
+from homeassistant.core import Context
 from homeassistant.data_entry_flow import FlowResultType
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -42,6 +43,7 @@ from custom_components.home_energy_advisor.const import (
 if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
+    from pytest_homeassistant_custom_component.common import MockUser
 
 _ENERGY = {"unit_of_measurement": "kWh", "device_class": "energy"}
 
@@ -206,6 +208,55 @@ async def test_the_reset_branch_does_nothing_until_it_is_confirmed(
     # Then - nothing has been destroyed: showing the confirmation is not the
     # confirmation
     assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
+
+
+async def test_a_user_who_is_not_an_administrator_cannot_reset(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    hass_read_only_user: MockUser,
+) -> None:
+    # Given - a household with accumulated figures
+    entry = await _running_household(hass, freezer)
+
+    # When / Then - a user without administrator rights is refused. The reset
+    # wipes every figure and its history, and the same reset in Configure is
+    # already administrators only (HACS review, HEA-235)
+    with pytest.raises(Unauthorized):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESET_TOTALS,
+            {"config_entry_id": entry.entry_id},
+            blocking=True,
+            context=Context(user_id=hass_read_only_user.id),
+        )
+    await hass.async_block_till_done()
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal("0.6")
+
+
+async def test_an_administrator_can_still_reset(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    hass_admin_user: MockUser,
+) -> None:
+    # Given
+    entry = await _running_household(hass, freezer)
+
+    # When - the same call, from an administrator
+    with patch(
+        "custom_components.home_energy_advisor.reset.get_instance",
+        return_value=MagicMock(),
+    ):
+        await hass.services.async_call(
+            DOMAIN,
+            SERVICE_RESET_TOTALS,
+            {"config_entry_id": entry.entry_id},
+            blocking=True,
+            context=Context(user_id=hass_admin_user.id),
+        )
+    await hass.async_block_till_done()
+
+    # Then
+    assert _state(hass, "sensor.coarse_step_aircon_energy_used") == Decimal(0)
 
 
 async def test_the_action_rejects_an_unknown_config_entry(

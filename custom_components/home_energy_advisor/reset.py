@@ -34,6 +34,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.recorder import get_instance
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import (
     ATTR_CONFIG_ENTRY_ID,
@@ -54,9 +55,14 @@ _SCHEMA = vol.Schema({vol.Required(ATTR_CONFIG_ENTRY_ID): cv.string})
 
 @callback
 def async_register(hass: HomeAssistant) -> None:
-    """Register the reset action, once for the integration."""
-    hass.services.async_register(
-        DOMAIN, SERVICE_RESET_TOTALS, _async_handle_reset, schema=_SCHEMA
+    """Register the reset action, once for the integration.
+
+    Administrators only, as the same reset in Configure already is: it wipes
+    every figure and the history behind it, which is not a household member's
+    call to make by accident (HACS review, HEA-235).
+    """
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_RESET_TOTALS, _async_handle_reset, schema=_SCHEMA
     )
 
 

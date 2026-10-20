@@ -347,7 +347,8 @@ The integration's settings menu also carries:
   [What the figures cannot know](#what-the-figures-cannot-know).
 - **Reset all totals to zero** - starts every figure again and clears the
   history behind them. There is also a `home_energy_advisor.reset_totals`
-  service for the same thing. It cannot be undone.
+  service for the same thing. Both are for administrators only, and neither can
+  be undone.
 
   > **A reset done by an earlier build left the money figures wrong across that
   > day.** Energy always came through a reset correctly; the cost figures did
