@@ -46,6 +46,11 @@ WHOLE_HOME_KEY: Final = "whole_home"
 # device's helper across reloads and remove it when the device is (HEA-34).
 CONF_INTEGRAL_HELPERS: Final = "integral_helpers"
 
+# Bookkeeping (entry data): the Energy Dashboard's house as it stood when the
+# household last answered for it - at setup, or by keeping their own over a
+# change - so the same difference is not offered twice (ADR-0030).
+CONF_ENERGY_DASHBOARD_ANSWERED: Final = "energy_dashboard_answered"
+
 # Bookkeeping (entry data): the native utility_meter cycle helpers we auto-created,
 # as {"source_entity|cycle": helper_config_entry_id}. Reused across reloads and
 # reconciled away when a device (and so its source sensors) is removed (HEA-23).

@@ -4,8 +4,9 @@ The single home for the integration's issue keys and the thin wrappers that rais
 and clear them, so every caller uses the same translation keys and severity - the
 coordinator (runtime health of sources, the price entity, and the Untracked
 remainder) and the helper-sync modules (a native helper the user deleted, which
-HEA re-created). Every issue is informational (``is_fixable=False``): the fix is
-always an action in Home Assistant itself, never a flow this integration drives.
+HEA re-created). Almost every issue is informational (``is_fixable=False``): the
+fix is an action in Home Assistant itself. The one exception is a change in the
+Energy Dashboard, which only this integration can take (``repairs.py``).
 """
 
 from __future__ import annotations
@@ -58,6 +59,10 @@ ISSUE_NEW_ENTITIES_DISABLED = "new_entities_disabled"
 # right and nothing else notices; the household simply has a device that reports
 # nothing for ever (HEA-192).
 ISSUE_DEVICE_WITHOUT_FIGURES = "device_without_figures"
+# The Energy Dashboard's house differs from the one entered here, which the
+# household is asked about rather than having it applied (ADR-0030). Fixable: the
+# answer is a choice this integration acts on.
+ISSUE_ENERGY_DASHBOARD_CHANGED = "energy_dashboard_changed"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -125,6 +130,15 @@ def rescaled_source_issue_id(entity_id: str) -> str:
     return f"{ISSUE_RESCALED_SOURCE}_{entity_id}"
 
 
+def energy_dashboard_changed_issue_id(entry_id: str) -> str:
+    """Stable issue id for an Energy Dashboard that differs from what is entered.
+
+    One per entry, whatever differs: the household gives one answer for all of
+    it.
+    """
+    return f"{ISSUE_ENERGY_DASHBOARD_CHANGED}_{entry_id}"
+
+
 def async_raised_subjects(hass: HomeAssistant, translation_key: str) -> set[str]:
     """Every subject this integration is currently accusing under one issue key.
 
@@ -169,6 +183,29 @@ def async_raise(
         translation_key=translation_key,
         translation_placeholders=placeholders,
         learn_more_url=learn_more_url,
+    )
+
+
+def async_ask(
+    hass: HomeAssistant,
+    issue_id: str,
+    translation_key: str,
+    placeholders: dict[str, str],
+    fix_data: dict[str, str | int | float | None],
+) -> None:
+    """Raise (or refresh) a Repair the household answers here. Idempotent per id.
+
+    ``fix_data`` is what ``repairs.py`` is handed to start the answer with.
+    """
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        issue_id,
+        is_fixable=True,
+        data=fix_data,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key=translation_key,
+        translation_placeholders=placeholders,
     )
 
 

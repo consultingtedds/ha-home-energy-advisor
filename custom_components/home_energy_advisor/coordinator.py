@@ -53,6 +53,7 @@ from .const import (
     SIGNAL_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
 )
+from .energy_dashboard import async_check as async_check_energy_dashboard
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.battery_shares import BatteryMeters
 from .engine.energy_source import EnergyUnit
@@ -271,6 +272,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         precondition this cannot run without - is asked for and copied, while
         these two are read where they live.
 
+        The house inputs are not followed, but a change to them there is asked
+        about from here, on the same reads (ADR-0030).
+
         Subscribed rather than read once, so re-nesting in the Energy Dashboard
         reaches the engine without a restart. `async_listen_updates` has **no
         unsubscribe**, so the callback cannot be handed to `async_on_unload` and
@@ -287,6 +291,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             return
         self._apply_nesting(manager.data)
         self._apply_export_price(manager.data)
+        async_check_energy_dashboard(self.hass, self._entry, manager.data)
         manager.async_listen_updates(self._async_energy_prefs_changed)
 
     async def _async_energy_prefs_changed(self) -> None:
@@ -301,6 +306,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             return
         self._apply_nesting(manager.data)
         self._apply_export_price(manager.data)
+        async_check_energy_dashboard(self.hass, self._entry, manager.data)
 
     def _apply_nesting(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
         self._accountant.set_nesting(_nesting_of(prefs, self._device_of_entity))
