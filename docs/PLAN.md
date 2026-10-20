@@ -622,7 +622,8 @@ Carried forward rather than closed:
   **0.13.0b1** on 2026-10-19, the first beta (**HEA-232**: a GitHub
   pre-release that HACS offers only to a household that switches pre-releases
   on). The reference home and two Discussion 35 households are testing it; the
-  stable 0.13.0 follows their reports. Then HEA-220, then HEA-221.
+  stable 0.13.0 follows their reports. HEA-220 followed as **0.13.0b2** (below),
+  then **HEA-235**, the HACS review's changes, then HEA-221.
 - **HEA-234** - an optimiser's live "grid-charging now" signal for the charge
   source, for a battery that charges from spare solar most of the day and from
   the grid sometimes. Parked until the reference household's Predbat is out of
@@ -648,8 +649,13 @@ Carried forward rather than closed:
   published `gross` and the cards net it once), and the Energy Dashboard change
   Repair for batteries. One charge source for the household stays; a battery
   that charges differently from its neighbour is ADR-0031's revisit condition.
-  It goes out as a beta for the Discussion 42 household and the reference home
-  before 0.13.0 stable. HEA-221 extends the same Repair to grid meters.
+  Released as **0.13.0b2** on 2026-10-20 and installed on the reference home the
+  same day: the battery moved into its own entry with its level and capacity,
+  totals and statistics carried through, and the Repair appeared once (its
+  meters differ from the Energy Dashboard's on purpose), was answered Keep mine
+  and stayed cleared across the reload. The Discussion 42 household's two
+  batteries are the test that matters; stable 0.13.0 waits on their report.
+  HEA-221 extends the same Repair to grid meters.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are
@@ -660,6 +666,8 @@ Carried forward rather than closed:
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
+  Reviewed on 2026-10-19 with changes requested (hacs/default #11192): **HEA-235**
+  carries them, and a release follows before review is requested again.
 - **HEA-216** - count the battery's solar share towards self-sufficiency, from
   Discussion 35. The engine already splits every charge into grid and
   generation; the ledger does not yet keep the generation share in kWh, and
