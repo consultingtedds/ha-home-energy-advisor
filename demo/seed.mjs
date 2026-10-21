@@ -248,13 +248,18 @@ function lossOf(row) {
   };
 }
 
-/** Several devices' series added hour by hour, concept by concept. */
+/**
+ * Several devices' series added hour by hour, concept by concept.
+ *
+ * Their hours rounded as `runningTotal` rounds them, so the pool's total is
+ * exactly the sum of theirs.
+ */
 function summed(series) {
   return Object.fromEntries(
     Object.keys(series[0]).map((concept) => [
       concept,
       series[0][concept].map((_, hour) =>
-        series.reduce((total, one) => total + one[concept][hour], 0),
+        series.reduce((total, one) => total + round(one[concept][hour]), 0),
       ),
     ]),
   );
@@ -484,12 +489,20 @@ function profileSeries(profile, hours) {
   return series;
 }
 
-/** Turn per-hour deltas into the running totals a statistic holds. */
+/**
+ * Turn per-hour deltas into the running totals a statistic holds.
+ *
+ * Each hour is rounded before it is added, not the total after. A rounded
+ * total of a sum is not the sum of rounded totals, and the pooled battery is
+ * written as the sum of the batteries inside it: rounded the other way, the two
+ * disagreed by a thousandth of a kWh, which the cards then drew as a remainder
+ * of the pool's own on a Spanish run and not an English one.
+ */
 function runningTotal(values, hours) {
   let total = 0;
   return values.map((value, index) => {
-    total += value;
-    return { start: hours[index].toISOString(), state: round(total), sum: round(total) };
+    total = round(total + round(value));
+    return { start: hours[index].toISOString(), state: total, sum: total };
   });
 }
 
