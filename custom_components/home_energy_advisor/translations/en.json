@@ -406,20 +406,21 @@
       "description": "{count} of the figures this integration publishes are disabled in Home Assistant, so nothing is being recorded for them. A device whose figures are disabled reads nothing at all, however long you wait.\n\nThis is almost always one setting. Home Assistant can be told not to enable new entities for an integration, and with that off everything created afterwards arrives disabled - so a device you added later tracks nothing. Check it under **Settings > Devices & services > Home Energy Advisor**, the three-dot menu on the integration entry, then **System options**, where it is called **Enable newly added entities**.\n\n**Turning that back on does not bring these ones back.** Home Assistant only applies it to entities created afterwards. Enable the existing ones on the device's page, or remove the device and add it again.\n\nFigures Home Energy Advisor switches off itself are not counted here. If your home has no generation or battery, the by-source and battery figures are disabled on purpose, because they could only ever read zero - and so is anything you have switched off yourself."
     },
     "energy_dashboard_changed": {
-      "title": "Your Energy Dashboard's batteries differ from Home Energy Advisor's",
+      "title": "Your Energy Dashboard's batteries or grid meters differ from Home Energy Advisor's",
       "fix_flow": {
         "step": {
           "init": {
-            "title": "Your Energy Dashboard's batteries have changed",
-            "description": "Your Energy Dashboard holds batteries that Home Energy Advisor does not count, or holds them differently.\n\n**In your Energy Dashboard:**\n{theirs}\n\n**In Home Energy Advisor:**\n{ours}\n\nTake them, and Home Energy Advisor counts your Energy Dashboard's batteries from now on, exactly as if you had edited them here. A battery with the same meters keeps its name and its figures. A level is a percentage, so a battery whose level is left out needs its capacity: add it in your Energy Dashboard and the level comes with it, or add both afterwards with Edit battery.\n\nKeep mine, and nothing changes. You may have chosen different meters here on purpose. You will not be asked again until your Energy Dashboard changes once more.",
+            "title": "Your Energy Dashboard has changed",
+            "description": "Your Energy Dashboard holds batteries or grid meters that Home Energy Advisor does not count, or holds them differently.\n\n**In your Energy Dashboard:**\n{theirs}\n\n**In Home Energy Advisor:**\n{ours}\n\nTake them, and Home Energy Advisor counts your Energy Dashboard's batteries and grid meters from now on, exactly as if you had edited them here. One with the same meters keeps its name and its figures. A battery's level is a percentage, so a battery whose level is left out needs its capacity: add it in your Energy Dashboard and the level comes with it, or add both afterwards with Edit battery.\n\nKeep mine, and nothing changes. You may have chosen different meters here on purpose. You will not be asked again until your Energy Dashboard changes once more.",
             "menu_options": {
-              "take": "Take the Energy Dashboard's batteries",
+              "take": "Take the Energy Dashboard's",
               "keep": "Keep mine"
             }
           }
         },
         "abort": {
           "battery_not_countable": "{battery} in your Energy Dashboard has a meter Home Energy Advisor cannot count, or a capacity too large to be in kWh, so nothing was changed. The meters have to be total-increasing counters in kWh or Wh. Correct it in your Energy Dashboard, or keep your own batteries.",
+          "grid_meter_not_countable": "{grid} in your Energy Dashboard has a meter Home Energy Advisor cannot count, so nothing was changed. The meters have to be total-increasing counters in kWh or Wh. Correct it in your Energy Dashboard, or keep your own grid meters.",
           "entry_removed": "Home Energy Advisor is no longer set up, so there is nothing to change."
         }
       }

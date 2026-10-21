@@ -11,6 +11,7 @@ than doubles of them, so the listener, the issue and the fix are the real ones.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 import pytest
@@ -29,12 +30,16 @@ from custom_components.home_energy_advisor.const import (
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
+    CONF_ENERGY_DASHBOARD_ANSWERED,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
 )
-from custom_components.home_energy_advisor.house_inputs import batteries_of
+from custom_components.home_energy_advisor.house_inputs import (
+    batteries_of,
+    grid_meters_of,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -71,6 +76,26 @@ _SUMMED = {
     CONF_BATTERY_CHARGE_ENTITY: "sensor.batteries_charge",
     CONF_BATTERY_DISCHARGE_ENTITY: "sensor.batteries_discharge",
 }
+# A dual-rate meter in the Energy Dashboard, the night register at a fixed rate,
+# and a standing charge declared beside it as a grid source of its own.
+_DAY = {
+    "type": "grid",
+    "stat_energy_from": "sensor.day_register",
+    "entity_energy_price": "sensor.day_price",
+}
+_NIGHT = {
+    "type": "grid",
+    "stat_energy_from": "sensor.night_register",
+    "number_energy_price": 0.1,
+}
+_STANDING_CHARGE = {
+    "type": "grid",
+    "stat_energy_from": "sensor.daily_standing_charge",
+    "entity_energy_price": "sensor.day_price",
+}
+# What a household that set up before the grid was compared answered for: its
+# batteries alone, here none.
+_ANSWERED_BEFORE_THE_GRID: list[Any] = []
 
 
 @pytest.fixture(autouse=True)
@@ -92,6 +117,15 @@ def _meters(hass: HomeAssistant) -> None:
         hass.states.async_set(
             level, "50", {"device_class": "battery", "unit_of_measurement": "%"}
         )
+    for register in ("sensor.day_register", "sensor.night_register"):
+        hass.states.async_set(register, "100", _ENERGY)
+    hass.states.async_set(
+        "sensor.day_price", "0.30", {"unit_of_measurement": "EUR/kWh"}
+    )
+    # A fee, counted in money rather than energy, as a standing charge is.
+    hass.states.async_set(
+        "sensor.daily_standing_charge", "0.45", {"unit_of_measurement": "EUR"}
+    )
 
 
 async def _energy_dashboard(hass: HomeAssistant, *sources: dict[str, Any]) -> None:
@@ -104,11 +138,22 @@ async def _energy_dashboard(hass: HomeAssistant, *sources: dict[str, Any]) -> No
     await hass.async_block_till_done()
 
 
-async def _set_up(hass: HomeAssistant, *batteries: dict[str, Any]) -> MockConfigEntry:
+async def _set_up(
+    hass: HomeAssistant,
+    *batteries: dict[str, Any],
+    answered: list[Any] | dict[str, Any] | None = None,
+) -> MockConfigEntry:
+    """A running household with these batteries, at version 6.
+
+    ``answered`` is what it last answered for, where it has answered at all.
+    """
+    data: dict[str, Any] = dict(_HOUSE)
+    if answered is not None:
+        data[CONF_ENERGY_DASHBOARD_ANSWERED] = answered
     entry = MockConfigEntry(
         domain=DOMAIN,
         version=6,
-        data=dict(_HOUSE),
+        data=data,
         subentries_data=[
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_BATTERY,
@@ -352,3 +397,117 @@ async def test_setup_is_the_answer_for_the_energy_dashboard_as_it_stands(
     entry = result["result"]
     assert [b.name for b in batteries_of(entry).values()] == ["Anker Solix"]
     assert _issue(hass, entry) is None
+
+
+# Grid meters (HEA-221)
+
+
+async def test_an_upgrade_counts_as_the_answer_for_the_grid(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a household that answered before grid meters were compared, whose
+    # grid meter here is not the Energy Dashboard's, on purpose
+    await _energy_dashboard(hass, _DAY)
+
+    # When - it upgrades
+    entry = await _set_up(hass, answered=_ANSWERED_BEFORE_THE_GRID)
+
+    # Then - nothing is asked: nothing in the Energy Dashboard has changed, and
+    # the household chose its grid meter at setup
+    assert _issue(hass, entry) is None
+
+    # When - the Energy Dashboard then gains the night register
+    await _energy_dashboard(hass, _DAY, _NIGHT)
+
+    # Then - that change is asked about, listing both sides' grid meters
+    assert _issue(hass, entry) is not None
+    opened = await _open(hass, entry)
+    assert opened["description_placeholders"] == {
+        "theirs": (
+            "- Grid: sensor.day_register, sensor.day_price\n"
+            "- Grid 2: sensor.night_register, 0.1"
+        ),
+        "ours": "- Grid: sensor.grid_import, sensor.electricity_price_import",
+    }
+
+
+async def test_taking_them_enters_each_register_and_drops_the_old_meter(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a change in the Energy Dashboard's grid since it was answered for
+    await _energy_dashboard(hass, _DAY, _NIGHT)
+    entry = await _set_up(hass, answered={"batteries": [], "grid": []})
+    assert _issue(hass, entry) is not None
+
+    # When
+    result = await _answer(hass, entry, "take")
+
+    # Then - the two registers, each at its own price, and nothing left to ask
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert [
+        (grid.name, grid.imported, grid.price_entity, grid.fixed_price)
+        for grid in grid_meters_of(entry).values()
+    ] == [
+        ("Grid", "sensor.day_register", "sensor.day_price", None),
+        ("Grid 2", "sensor.night_register", None, Decimal("0.1")),
+    ]
+    assert _issue(hass, entry) is None
+
+
+async def test_a_new_price_there_is_taken_by_the_meter_already_here(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the same import meter on both sides, priced differently there
+    await _energy_dashboard(
+        hass,
+        {
+            "type": "grid",
+            "stat_energy_from": "sensor.grid_import",
+            "number_energy_price": 0.21,
+        },
+    )
+    entry = await _set_up(hass, answered={"batteries": [], "grid": []})
+    (grid_id,) = grid_meters_of(entry)
+
+    # When
+    await _answer(hass, entry, "take")
+
+    # Then - the same entry under the same name, so its figures carry on, at
+    # the Energy Dashboard's price
+    grid = grid_meters_of(entry)[grid_id]
+    assert (grid.name, grid.price_entity, grid.fixed_price) == (
+        "Grid",
+        None,
+        Decimal("0.21"),
+    )
+
+
+async def test_a_standing_charge_alone_asks_nothing(hass: HomeAssistant) -> None:
+    # Given / When - the only grid source there is a fee
+    await _energy_dashboard(hass, _STANDING_CHARGE)
+    entry = await _set_up(hass, answered={"batteries": [], "grid": []})
+
+    # Then - nothing to take, so nothing is asked (ADR-0032)
+    assert _issue(hass, entry) is None
+
+
+async def test_a_register_the_form_would_refuse_is_not_taken(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the night register is a net meter
+    hass.states.async_set(
+        "sensor.night_register", "100", {**_ENERGY, "state_class": "total"}
+    )
+    await _energy_dashboard(hass, _DAY, _NIGHT)
+    entry = await _set_up(hass, answered={"batteries": [], "grid": []})
+
+    # When
+    result = await _answer(hass, entry, "take")
+
+    # Then - nothing is half taken, and the question stays open
+    assert result["reason"] == "grid_meter_not_countable"
+    assert result["description_placeholders"] == {"grid": "Grid 2"}
+    assert [grid.imported for grid in grid_meters_of(entry).values()] == [
+        "sensor.grid_import"
+    ]
+    assert _issue(hass, entry) is not None

@@ -26,6 +26,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
+    CONF_ENERGY_DASHBOARD_ANSWERED,
     CONF_ENERGY_ENTITY,
     CONF_FIXED_PRICE,
     CONF_GRID_EXPORT_ENTITY,
@@ -436,7 +437,11 @@ async def test_the_existing_grid_meter_moves_into_its_own_entry(
         "sensor.day_price",
         "sensor.grid_export",
     )
-    assert dict(entry.data) == _HOUSE
+    assert {
+        key: value
+        for key, value in entry.data.items()
+        if key != CONF_ENERGY_DASHBOARD_ANSWERED
+    } == _HOUSE
 
 
 # The registers, as the running integration prices them

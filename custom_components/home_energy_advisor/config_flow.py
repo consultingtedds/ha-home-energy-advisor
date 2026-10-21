@@ -62,7 +62,7 @@ from .discovery import (
     source_state_class,
     source_unit,
 )
-from .energy_dashboard import answered, batteries_in, grid_meters_in
+from .energy_dashboard import answered, batteries_in, grid_meters_in, priced
 from .engine.house_balance import ChargeSource
 from .house_inputs import batteries_of, grid_meters, grid_meters_of, house_entities
 from .reset import async_reset_totals
@@ -156,13 +156,14 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
                 prefs = await _energy_dashboard_prefs(self.hass)
                 self._offered = batteries_in(prefs)
                 self._grids_offered = grid_meters_in(self.hass, prefs)
-                # Choosing which batteries to take is an answer to the Energy
-                # Dashboard as it stands, so it is not asked about again (ADR-0030).
+                # Choosing which batteries and grid meters to take is an answer to
+                # the Energy Dashboard as it stands, so it is not asked about
+                # again (ADR-0030).
                 self._house = {
                     **user_input,
-                    CONF_ENERGY_DASHBOARD_ANSWERED: answered(prefs),
+                    CONF_ENERGY_DASHBOARD_ANSWERED: answered(self.hass, prefs),
                 }
-                if any(_priced(grid) for grid in self._grids_offered):
+                if any(priced(grid) for grid in self._grids_offered):
                     return await self.async_step_grid_meters()
                 return await self.async_step_grid_meter()
             return self.async_show_form(
@@ -185,7 +186,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         without one. Choosing none goes on to a form to enter one by hand, for a
         household who keeps different meters here on purpose (ADR-0030).
         """
-        offered = [grid for grid in self._grids_offered if _priced(grid)]
+        offered = [grid for grid in self._grids_offered if priced(grid)]
         errors: dict[str, str] = {}
         if user_input is not None:
             chosen = [offered[int(index)] for index in user_input["grid_meters"]]
@@ -434,17 +435,6 @@ def _subentry(subentry_type: str, answers: dict[str, Any]) -> ConfigSubentryData
         subentry_type=subentry_type,
         title=answers[CONF_NAME],
         unique_id=None,
-    )
-
-
-def _priced(answers: Mapping[str, Any]) -> bool:
-    """Whether an Energy Dashboard grid source carries a price to take with it.
-
-    One tracked as a cost statistic rather than a rate carries none, which is an
-    ordinary configuration; it is entered by hand with a price instead.
-    """
-    return bool(answers.get(CONF_PRICE_ENTITY)) or (
-        answers.get(CONF_FIXED_PRICE) is not None
     )
 
 

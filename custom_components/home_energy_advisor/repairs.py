@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.const import CONF_NAME
 
-from .config_flow import validate_battery
+from .config_flow import validate_battery, validate_grid_meter
+from .const import CONF_HOUSE_CONSUMPTION_ENTITY
 from .energy_dashboard import (
     async_energy_prefs,
     async_keep,
@@ -21,7 +22,6 @@ from .energy_dashboard import (
     differences_from,
     taken,
 )
-from .house_inputs import batteries_of
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
@@ -38,7 +38,7 @@ async def async_create_fix_flow(
 
 
 class EnergyDashboardChangedFlow(RepairsFlow):
-    """Take the Energy Dashboard's batteries, or keep the ones entered here."""
+    """Take the Energy Dashboard's batteries and grid meters, or keep these."""
 
     def __init__(self, entry_id: str) -> None:
         """Answer for one entry."""
@@ -57,7 +57,7 @@ class EnergyDashboardChangedFlow(RepairsFlow):
             step_id="init",
             menu_options=["take", "keep"],
             description_placeholders=await async_listed_differences(
-                self.hass, differences_from(prefs, entry), batteries_of(entry)
+                self.hass, differences_from(self.hass, prefs, entry), entry
             ),
         )
 
@@ -67,18 +67,26 @@ class EnergyDashboardChangedFlow(RepairsFlow):
     ) -> RepairsFlowResult:
         """Take them, unless one would be refused on the form.
 
-        Checked before anything changes, as a battery added by hand is, so the
-        form's refusals stay refusals and nothing is half taken.
+        Checked before anything changes, as a battery or grid meter added by
+        hand is, so the form's refusals stay refusals and nothing is half taken.
         """
         entry = self._entry()
         if entry is None:
             return self.async_abort(reason="entry_removed")
         prefs = await async_energy_prefs(self.hass)
-        for answers in differences_from(prefs, entry).theirs:
+        found = differences_from(self.hass, prefs, entry)
+        for answers in found.theirs:
             if validate_battery(self.hass, taken(answers)):
                 return self.async_abort(
                     reason="battery_not_countable",
                     description_placeholders={"battery": answers[CONF_NAME]},
+                )
+        metered = bool(entry.data.get(CONF_HOUSE_CONSUMPTION_ENTITY))
+        for answers in found.grid_theirs:
+            if validate_grid_meter(self.hass, answers, house_metered=metered):
+                return self.async_abort(
+                    reason="grid_meter_not_countable",
+                    description_placeholders={"grid": answers[CONF_NAME]},
                 )
         async_take(self.hass, entry, prefs)
         return self.async_create_entry(data={})

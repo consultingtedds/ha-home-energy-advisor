@@ -7,8 +7,8 @@ lists what differs, and the household takes the Energy Dashboard's or keeps
 their own. Nothing is applied without that answer, because a household may keep
 better meters here on purpose.
 
-Batteries are compared here (HEA-220). Each role is compared on its own and
-listed on its own, so the grid meters join as another role (HEA-221).
+Batteries (HEA-220) and grid meters (HEA-221) are compared here, each on its own
+and listed together.
 """
 
 from __future__ import annotations
@@ -34,9 +34,17 @@ from .const import (
     CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
+    SUBENTRY_TYPE_GRID,
 )
 from .discovery import source_unit
-from .house_inputs import Battery, batteries_of, battery_from
+from .house_inputs import (
+    Battery,
+    GridMeter,
+    batteries_of,
+    battery_from,
+    grid_meter_from,
+    grid_meters_of,
+)
 from .issues import (
     ISSUE_ENERGY_DASHBOARD_CHANGED,
     async_ask,
@@ -45,10 +53,14 @@ from .issues import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+
+# The two sides of the house remembered once answered for, as keys of the answer.
+_BATTERIES = "batteries"
+_GRID = "grid"
 
 
 async def async_energy_prefs(hass: HomeAssistant) -> Any:  # noqa: ANN401 - untyped HA prefs
@@ -128,6 +140,22 @@ def grid_meters_in(hass: HomeAssistant, prefs: Any) -> list[dict[str, Any]]:  # 
     return grids
 
 
+def priced(answers: Mapping[str, Any]) -> bool:
+    """Whether an Energy Dashboard grid source carries a price to take with it.
+
+    One tracked as a cost statistic rather than a rate carries none, which is an
+    ordinary configuration; it is entered by hand with a price instead, and is
+    not something a Repair could take.
+    """
+    return bool(answers.get(CONF_PRICE_ENTITY)) or (
+        answers.get(CONF_FIXED_PRICE) is not None
+    )
+
+
+def _priced_grid_meters_in(hass: HomeAssistant, prefs: Any) -> list[dict[str, Any]]:  # noqa: ANN401 - untyped HA prefs
+    return [grid for grid in grid_meters_in(hass, prefs) if priced(grid)]
+
+
 def _grid_answers(source: Any) -> dict[str, Any] | None:  # noqa: ANN401 - untyped Energy Dashboard preference structure
     """One grid source's import meter, its price and its export meter.
 
@@ -161,53 +189,96 @@ def _counts_energy(hass: HomeAssistant, entity_id: str) -> bool:
     return unit is not None and unit.strip().lower() in {"kwh", "wh"}
 
 
-def answered(prefs: Any) -> list[list[str | None]]:  # noqa: ANN401 - untyped HA prefs
+def answered(hass: HomeAssistant, prefs: Any) -> dict[str, list[list[str | None]]]:  # noqa: ANN401 - untyped HA prefs
     """The Energy Dashboard's house as it is remembered once answered for.
 
     Only what is compared, so renaming a battery there is not a change to ask
     about. JSON-shaped, because it is kept in the entry's data.
     """
-    return [
-        list(_compared(battery_from("", answers))) for answers in batteries_in(prefs)
-    ]
+    return {
+        _BATTERIES: [
+            list(_compared(battery_from("", answers)))
+            for answers in batteries_in(prefs)
+        ],
+        _GRID: [
+            list(_grid_compared(grid_meter_from("", answers)))
+            for answers in _priced_grid_meters_in(hass, prefs)
+        ],
+    }
+
+
+def _remembered(stored: Any) -> dict[str, Any]:  # noqa: ANN401 - entry data
+    """What was answered for, as it is held now.
+
+    The batteries alone before the grid meters were compared, so a list is
+    what they were remembered as.
+    """
+    if isinstance(stored, list):
+        return {_BATTERIES: stored}
+    return dict(stored or {})
 
 
 @dataclass(frozen=True)
 class Differences:
-    """What the Energy Dashboard holds that is not entered here, and the reverse."""
+    """What the Energy Dashboard holds that is not entered here, and the reverse.
+
+    Batteries and grid meters apart, each matched on its own terms.
+    """
 
     theirs: tuple[dict[str, Any], ...]
     ours: tuple[str, ...]
+    grid_theirs: tuple[dict[str, Any], ...] = ()
+    grid_ours: tuple[str, ...] = ()
 
     def __bool__(self) -> bool:
         """Whether there is anything to ask about."""
-        return bool(self.theirs or self.ours)
+        return bool(self.theirs or self.ours or self.grid_theirs or self.grid_ours)
 
 
-def differences_from(prefs: Any, entry: ConfigEntry) -> Differences:  # noqa: ANN401
-    """Every battery held on only one side, or held differently on the two.
+def differences_from(
+    hass: HomeAssistant,
+    prefs: Any,  # noqa: ANN401 - untyped HA prefs
+    entry: ConfigEntry,
+) -> Differences:
+    """Every battery and grid meter held on only one side, or held differently.
 
-    Matched by meters, which is what makes a battery the same battery. A level
-    and capacity in the Energy Dashboard are compared too, since that is where a
-    household is told to add them; where the Energy Dashboard holds neither,
-    a level entered here is not a difference, because there is nothing to take.
+    A battery is matched by its meters, which is what makes it the same
+    battery. A level and capacity in the Energy Dashboard are compared too,
+    since that is where a household is told to add them; where the Energy
+    Dashboard holds neither, a level entered here is not a difference, because
+    there is nothing to take.
 
-    An Energy Dashboard with no batteries asks nothing: there is nothing in it
-    to take, and offering to remove every battery entered here would be a
-    question no household needs.
+    A grid meter is matched by its import meter, price and export meter
+    together, since a register priced differently is a different answer.
+
+    An Energy Dashboard with none of one kind asks nothing about that kind:
+    there is nothing in it to take, and offering to remove everything entered
+    here would be a question no household needs.
     """
-    offered = batteries_in(prefs)
+    theirs, ours = _unmatched(batteries_in(prefs), batteries_of(entry), _holds)
+    grid_theirs, grid_ours = _unmatched(
+        _priced_grid_meters_in(hass, prefs), grid_meters_of(entry), _grid_holds
+    )
+    return Differences(
+        theirs=theirs, ours=ours, grid_theirs=grid_theirs, grid_ours=grid_ours
+    )
+
+
+def _unmatched[T](
+    offered: list[dict[str, Any]],
+    ours: Mapping[str, T],
+    holds: Callable[[T, Mapping[str, Any]], bool],
+) -> tuple[tuple[dict[str, Any], ...], tuple[str, ...]]:
     if not offered:
-        return Differences(theirs=(), ours=())
-    ours = batteries_of(entry)
+        return (), ()
     matched: set[str] = set()
     theirs: list[dict[str, Any]] = []
     for answers in offered:
         match = next(
             (
-                battery_id
-                for battery_id, battery in ours.items()
-                if battery_id not in matched and _holds(battery, answers)
+                entry_id
+                for entry_id, held in ours.items()
+                if entry_id not in matched and holds(held, answers)
             ),
             None,
         )
@@ -215,9 +286,8 @@ def differences_from(prefs: Any, entry: ConfigEntry) -> Differences:  # noqa: AN
             theirs.append(answers)
         else:
             matched.add(match)
-    return Differences(
-        theirs=tuple(theirs),
-        ours=tuple(battery_id for battery_id in ours if battery_id not in matched),
+    return tuple(theirs), tuple(
+        entry_id for entry_id in ours if entry_id not in matched
     )
 
 
@@ -231,6 +301,11 @@ def _holds(battery: Battery, answers: Mapping[str, Any]) -> bool:
     return (battery.level, battery.capacity) == (offered.level, offered.capacity)
 
 
+def _grid_holds(grid: GridMeter, answers: Mapping[str, Any]) -> bool:
+    """Whether a grid meter entered here is the Energy Dashboard's, as it holds it."""
+    return _grid_compared(grid) == _grid_compared(grid_meter_from("", answers))
+
+
 def _compared(battery: Battery) -> tuple[str | None, ...]:
     """A battery as it is compared: its meters, and its contents where known."""
     contents = (
@@ -239,6 +314,12 @@ def _compared(battery: Battery) -> tuple[str | None, ...]:
         else (None, None)
     )
     return (battery.charge, battery.discharge, *contents)
+
+
+def _grid_compared(grid: GridMeter) -> tuple[str | None, ...]:
+    """A grid meter as it is compared: its meters and what prices its import."""
+    fixed = None if grid.fixed_price is None else str(grid.fixed_price)
+    return (grid.imported, grid.price_entity, fixed, grid.exported)
 
 
 def taken(answers: Mapping[str, Any]) -> dict[str, Any]:
@@ -262,42 +343,67 @@ async def async_check(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> No
     Not asked again once answered: the Energy Dashboard as it stood when the
     household kept their own is remembered, and only a further change there
     raises the question once more. Setup remembers it too, since choosing which
-    of its batteries to take is that same answer.
+    of its batteries and grid meters to take is that same answer.
+
+    An answer given before grid meters were compared counts for the grid as the
+    Energy Dashboard holds it now. Every such household chose its grid meter at
+    setup, and nothing in the Energy Dashboard has changed to ask about.
     """
     issue_id = energy_dashboard_changed_issue_id(entry.entry_id)
-    found = differences_from(prefs, entry)
-    if not found or entry.data.get(CONF_ENERGY_DASHBOARD_ANSWERED) == answered(prefs):
+    current = answered(hass, prefs)
+    remembered = _remembered(entry.data.get(CONF_ENERGY_DASHBOARD_ANSWERED))
+    if _GRID not in remembered:
+        remembered[_GRID] = current[_GRID]
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_ENERGY_DASHBOARD_ANSWERED: remembered}
+        )
+    found = differences_from(hass, prefs, entry)
+    if not found or remembered == current:
         async_clear(hass, issue_id)
         return
-    ours = batteries_of(entry)
     async_ask(
         hass,
         issue_id,
         ISSUE_ENERGY_DASHBOARD_CHANGED,
-        placeholders=await async_listed_differences(hass, found, ours),
+        placeholders=await async_listed_differences(hass, found, entry),
         fix_data={"entry_id": entry.entry_id},
     )
 
 
 async def async_listed_differences(
-    hass: HomeAssistant, found: Differences, ours: Mapping[str, Battery]
+    hass: HomeAssistant, found: Differences, entry: ConfigEntry
 ) -> dict[str, str]:
-    """Each side's batteries as lines a Repair can show.
+    """Each side's batteries and grid meters as lines a Repair can show.
 
-    The Energy Dashboard's are listed as they will be taken, not as it holds
-    them: a level without a capacity is left behind (`taken`), and listing it
-    promised what taking it did not do (HEA-236). Where one is left behind the
-    line says so, in the household's language; everything else is names,
-    entity ids and capacities, which read the same in every language.
+    The Energy Dashboard's batteries are listed as they will be taken, not as it
+    holds them: a level without a capacity is left behind (`taken`), and listing
+    it promised what taking it did not do (HEA-236). Where one is left behind the
+    line says so, in the household's language; everything else is names, entity
+    ids, prices and capacities, which read the same in every language.
     """
     left_out = await _left_out_note(hass)
+    batteries = batteries_of(entry)
+    grids = grid_meters_of(entry)
     return {
         "theirs": _lines(
-            _line(battery_from(a[CONF_NAME], taken(a)))
-            + (f" ({left_out})" if _level_left_behind(a) else "")
-            for a in found.theirs
+            [
+                *(
+                    _battery_line(battery_from(a[CONF_NAME], taken(a)))
+                    + (f" ({left_out})" if _level_left_behind(a) else "")
+                    for a in found.theirs
+                ),
+                *(
+                    _grid_line(grid_meter_from(a[CONF_NAME], a))
+                    for a in found.grid_theirs
+                ),
+            ]
         ),
-        "ours": _lines(_line(ours[battery_id]) for battery_id in found.ours),
+        "ours": _lines(
+            [
+                *(_battery_line(batteries[battery_id]) for battery_id in found.ours),
+                *(_grid_line(grids[grid_id]) for grid_id in found.grid_ours),
+            ]
+        ),
     }
 
 
@@ -322,35 +428,77 @@ def _lines(lines: Iterable[str]) -> str:
     return "\n".join(lines) or "-"
 
 
-def _line(battery: Battery) -> str:
-    return f"- {battery.name}: " + ", ".join(
-        part
-        for part in (
-            battery.charge,
-            battery.discharge,
-            battery.level,
-            f"{battery.capacity} kWh" if battery.capacity is not None else None,
-        )
-        if part
+def _battery_line(battery: Battery) -> str:
+    return _line(
+        battery.name,
+        battery.charge,
+        battery.discharge,
+        battery.level,
+        f"{battery.capacity} kWh" if battery.capacity is not None else None,
     )
 
 
-def async_take(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # noqa: ANN401
-    """Make the batteries entered here the Energy Dashboard's, as an edit would.
+def _grid_line(grid: GridMeter) -> str:
+    return _line(
+        grid.name,
+        grid.imported,
+        grid.price_entity
+        or (None if grid.fixed_price is None else str(grid.fixed_price)),
+        grid.exported,
+    )
 
-    A battery held on both sides with the same meters keeps its entry and its
-    name, and takes the Energy Dashboard's level and capacity, so its figures
-    carry on. One only in the Energy Dashboard is added, and one only here is
-    removed.
+
+def _line(name: str, *parts: str | None) -> str:
+    return f"- {name}: " + ", ".join(part for part in parts if part)
+
+
+def async_take(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # noqa: ANN401
+    """Make the batteries and grid meters entered here the Energy Dashboard's.
+
+    As an edit would. One held on both sides with the same meters keeps its
+    entry and its name, and takes the Energy Dashboard's other answers, so its
+    figures carry on. One only in the Energy Dashboard is added, and one only
+    here is removed.
     """
-    found = differences_from(prefs, entry)
-    left = list(found.ours)
-    for answers in (taken(answers) for answers in found.theirs):
+    found = differences_from(hass, prefs, entry)
+    _replace(
+        hass,
+        entry,
+        subentry_type=SUBENTRY_TYPE_BATTERY,
+        theirs=[taken(answers) for answers in found.theirs],
+        left=list(found.ours),
+        meters=(CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY),
+    )
+    _replace(
+        hass,
+        entry,
+        subentry_type=SUBENTRY_TYPE_GRID,
+        theirs=[dict(answers) for answers in found.grid_theirs],
+        left=list(found.grid_ours),
+        meters=(CONF_GRID_IMPORT_ENTITY,),
+    )
+    async_keep(hass, entry, prefs)
+
+
+def _replace(  # noqa: PLR0913 - each argument is one side of the replacement
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    *,
+    subentry_type: str,
+    theirs: list[dict[str, Any]],
+    left: list[str],
+    meters: tuple[str, ...],
+) -> None:
+    """Put the Energy Dashboard's in place of ours, keeping what matches by meter."""
+    for answers in theirs:
         same = next(
             (
-                battery_id
-                for battery_id in left
-                if _same_meters(entry.subentries[battery_id].data, answers)
+                entry_id
+                for entry_id in left
+                if all(
+                    entry.subentries[entry_id].data.get(key) == answers[key]
+                    for key in meters
+                )
             ),
             None,
         )
@@ -359,7 +507,7 @@ def async_take(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # 
                 entry,
                 ConfigSubentry(
                     data=MappingProxyType(answers),
-                    subentry_type=SUBENTRY_TYPE_BATTERY,
+                    subentry_type=subentry_type,
                     title=answers[CONF_NAME],
                     unique_id=None,
                 ),
@@ -372,21 +520,14 @@ def async_take(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # 
             subentry,
             data={**answers, CONF_NAME: subentry.data.get(CONF_NAME, subentry.title)},
         )
-    for battery_id in left:
-        hass.config_entries.async_remove_subentry(entry, battery_id)
-    async_keep(hass, entry, prefs)
-
-
-def _same_meters(data: Mapping[str, Any], answers: Mapping[str, Any]) -> bool:
-    return all(
-        data.get(key) == answers[key]
-        for key in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
-    )
+    for entry_id in left:
+        hass.config_entries.async_remove_subentry(entry, entry_id)
 
 
 def async_keep(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # noqa: ANN401
     """Remember the Energy Dashboard as it stands, so it is not offered again."""
     hass.config_entries.async_update_entry(
-        entry, data={**entry.data, CONF_ENERGY_DASHBOARD_ANSWERED: answered(prefs)}
+        entry,
+        data={**entry.data, CONF_ENERGY_DASHBOARD_ANSWERED: answered(hass, prefs)},
     )
     async_clear(hass, energy_dashboard_changed_issue_id(entry.entry_id))

@@ -406,20 +406,21 @@
       "description": "{count} de las cifras que publica esta integración están desactivadas en Home Assistant, así que no se registra nada de ellas. Un dispositivo con sus cifras desactivadas no marca nada en absoluto, por mucho que esperes.\n\nCasi siempre es un solo ajuste. A Home Assistant se le puede decir que no active las entidades nuevas de una integración, y con eso desactivado todo lo que se crea después nace desactivado: así que un dispositivo que añadiste más tarde no hace seguimiento de nada. Compruébalo en **Ajustes > Dispositivos y servicios > Home Energy Advisor**, el menú de tres puntos de la entrada de la integración, y luego **Opciones del sistema**, donde se llama **Habilitar entidades recién añadidas**.\n\n**Volver a activarlo no recupera estas.** Home Assistant solo lo aplica a las entidades creadas después. Activa las que ya existen desde la página del dispositivo, o quita el dispositivo y vuelve a añadirlo.\n\nLas cifras que Home Energy Advisor desactiva por su cuenta no se cuentan aquí. Si tu casa no tiene generación ni batería, las cifras por fuente y las de batería están desactivadas a propósito, porque solo podrían marcar cero; tampoco se cuenta lo que hayas desactivado tú."
     },
     "energy_dashboard_changed": {
-      "title": "Las baterías de tu Panel de energía no coinciden con las de Home Energy Advisor",
+      "title": "Las baterías o los contadores de red de tu Panel de energía no coinciden con los de Home Energy Advisor",
       "fix_flow": {
         "step": {
           "init": {
-            "title": "Las baterías de tu Panel de energía han cambiado",
-            "description": "Tu Panel de energía tiene baterías que Home Energy Advisor no contabiliza, o las tiene de otra manera.\n\n**En tu Panel de energía:**\n{theirs}\n\n**En Home Energy Advisor:**\n{ours}\n\nSi las tomas, Home Energy Advisor contabiliza a partir de ahora las baterías de tu Panel de energía, igual que si las hubieras editado aquí. Una batería con los mismos contadores conserva su nombre y sus cifras. El nivel es un porcentaje, así que una batería cuyo nivel no se incluye necesita su capacidad: añádela en tu Panel de energía y el nivel vendrá con ella, o añade ambos después con Editar batería.\n\nSi conservas las tuyas, no cambia nada. Puede que aquí hayas elegido otros contadores a propósito. No se te volverá a preguntar hasta que tu Panel de energía vuelva a cambiar.",
+            "title": "Tu Panel de energía ha cambiado",
+            "description": "Tu Panel de energía tiene baterías o contadores de red que Home Energy Advisor no contabiliza, o los tiene de otra manera.\n\n**En tu Panel de energía:**\n{theirs}\n\n**En Home Energy Advisor:**\n{ours}\n\nSi los tomas, Home Energy Advisor contabiliza a partir de ahora las baterías y los contadores de red de tu Panel de energía, igual que si los hubieras editado aquí. Uno con los mismos contadores conserva su nombre y sus cifras. El nivel de una batería es un porcentaje, así que una batería cuyo nivel no se incluye necesita su capacidad: añádela en tu Panel de energía y el nivel vendrá con ella, o añade ambos después con Editar batería.\n\nSi conservas los tuyos, no cambia nada. Puede que aquí hayas elegido otros contadores a propósito. No se te volverá a preguntar hasta que tu Panel de energía vuelva a cambiar.",
             "menu_options": {
-              "take": "Tomar las baterías del Panel de energía",
-              "keep": "Conservar las mías"
+              "take": "Tomar los del Panel de energía",
+              "keep": "Conservar los míos"
             }
           }
         },
         "abort": {
           "battery_not_countable": "{battery} en tu Panel de energía tiene un contador que Home Energy Advisor no puede contabilizar, o una capacidad demasiado grande para estar en kWh, así que no se ha cambiado nada. Los contadores tienen que ser acumulativos en kWh o Wh. Corrígelo en tu Panel de energía, o conserva tus baterías.",
+          "grid_meter_not_countable": "{grid} en tu Panel de energía tiene un contador que Home Energy Advisor no puede contabilizar, así que no se ha cambiado nada. Los contadores tienen que ser acumulativos en kWh o Wh. Corrígelo en tu Panel de energía, o conserva tus contadores de red.",
           "entry_removed": "Home Energy Advisor ya no está configurado, así que no hay nada que cambiar."
         }
       }
