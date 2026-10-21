@@ -28,9 +28,14 @@ from .const import (
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_ENERGY_DASHBOARD_ANSWERED,
+    CONF_FIXED_PRICE,
+    CONF_GRID_EXPORT_ENTITY,
+    CONF_GRID_IMPORT_ENTITY,
+    CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
 )
+from .discovery import source_unit
 from .house_inputs import Battery, batteries_of, battery_from
 from .issues import (
     ISSUE_ENERGY_DASHBOARD_CHANGED,
@@ -97,6 +102,63 @@ def battery_answers(
     if (capacity := source.get("capacity")) is not None:
         answers[CONF_BATTERY_CAPACITY_KWH] = capacity
     return answers
+
+
+def grid_meters_in(hass: HomeAssistant, prefs: Any) -> list[dict[str, Any]]:  # noqa: ANN401 - untyped HA prefs
+    """The Energy Dashboard's grid sources, each as a grid entry would hold it.
+
+    Only those whose import meter is an energy counter in kWh or Wh. A grid
+    source can carry a fee instead - a daily standing charge declared as a
+    "meter" so that it can be priced - and the figures are the cost of the
+    energy used, not the bill, so a fee has no place in them (ADR-0032). The
+    unit is what tells them apart, whatever either is called.
+    """
+    sources: Any = (prefs or {}).get("energy_sources", [])
+    grids = [
+        answers
+        for source in sources
+        if source.get("type") == "grid"
+        and (answers := _grid_answers(source)) is not None
+        and _counts_energy(hass, answers[CONF_GRID_IMPORT_ENTITY])
+    ]
+    for position, answers in enumerate(grids, start=1):
+        # Numbered, the first simply "Grid", which is what a one-meter house
+        # expects. The Energy Dashboard gives a grid source no name.
+        answers[CONF_NAME] = "Grid" if position == 1 else f"Grid {position}"
+    return grids
+
+
+def _grid_answers(source: Any) -> dict[str, Any] | None:  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    """One grid source's import meter, its price and its export meter.
+
+    Read by shape, never by falling back from one to the other: from 2026.9 the
+    flows sit on the source, before that in `flow_from`/`flow_to` lists, and the
+    prices are named differently in the two (HEA-117, HEA-209). The import price
+    is taken from the flow its meter came from, so one source's tariff is never
+    paired with another's meter (HEA-118).
+
+    ``None`` where the source meters no import.
+    """
+    imports = source.get("flow_from")
+    exports = source.get("flow_to")
+    flow = imports[0] if imports else source
+    if not (meter := flow.get("stat_energy_from")):
+        return None
+    answers: dict[str, Any] = {CONF_GRID_IMPORT_ENTITY: meter}
+    if price := flow.get("entity_energy_price"):
+        answers[CONF_PRICE_ENTITY] = price
+    elif (number := flow.get("number_energy_price")) is not None:
+        answers[CONF_FIXED_PRICE] = number
+    if exported := (
+        exports[0].get("stat_energy_to") if exports else source.get("stat_energy_to")
+    ):
+        answers[CONF_GRID_EXPORT_ENTITY] = exported
+    return answers
+
+
+def _counts_energy(hass: HomeAssistant, entity_id: str) -> bool:
+    unit = source_unit(hass, entity_id)
+    return unit is not None and unit.strip().lower() in {"kwh", "wh"}
 
 
 def answered(prefs: Any) -> list[list[str | None]]:  # noqa: ANN401 - untyped HA prefs

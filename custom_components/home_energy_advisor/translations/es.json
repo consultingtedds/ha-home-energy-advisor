@@ -3,24 +3,46 @@
     "step": {
       "user": {
         "title": "Home Energy Advisor",
-        "description": "Solo necesitas un precio de importación y un contador de importación de red. Todas las demás entradas son opcionales: añade únicamente las que tenga tu hogar y la contabilidad se adapta.",
+        "description": "Después vienen tu contador de red y su precio, y luego las baterías que tengas. Todas las entradas de aquí son opcionales: añade únicamente las que tenga tu hogar y la contabilidad se adapta.",
         "data": {
-          "price_entity": "Precio de importación",
           "currency": "Moneda",
-          "grid_import_entity": "Energía importada de la red",
-          "grid_export_entity": "Energía exportada a la red (opcional)",
           "generation_entity": "Energía de generación local (opcional)",
           "house_consumption_entity": "Energía de consumo del hogar (opcional)",
           "battery_charging": "Cómo se carga tu batería"
         },
         "data_description": {
-          "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh.",
           "currency": "Moneda para los sensores de coste, p. ej. EUR.",
-          "grid_import_entity": "Energía acumulada importada de la red.",
-          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
           "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), elígelas todas y se sumarán. (Consulta el readme para más ayuda)",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente.",
           "battery_charging": "Solo importa si tienes una batería, que se añade por separado después. Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción."
+        }
+      },
+      "grid_meters": {
+        "title": "Tus contadores de red",
+        "description": "Estos contadores de red están en tu Panel de energía, cada uno con su precio. Un contador con tarifa de día y de noche son dos. Marca los que quieras incluir, o no marques ninguno para introducir el tuyo. Puedes añadir, cambiar o quitar contadores de red más adelante.",
+        "data": {
+          "grid_meters": "Contadores de red"
+        },
+        "data_description": {
+          "grid_meters": "Una fuente de red de tu Panel de energía que contiene una cuota, como un término fijo diario, no aparece: Home Energy Advisor pone precio a la energía que usas, no a tu factura."
+        }
+      },
+      "grid_meter": {
+        "title": "Tu contador de red",
+        "description": "El contador de la energía que importas y su precio. Un contador con tarifa de día y de noche tiene un registro para cada una: introduce uno aquí y añade el otro después con Añadir contador de red.",
+        "data": {
+          "name": "Nombre",
+          "grid_import_entity": "Energía importada de la red",
+          "price_entity": "Precio de importación",
+          "fixed_price": "Precio de importación fijo",
+          "grid_export_entity": "Energía exportada a la red (opcional)"
+        },
+        "data_description": {
+          "name": "Cómo aparece este contador de red en Home Assistant.",
+          "grid_import_entity": "Energía acumulada importada de la red a través de este contador.",
+          "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh. Rellena este o el precio fijo.",
+          "fixed_price": "Un precio por kWh que no cambia, como en tu factura. Rellena este o el precio de importación.",
+          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado."
         }
       },
       "batteries": {
@@ -35,21 +57,15 @@
       },
       "reconfigure": {
         "title": "Editar Home Energy Advisor",
-        "description": "Actualiza las entradas de energía del hogar. Solo el precio de importación y el contador de importación de red son obligatorios; todas las demás entradas son opcionales.",
+        "description": "Actualiza las entradas de energía del hogar. Todas las entradas de aquí son opcionales; los contadores de red y las baterías se editan por separado.",
         "data": {
-          "price_entity": "Precio de importación",
           "currency": "Moneda",
-          "grid_import_entity": "Energía importada de la red",
-          "grid_export_entity": "Energía exportada a la red (opcional)",
           "generation_entity": "Energía de generación local (opcional)",
           "house_consumption_entity": "Energía de consumo del hogar (opcional)",
           "battery_charging": "Cómo se carga tu batería"
         },
         "data_description": {
-          "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh.",
           "currency": "Moneda para los sensores de coste, p. ej. EUR.",
-          "grid_import_entity": "Energía acumulada importada de la red.",
-          "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado.",
           "generation_entity": "Generación local acumulada - solar, eólica, hidráulica. Déjalo vacío si no generas nada. Si tienes más de una fuente (dos cadenas de inversor, o solar más eólica), elígelas todas y se sumarán. (Consulta el readme para más ayuda)",
           "house_consumption_entity": "Consumo total del hogar, si se mide directamente.",
           "battery_charging": "Solo importa si tienes una batería, que se edita por separado. Decide si la batería se cargó con tus paneles o con la red en los minutos en que se carga mientras la casa también usa la red, y por tanto cuánto costó la energía que almacena. Si no estás seguro, deja la primera opción."
@@ -62,7 +78,10 @@
     "error": {
       "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, una sola entrada de la casa incorrecta hace que la cifra de todos los dispositivos sea incorrecta.",
       "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla, lo que dejaría esta entrada sin aportar nada.",
-      "battery_not_countable": "Una de estas baterías tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Deja esa batería sin marcar y añádela después con Añadir batería, donde puedes elegir otro contador."
+      "battery_not_countable": "Una de estas baterías tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Deja esa batería sin marcar y añádela después con Añadir batería, donde puedes elegir otro contador.",
+      "grid_meter_not_countable": "Uno de estos contadores de red tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Déjalo sin marcar y añádelo después con Añadir contador de red, donde puedes elegir otro contador, o no marques ninguno para introducir el tuyo ahora.",
+      "select_one_price": "Rellena el precio de importación o el precio de importación fijo, no los dos ni ninguno.",
+      "grid_export_not_countable": "Sin un contador de consumo del hogar, también se leen los contadores de exportación de tus contadores de red, y uno de ellos no se puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Mantén un contador de consumo del hogar, o cambia antes ese contador de red."
     }
   },
   "options": {
@@ -112,6 +131,56 @@
     }
   },
   "config_subentries": {
+    "grid": {
+      "initiate_flow": {
+        "user": "Añadir contador de red",
+        "reconfigure": "Editar contador de red"
+      },
+      "entry_type": "Contador de red",
+      "step": {
+        "user": {
+          "title": "Añadir un contador de red",
+          "description": "Los mismos datos que tu Panel de energía guarda para una fuente de red. Un contador con tarifa de día y de noche tiene un registro para cada una: añade cada uno como su propio contador de red, con su propio precio. Una fuente de red de tu Panel de energía que aún no está añadida aparece rellenada.",
+          "data": {
+            "name": "Nombre",
+            "grid_import_entity": "Energía importada de la red",
+            "price_entity": "Precio de importación",
+            "fixed_price": "Precio de importación fijo",
+            "grid_export_entity": "Energía exportada a la red (opcional)"
+          },
+          "data_description": {
+            "name": "Cómo aparece este contador de red en Home Assistant.",
+            "grid_import_entity": "Energía acumulada importada de la red a través de este contador.",
+            "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh. Rellena este o el precio fijo.",
+            "fixed_price": "Un precio por kWh que no cambia, como en tu factura. Rellena este o el precio de importación.",
+            "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado."
+          }
+        },
+        "reconfigure": {
+          "title": "Editar contador de red",
+          "description": "Cambia el nombre, los contadores o el precio del contador de red.",
+          "data": {
+            "name": "Nombre",
+            "grid_import_entity": "Energía importada de la red",
+            "price_entity": "Precio de importación",
+            "fixed_price": "Precio de importación fijo",
+            "grid_export_entity": "Energía exportada a la red (opcional)"
+          },
+          "data_description": {
+            "name": "Cómo aparece este contador de red en Home Assistant.",
+            "grid_import_entity": "Energía acumulada importada de la red a través de este contador.",
+            "price_entity": "El sensor o la entrada numérica que indica el precio de importación actual por kWh. Rellena este o el precio fijo.",
+            "fixed_price": "Un precio por kWh que no cambia, como en tu factura. Rellena este o el precio de importación.",
+            "grid_export_entity": "Energía acumulada exportada a la red; se usa para calcular cuánta generación has aprovechado."
+          }
+        }
+      },
+      "error": {
+        "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, un solo contador de red incorrecto hace que la cifra de todos los dispositivos sea incorrecta.",
+        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla.",
+        "select_one_price": "Rellena el precio de importación o el precio de importación fijo, no los dos ni ninguno."
+      }
+    },
     "battery": {
       "initiate_flow": {
         "user": "Añadir batería",

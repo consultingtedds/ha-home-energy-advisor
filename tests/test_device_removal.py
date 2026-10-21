@@ -122,7 +122,8 @@ async def test_an_aggregate_device_cannot_be_deleted(
     # Given - a set-up household
     entry = await _household(hass)
     device = _device(hass, entry, suffix)
+    held = set(entry.subentries)
 
     # When / Then - Home Assistant is told the device may not be removed
     assert not await async_remove_config_entry_device(hass, entry, device)
-    assert len(entry.subentries) == 1
+    assert set(entry.subentries) == held

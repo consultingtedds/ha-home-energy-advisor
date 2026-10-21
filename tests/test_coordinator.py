@@ -35,7 +35,6 @@ from custom_components.home_energy_advisor.const import (
     SUBENTRY_TYPE_DEVICE,
 )
 from custom_components.home_energy_advisor.issues import (
-    ISSUE_PRICE_UNAVAILABLE,
     ISSUE_UNRECONCILED_ENERGY,
     new_entities_disabled_issue_id,
     source_never_reported_issue_id,
@@ -398,9 +397,9 @@ async def test_price_entity_unavailable_past_the_grace_raises_its_own_repair(
     # When - the outage passes the grace period
     await _tick(hass, freezer, datetime(2026, 7, 8, 23, 5, tzinfo=UTC))
 
-    # Then - the dedicated price Repair is raised (tied to the unavailable-price
-    # policy: accounting continues at the last known price)
-    assert _has_issue(hass, ISSUE_PRICE_UNAVAILABLE)
+    # Then - the dedicated price Repair is raised for that price (tied to the
+    # unavailable-price policy: accounting continues at the last known price)
+    assert _has_issue(hass, issues.price_unavailable_issue_id("sensor.price"))
 
 
 async def test_an_input_whose_counter_leaps_is_named_in_repairs(
@@ -1282,6 +1281,15 @@ def _nested_entry() -> MockConfigEntry:
     )
 
 
+def _device_ids(entry: MockConfigEntry) -> list[str]:
+    """The tracked devices' subentry ids, in entry order, without the grid's."""
+    return [
+        subentry_id
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
+    ]
+
+
 def _energy_prefs(included_in_stat: str | None) -> MagicMock:
     """An energy manager whose device list optionally declares the hierarchy."""
     aircon: dict[str, str] = {"stat_consumption": "sensor.coarse_step_energy"}
@@ -1333,7 +1341,7 @@ async def test_the_energy_dashboards_hierarchy_reaches_the_engine(
     # Then - the circuit books what it used itself, 0.6 - 0.4, and the aircon is
     # not counted against it a second time
     coordinator = entry.runtime_data
-    circuit, aircon = (coordinator.data.devices[sub] for sub in entry.subentries)
+    circuit, aircon = (coordinator.data.devices[sub] for sub in _device_ids(entry))
     assert circuit.energy_kwh == Decimal("0.2")
     assert aircon.energy_kwh == Decimal("0.4")
     assert coordinator.data.untracked.energy_kwh == Decimal("0.4")
@@ -1378,7 +1386,7 @@ async def test_a_flat_household_says_no_device_sits_inside_another(
     assert [row["upstream"] for row in state.attributes["devices"]] == [
         None for _ in state.attributes["devices"]
     ]
-    assert len(entry.subentries) == 2
+    assert len(_device_ids(entry)) == 2
 
 
 async def test_a_household_that_declares_no_hierarchy_is_accounted_flat(
@@ -1393,7 +1401,7 @@ async def test_a_household_that_declares_no_hierarchy_is_accounted_flat(
     # aircon here and is double counting it, which is the household's to declare
     # rather than ours to infer
     coordinator = entry.runtime_data
-    circuit, aircon = (coordinator.data.devices[sub] for sub in entry.subentries)
+    circuit, aircon = (coordinator.data.devices[sub] for sub in _device_ids(entry))
     assert circuit.energy_kwh == Decimal("0.6")
     assert aircon.energy_kwh == Decimal("0.4")
 
@@ -1433,7 +1441,9 @@ async def test_a_household_whose_energy_data_cannot_be_read_still_sets_up(
     # the engine believing a hierarchy it could not read, the circuit would book
     # 0.2 here instead of 0.6.
     assert entry.state is ConfigEntryState.LOADED
-    circuit, aircon = (entry.runtime_data.data.devices[sub] for sub in entry.subentries)
+    circuit, aircon = (
+        entry.runtime_data.data.devices[sub] for sub in _device_ids(entry)
+    )
     assert circuit.energy_kwh == Decimal("0.6")
     assert aircon.energy_kwh == Decimal("0.4")
 
@@ -1462,7 +1472,7 @@ async def test_editing_the_energy_dashboard_re_nests_without_a_restart(
     manager = _energy_prefs(None)
     entry = await _run_nested(hass, freezer, manager)
     coordinator = entry.runtime_data
-    circuit_key, aircon_key = tuple(entry.subentries)
+    circuit_key, aircon_key = _device_ids(entry)
     assert coordinator.data.devices[circuit_key].energy_kwh == Decimal("0.6")
 
     # When - they declare in the Energy Dashboard that the aircon sits on the

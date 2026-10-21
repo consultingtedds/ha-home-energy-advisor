@@ -1,10 +1,11 @@
 """Config flow for Home Energy Advisor - the global house-level setup.
 
-Collects the house-level energy inputs (ADR-0002): the import price and currency,
-grid import, and the optional local generation and battery sources. Source entities are
-pre-filled from the Energy Dashboard configuration where the household has set it
-up, on a best-effort basis - prefill never blocks the flow. Per-device tracking
-is added afterwards as config subentries, not here.
+Collects the house-level energy inputs (ADR-0002): the currency, the optional
+local generation and house consumption, and then the grid meters and batteries,
+each an entry of its own (ADR-0031, ADR-0032). Source entities are pre-filled
+from the Energy Dashboard configuration where the household has set it up, on a
+best-effort basis - prefill never blocks the flow. Per-device tracking is added
+afterwards as config subentries, not here.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from .const import (
     CONF_DEVICE_COST_BOUNDS,
     CONF_ENERGY_DASHBOARD_ANSWERED,
     CONF_ENERGY_ENTITY,
+    CONF_FIXED_PRICE,
     CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
@@ -52,6 +54,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_DEVICE,
+    SUBENTRY_TYPE_GRID,
 )
 from .discovery import (
     async_discover_candidates,
@@ -59,9 +62,9 @@ from .discovery import (
     source_state_class,
     source_unit,
 )
-from .energy_dashboard import answered, batteries_in
+from .energy_dashboard import answered, batteries_in, grid_meters_in
 from .engine.house_balance import ChargeSource
-from .house_inputs import batteries_of, house_entities
+from .house_inputs import batteries_of, grid_meters, grid_meters_of, house_entities
 from .reset import async_reset_totals
 
 if TYPE_CHECKING:
@@ -98,6 +101,12 @@ _POWER_SELECTOR = selector.EntitySelector(
 _BATTERY_LEVEL_SELECTOR = selector.EntitySelector(
     selector.EntitySelectorConfig(domain="sensor", device_class="battery")
 )
+# A rate typed as it is on a bill, per kWh, as the Energy Dashboard allows.
+_FIXED_PRICE_SELECTOR = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=0, step="any", mode=selector.NumberSelectorMode.BOX
+    )
+)
 _CAPACITY_SELECTOR = selector.NumberSelector(
     selector.NumberSelectorConfig(
         min=0.1,
@@ -126,17 +135,19 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 6
+    VERSION = 7
 
     def __init__(self) -> None:
         """Start with nothing answered."""
         self._house: dict[str, Any] = {}
         self._offered: list[dict[str, Any]] = []
+        self._grids_offered: list[dict[str, Any]] = []
+        self._grids: list[dict[str, Any]] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Collect the house-level inputs and create the single config entry."""
+        """Collect the house-level inputs, then the grid meters and batteries."""
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
         if user_input is not None:
@@ -144,15 +155,16 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 prefs = await _energy_dashboard_prefs(self.hass)
                 self._offered = batteries_in(prefs)
+                self._grids_offered = grid_meters_in(self.hass, prefs)
                 # Choosing which batteries to take is an answer to the Energy
                 # Dashboard as it stands, so it is not asked about again (ADR-0030).
                 self._house = {
                     **user_input,
                     CONF_ENERGY_DASHBOARD_ANSWERED: answered(prefs),
                 }
-                if self._offered:
-                    return await self.async_step_batteries()
-                return self.async_create_entry(title=_TITLE, data=user_input)
+                if any(_priced(grid) for grid in self._grids_offered):
+                    return await self.async_step_grid_meters()
+                return await self.async_step_grid_meter()
             return self.async_show_form(
                 step_id="user",
                 data_schema=self.add_suggested_values_to_schema(
@@ -163,6 +175,90 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
 
         defaults = await _energy_prefs_defaults(self.hass)
         return self.async_show_form(step_id="user", data_schema=_build_schema(defaults))
+
+    async def async_step_grid_meters(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Offer the Energy Dashboard's grid sources, filled in, to take in one go.
+
+        Only those that carry a price, since a grid entry cannot be counted
+        without one. Choosing none goes on to a form to enter one by hand, for a
+        household who keeps different meters here on purpose (ADR-0030).
+        """
+        offered = [grid for grid in self._grids_offered if _priced(grid)]
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            chosen = [offered[int(index)] for index in user_input["grid_meters"]]
+            if not chosen:
+                return await self.async_step_grid_meter()
+            if not any(self._refusals(grid) for grid in chosen):
+                self._grids = chosen
+                return await self._async_after_the_grid()
+            errors["grid_meters"] = "grid_meter_not_countable"
+        options = [
+            selector.SelectOptionDict(value=str(index), label=_grid_label(grid))
+            for index, grid in enumerate(offered)
+        ]
+        return self.async_show_form(
+            step_id="grid_meters",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(
+                        "grid_meters", default=[option["value"] for option in options]
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_grid_meter(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Enter one grid meter by hand; more can be added afterwards."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = self._refusals(user_input)
+            if not errors:
+                self._grids = [user_input]
+                return await self._async_after_the_grid()
+        suggested = user_input or next(
+            iter(self._grids_offered), {CONF_NAME: _FIRST_GRID}
+        )
+        return self.async_show_form(
+            step_id="grid_meter",
+            data_schema=self.add_suggested_values_to_schema(_GRID_SCHEMA, suggested),
+            errors=errors,
+        )
+
+    def _refusals(self, grid: Mapping[str, Any]) -> dict[str, str]:
+        return validate_grid_meter(
+            self.hass,
+            grid,
+            house_metered=bool(self._house.get(CONF_HOUSE_CONSUMPTION_ENTITY)),
+        )
+
+    async def _async_after_the_grid(self) -> ConfigFlowResult:
+        if self._offered:
+            return await self.async_step_batteries()
+        return self._create()
+
+    def _create(
+        self, batteries: list[dict[str, Any]] | None = None
+    ) -> ConfigFlowResult:
+        return self.async_create_entry(
+            title=_TITLE,
+            data=self._house,
+            subentries=[
+                *(_subentry(SUBENTRY_TYPE_GRID, grid) for grid in self._grids),
+                *(_subentry(SUBENTRY_TYPE_BATTERY, b) for b in batteries or []),
+            ],
+        )
 
     async def async_step_batteries(
         self, user_input: dict[str, Any] | None = None
@@ -182,19 +278,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
                 None,
             )
             if refused is None:
-                return self.async_create_entry(
-                    title=_TITLE,
-                    data=self._house,
-                    subentries=[
-                        ConfigSubentryData(
-                            data=battery,
-                            subentry_type=SUBENTRY_TYPE_BATTERY,
-                            title=battery[CONF_NAME],
-                            unique_id=None,
-                        )
-                        for battery in chosen
-                    ],
-                )
+                return self._create(chosen)
             errors["batteries"] = "battery_not_countable"
         options = [
             selector.SelectOptionDict(value=str(index), label=battery[CONF_NAME])
@@ -225,7 +309,9 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _validate_house_sources(self.hass, user_input)
+            errors = _validate_house_sources(
+                self.hass, user_input, grid_meters(entry, CONF_GRID_EXPORT_ENTITY)
+            )
             if not errors:
                 return self.async_update_reload_and_abort(
                     entry, data=_reconfigured(entry.data, user_input)
@@ -244,9 +330,10 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         cls,
         config_entry: ConfigEntry,  # noqa: ARG003 - HA signature; the types are entry-independent
     ) -> dict[str, type[ConfigSubentryFlow]]:
-        """Register the per-device and per-battery subentry flows."""
+        """Register the per-device, per-grid-source and per-battery subentry flows."""
         return {
             SUBENTRY_TYPE_DEVICE: DeviceSubentryFlowHandler,
+            SUBENTRY_TYPE_GRID: GridSubentryFlowHandler,
             SUBENTRY_TYPE_BATTERY: BatterySubentryFlowHandler,
         }
 
@@ -282,24 +369,18 @@ def _reconfigured(
 
 
 def _build_schema(defaults: dict[str, Any]) -> vol.Schema:
-    # `prefilled` rather than `source`: it was named for the source meters
-    # because they were the only fields the Energy Dashboard could answer. The
-    # import price is not a source and is answered the same way (HEA-118), so
-    # the name had to stop describing what it happened to be used for.
     def prefilled(key: str, *, required: bool) -> vol.Marker:
         marker = vol.Required if required else vol.Optional
         if key in defaults:
             return marker(key, description={"suggested_value": defaults[key]})
         return marker(key)
 
+    # The grid meters and their prices are entries of their own (ADR-0032).
     return vol.Schema(
         {
-            prefilled(CONF_PRICE_ENTITY, required=True): _PRICE_SELECTOR,
             vol.Required(
                 CONF_CURRENCY, default=DEFAULT_CURRENCY
             ): selector.TextSelector(),
-            prefilled(CONF_GRID_IMPORT_ENTITY, required=True): _ENERGY_SELECTOR,
-            prefilled(CONF_GRID_EXPORT_ENTITY, required=False): _ENERGY_SELECTOR,
             prefilled(CONF_GENERATION_ENTITY, required=False): _GENERATION_SELECTOR,
             prefilled(CONF_HOUSE_CONSUMPTION_ENTITY, required=False): _ENERGY_SELECTOR,
             # The batteries are entries of their own (ADR-0031). How they charge
@@ -330,14 +411,12 @@ def _collect_prefs_source(
     defaults: dict[str, Any],
 ) -> None:
     """Map one Energy Dashboard source onto the matching config defaults."""
-    kind = source.get("type")
-    if kind == "grid":
-        _collect_grid_meters(source, defaults)
-    elif kind == "solar" and (stat := source.get("stat_energy_from")):
+    if source.get("type") == "solar" and (stat := source.get("stat_energy_from")):
         # Every one, in the dashboard's order. Keeping only the last silently
         # offered half the generation of a household with two arrays (HEA-219).
         defaults.setdefault(CONF_GENERATION_ENTITY, []).append(stat)
-    # A battery is offered as an entry of its own, after this screen (ADR-0031).
+    # The grid sources and batteries are offered as entries of their own, after
+    # this screen (ADR-0031, ADR-0032).
 
 
 async def _energy_dashboard_prefs(hass: HomeAssistant) -> Any:  # noqa: ANN401 - untyped HA prefs
@@ -349,53 +428,109 @@ async def _energy_dashboard_prefs(hass: HomeAssistant) -> Any:  # noqa: ANN401 -
     return manager.data
 
 
-def _collect_grid_meters(
-    source: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
-    defaults: dict[str, str],
-) -> None:
-    """Read a grid source's meters and import price, whichever shape it is in.
+def _subentry(subentry_type: str, answers: dict[str, Any]) -> ConfigSubentryData:
+    return ConfigSubentryData(
+        data=answers,
+        subentry_type=subentry_type,
+        title=answers[CONF_NAME],
+        unique_id=None,
+    )
 
-    Home Assistant holds these two ways. From 2026.9 they sit on the source
-    itself; before that they were lists of flows, and `hacs.json` supports back
-    to 2026.7. A stored preference is migrated to the newer shape when it is
-    loaded, so both are live and neither can be assumed. The two shapes differ
-    only in where the flow sits, not in what it holds, so each is reduced to the
-    mapping that carries the answers and read the same way after that.
 
-    A household can hold more than one grid source - pricing a standing charge
-    means declaring one - and only some of them meter imported energy. The first
-    answer wins, because suggesting a daily-charge sensor as the grid import
-    meter is worse than suggesting nothing: it is one of the two fields the
-    integration cannot work without, and nothing about a filled-in form invites
-    the household to doubt it.
+def _priced(answers: Mapping[str, Any]) -> bool:
+    """Whether an Energy Dashboard grid source carries a price to take with it.
 
-    **The import price is taken from the source the meter came from**, never
-    from whichever source happens to name one (HEA-118). A standing-charge grid
-    carries its own price entity pointing at a daily fee, so collecting the two
-    independently could pair one grid's tariff with another's meter - a wrong
-    answer wearing the shape of a right one. Read as a pair they can disagree
-    about neither.
-
-    A grid priced by a fixed number or tracked as a cost statistic offers no
-    price entity, which is an ordinary configuration and not a fault: the field
-    is simply left empty, as it was before any of this prefilled.
+    One tracked as a cost statistic rather than a rate carries none, which is an
+    ordinary configuration; it is entered by hand with a price instead.
     """
-    imports = source.get("flow_from")
-    flow = imports[0] if imports else source
-    if (meter := flow.get("stat_energy_from")) and (
-        CONF_GRID_IMPORT_ENTITY not in defaults
-    ):
-        defaults[CONF_GRID_IMPORT_ENTITY] = meter
-        if price := flow.get("entity_energy_price"):
-            defaults[CONF_PRICE_ENTITY] = price
+    return bool(answers.get(CONF_PRICE_ENTITY)) or (
+        answers.get(CONF_FIXED_PRICE) is not None
+    )
 
-    exports = source.get("flow_to")
-    if (
-        meter := exports[0]["stat_energy_to"]
-        if exports
-        else source.get("stat_energy_to")
-    ):
-        defaults.setdefault(CONF_GRID_EXPORT_ENTITY, meter)
+
+def _grid_label(answers: Mapping[str, Any]) -> str:
+    """A grid source as a line to tick: its meter and what prices it."""
+    price = answers.get(CONF_PRICE_ENTITY) or answers.get(CONF_FIXED_PRICE)
+    return f"{answers[CONF_NAME]}: {answers[CONF_GRID_IMPORT_ENTITY]} ({price})"
+
+
+_FIRST_GRID = "Grid"
+_GRID_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_NAME): selector.TextSelector(),
+        vol.Required(CONF_GRID_IMPORT_ENTITY): _ENERGY_SELECTOR,
+        vol.Optional(CONF_PRICE_ENTITY): _PRICE_SELECTOR,
+        vol.Optional(CONF_FIXED_PRICE): _FIXED_PRICE_SELECTOR,
+        vol.Optional(CONF_GRID_EXPORT_ENTITY): _ENERGY_SELECTOR,
+    }
+)
+
+
+class GridSubentryFlowHandler(ConfigSubentryFlow):
+    """Add one grid source, in the shape of the Energy Dashboard's.
+
+    Its import meter, the price of that import - a sensor, a Number helper or a
+    plain number - and optionally its export meter (ADR-0032). A dual-rate meter
+    is two of these, one per register. The Energy Dashboard's grid sources not
+    yet added are offered filled in, as batteries are (ADR-0030).
+    """
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Collect one grid source, suggesting the next the Energy Dashboard holds."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = validate_grid_meter(
+                self.hass, user_input, house_metered=self._metered()
+            )
+            if not errors:
+                return self.async_create_entry(
+                    title=user_input[CONF_NAME], data=user_input
+                )
+        suggested = user_input or await self._next_from_the_energy_dashboard()
+        return self.async_show_form(
+            step_id="user",
+            data_schema=self.add_suggested_values_to_schema(_GRID_SCHEMA, suggested),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """Edit a grid source's name, meters or price."""
+        subentry = self._get_reconfigure_subentry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = validate_grid_meter(
+                self.hass, user_input, house_metered=self._metered()
+            )
+            if not errors:
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    subentry,
+                    title=user_input[CONF_NAME],
+                    data=user_input,
+                )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=self.add_suggested_values_to_schema(
+                _GRID_SCHEMA, user_input or subentry.data
+            ),
+            errors=errors,
+        )
+
+    def _metered(self) -> bool:
+        return bool(self._get_entry().data.get(CONF_HOUSE_CONSUMPTION_ENTITY))
+
+    async def _next_from_the_energy_dashboard(self) -> dict[str, Any]:
+        """The first Energy Dashboard grid source whose meter no entry holds yet."""
+        entered = {grid.imported for grid in grid_meters_of(self._get_entry()).values()}
+        offered = grid_meters_in(self.hass, await _energy_dashboard_prefs(self.hass))
+        return next(
+            (grid for grid in offered if grid[CONF_GRID_IMPORT_ENTITY] not in entered),
+            {},
+        )
 
 
 class DeviceSubentryFlowHandler(ConfigSubentryFlow):
@@ -527,19 +662,19 @@ class BatterySubentryFlowHandler(ConfigSubentryFlow):
         )
 
 
-# House inputs every decomposition branch reads, whatever else is configured.
-_ALWAYS_READ = (
-    CONF_GRID_IMPORT_ENTITY,
-    CONF_HOUSE_CONSUMPTION_ENTITY,
-)
+# House inputs every decomposition branch reads, whatever else is configured. The
+# grid's import meters are as well, and are checked on their own entries.
+_ALWAYS_READ = (CONF_HOUSE_CONSUMPTION_ENTITY,)
 # Read only by ADR-0005's full-balance branch, which runs when no house-load
 # meter is configured. With one, the residual branch derives generation from the
-# house total and never looks at these.
-_FULL_BALANCE_ONLY = (CONF_GENERATION_ENTITY, CONF_GRID_EXPORT_ENTITY)
+# house total and never looks at these. The grid's export meters are too.
+_FULL_BALANCE_ONLY = (CONF_GENERATION_ENTITY,)
 
 
 def _validate_house_sources(
-    hass: HomeAssistant, user_input: dict[str, Any]
+    hass: HomeAssistant,
+    user_input: dict[str, Any],
+    exports: tuple[str, ...] = (),
 ) -> dict[str, str]:
     """Reject a house input the chosen accounting model would mis-read.
 
@@ -556,9 +691,15 @@ def _validate_house_sources(
 
     An absent state_class is allowed, as on any explicit manual pick; only a
     present-but-wrong one is refused (ADR-0010 §2).
+
+    ``exports`` are the grid entries' export meters, which removing the house
+    meter here brings into the full-balance branch. One that cannot be read
+    there is refused for the form as a whole, since its field is on another
+    entry.
     """
     checked = [*_ALWAYS_READ]
-    if not user_input.get(CONF_HOUSE_CONSUMPTION_ENTITY):
+    metered = bool(user_input.get(CONF_HOUSE_CONSUMPTION_ENTITY))
+    if not metered:
         checked += _FULL_BALANCE_ONLY
     errors: dict[str, str] = {}
     for key in checked:
@@ -566,6 +707,33 @@ def _validate_house_sources(
         # the sum is only as sound as its worst member.
         if error := _house_input_error(hass, house_entities(user_input, key)):
             errors[key] = error
+    if not metered and _house_input_error(hass, exports):
+        errors["base"] = "grid_export_not_countable"
+    return errors
+
+
+def validate_grid_meter(
+    hass: HomeAssistant, answers: Mapping[str, Any], *, house_metered: bool
+) -> dict[str, str]:
+    """Refuse a grid source whose meters or price would be misread.
+
+    Its import meter is read by every decomposition branch, and its export
+    meter by the full-balance branch, used where no house meter is configured
+    (``house_metered``), so each is held to the house's standard where it is
+    read (HEA-67). Its import is priced by an entity or by a number, and by
+    exactly one: two would leave it unclear which is meant.
+    """
+    errors: dict[str, str] = {}
+    checked = [CONF_GRID_IMPORT_ENTITY]
+    if not house_metered:
+        checked.append(CONF_GRID_EXPORT_ENTITY)
+    for key in checked:
+        if error := _house_input_error(hass, house_entities(answers, key)):
+            errors[key] = error
+    has_entity = bool(answers.get(CONF_PRICE_ENTITY))
+    has_number = answers.get(CONF_FIXED_PRICE) is not None
+    if has_entity == has_number:
+        errors["base"] = "select_one_price"
     return errors
 
 

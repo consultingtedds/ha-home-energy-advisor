@@ -80,6 +80,14 @@ def source_never_reported_issue_id(entity_id: str) -> str:
     return f"{ISSUE_SOURCE_NEVER_REPORTED}_{entity_id}"
 
 
+def price_unavailable_issue_id(entity_id: str) -> str:
+    """Stable issue id for an import price unavailable past the grace period.
+
+    Keyed by entity, since each grid source can have its own (ADR-0032).
+    """
+    return f"{ISSUE_PRICE_UNAVAILABLE}_{entity_id}"
+
+
 def helper_recreated_issue_id(subentry_id: str) -> str:
     """Stable issue id for a device whose deleted Integral helper was re-created."""
     return f"{ISSUE_HELPER_RECREATED}_{subentry_id}"

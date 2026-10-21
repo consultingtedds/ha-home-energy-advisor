@@ -97,7 +97,9 @@ async def test_diagnostics_name_the_entity_behind_every_figure(
 
     # Then - the configuration names the entity behind each house input, and the
     # price entity, so a figure can be traced to the sensor it came from
-    assert result["config"]["price_entity"] == "sensor.price"
+    assert [meter["price_entity"] for meter in result["config"]["grid_meters"]] == [
+        "sensor.price"
+    ]
     grid = next(
         source
         for source in result["config"]["house_sources"]
@@ -139,7 +141,15 @@ async def test_diagnostics_say_which_rates_are_in_force(
 
     # Then - the import rate the engine holds and since when, beside the entity it
     # came from, and no export rate said as none rather than as zero
-    assert result["config"]["price_entity"] == "sensor.price"
+    assert result["config"]["grid_meters"] == [
+        {
+            "name": "Grid",
+            "import": "sensor.grid_import",
+            "price_entity": "sensor.price",
+            "fixed_price": None,
+            "export": None,
+        }
+    ]
     assert result["config"]["rates_in_force"] == {
         "import": {
             "sensor.grid_import": {

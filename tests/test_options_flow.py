@@ -18,6 +18,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
+    SUBENTRY_TYPE_DEVICE,
 )
 
 if TYPE_CHECKING:
@@ -193,7 +194,11 @@ async def test_discovery_step_adds_selected_devices_and_creates_their_sensors(
 
     # Then - a device subentry exists for each, with the right source sensor...
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    by_title = {s.title: s for s in entry.subentries.values()}
+    by_title = {
+        s.title: s
+        for s in entry.subentries.values()
+        if s.subentry_type == SUBENTRY_TYPE_DEVICE
+    }
     assert set(by_title) == {"Tumble Dryer", "Power Only Lights"}
     assert by_title["Tumble Dryer"].data[CONF_ENERGY_ENTITY] == dryer
 

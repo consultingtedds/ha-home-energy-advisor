@@ -58,6 +58,14 @@ _HOUSE = {
     CONF_CURRENCY: "EUR",
     CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
 }
+# The same house as the setup flow asks for it: the house screen, then the grid
+# meter on its own (ADR-0032).
+_HOUSE_SCREEN = {CONF_CURRENCY: "EUR"}
+_GRID_METER = {
+    CONF_NAME: "Grid",
+    CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+    CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+}
 # Discussion 42's household, as their Energy Dashboard holds the two batteries.
 _ANKER = {
     "type": "battery",
@@ -100,6 +108,17 @@ def _with_energy_dashboard(*sources: dict[str, Any]) -> Any:  # noqa: ANN401 - a
     return patch(_PATH, AsyncMock(return_value=prefs))
 
 
+async def _answer_the_house(hass: HomeAssistant, result: Any) -> Any:  # noqa: ANN401 - flow results
+    """Answer the house screen, then enter the grid meter by hand."""
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], _HOUSE_SCREEN
+    )
+    assert result["step_id"] == "grid_meter"
+    return await hass.config_entries.flow.async_configure(
+        result["flow_id"], _GRID_METER
+    )
+
+
 # Setup
 
 
@@ -111,10 +130,9 @@ async def test_setup_offers_the_energy_dashboards_batteries_filled_in(
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-        # When - the house screen is answered, and both batteries are taken
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], _HOUSE
-        )
+        # When - the house screen and the grid meter are answered, and both
+        # batteries are taken
+        result = await _answer_the_house(hass, result)
         assert result["step_id"] == "batteries"
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"batteries": ["0", "1"]}
@@ -142,9 +160,7 @@ async def test_setup_takes_only_the_batteries_chosen(hass: HomeAssistant) -> Non
         result = await hass.config_entries.flow.async_init(
             DOMAIN, context={"source": SOURCE_USER}
         )
-        result = await hass.config_entries.flow.async_configure(
-            result["flow_id"], _HOUSE
-        )
+        result = await _answer_the_house(hass, result)
         result = await hass.config_entries.flow.async_configure(
             result["flow_id"], {"batteries": ["1"]}
         )
@@ -161,7 +177,7 @@ async def test_setup_without_energy_dashboard_batteries_skips_the_step(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], _HOUSE)
+    result = await _answer_the_house(hass, result)
 
     # Then - the entry is created straight away, with no battery
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -419,7 +435,7 @@ async def test_an_existing_battery_moves_into_its_own_entry(
     await hass.async_block_till_done()
 
     # Then - the same battery, now an entry of its own, and nothing about it lost
-    assert entry.version == 6
+    assert entry.version == 7
     (battery,) = batteries_of(entry).values()
     assert battery.name == "Battery"
     assert battery.charge == "sensor.anker_charge"
@@ -445,7 +461,7 @@ async def test_a_house_without_a_battery_gains_none(hass: HomeAssistant) -> None
     await hass.async_block_till_done()
 
     # Then
-    assert entry.version == 6
+    assert entry.version == 7
     assert batteries_of(entry) == {}
 
 

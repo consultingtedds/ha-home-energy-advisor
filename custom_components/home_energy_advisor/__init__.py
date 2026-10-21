@@ -33,9 +33,13 @@ from .const import (
     CONF_CYCLE_METERS,
     CONF_CYCLE_MONTHLY,
     CONF_GENERATION_ENTITY,
+    CONF_GRID_EXPORT_ENTITY,
+    CONF_GRID_IMPORT_ENTITY,
     CONF_INTEGRAL_HELPERS,
+    CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
+    SUBENTRY_TYPE_GRID,
 )
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
@@ -63,6 +67,7 @@ _CYCLES_OPTED_INTO = 3
 _SEVERAL_GENERATION_METERS = 4
 _BATTERY_CHARGING_ASKED = 5
 _BATTERIES_ARE_ENTRIES = 6
+_GRID_METERS_ARE_ENTRIES = 7
 
 # The key 0.12.0 stored its answer to which the panels feed first under. Only the
 # migration below knows this name.
@@ -119,6 +124,9 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
 
     Version 5 held one battery on the house screen, which now has an entry of
     its own (ADR-0031).
+
+    Version 6 held one grid meter and its price on the house screen, which now
+    have an entry of their own, one per grid source (ADR-0032).
     """
     if entry.version == _RENAMED_GENERATION_KEY:
         data = {**entry.data}
@@ -149,6 +157,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
         )
     if entry.version == _BATTERY_CHARGING_ASKED:
         _move_the_battery_into_its_own_entry(hass, entry)
+    if entry.version == _BATTERIES_ARE_ENTRIES:
+        _move_the_grid_into_its_own_entry(hass, entry)
     return True
 
 
@@ -191,6 +201,38 @@ _BATTERY_KEYS = (
     CONF_BATTERY_SOC_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
 )
+
+
+def _move_the_grid_into_its_own_entry(
+    hass: HomeAssistant, entry: HeaConfigEntry
+) -> None:
+    """Version 6 held one grid meter on the house screen; it becomes a grid entry.
+
+    Grid meters are entered one per grid source now, as the Energy Dashboard
+    holds them (ADR-0032). The household's import meter, its price and its
+    export meter move into an entry of their own unchanged, so the same meters
+    are read at the same price and the figures carry on.
+    """
+    data = {**entry.data}
+    grid = {key: data.pop(key) for key in _GRID_KEYS if key in data}
+    hass.config_entries.async_update_entry(
+        entry, data=data, version=_GRID_METERS_ARE_ENTRIES
+    )
+    if not grid.get(CONF_GRID_IMPORT_ENTITY):
+        return
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType({CONF_NAME: _FIRST_GRID, **grid}),
+            subentry_type=SUBENTRY_TYPE_GRID,
+            title=_FIRST_GRID,
+            unique_id=None,
+        ),
+    )
+
+
+_FIRST_GRID = "Grid"
+_GRID_KEYS = (CONF_GRID_IMPORT_ENTITY, CONF_PRICE_ENTITY, CONF_GRID_EXPORT_ENTITY)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:

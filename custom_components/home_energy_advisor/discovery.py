@@ -52,29 +52,23 @@ from .const import (
     CONF_CYCLE_METERS,
     CONF_ENERGY_ENTITY,
     CONF_GENERATION_ENTITY,
-    CONF_GRID_EXPORT_ENTITY,
-    CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_INTEGRAL_HELPERS,
     CONF_POWER_ENTITY,
-    CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
 )
 from .helper_ownership import helper_entry_id
-from .house_inputs import battery_meters, house_entities
+from .house_inputs import battery_meters, grid_meters_of, house_entities
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_registry import RegistryEntry
 
-# House-level inputs and the price entity are configured elsewhere, never offered
-# as devices.
+# House-level inputs are configured elsewhere, never offered as devices. The grid
+# meters and their prices are read from the grid entries.
 _HOUSE_CONF_KEYS = (
-    CONF_PRICE_ENTITY,
-    CONF_GRID_IMPORT_ENTITY,
-    CONF_GRID_EXPORT_ENTITY,
     CONF_GENERATION_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
 )
@@ -467,9 +461,17 @@ def _exclusions(entry: ConfigEntry, registry: er.EntityRegistry) -> _Exclusions:
         for key in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY)
         for meter in battery_meters(entry, key)
     }
-    house = {
-        e for key in _HOUSE_CONF_KEYS for e in house_entities(entry.data, key)
-    } | battery
+    grid = {
+        entity
+        for meter in grid_meters_of(entry).values()
+        for entity in (meter.imported, meter.price_entity, meter.exported)
+        if entity is not None
+    }
+    house = (
+        {e for key in _HOUSE_CONF_KEYS for e in house_entities(entry.data, key)}
+        | battery
+        | grid
+    )
     supply = {
         e for key in _SUPPLY_CONF_KEYS for e in house_entities(entry.data, key)
     } | battery

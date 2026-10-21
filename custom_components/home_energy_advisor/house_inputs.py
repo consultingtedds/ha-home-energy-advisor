@@ -13,7 +13,12 @@ from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
+    CONF_FIXED_PRICE,
+    CONF_GRID_EXPORT_ENTITY,
+    CONF_GRID_IMPORT_ENTITY,
+    CONF_PRICE_ENTITY,
     SUBENTRY_TYPE_BATTERY,
+    SUBENTRY_TYPE_GRID,
 )
 
 if TYPE_CHECKING:
@@ -68,7 +73,7 @@ def battery_from(name: str, data: Mapping[str, Any]) -> Battery:
         charge=data.get(CONF_BATTERY_CHARGE_ENTITY) or None,
         discharge=data.get(CONF_BATTERY_DISCHARGE_ENTITY) or None,
         level=data.get(CONF_BATTERY_SOC_ENTITY) or None,
-        capacity=_capacity(data.get(CONF_BATTERY_CAPACITY_KWH)),
+        capacity=_decimal(data.get(CONF_BATTERY_CAPACITY_KWH)),
     )
 
 
@@ -89,7 +94,59 @@ def battery_meters(entry: ConfigEntry, key: str) -> tuple[str, ...]:
     )
 
 
-def _capacity(raw: object) -> Decimal | None:
+@dataclass(frozen=True)
+class GridMeter:
+    """One grid source, in the shape of the Energy Dashboard's (ADR-0032).
+
+    Its import is priced at an entity's state or at a fixed number, whichever
+    the household gave; the form takes exactly one.
+    """
+
+    name: str
+    imported: str
+    price_entity: str | None
+    fixed_price: Decimal | None
+    exported: str | None
+
+
+def grid_meters_of(entry: ConfigEntry) -> dict[str, GridMeter]:
+    """Every grid source the household has entered, keyed by its subentry id."""
+    return {
+        subentry_id: grid_meter_from(subentry.title, subentry.data)
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_TYPE_GRID
+    }
+
+
+def grid_meter_from(name: str, data: Mapping[str, Any]) -> GridMeter:
+    """A grid source from what its entry holds."""
+    return GridMeter(
+        name=data.get(CONF_NAME) or name,
+        imported=data[CONF_GRID_IMPORT_ENTITY],
+        price_entity=data.get(CONF_PRICE_ENTITY) or None,
+        fixed_price=_decimal(data.get(CONF_FIXED_PRICE)),
+        exported=data.get(CONF_GRID_EXPORT_ENTITY) or None,
+    )
+
+
+def grid_meters(entry: ConfigEntry, key: str) -> tuple[str, ...]:
+    """Every grid source's meter of one kind - import or export - in entry order.
+
+    Added up into the house balance, as several generation meters are
+    (HEA-219); import is priced register by register on top of that.
+    """
+    field = {
+        CONF_GRID_IMPORT_ENTITY: "imported",
+        CONF_GRID_EXPORT_ENTITY: "exported",
+    }[key]
+    return tuple(
+        meter
+        for grid in grid_meters_of(entry).values()
+        if (meter := getattr(grid, field)) is not None
+    )
+
+
+def _decimal(raw: object) -> Decimal | None:
     if raw is None or raw == "":
         return None
     try:

@@ -6,7 +6,8 @@ from typing import Final
 
 DOMAIN: Final = "home_energy_advisor"
 
-# House-level configuration - global, one set per household (ADR-0002).
+# House-level configuration - global, one set per household (ADR-0002). The grid
+# meters and their prices are held on the grid entries (SUBENTRY_TYPE_GRID).
 CONF_PRICE_ENTITY: Final = "price_entity"
 CONF_CURRENCY: Final = "currency"
 CONF_GRID_IMPORT_ENTITY: Final = "grid_import_entity"
@@ -33,6 +34,14 @@ SUBENTRY_TYPE_DEVICE: Final = "device"
 # charge and discharge meters (the CONF_BATTERY_* keys above), and optionally its
 # level and capacity (ADR-0031).
 SUBENTRY_TYPE_BATTERY: Final = "battery"
+# One config subentry per grid source, as the Energy Dashboard holds them: an import
+# meter, its price, and optionally an export meter (CONF_GRID_IMPORT_ENTITY,
+# CONF_PRICE_ENTITY or CONF_FIXED_PRICE, CONF_GRID_EXPORT_ENTITY). A dual-rate
+# meter is two of them, one per register (ADR-0032).
+SUBENTRY_TYPE_GRID: Final = "grid"
+# A price typed as a number rather than read from an entity, as the Energy
+# Dashboard allows, per kWh in the household's currency.
+CONF_FIXED_PRICE: Final = "fixed_price"
 CONF_ENERGY_ENTITY: Final = "energy_entity"
 CONF_POWER_ENTITY: Final = "power_entity"
 

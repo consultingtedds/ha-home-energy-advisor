@@ -332,7 +332,17 @@ async def test_setup_is_the_answer_for_the_energy_dashboard_as_it_stands(
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": SOURCE_USER}
     )
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], _HOUSE)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {CONF_CURRENCY: "EUR"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {
+            CONF_NAME: "Grid",
+            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+            CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+        },
+    )
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], {"batteries": ["0"]}
     )

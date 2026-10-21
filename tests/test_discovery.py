@@ -43,6 +43,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
+    SUBENTRY_TYPE_GRID,
 )
 from custom_components.home_energy_advisor.discovery import async_discover_candidates
 
@@ -146,14 +147,19 @@ def _helper_output(  # noqa: PLR0913 - a test fixture builder; each kwarg is a d
 def _entry(hass: HomeAssistant, **house_inputs: str | list[str]) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=4,
-        data={
-            CONF_PRICE_ENTITY: "sensor.electricity_price",
-            CONF_CURRENCY: "EUR",
-            CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
-            **house_inputs,
-        },
+        version=7,
+        data={CONF_CURRENCY: "EUR", **house_inputs},
         subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_GRID,
+                title="Grid",
+                data={
+                    CONF_NAME: "Grid",
+                    CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+                    CONF_PRICE_ENTITY: "sensor.electricity_price",
+                },
+                unique_id=None,
+            ),
             ConfigSubentryData(
                 subentry_type=SUBENTRY_TYPE_DEVICE,
                 title="Coarse Step Aircon",
@@ -162,7 +168,7 @@ def _entry(hass: HomeAssistant, **house_inputs: str | list[str]) -> MockConfigEn
                     CONF_ENERGY_ENTITY: "sensor.coarse_step_aircon_energy",
                 },
                 unique_id=None,
-            )
+            ),
         ],
     )
     entry.add_to_hass(hass)

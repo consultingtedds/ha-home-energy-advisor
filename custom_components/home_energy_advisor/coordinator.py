@@ -47,7 +47,6 @@ from .const import (
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
-    CONF_PRICE_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
     SIGNAL_RESET_TOTALS,
@@ -59,7 +58,14 @@ from .engine.battery_shares import BatteryMeters
 from .engine.energy_source import EnergyUnit
 from .engine.house_balance import ChargeSource
 from .engine.level_log import LevelLog, LevelReason
-from .house_inputs import Battery, batteries_of, battery_meters, house_entities
+from .house_inputs import (
+    Battery,
+    batteries_of,
+    battery_meters,
+    grid_meters,
+    grid_meters_of,
+    house_entities,
+)
 from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
@@ -137,8 +143,9 @@ _ROLE_BY_CONF: dict[str, SourceRole] = {
     CONF_BATTERY_DISCHARGE_ENTITY: SourceRole.BATTERY_DISCHARGE,
     CONF_HOUSE_CONSUMPTION_ENTITY: SourceRole.HOUSE_CONSUMPTION,
 }
-# The roles whose meters live on the battery entries, not on the house's.
+# The roles whose meters live on the battery and grid entries, not on the house's.
 _BATTERY_CONF = frozenset({CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY})
+_GRID_CONF = frozenset({CONF_GRID_IMPORT_ENTITY, CONF_GRID_EXPORT_ENTITY})
 
 type HeaConfigEntry = ConfigEntry[HeaCoordinator]
 
@@ -155,19 +162,24 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     ) -> None:
         super().__init__(hass, _LOGGER, name=DOMAIN, config_entry=entry)
         self._entry = entry
-        self._price_entity = entry.data[CONF_PRICE_ENTITY]
+        # Each grid source's import meter is priced on its own (ADR-0032): by an
+        # entity, followed, which several registers may share, or by a fixed
+        # number.
+        self._grids = grid_meters_of(entry)
+        self._metered_by_price: dict[str, list[str]] = {}
+        for grid in self._grids.values():
+            if grid.price_entity is not None:
+                self._metered_by_price.setdefault(grid.price_entity, []).append(
+                    grid.imported
+                )
         # Every meter under each role: generation can have several (HEA-219), and
-        # the battery roles hold every battery's, from their own entries
-        # (ADR-0031).
+        # the battery and grid roles hold every battery's and every grid
+        # source's, from their own entries (ADR-0031, ADR-0032).
         self._batteries = batteries_of(entry)
         house_sources = {
             role: meters
             for conf, role in _ROLE_BY_CONF.items()
-            if (
-                meters := battery_meters(entry, conf)
-                if conf in _BATTERY_CONF
-                else house_entities(entry.data, conf)
-            )
+            if (meters := _meters_for(entry, conf))
         }
         house_meters = {
             entity for meters in house_sources.values() for entity in meters
@@ -194,7 +206,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # auto-created helper outputs of power-only devices are excluded - their
         # health is the helper's concern (surfaced via the helper-recreated Repair).
         helper_outputs = set((power_energy_entities or {}).values())
-        self._critical_entities = {*house_meters, self._price_entity}
+        self._critical_entities = {*house_meters, *self._metered_by_price}
         self._monitored_entities = self._critical_entities | (
             set(self._device_of_entity) - helper_outputs
         )
@@ -427,7 +439,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._adopt_standing_accusations()
         for entity_id in self._energy_entities:
             self._feed_energy(entity_id, self.hass.states.get(entity_id))
-        self._feed_price(self.hass.states.get(self._price_entity))
+        for entity_id in self._metered_by_price:
+            self._feed_price(entity_id, self.hass.states.get(entity_id))
+        self._record_fixed_prices()
         # *After* the readings above, not before them (HEA-183). Each one carries
         # its meter's own timestamp, so a counter that moved since the snapshot
         # was written books that movement here, into intervals that have already
@@ -457,7 +471,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         self._entry.async_on_unload(
             async_track_state_change_event(
                 self.hass,
-                [*self._energy_entities, self._price_entity],
+                [*self._energy_entities, *self._metered_by_price],
                 self._handle_state_change,
             )
         )
@@ -484,9 +498,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _handle_state_change(self, event: Event[EventStateChangedData]) -> None:
         entity_id = event.data["entity_id"]
         state = event.data["new_state"]
-        if entity_id == self._price_entity:
-            self._feed_price(state)
-        else:
+        # Both at once where a meter also prices: nothing forbids it, and the
+        # tracker delivers the change only once.
+        if entity_id in self._metered_by_price:
+            self._feed_price(entity_id, state)
+        if entity_id in self._energy_entities:
             self._feed_energy(entity_id, state)
 
     @callback
@@ -1059,8 +1075,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # missed tick or a restart cannot reset the clock.
         if now - state.last_changed < _UNAVAILABLE_GRACE:
             return None
-        if entity == self._price_entity:
-            return (issues.ISSUE_PRICE_UNAVAILABLE, issues.ISSUE_PRICE_UNAVAILABLE)
+        if entity in self._metered_by_price:
+            return (
+                issues.price_unavailable_issue_id(entity),
+                issues.ISSUE_PRICE_UNAVAILABLE,
+            )
         return (
             issues.source_unavailable_issue_id(entity),
             issues.ISSUE_SOURCE_UNAVAILABLE,
@@ -1121,12 +1140,26 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # shrinks the next delta's span (HEA-48). They coincide on a real change.
         self._accountant.observe(entity_id, state.last_reported, value, _unit_of(state))
 
-    def _feed_price(self, state: State | None) -> None:
+    def _feed_price(self, entity_id: str, state: State | None) -> None:
+        """Record a price entity's rate on every import meter it prices."""
         if state is None or state.state in _UNAVAILABLE:
             return
         price = _to_decimal(state.state)
-        if price is not None:
-            self._accountant.record_price(state.last_updated, price)
+        if price is None:
+            return
+        for meter in self._metered_by_price[entity_id]:
+            self._accountant.record_price(state.last_updated, price, meter)
+
+    def _record_fixed_prices(self) -> None:
+        """Record each fixed price, which holds from before anything is counted.
+
+        Stamped now, and applied to earlier intervals too, because the earliest
+        rate a meter holds prices anything before it.
+        """
+        now = dt_util.utcnow()
+        for grid in self._grids.values():
+            if grid.fixed_price is not None:
+                self._accountant.record_price(now, grid.fixed_price, grid.imported)
 
     def is_warming_up(self) -> bool:
         """Whether the engine is counting but has not yet closed an interval.
@@ -1269,7 +1302,19 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # Lists (not entity-keyed dicts) so the diagnostics platform can redact
         # entity ids and device names as field values without key collisions.
         return {
-            "price_entity": self._price_entity,
+            # Every grid source, with what prices its import (ADR-0032).
+            "grid_meters": [
+                {
+                    "name": grid.name,
+                    "import": grid.imported,
+                    "price_entity": grid.price_entity,
+                    "fixed_price": (
+                        None if grid.fixed_price is None else str(grid.fixed_price)
+                    ),
+                    "export": grid.exported,
+                }
+                for grid in self._grids.values()
+            ],
             # Which entity the export rate is being read from, or absent where
             # the household declares none. Read live from the Energy Dashboard
             # rather than configured here, so the download is the only place
@@ -1360,6 +1405,15 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     def _device_name(self, sub_id: str) -> str:
         subentry = self._entry.subentries.get(sub_id)
         return subentry.title if subentry is not None else sub_id
+
+
+def _meters_for(entry: HeaConfigEntry, conf: str) -> tuple[str, ...]:
+    """Every meter under one house input, from whichever entries hold it."""
+    if conf in _BATTERY_CONF:
+        return battery_meters(entry, conf)
+    if conf in _GRID_CONF:
+        return grid_meters(entry, conf)
+    return house_entities(entry.data, conf)
 
 
 def _export_price_of(prefs: Any) -> tuple[str | None, Decimal | None]:  # noqa: ANN401 - untyped Energy Dashboard preference structure

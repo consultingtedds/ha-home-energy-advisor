@@ -64,7 +64,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
     WHOLE_HOME_KEY,
 )
-from .house_inputs import batteries_of
+from .house_inputs import batteries_of, grid_meters
 from .recorded_baseline import async_last_recorded
 
 if TYPE_CHECKING:
@@ -179,13 +179,13 @@ def _can_measure_the_batterys_loss(entry: HeaConfigEntry) -> bool:
     says what was wrongly on the books rather than why, and a discharge the meter
     never counted reaches it looking exactly like a round-trip loss.
     """
-    return _knows_the_battery_level(entry) and all(
-        entry.data.get(conf)
-        for conf in (
-            CONF_HOUSE_CONSUMPTION_ENTITY,
-            CONF_GENERATION_ENTITY,
-            CONF_GRID_EXPORT_ENTITY,
+    return (
+        _knows_the_battery_level(entry)
+        and all(
+            entry.data.get(conf)
+            for conf in (CONF_HOUSE_CONSUMPTION_ENTITY, CONF_GENERATION_ENTITY)
         )
+        and bool(grid_meters(entry, CONF_GRID_EXPORT_ENTITY))
     )
 
 

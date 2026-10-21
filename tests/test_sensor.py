@@ -276,7 +276,12 @@ async def test_a_batch_of_discovered_devices_all_get_their_figures(
     # exactly why nothing else would catch this
     registry = er.async_get(hass)
     ours = er.async_entries_for_config_entry(registry, entry.entry_id)
-    for subentry_id in entry.subentries:
+    devices = [
+        subentry_id
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
+    ]
+    for subentry_id in devices:
         theirs = [
             found
             for found in ours
@@ -337,9 +342,10 @@ async def test_devices_added_while_a_reload_is_in_flight_still_get_their_figures
     registry = er.async_get(hass)
     ours = er.async_entries_for_config_entry(registry, entry.entry_id)
     missing = [
-        entry.subentries[subentry_id].title
-        for subentry_id in entry.subentries
-        if len(
+        subentry.title
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
+        and len(
             [
                 found
                 for found in ours

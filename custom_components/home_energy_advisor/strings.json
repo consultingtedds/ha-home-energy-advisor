@@ -3,24 +3,46 @@
     "step": {
       "user": {
         "title": "Home Energy Advisor",
-        "description": "An import price and a grid import meter are all you need. Every other input is optional - add only the ones your home has, and the accounting adapts.",
+        "description": "Your grid meter and its price come next, then any batteries. Every input here is optional - add only the ones your home has, and the accounting adapts.",
         "data": {
-          "price_entity": "Import price",
           "currency": "Currency",
-          "grid_import_entity": "Grid import energy",
-          "grid_export_entity": "Grid export energy (optional)",
           "generation_entity": "Local generation energy (optional)",
           "house_consumption_entity": "House consumption energy (optional)",
           "battery_charging": "How your battery charges"
         },
         "data_description": {
-          "price_entity": "The sensor or Number helper giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
-          "grid_import_entity": "Cumulative energy imported from the grid.",
-          "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), choose them all and they are added together. (See the readme for more help)",
           "house_consumption_entity": "Total household consumption, if measured directly.",
           "battery_charging": "Only matters if you have a battery, which you add on its own afterwards. This decides whether the battery was charged from your panels or from the grid in the minutes it charges while the house is also using the grid, and so what its stored energy cost. If you are not sure, leave the first."
+        }
+      },
+      "grid_meters": {
+        "title": "Your grid meters",
+        "description": "These grid meters are in your Energy Dashboard, each with its price. A meter with a day and a night rate is two of them. Tick the ones to include, or tick none to enter your own. You can add, change or remove grid meters later.",
+        "data": {
+          "grid_meters": "Grid meters"
+        },
+        "data_description": {
+          "grid_meters": "A grid source in your Energy Dashboard that holds a fee, such as a daily standing charge, is not listed: Home Energy Advisor prices the energy you use, not your bill."
+        }
+      },
+      "grid_meter": {
+        "title": "Your grid meter",
+        "description": "The meter for the energy you import, and its price. A meter with a day and a night rate has a register for each: enter one here and add the other afterwards with Add grid meter.",
+        "data": {
+          "name": "Name",
+          "grid_import_entity": "Grid import energy",
+          "price_entity": "Import price",
+          "fixed_price": "Fixed import price",
+          "grid_export_entity": "Grid export energy (optional)"
+        },
+        "data_description": {
+          "name": "How this grid meter appears in Home Assistant.",
+          "grid_import_entity": "Cumulative energy imported from the grid through this meter.",
+          "price_entity": "The sensor or Number helper giving the current import price per kWh. Fill in this or the fixed price.",
+          "fixed_price": "A price per kWh that does not change, as on your bill. Fill in this or the import price.",
+          "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself."
         }
       },
       "batteries": {
@@ -35,21 +57,15 @@
       },
       "reconfigure": {
         "title": "Edit Home Energy Advisor",
-        "description": "Update the household energy inputs. Only the import price and the grid import meter are required; every other input is optional.",
+        "description": "Update the household energy inputs. Every input here is optional; grid meters and batteries are edited on their own.",
         "data": {
-          "price_entity": "Import price",
           "currency": "Currency",
-          "grid_import_entity": "Grid import energy",
-          "grid_export_entity": "Grid export energy (optional)",
           "generation_entity": "Local generation energy (optional)",
           "house_consumption_entity": "House consumption energy (optional)",
           "battery_charging": "How your battery charges"
         },
         "data_description": {
-          "price_entity": "The sensor or Number helper giving the current import price per kWh.",
           "currency": "Currency for the cost sensors, e.g. EUR.",
-          "grid_import_entity": "Cumulative energy imported from the grid.",
-          "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself.",
           "generation_entity": "Cumulative local generation - solar, wind, hydro. Leave empty if you generate none. If you have more than one source (two inverter strings, or solar plus wind), choose them all and they are added together. (See the readme for more help)",
           "house_consumption_entity": "Total household consumption, if measured directly.",
           "battery_charging": "Only matters if you have a battery, which is edited on its own. This decides whether the battery was charged from your panels or from the grid in the minutes it charges while the house is also using the grid, and so what its stored energy cost. If you are not sure, leave the first."
@@ -59,7 +75,10 @@
     "error": {
       "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong house-level input makes every device's figure wrong.",
       "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at, which would leave this input contributing nothing.",
-      "battery_not_countable": "One of these batteries has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in kWh or Wh. Leave that battery unticked, and add it afterwards with Add battery, where you can choose another meter."
+      "battery_not_countable": "One of these batteries has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in kWh or Wh. Leave that battery unticked, and add it afterwards with Add battery, where you can choose another meter.",
+      "grid_meter_not_countable": "One of these grid meters has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in kWh or Wh. Leave it unticked and add it afterwards with Add grid meter, where you can choose another meter, or tick none to enter your own now.",
+      "select_one_price": "Fill in the import price or the fixed import price, not both and not neither.",
+      "grid_export_not_countable": "Without a house consumption meter, your grid meters' export meters are read too, and one of them cannot be counted: it has to be a total-increasing counter in kWh or Wh. Keep a house consumption meter, or change that grid meter first."
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
@@ -112,6 +131,56 @@
     }
   },
   "config_subentries": {
+    "grid": {
+      "initiate_flow": {
+        "user": "Add grid meter",
+        "reconfigure": "Edit grid meter"
+      },
+      "entry_type": "Grid meter",
+      "step": {
+        "user": {
+          "title": "Add a grid meter",
+          "description": "The same details your Energy Dashboard holds for a grid source. A meter with a day and a night rate has a register for each: add each as its own grid meter, with its own price. A grid source in your Energy Dashboard that isn't added yet is filled in for you.",
+          "data": {
+            "name": "Name",
+            "grid_import_entity": "Grid import energy",
+            "price_entity": "Import price",
+            "fixed_price": "Fixed import price",
+            "grid_export_entity": "Grid export energy (optional)"
+          },
+          "data_description": {
+            "name": "How this grid meter appears in Home Assistant.",
+            "grid_import_entity": "Cumulative energy imported from the grid through this meter.",
+            "price_entity": "The sensor or Number helper giving the current import price per kWh. Fill in this or the fixed price.",
+            "fixed_price": "A price per kWh that does not change, as on your bill. Fill in this or the import price.",
+            "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit grid meter",
+          "description": "Change the grid meter's name, meters or price.",
+          "data": {
+            "name": "Name",
+            "grid_import_entity": "Grid import energy",
+            "price_entity": "Import price",
+            "fixed_price": "Fixed import price",
+            "grid_export_entity": "Grid export energy (optional)"
+          },
+          "data_description": {
+            "name": "How this grid meter appears in Home Assistant.",
+            "grid_import_entity": "Cumulative energy imported from the grid through this meter.",
+            "price_entity": "The sensor or Number helper giving the current import price per kWh. Fill in this or the fixed price.",
+            "fixed_price": "A price per kWh that does not change, as on your bill. Fill in this or the import price.",
+            "grid_export_entity": "Cumulative energy exported to the grid; used to work out how much generation you used yourself."
+          }
+        }
+      },
+      "error": {
+        "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong grid meter makes every device's figure wrong.",
+        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at.",
+        "select_one_price": "Fill in the import price or the fixed import price, not both and not neither."
+      }
+    },
     "battery": {
       "initiate_flow": {
         "user": "Add battery",
