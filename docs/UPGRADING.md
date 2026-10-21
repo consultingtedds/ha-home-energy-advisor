@@ -58,9 +58,9 @@ Dashboard already lists them, a notice in **Settings** > **Repairs** offers to
 take them in place of the summed one. Your figures carry on either way.
 
 **You may see that notice even with one battery.** It appears whenever the
-batteries in your Energy Dashboard differ from the ones here. If you chose
-different meters here on purpose, choose **Keep mine**, and you will not be
-asked again until the Energy Dashboard changes.
+batteries or grid meters in your Energy Dashboard differ from the ones here. If
+you chose different meters here on purpose, choose **Keep mine**, and you will
+not be asked again until the Energy Dashboard changes.
 
 **If you filled in your battery's capacity, check it is in kWh.** The field now
 refuses anything above 200, because no home battery holds that much and the
@@ -73,6 +73,18 @@ earned.** It read nothing under Could have earned before. The lost energy is
 now valued at what export paid when it was stored, and Whole Home's Could have
 earned rises by the same amount. Paid does not change. The new figure counts
 from this release, so read it over a period that starts after the update.
+
+**Your grid meter now has an entry of its own**, under the integration beside
+your devices and batteries, and its import meter, price and export meter have
+moved there from the house settings. Nothing about it changes, and your figures
+carry on. To change it, open it and choose **Edit grid meter**.
+
+**If your meter has a day and a night rate, you can enter each register now.**
+Choose **Add grid meter** and give the second register its own price: a sensor,
+or simply the rate. Each register's energy is then priced at its own rate. If
+you had added the two together with a helper, replace it with the two
+registers. A price can now be typed in as a number, so a fixed rate no longer
+needs a Number helper.
 
 ## 0.12.0
 

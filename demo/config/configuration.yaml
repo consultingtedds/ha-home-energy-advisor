@@ -36,13 +36,16 @@ config:
 template:
   - sensor:
       # --- The house ------------------------------------------------------
-      # A two-step time-of-use tariff. The step is what makes the cost-over-time
-      # card worth looking at, and what gives "moved to the afternoon" a point.
-      - name: Electricity Import Price
-        unique_id: demo_price_import
+      # A two-rate tariff, metered as a dual-rate meter is: a day register and a
+      # night register, each priced on its own (ADR-0032). The step is what makes
+      # the cost-over-time card worth looking at, and what gives "moved to the
+      # afternoon" a point. The day rate is a sensor; the night rate is a plain
+      # number in the Energy Dashboard, so both kinds of price are exercised.
+      - name: Electricity Day Rate
+        unique_id: demo_price_day
         unit_of_measurement: EUR/kWh
         state_class: measurement
-        state: "{{ 0.3120 if 8 <= now().hour < 22 else 0.1140 }}"
+        state: "{{ 0.3120 }}"
 
       - name: Electricity Export Price
         unique_id: demo_price_export
@@ -50,14 +53,26 @@ template:
         state_class: measurement
         state: "{{ 0.0740 }}"
 
-      - name: Grid Import
-        unique_id: demo_grid_import
+      # Each register climbs at its own steady rate. The seeded week is split by
+      # the hour, day energy on the day register and night on the night one;
+      # these only have to be counters the integration can read.
+      - name: Grid Import Day
+        unique_id: demo_grid_import_day
         device_class: energy
         state_class: total_increasing
         unit_of_measurement: kWh
         state: >
-          {{ (4210 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
-              / 3600 * 0.90) | round(3) }}
+          {{ (2950 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.62) | round(3) }}
+
+      - name: Grid Import Night
+        unique_id: demo_grid_import_night
+        device_class: energy
+        state_class: total_increasing
+        unit_of_measurement: kWh
+        state: >
+          {{ (1260 + (as_timestamp(now()) - as_timestamp('2026-09-01 00:00:00'))
+              / 3600 * 0.28) | round(3) }}
 
       - name: Grid Export
         unique_id: demo_grid_export

@@ -138,12 +138,12 @@ async function captureSetup(page) {
   // the fields a moment to settle before the shutter.
   await page.waitForTimeout(2500);
 
-  // The import price arrives with the Energy Dashboard's other answers now
-  // (HEA-118). The Energy Dashboard has no notion of a house-consumption meter,
-  // so that is the field it cannot answer. Worth setting rather than leaving: it
-  // is what puts the accounting on ADR-0005's residual branch, and without it
-  // the discovery screen quite correctly offers the house meter itself as a
-  // device to track, which reads as nonsense in a screenshot.
+  // Generation arrives with the Energy Dashboard's answers. The Energy Dashboard
+  // has no notion of a house-consumption meter, so that is the field it cannot
+  // answer. Worth setting rather than leaving: it is what puts the accounting
+  // on ADR-0005's residual branch, and without it the discovery screen quite
+  // correctly offers the house meter itself as a device to track, which reads
+  // as nonsense in a screenshot.
   //
   // Found by its label, not by counting empty pickers: which pickers are empty
   // depends on what the Energy Dashboard prefilled, and generation's picker
@@ -153,7 +153,7 @@ async function captureSetup(page) {
   });
 
   // Back to the top: filling house consumption scrolled the dialog down to it,
-  // and the caption promises the import price and grid import, which head it.
+  // and the caption describes the screen from its first field.
   await page.evaluate(() => {
     const walk = (root) => {
       for (const el of root.querySelectorAll("*")) {
@@ -166,6 +166,13 @@ async function captureSetup(page) {
   await page.waitForTimeout(1000);
   await shot(page, "setup-house-inputs");
 
+  await page.getByRole("button", { name: "Submit" }).click({ force: true });
+
+  // Then the Energy Dashboard's grid meters, one per register, each with its
+  // price, all ticked (ADR-0032). Taken as offered: the house is dual-rate.
+  await page.getByText("Your grid meters").first().waitFor({ state: "visible", timeout: 20000 });
+  await page.waitForTimeout(1500);
+  await shot(page, "setup-grid-meters");
   await page.getByRole("button", { name: "Submit" }).click({ force: true });
 
   // Then the Energy Dashboard's batteries, offered filled in and all ticked

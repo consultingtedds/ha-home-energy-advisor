@@ -43,9 +43,10 @@ export const AREAS = [
  * empty card in it.
  */
 export const HOUSE = {
-  importPrice: "sensor.electricity_import_price",
+  dayRate: "sensor.electricity_day_rate",
   exportPrice: "sensor.electricity_export_price",
-  gridImport: "sensor.grid_import",
+  gridImportDay: "sensor.grid_import_day",
+  gridImportNight: "sensor.grid_import_night",
   gridExport: "sensor.grid_export",
   generation: "sensor.solar_generation",
   batteryCharge: "sensor.battery_charge",
@@ -98,6 +99,26 @@ export const TARIFF = {
   peakUntil: 22,
   export: 0.074,
 };
+
+/**
+ * A dual-rate meter, as the Energy Dashboard holds it: one grid source per
+ * register, each with its own price (ADR-0032). The day register is priced by a
+ * sensor and carries the export meter; the night register's price is a plain
+ * number, the other kind a household can give.
+ */
+export const GRID_METERS = [
+  {
+    name: "Day Rate",
+    import: HOUSE.gridImportDay,
+    priceEntity: HOUSE.dayRate,
+    export: HOUSE.gridExport,
+  },
+  {
+    name: "Night Rate",
+    import: HOUSE.gridImportNight,
+    fixedPrice: TARIFF.offPeak,
+  },
+];
 
 /**
  * The devices the demo tracks.

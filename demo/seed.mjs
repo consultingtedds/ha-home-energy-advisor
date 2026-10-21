@@ -289,7 +289,8 @@ function hourlyWindow() {
 
 /** The house meters the seed derives, in the order `importHouse` writes them. */
 const HOUSE_METERS = [
-  HOUSE.gridImport,
+  HOUSE.gridImportDay,
+  HOUSE.gridImportNight,
   HOUSE.gridExport,
   HOUSE.generation,
   HOUSE.batteryDischarge,
@@ -312,7 +313,7 @@ function statisticIds(rows) {
       .filter(Boolean),
   );
   const sources = rows.map((row) => row.profile.source).filter(Boolean);
-  return [...new Set([...concepts, ...sources, ...HOUSE_METERS, HOUSE.importPrice])];
+  return [...new Set([...concepts, ...sources, ...HOUSE_METERS, HOUSE.dayRate])];
 }
 
 /**
@@ -577,22 +578,27 @@ async function importHouse(socket, house, hours) {
   // Charging a battery costs more than it gives back.
   const charge = house.battery.map((out) => out * 1.12);
 
+  // A dual-rate meter: the day register carries the import in peak hours and
+  // the night register the rest, so each is priced at its own rate.
+  const day = house.grid.map((kwh, index) => (isPeak(hours[index].getHours()) ? kwh : 0));
+  const night = house.grid.map((kwh, index) => kwh - day[index]);
+
   // Paired with HOUSE_METERS by position rather than listed again here, so the
   // set that gets cleared and the set that gets written cannot drift apart.
-  const series = [house.grid, exported, generation, house.battery, charge, house.used];
+  const series = [day, night, exported, generation, house.battery, charge, house.used];
   for (const [index, statisticId] of HOUSE_METERS.entries()) {
     await importOne(socket, statisticId, "kWh", runningTotal(series[index], hours));
   }
 
-  // The tariff itself, so a price chart has a shape and the Energy Dashboard
-  // can cost the import it has just been given.
-  const importPrice = hours.map((start) => ({
+  // The day rate, so the Energy Dashboard can cost the import it has just been
+  // given. The night rate is a plain number there, with nothing to record.
+  const dayRate = hours.map((start) => ({
     start: start.toISOString(),
-    mean: priceAt(start.getHours()),
-    min: TARIFF.offPeak,
+    mean: TARIFF.peak,
+    min: TARIFF.peak,
     max: TARIFF.peak,
   }));
-  await importOne(socket, HOUSE.importPrice, `${CURRENCY}/kWh`, importPrice, { mean: true });
+  await importOne(socket, HOUSE.dayRate, `${CURRENCY}/kWh`, dayRate, { mean: true });
 
   return HOUSE_METERS.length + 1;
 }

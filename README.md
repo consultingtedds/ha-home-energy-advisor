@@ -39,11 +39,11 @@ figures sit at zero because there is nothing to save against.
 ## What you need
 
 - Home Assistant 2026.7 or newer.
-- **A grid connection**, with a sensor giving your current import price per kWh.
-  Dynamic tariff integrations provide one. On a fixed rate, create a Number
-  helper and type your rate into it.
+- **A grid connection**, with your import price per kWh: a sensor, which dynamic
+  tariff integrations provide, or on a fixed rate simply the rate itself.
 - **A cumulative grid import energy sensor**, in kWh or Wh. If you have set up
-  the Energy Dashboard you already have one.
+  the Energy Dashboard you already have one. A meter with a day and a night
+  rate usually has one for each, and both can be added, each with its own price.
 - **An energy or power sensor for each device you want to track.** Smart plugs,
   clamp meters and many appliances provide one. You do not need to track
   everything, or even most things - whatever you do not track is grouped into a
@@ -118,11 +118,11 @@ Go to **Settings** > **Devices & services** > **Add integration** and search for
 
 ### The house
 
-![The house inputs step of the setup, with the import price and grid import meter filled in](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-house-inputs.png)
+![The house inputs step of the setup, with the currency, generation and house consumption filled in](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-house-inputs.png)
 
-The first screen asks about your house as a whole. **Only two of these are
-required: the import price and the grid import meter.** Every other field is
-optional, and the accounting adapts to what you give it.
+The first screen asks about your house as a whole. **None of it is required
+beyond the currency.** Every other field is optional, and the accounting adapts
+to what you give it. Your grid meters and batteries come next, each on its own.
 
 **The Energy Dashboard is the best place to enter your meters.** Whatever it
 holds is filled in for you here, and if you change it there later, Home Energy
@@ -133,10 +133,7 @@ changes without you saying so.
 
 | Input | Required | What to choose |
 | --- | --- | --- |
-| Import price | Yes | The sensor holding your current price per kWh |
 | Currency | Yes | The currency your cost sensors report in, such as GBP or EUR |
-| Grid import energy | Yes | Your cumulative import meter, in kWh or Wh |
-| Grid export energy | No | Your cumulative export meter |
 | Local generation energy | No | Cumulative generation of your own, whatever the source |
 | House consumption energy | No | Total household consumption, if you measure it directly |
 | How your battery charges | Yes, preset | Mainly from spare solar, from the grid as well, or only from solar - see below |
@@ -148,8 +145,9 @@ proportion, so one wrong house-level input makes every device's figure wrong.
 
 #### When generation and export actually matter
 
-This is the part worth reading twice, because it decides whether two of those
-fields do anything at all for you.
+This is the part worth reading twice, because it decides whether two fields - the
+generation here and the export meter on your grid meter - do anything at all for
+you.
 
 To work out what a unit of electricity cost, Home Energy Advisor has to know how
 much of your own generation the house used rather than exported. There are two
@@ -211,6 +209,41 @@ on why the battery was charging:
 It decides whether the energy in your battery cost what the grid charged or
 nothing, and so what your devices are charged when the battery later runs them.
 If you are not sure, leave the preset.
+
+### Your grid meters
+
+Each grid meter is entered on its own, with the same details the Energy
+Dashboard holds for a grid source:
+
+| Input | Required | What to choose |
+| --- | --- | --- |
+| Name | Yes | How the grid meter appears in Home Assistant |
+| Grid import energy | Yes | Its cumulative import meter, in kWh or Wh |
+| Import price | One of these two | The sensor or Number helper holding its current price per kWh |
+| Fixed import price | One of these two | Its price per kWh, if it never changes |
+| Grid export energy | No | Its cumulative export meter |
+
+![The grid meters step of the setup, listing a day and a night register from the Energy Dashboard, both ticked](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-grid-meters.png)
+
+If your Energy Dashboard has grid meters, setup lists them after the house
+screen, each with its price, and you tick the ones to include. Tick none to
+enter your own instead. To add one later, select **Add grid meter** on the Home
+Energy Advisor card in **Settings** > **Devices & services**; a grid meter in your
+Energy Dashboard that is not added yet is filled in for you.
+
+**A meter with a day and a night rate is two grid meters.** Most of them publish
+a counter for each rate, and the Energy Dashboard holds each as its own grid
+source with its own price. Add both: the energy each one counts is priced at its
+own rate, so a device run overnight is charged the night rate. With one counter
+and one price, every kWh would be priced the same.
+
+**A standing charge is not a grid meter.** The Energy Dashboard lets you price
+a standing charge by declaring it as a grid source, and setup leaves any source
+that is not counted in kWh or Wh out of its list. Home Energy Advisor prices the
+energy your devices use, not your bill, so a daily fee has no place in it.
+
+The export price is read from the Energy Dashboard, as before: what you are paid
+for exporting is set there once.
 
 ### Your batteries
 
@@ -311,22 +344,23 @@ sits empty. That is a house with no labels, not a broken filter.
 
 ### Settings you can change later
 
-Everything on the house screen - the price, the meters, how your battery
-charges - can be changed at any time: **Settings** > **Devices & services** >
-**Home Energy Advisor** > three-dot menu > **Reconfigure**. Empty a field to
-remove that input altogether. Each battery is changed or removed on its own entry
-under the integration, with **Edit battery**. Either way the change counts from
-then on; figures already recorded stay as they are.
+Everything on the house screen - the meters, how your battery charges - can be
+changed at any time: **Settings** > **Devices & services** > **Home Energy
+Advisor** > three-dot menu > **Reconfigure**. Empty a field to remove that input
+altogether. Each grid meter and each battery is changed or removed on its own
+entry under the integration, with **Edit grid meter** or **Edit battery**. Either
+way the change counts from then on; figures already recorded stay as they are.
 
 #### When the Energy Dashboard changes
 
-If the batteries in your Energy Dashboard stop matching the ones entered here -
-you added one there, or gave one a level and capacity - a notice appears in
-**Settings** > **Repairs** listing both, with two answers:
+If the batteries or grid meters in your Energy Dashboard stop matching the ones
+entered here - you added one there, gave a battery a level and capacity, or
+changed a grid meter's price - a notice appears in **Settings** > **Repairs**
+listing both, with two answers:
 
-- **Take the Energy Dashboard's batteries.** They are entered here exactly as if
-  you had edited them yourself. A battery with the same meters keeps its name and
-  its figures.
+- **Take the Energy Dashboard's.** They are entered here exactly as if you had
+  edited them yourself. A battery with the same meters, or a grid meter with the
+  same import meter, keeps its name and its figures.
 - **Keep mine.** Nothing changes. You may have chosen different meters here on
   purpose - a lifetime counter rather than a daily one, say - and you are not
   asked again until the Energy Dashboard changes once more.
@@ -686,8 +720,8 @@ for you your own generation really is free.
 
 ## What it does not do
 
-- **It needs a grid connection.** An import price and a grid import meter are
-  both required, and the comparison the whole product is built on - what you
+- **It needs a grid connection.** A grid meter with its import price is
+  required, and the comparison the whole product is built on - what you
   paid, against what the grid would have charged for the same energy - has no
   meaning without a grid tariff to compare to. **Off-grid homes are not
   supported.**

@@ -18,7 +18,7 @@
  * rerun against a half-built house finishes it rather than failing.
  */
 
-import { BOUND_CONCEPTS, DEVICES, HOUSE } from "./house.mjs";
+import { BOUND_CONCEPTS, DEVICES, GRID_METERS, HOUSE } from "./house.mjs";
 import { BASE_URL, entityIdForUniqueId } from "./ha-client.mjs";
 import { describeHouse } from "./diagnose.mjs";
 import { giveUpReport, hasFigures, noted } from "./progress.mjs";
@@ -68,46 +68,58 @@ function created(result, what) {
 }
 
 /**
- * Take the house-level step: the meters, the price and the currency.
+ * Take the house-level step, then the grid meters and the batteries.
  *
- * Every field is supplied rather than left to the Energy Dashboard prefill,
- * even though the prefill would answer most of them (HEA-117, HEA-118). The
+ * Every house field is supplied rather than left to the Energy Dashboard
+ * prefill, even though the prefill would answer some of them (HEA-117). The
  * suite is asserting what the integration *produces*, and a setup that depends
  * on a second feature working is a setup that fails for two different reasons.
+ *
+ * The grid meters and batteries are entries of their own, offered from the
+ * Energy Dashboard on the steps after the house's (ADR-0031, ADR-0032). The
+ * demo's Energy Dashboard holds both registers and both batteries, so taking
+ * everything offered is taking them all - and the check below that the step
+ * offered exactly that is what proves the offer.
  */
 async function createEntry(token) {
   const started = await api("/api/config/config_entries/flow", token, {
     method: "POST",
     body: { handler: DOMAIN, show_advanced_options: false },
   });
-  const house = await api(`/api/config/config_entries/flow/${started.flow_id}`, token, {
-    method: "POST",
-    body: {
-      price_entity: HOUSE.importPrice,
-      currency: CURRENCY,
-      grid_import_entity: HOUSE.gridImport,
-      grid_export_entity: HOUSE.gridExport,
-      // A list: the field takes every generation meter a house has (HEA-219).
-      generation_entity: [HOUSE.generation],
-      house_consumption_entity: HOUSE.houseConsumption,
-    },
+  const step = (body) =>
+    api(`/api/config/config_entries/flow/${started.flow_id}`, token, {
+      method: "POST",
+      body,
+    });
+  let result = await step({
+    currency: CURRENCY,
+    // A list: the field takes every generation meter a house has (HEA-219).
+    generation_entity: [HOUSE.generation],
+    house_consumption_entity: HOUSE.houseConsumption,
   });
-  // The battery is an entry of its own, offered from the Energy Dashboard on the
-  // step after the house's (ADR-0031). The demo's Energy Dashboard holds both of
-  // its batteries, so taking everything offered is taking the two.
-  const result =
-    house.step_id === "batteries"
-      ? await api(`/api/config/config_entries/flow/${started.flow_id}`, token, {
-          method: "POST",
-          body: { batteries: offeredBatteries(house) },
-        })
-      : house;
+  if (result.step_id !== "grid_meters") {
+    throw new Error(
+      `Expected the Energy Dashboard's grid meters to be offered, got ` +
+        `${result.step_id ?? result.type} (${JSON.stringify(result.errors ?? {})}).`,
+    );
+  }
+  const grids = offered(result, "grid_meters");
+  if (grids.length !== GRID_METERS.length) {
+    throw new Error(
+      `The grid step offered ${grids.length} meters, not the ${GRID_METERS.length} ` +
+        "registers the demo's Energy Dashboard holds.",
+    );
+  }
+  result = await step({ grid_meters: grids });
+  if (result.step_id === "batteries") {
+    result = await step({ batteries: offered(result, "batteries") });
+  }
   return created(result, "the household");
 }
 
-/** Every battery a batteries step offers, as the values it expects back. */
-function offeredBatteries(step) {
-  const field = step.data_schema.find((entry) => entry.name === "batteries");
+/** Every option a ticking step offers, as the values it expects back. */
+function offered(step, name) {
+  const field = step.data_schema.find((entry) => entry.name === name);
   return field.selector.select.options.map((option) => option.value);
 }
 

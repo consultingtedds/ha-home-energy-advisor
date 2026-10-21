@@ -17,6 +17,7 @@ import {
   BATTERIES,
   DEVICES,
   FLOORS,
+  GRID_METERS,
   HOUSE,
   UNTRACKED_SOURCES,
 } from "./house.mjs";
@@ -152,20 +153,20 @@ function setEnergyPreferences(socket) {
       // Home Assistant 2026.9 replaced the grid source's `flow_from` and
       // `flow_to` arrays with one flat import/export pair, and migrates stored
       // preferences on load. New preferences have to be written in the new
-      // shape - the old one is refused outright.
-      {
+      // shape - the old one is refused outright. One per register.
+      ...GRID_METERS.map((grid) => ({
         type: "grid",
-        stat_energy_from: HOUSE.gridImport,
-        stat_energy_to: HOUSE.gridExport,
+        stat_energy_from: grid.import,
+        stat_energy_to: grid.export ?? null,
         stat_cost: null,
-        entity_energy_price: HOUSE.importPrice,
-        number_energy_price: null,
+        entity_energy_price: grid.priceEntity ?? null,
+        number_energy_price: grid.fixedPrice ?? null,
         stat_compensation: null,
-        entity_energy_price_export: HOUSE.exportPrice,
+        entity_energy_price_export: grid.export ? HOUSE.exportPrice : null,
         number_energy_price_export: null,
         // Required, even though a demo has no billing day to adjust for.
         cost_adjustment_day: 0,
-      },
+      })),
       {
         type: "solar",
         stat_energy_from: HOUSE.generation,
