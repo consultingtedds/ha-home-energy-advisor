@@ -342,7 +342,7 @@
         "step": {
           "init": {
             "title": "Your Energy Dashboard's batteries have changed",
-            "description": "Your Energy Dashboard holds batteries that Home Energy Advisor does not count, or holds them differently.\n\n**In your Energy Dashboard:**\n{theirs}\n\n**In Home Energy Advisor:**\n{ours}\n\nTake them, and Home Energy Advisor counts your Energy Dashboard's batteries from now on, exactly as if you had edited them here. A battery with the same meters keeps its name and its figures.\n\nKeep mine, and nothing changes. You may have chosen different meters here on purpose. You will not be asked again until your Energy Dashboard changes once more.",
+            "description": "Your Energy Dashboard holds batteries that Home Energy Advisor does not count, or holds them differently.\n\n**In your Energy Dashboard:**\n{theirs}\n\n**In Home Energy Advisor:**\n{ours}\n\nTake them, and Home Energy Advisor counts your Energy Dashboard's batteries from now on, exactly as if you had edited them here. A battery with the same meters keeps its name and its figures. A level is a percentage, so a battery whose level is left out needs its capacity: add it in your Energy Dashboard and the level comes with it, or add both afterwards with Edit battery.\n\nKeep mine, and nothing changes. You may have chosen different meters here on purpose. You will not be asked again until your Energy Dashboard changes once more.",
             "menu_options": {
               "take": "Take the Energy Dashboard's batteries",
               "keep": "Keep mine"
@@ -379,6 +379,7 @@
   "common": {
     "candidate_label": "{name} ({entity_id})",
     "candidate_label_false_friend": "{name} ({entity_id}) - may not be a device",
+    "repair_level_left_out": "level left out: add its capacity",
     "card_paid": "Paid",
     "card_would_have_paid": "Would have paid",
     "card_saved": "Saved",

@@ -159,8 +159,10 @@ async def test_a_household_summing_two_batteries_is_offered_them(
     # When
     entry = await _set_up(hass, _SUMMED)
 
-    # Then - a Repair the household can answer, listing both sides by what
-    # reads the same in every language
+    # Then - a Repair the household can answer, listing both sides as they will
+    # be taken. The second battery's level has no capacity to make kWh of, so it
+    # is left behind on take, and the line says so rather than listing it, as
+    # HEA-236 found it did
     issue = _issue(hass, entry)
     assert issue is not None
     assert issue.is_fixable
@@ -171,8 +173,8 @@ async def test_a_household_summing_two_batteries_is_offered_them(
         "theirs": (
             "- Anker Solix: sensor.anker_charge, sensor.anker_discharge, "
             "sensor.anker_level, 2.7 kWh\n"
-            "- Battery 2: sensor.growatt_charge, sensor.growatt_discharge, "
-            "sensor.growatt_level"
+            "- Battery 2: sensor.growatt_charge, sensor.growatt_discharge "
+            "(level left out: add its capacity)"
         ),
         "ours": "- Battery: sensor.batteries_charge, sensor.batteries_discharge",
     }

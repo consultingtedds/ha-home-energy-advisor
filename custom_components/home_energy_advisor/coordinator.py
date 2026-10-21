@@ -291,7 +291,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             return
         self._apply_nesting(manager.data)
         self._apply_export_price(manager.data)
-        async_check_energy_dashboard(self.hass, self._entry, manager.data)
+        await async_check_energy_dashboard(self.hass, self._entry, manager.data)
         manager.async_listen_updates(self._async_energy_prefs_changed)
 
     async def _async_energy_prefs_changed(self) -> None:
@@ -306,7 +306,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             return
         self._apply_nesting(manager.data)
         self._apply_export_price(manager.data)
-        async_check_energy_dashboard(self.hass, self._entry, manager.data)
+        await async_check_energy_dashboard(self.hass, self._entry, manager.data)
 
     def _apply_nesting(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
         self._accountant.set_nesting(_nesting_of(prefs, self._device_of_entity))

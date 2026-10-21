@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.components.energy.data import async_get_manager
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import translation
 
 from .const import (
     CONF_BATTERY_CAPACITY_KWH,
@@ -27,6 +28,7 @@ from .const import (
     CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_BATTERY_SOC_ENTITY,
     CONF_ENERGY_DASHBOARD_ANSWERED,
+    DOMAIN,
     SUBENTRY_TYPE_BATTERY,
 )
 from .house_inputs import Battery, batteries_of, battery_from
@@ -192,7 +194,7 @@ def taken(answers: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def async_check(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # noqa: ANN401
+async def async_check(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # noqa: ANN401
     """Ask about the Energy Dashboard's house where it differs from what is here.
 
     Not asked again once answered: the Energy Dashboard as it stood when the
@@ -210,41 +212,65 @@ def async_check(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  #
         hass,
         issue_id,
         ISSUE_ENERGY_DASHBOARD_CHANGED,
-        placeholders=listed_differences(found, ours),
+        placeholders=await async_listed_differences(hass, found, ours),
         fix_data={"entry_id": entry.entry_id},
     )
 
 
-def listed_differences(
-    found: Differences, ours: Mapping[str, Battery]
+async def async_listed_differences(
+    hass: HomeAssistant, found: Differences, ours: Mapping[str, Battery]
 ) -> dict[str, str]:
     """Each side's batteries as lines a Repair can show.
 
-    Only names, entity ids and capacities, which read the same in every
-    language, so nothing here needs translating.
+    The Energy Dashboard's are listed as they will be taken, not as it holds
+    them: a level without a capacity is left behind (`taken`), and listing it
+    promised what taking it did not do (HEA-236). Where one is left behind the
+    line says so, in the household's language; everything else is names,
+    entity ids and capacities, which read the same in every language.
     """
+    left_out = await _left_out_note(hass)
     return {
-        "theirs": _lines(battery_from(a[CONF_NAME], a) for a in found.theirs),
-        "ours": _lines(ours[battery_id] for battery_id in found.ours),
+        "theirs": _lines(
+            _line(battery_from(a[CONF_NAME], taken(a)))
+            + (f" ({left_out})" if _level_left_behind(a) else "")
+            for a in found.theirs
+        ),
+        "ours": _lines(_line(ours[battery_id]) for battery_id in found.ours),
     }
 
 
-def _lines(batteries: Iterable[Battery]) -> str:
-    lines = [
-        f"- {battery.name}: "
-        + ", ".join(
-            part
-            for part in (
-                battery.charge,
-                battery.discharge,
-                battery.level,
-                f"{battery.capacity} kWh" if battery.capacity is not None else None,
-            )
-            if part
-        )
-        for battery in batteries
-    ]
+def _level_left_behind(answers: Mapping[str, Any]) -> bool:
+    return bool(answers.get(CONF_BATTERY_SOC_ENTITY)) and (
+        CONF_BATTERY_SOC_ENTITY not in taken(answers)
+    )
+
+
+async def _left_out_note(hass: HomeAssistant) -> str:
+    """The note on a battery whose level is left behind, translated."""
+    strings = await translation.async_get_translations(
+        hass, hass.config.language, "common", {DOMAIN}
+    )
+    return strings.get(
+        f"component.{DOMAIN}.common.repair_level_left_out",
+        "level left out: add its capacity",
+    )
+
+
+def _lines(lines: Iterable[str]) -> str:
     return "\n".join(lines) or "-"
+
+
+def _line(battery: Battery) -> str:
+    return f"- {battery.name}: " + ", ".join(
+        part
+        for part in (
+            battery.charge,
+            battery.discharge,
+            battery.level,
+            f"{battery.capacity} kWh" if battery.capacity is not None else None,
+        )
+        if part
+    )
 
 
 def async_take(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # noqa: ANN401

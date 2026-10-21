@@ -16,9 +16,9 @@ from .config_flow import validate_battery
 from .energy_dashboard import (
     async_energy_prefs,
     async_keep,
+    async_listed_differences,
     async_take,
     differences_from,
-    listed_differences,
     taken,
 )
 from .house_inputs import batteries_of
@@ -56,8 +56,8 @@ class EnergyDashboardChangedFlow(RepairsFlow):
         return self.async_show_menu(
             step_id="init",
             menu_options=["take", "keep"],
-            description_placeholders=listed_differences(
-                differences_from(prefs, entry), batteries_of(entry)
+            description_placeholders=await async_listed_differences(
+                self.hass, differences_from(prefs, entry), batteries_of(entry)
             ),
         )
 

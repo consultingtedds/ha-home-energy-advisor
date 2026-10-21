@@ -342,7 +342,7 @@
         "step": {
           "init": {
             "title": "Las baterías de tu Panel de energía han cambiado",
-            "description": "Tu Panel de energía tiene baterías que Home Energy Advisor no contabiliza, o las tiene de otra manera.\n\n**En tu Panel de energía:**\n{theirs}\n\n**En Home Energy Advisor:**\n{ours}\n\nSi las tomas, Home Energy Advisor contabiliza a partir de ahora las baterías de tu Panel de energía, igual que si las hubieras editado aquí. Una batería con los mismos contadores conserva su nombre y sus cifras.\n\nSi conservas las tuyas, no cambia nada. Puede que aquí hayas elegido otros contadores a propósito. No se te volverá a preguntar hasta que tu Panel de energía vuelva a cambiar.",
+            "description": "Tu Panel de energía tiene baterías que Home Energy Advisor no contabiliza, o las tiene de otra manera.\n\n**En tu Panel de energía:**\n{theirs}\n\n**En Home Energy Advisor:**\n{ours}\n\nSi las tomas, Home Energy Advisor contabiliza a partir de ahora las baterías de tu Panel de energía, igual que si las hubieras editado aquí. Una batería con los mismos contadores conserva su nombre y sus cifras. El nivel es un porcentaje, así que una batería cuyo nivel no se incluye necesita su capacidad: añádela en tu Panel de energía y el nivel vendrá con ella, o añade ambos después con Editar batería.\n\nSi conservas las tuyas, no cambia nada. Puede que aquí hayas elegido otros contadores a propósito. No se te volverá a preguntar hasta que tu Panel de energía vuelva a cambiar.",
             "menu_options": {
               "take": "Tomar las baterías del Panel de energía",
               "keep": "Conservar las mías"
@@ -379,6 +379,7 @@
   "common": {
     "candidate_label": "{name} ({entity_id})",
     "candidate_label_false_friend": "{name} ({entity_id}) - puede que no sea un dispositivo",
+    "repair_level_left_out": "nivel no incluido: añade su capacidad",
     "card_paid": "Pagado",
     "card_would_have_paid": "Habrías pagado",
     "card_saved": "Ahorrado",
