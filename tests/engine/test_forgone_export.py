@@ -183,7 +183,12 @@ def test_the_rates_in_force_say_which_rate_and_since_when() -> None:
 
     # Then - each rate in force, from when, and not the export rate still to come
     assert rates == {
-        "import": {"rate": "0.25", "since": "2026-07-08T23:00:00+00:00"},
+        "import": {
+            "sensor.grid_import": {
+                "rate": "0.25",
+                "since": "2026-07-08T23:00:00+00:00",
+            }
+        },
         "export": {"rate": "0.05", "since": "2026-07-08T22:00:00+00:00"},
     }
 

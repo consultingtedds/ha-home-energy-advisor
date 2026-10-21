@@ -141,7 +141,12 @@ async def test_diagnostics_say_which_rates_are_in_force(
     # came from, and no export rate said as none rather than as zero
     assert result["config"]["price_entity"] == "sensor.price"
     assert result["config"]["rates_in_force"] == {
-        "import": {"rate": "0.30", "since": "2026-07-08T22:00:00+00:00"},
+        "import": {
+            "sensor.grid_import": {
+                "rate": "0.30",
+                "since": "2026-07-08T22:00:00+00:00",
+            }
+        },
         "export": None,
     }
 

@@ -545,11 +545,18 @@ class Accountant:
         self._import_entity = next(
             iter(self._meters_of.get(SourceRole.GRID_IMPORT, ())), None
         )
-        self._cold_start_logged = False
+        # The import meters that have been told no price has arrived for them yet.
+        self._cold_start_logged: set[str] = set()
         self._sources: dict[str, CumulativeEnergySource] = {}
         self._raw: dict[datetime, dict[SourceRole, Decimal]] = {}
+        # Each interval's import again, meter by meter, because each register is
+        # priced at its own rate (ADR-0032). `_raw` holds the same energy summed.
+        self._raw_import: dict[datetime, dict[str, Decimal]] = {}
         self._draws: dict[datetime, dict[str, Decimal]] = {}
-        self._prices: list[tuple[datetime, Decimal]] = []
+        # The import price of each import meter. Keyed `None` only where a
+        # household has no import meter at all, which leaves the rate pricing
+        # what the grid would have cost and nothing else.
+        self._prices: dict[str | None, list[tuple[datetime, Decimal]]] = {}
         # What the household is paid for exporting, kept the same way the import
         # price is because the forgone-export figure is accumulated against the
         # rate in force at the time rather than an average over a period
@@ -623,9 +630,16 @@ class Accountant:
         # must not vouch for another that has gone quiet (HEA-219).
         self._silent_meters: set[str] = set()
 
-    def record_price(self, at: datetime, price: Decimal) -> None:
-        """Records the import price active from ``at``."""
-        self._prices.append((at, price))
+    def record_price(
+        self, at: datetime, price: Decimal, meter: str | None = None
+    ) -> None:
+        """Records the import price active from ``at`` on one import meter.
+
+        ``meter`` defaults to the household's first import meter, which is the
+        only one a household with a single register has.
+        """
+        key = self._import_entity if meter is None else meter
+        self._prices.setdefault(key, []).append((at, price))
 
     def record_export_price(self, at: datetime, price: Decimal) -> None:
         """Records the export price active from ``at`` (ADR-0026).
@@ -638,17 +652,21 @@ class Accountant:
         """
         self._export_prices.append((at, price))
 
-    def rates_in_force(self, now: datetime) -> dict[str, dict[str, str] | None]:
+    def rates_in_force(self, now: datetime) -> dict[str, object]:
         """The import and export rate the engine holds at ``now``, and since when.
 
         For the diagnostics (HEA-210). A forgone figure only moves when
         generation is used, so on a dull morning a rate that took and a rate the
         engine never saw look the same; the rate held and the moment it took
         effect tell them apart. ``None`` where no rate has been received, which
-        is a different answer from a rate of zero.
+        is a different answer from a rate of zero. Import is given per import
+        meter, since each register has its own (ADR-0032).
         """
         return {
-            "import": _in_force(self._prices, now),
+            "import": {
+                str(meter): _in_force(series, now)
+                for meter, series in self._prices.items()
+            },
             "export": _in_force(self._export_prices, now),
         }
 
@@ -684,7 +702,7 @@ class Accountant:
             return
         if role is not None:
             self._shares.carried(entity_id, delta.kwh)
-            self._spread_source(role, delta, source)
+            self._spread_source(entity_id, role, delta, source)
         elif (device := self._device_of.get(entity_id)) is not None:
             self._spread_device(device, delta, source)
 
@@ -771,6 +789,7 @@ class Accountant:
         # hold's window alike. Re-anchoring would publish nothing for a day, and
         # forgetting what was published would publish the same loss twice.
         self._raw.clear()
+        self._raw_import.clear()
         self._draws.clear()
         self._retained.clear()
         # Debt outlives nothing: it is a claim against buckets that no longer
@@ -846,6 +865,13 @@ class Accountant:
                 }
                 for start, roles in self._raw.items()
             ],
+            "raw_import": [
+                {
+                    "at": start.isoformat(),
+                    "meters": {meter: str(kwh) for meter, kwh in meters.items()},
+                }
+                for start, meters in self._raw_import.items()
+            ],
             "draws": [
                 {
                     "at": start.isoformat(),
@@ -853,9 +879,15 @@ class Accountant:
                 }
                 for start, devices in self._draws.items()
             ],
-            "prices": [
-                {"at": when.isoformat(), "price": str(price)}
-                for when, price in self._prices
+            "import_prices": [
+                {
+                    "meter": meter,
+                    "prices": [
+                        {"at": when.isoformat(), "price": str(price)}
+                        for when, price in series
+                    ],
+                }
+                for meter, series in self._prices.items()
             ],
             # Persisted for the same reason the import price is: a restart that
             # lost it would value the generation served before the household's
@@ -989,6 +1021,15 @@ class Accountant:
             }
             for bucket in data["raw"]
         }
+        # Absent before import was kept meter by meter. An interval left open
+        # then has nothing to weight its registers by, and is priced at their
+        # average, which for a single register is its own rate.
+        self._raw_import = {
+            datetime.fromisoformat(bucket["at"]): {
+                meter: Decimal(kwh) for meter, kwh in bucket["meters"].items()
+            }
+            for bucket in data.get("raw_import", [])
+        }
         self._draws = {
             datetime.fromisoformat(bucket["at"]): {
                 device: Decimal(kwh)
@@ -997,10 +1038,20 @@ class Accountant:
             }
             for bucket in data["draws"]
         }
-        self._prices = [
-            (datetime.fromisoformat(entry["at"]), Decimal(entry["price"]))
-            for entry in data["prices"]
+        # One list before each register had its own, and every household then had
+        # one register, so the list is that register's.
+        registers = data.get("import_prices") or [
+            {"meter": self._import_entity, "prices": data["prices"]}
         ]
+        importing = set(self._meters_of.get(SourceRole.GRID_IMPORT, ()))
+        self._prices = {
+            register["meter"]: [
+                (datetime.fromisoformat(entry["at"]), Decimal(entry["price"]))
+                for entry in register["prices"]
+            ]
+            for register in registers
+            if register["meter"] in importing or register["meter"] is None
+        }
         # Absent from a snapshot written before this existed, which is every
         # installed household's on the release that adds it - see `_load_running`.
         self._export_prices = [
@@ -1564,7 +1615,11 @@ class Accountant:
         return self._watermark is not None
 
     def _spread_source(
-        self, role: SourceRole, delta: EnergyDelta, source: CumulativeEnergySource
+        self,
+        entity_id: str,
+        role: SourceRole,
+        delta: EnergyDelta,
+        source: CumulativeEnergySource,
     ) -> None:
         """Place a house meter's energy in the intervals it accrued across.
 
@@ -1584,6 +1639,9 @@ class Accountant:
             if not self._is_finalised(portion.start):
                 bucket = self._raw.setdefault(portion.start, {})
                 bucket[role] = bucket.get(role, Decimal(0)) + portion.kwh
+                if role is SourceRole.GRID_IMPORT:
+                    meters = self._raw_import.setdefault(portion.start, {})
+                    meters[entity_id] = meters.get(entity_id, Decimal(0)) + portion.kwh
             elif (kind := _RAISES_CONSUMPTION.get(role)) is None:
                 # Export and charge subtract, and a finalised bucket's published
                 # figure never falls. Their carries settle them forward instead.
@@ -1800,15 +1858,15 @@ class Accountant:
         retained.draw += kwh
 
     def _finalize_bucket(self, start: datetime) -> None:
-        if not self._prices:
-            self._note_zero_priced(start)
+        self._note_zero_priced(start)
         raw = self._raw.pop(start, {})
+        imported = self._raw_import.pop(start, {})
         claimed = self._draws.pop(start, {})
         served = self._decompose(raw, start)
         self._weigh_plausibility(served, claimed, start)
         draws = self._own_draws(self._believable(claimed, start), start)
         prices, sources, forgone_prices = self._price_sources(
-            served, self._price_at(start), start
+            served, self._import_price(start, imported), start
         )
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
@@ -2322,28 +2380,30 @@ class Accountant:
         """
         if self._watermark is None:
             return
-        keep_from = 0
-        for index, (when, _price) in enumerate(self._prices):
-            if when > self._watermark:
-                break
-            keep_from = index
-        if keep_from > 0:
-            del self._prices[:keep_from]
+        for series in self._prices.values():
+            keep_from = 0
+            for index, (when, _price) in enumerate(series):
+                if when > self._watermark:
+                    break
+                keep_from = index
+            if keep_from > 0:
+                del series[:keep_from]
 
     def _note_zero_priced(self, start: datetime) -> None:
-        """Log, once, that finalising began before any import price was known.
+        """Log, once per import meter, that it closed an interval with no price.
 
-        Attached to the price-bearing import source's decision log so diagnostics
-        can explain the zero-cost early buckets. Logged a single time per
+        Attached to that meter's own decision log so diagnostics can explain the
+        zero-cost early buckets, register by register. Logged a single time per
         cold-start: once a price is recorded the list never empties again (pruning
         keeps at least one), so this cannot re-fire.
         """
-        if self._cold_start_logged or self._import_entity is None:
-            return
-        source = self._sources.get(self._import_entity)
-        if source is not None:
-            source.note_zero_priced(start)
-            self._cold_start_logged = True
+        for meter in self._meters_of.get(SourceRole.GRID_IMPORT, ()):
+            if meter in self._cold_start_logged or self._prices.get(meter):
+                continue
+            source = self._sources.get(meter)
+            if source is not None:
+                source.note_zero_priced(start)
+                self._cold_start_logged.add(meter)
 
     def _is_readable(self, *roles: SourceRole) -> bool:
         """Whether every named house input is configured and all its meters report.
@@ -2461,8 +2521,37 @@ class Accountant:
         }
         return prices, sources, forgone
 
-    def _price_at(self, when: datetime) -> Decimal:
-        return _rate_at(self._prices, when)
+    def _import_price(self, when: datetime, imported: Mapping[str, Decimal]) -> Decimal:
+        """The grid price of the interval at ``when``, blended over its registers.
+
+        Each register's import at its own rate, summed and divided by the total
+        (ADR-0032). Where every register that imported shares one rate, that
+        rate is the answer outright, so a single register is priced at exactly
+        its rate rather than at a quotient that can land a digit off.
+
+        Where nothing was imported there is nothing to weight by, and the price
+        is the plain average of the registers' rates: no register has a better
+        claim on what the grid would have cost. A register with no rate yet is
+        priced at zero, as a household with none at all is.
+        """
+        rates = {
+            meter: _rate_at(series, when) for meter, series in self._prices.items()
+        }
+        weights = {meter: kwh for meter, kwh in imported.items() if kwh > 0}
+        carried = {rates.get(meter, Decimal(0)) for meter in weights}
+        if len(carried) == 1:
+            return carried.pop()
+        if weights:
+            cost = _sum(
+                kwh * rates.get(meter, Decimal(0)) for meter, kwh in weights.items()
+            )
+            return cost / _sum(weights.values())
+        if not rates:
+            return Decimal(0)
+        distinct = set(rates.values())
+        if len(distinct) == 1:
+            return distinct.pop()
+        return _sum(rates.values()) / len(rates)
 
     def _export_price_at(self, when: datetime) -> Decimal:
         """What a kWh exported at ``when`` would have earned, or zero if unknown.

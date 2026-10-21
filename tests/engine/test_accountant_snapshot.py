@@ -201,6 +201,9 @@ _PERSISTED = frozenset(
         "_prices",
         "_export_prices",
         "_raw",
+        # Each open interval's import meter by meter, which its price is blended
+        # from (ADR-0032).
+        "_raw_import",
         "_retained",
         "_running",
         "_sources",
