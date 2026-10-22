@@ -174,6 +174,12 @@ class DeviceTotals:
     energy_from_grid: Decimal
     energy_from_generation: Decimal
     energy_from_battery: Decimal
+    # How much of ``energy_from_battery`` was sunshine stored earlier, which the
+    # meters cannot say and the battery's ledger can: every charge is booked as
+    # grid or generation, and a discharge takes its share of each. A part of
+    # ``energy_from_battery`` rather than a fourth source, so the by-source split
+    # still sums to the energy (ADR-0033).
+    energy_from_battery_solar: Decimal
     # What ``actual_cost`` would have been had every kWh landed in the cheapest,
     # then the dearest, 5-minute slice of the span its counter revealed it over.
     # Outer bounds on the spreading approximation, not a confidence interval, and
@@ -200,6 +206,7 @@ _ZERO_TOTALS = DeviceTotals(
     energy_from_grid=Decimal(0),
     energy_from_generation=Decimal(0),
     energy_from_battery=Decimal(0),
+    energy_from_battery_solar=Decimal(0),
     cost_floor=Decimal(0),
     cost_ceiling=Decimal(0),
     forgone_export=Decimal(0),
@@ -265,6 +272,10 @@ class _RetainedBucket:
     # the rate series is pruned against the watermark, so an old bucket's rate
     # is not necessarily still in it.
     forgone_prices: Mapping[SourceKind, Decimal]
+    # What share of a kWh from each source in *this* bucket was stored sunshine,
+    # for the same reason: the battery's blend has moved on by the time a late
+    # arrival turns up (ADR-0033).
+    solar_shares: Mapping[SourceKind, Decimal]
     draw: Decimal
     sources: Mapping[SourceKind, Decimal]
 
@@ -359,8 +370,10 @@ class _HeldCorrection:
     battery_savings: Decimal
     # What each source in this correction's bucket gave up per kWh. Rates, not
     # amounts, so they are carried through a split unchanged while the energy
-    # beside them is scaled (ADR-0026, ADR-0027).
+    # beside them is scaled (ADR-0026, ADR-0027). The sunshine shares likewise
+    # (ADR-0033).
     forgone_prices: Mapping[SourceKind, Decimal]
+    solar_shares: Mapping[SourceKind, Decimal]
     by_source: dict[SourceKind, Decimal]
 
     def scaled(self, fraction: Decimal) -> _HeldCorrection:
@@ -373,6 +386,7 @@ class _HeldCorrection:
             cost_savings=self.cost_savings * fraction,
             battery_savings=self.battery_savings * fraction,
             forgone_prices=self.forgone_prices,
+            solar_shares=self.solar_shares,
             by_source={kind: kwh * fraction for kind, kwh in self.by_source.items()},
         )
 
@@ -386,6 +400,7 @@ class _HeldCorrection:
             cost_savings=self.cost_savings - taken.cost_savings,
             battery_savings=self.battery_savings - taken.battery_savings,
             forgone_prices=self.forgone_prices,
+            solar_shares=self.solar_shares,
             by_source={
                 kind: kwh - taken.by_source.get(kind, Decimal(0))
                 for kind, kwh in self.by_source.items()
@@ -431,6 +446,9 @@ class _Running:
     # book what it gave up. ADR-0025 threaded a money figure through each path by
     # hand and silently missed one of the four.
     forgone_export: Decimal = Decimal(0)
+    # How much of this device's battery energy was stored sunshine, accumulated
+    # through the same funnel for the same reason (ADR-0033).
+    battery_solar: Decimal = Decimal(0)
     by_source: dict[SourceKind, Decimal] = field(default_factory=dict)
 
     def bound(self, floor: Decimal, ceiling: Decimal) -> None:
@@ -441,20 +459,22 @@ class _Running:
         self,
         allocation: DeviceAllocation,
         forgone_per_kwh: Mapping[SourceKind, Decimal],
+        solar_per_kwh: Mapping[SourceKind, Decimal],
     ) -> None:
         self.energy_kwh += allocation.energy_kwh
         self.actual_cost += allocation.actual_cost
         self.naive_cost += allocation.naive_cost
         self.cost_savings += allocation.cost_savings
         self.battery_savings += allocation.battery_savings
-        self.add_by_source(allocation.energy_by_source, forgone_per_kwh)
+        self.add_by_source(allocation.energy_by_source, forgone_per_kwh, solar_per_kwh)
 
     def add_by_source(
         self,
         shares: Mapping[SourceKind, Decimal],
         forgone_per_kwh: Mapping[SourceKind, Decimal],
+        solar_per_kwh: Mapping[SourceKind, Decimal],
     ) -> None:
-        """Attribute energy to its sources, and what each source gave up.
+        """Attribute energy to its sources, what each gave up, and what was sun.
 
         Generation gives up the export it was not paid for, at the rate in force
         when it was used. A battery discharge gives up what the sunshine inside
@@ -469,10 +489,15 @@ class _Running:
         priced simply contributes nothing and adding another needs no new
         argument. Required rather than defaulted, so a new caller cannot quietly
         book generation at nothing.
+
+        The sunshine shares follow the same rules: only a discharge carries one,
+        its share of the stored blend (ADR-0033), and it is required for the
+        same reason.
         """
         for kind, kwh in shares.items():
             self.by_source[kind] = self.by_source.get(kind, Decimal(0)) + kwh
             self.forgone_export += kwh * forgone_per_kwh.get(kind, Decimal(0))
+            self.battery_solar += kwh * solar_per_kwh.get(kind, Decimal(0))
 
     def snapshot(self) -> DeviceTotals:
         return DeviceTotals(
@@ -486,6 +511,7 @@ class _Running:
                 SourceKind.GENERATION, Decimal(0)
             ),
             energy_from_battery=self.by_source.get(SourceKind.BATTERY, Decimal(0)),
+            energy_from_battery_solar=self.battery_solar,
             cost_floor=self.cost_floor,
             cost_ceiling=self.cost_ceiling,
             forgone_export=self.forgone_export,
@@ -957,6 +983,7 @@ class Accountant:
                     "cost_savings": str(held.cost_savings),
                     "battery_savings": str(held.battery_savings),
                     "forgone_prices": _dump_by_source(held.forgone_prices),
+                    "solar_shares": _dump_by_source(held.solar_shares),
                     "by_source": _dump_by_source(held.by_source),
                 }
                 for held in self._held
@@ -974,6 +1001,7 @@ class Accountant:
                     "import_price": str(bucket.import_price),
                     "battery_price": str(bucket.battery_price),
                     "forgone_prices": _dump_by_source(bucket.forgone_prices),
+                    "solar_shares": _dump_by_source(bucket.solar_shares),
                     "draw": str(bucket.draw),
                     "sources": _dump_by_source(bucket.sources),
                 }
@@ -1130,6 +1158,8 @@ class Accountant:
                 # values that correction's generation at nothing - the honest
                 # answer, since nobody recorded what it gave up.
                 forgone_prices=_load_by_source(held.get("forgone_prices", {})),
+                # Empty before stored sunshine was counted, for the same reason.
+                solar_shares=_load_by_source(held.get("solar_shares", {})),
                 by_source=_load_by_source(held["by_source"]),
             )
             for held in data["held"]
@@ -1149,6 +1179,7 @@ class Accountant:
                 # Absent before this figure existed - see `_load_running`.
                 battery_price=Decimal(bucket.get("battery_price", 0)),
                 forgone_prices=_load_by_source(bucket.get("forgone_prices", {})),
+                solar_shares=_load_by_source(bucket.get("solar_shares", {})),
                 draw=Decimal(bucket["draw"]),
                 sources=_load_by_source(bucket["sources"]),
             )
@@ -1248,6 +1279,7 @@ class Accountant:
         grid = _sum(d.energy_from_grid for d in tracked)
         generation = _sum(d.energy_from_generation for d in tracked)
         battery = _sum(d.energy_from_battery for d in tracked)
+        solar = _sum(d.energy_from_battery_solar for d in tracked)
         forgone = _sum(d.forgone_export for d in tracked)
         return DeviceTotals(
             energy_kwh=whole_home.energy_kwh - energy,
@@ -1258,6 +1290,7 @@ class Accountant:
             energy_from_grid=whole_home.energy_from_grid - grid,
             energy_from_generation=whole_home.energy_from_generation - generation,
             energy_from_battery=whole_home.energy_from_battery - battery,
+            energy_from_battery_solar=whole_home.energy_from_battery_solar - solar,
             # The remainder is derived slice by slice from meters that reported
             # for that slice, so unlike a coarse counter it has no span to be
             # uncertain about: its cost is its own bound.
@@ -1671,7 +1704,9 @@ class Accountant:
         actual = kwh * _MARGINAL_PRICE_OF[kind](retained)
         naive = kwh * retained.import_price
         self._house.energy_kwh += kwh
-        self._house.add_by_source({kind: kwh}, retained.forgone_prices)
+        self._house.add_by_source(
+            {kind: kwh}, retained.forgone_prices, retained.solar_shares
+        )
         self._house.actual_cost += actual
         self._house.naive_cost += naive
         self._house.cost_savings += naive - actual
@@ -1821,6 +1856,7 @@ class Accountant:
         run.add_by_source(
             split_by_source(grew, retained.sources, retained.consumption),
             retained.forgone_prices,
+            retained.solar_shares,
         )
         funded_by_source = split_by_source(
             funded, retained.sources, retained.consumption
@@ -1842,6 +1878,7 @@ class Accountant:
                 battery_savings=funded_by_source.get(SourceKind.BATTERY, Decimal(0))
                 * (retained.import_price - retained.battery_price),
                 forgone_prices=retained.forgone_prices,
+                solar_shares=retained.solar_shares,
                 by_source=funded_by_source,
             )
         )
@@ -1854,6 +1891,7 @@ class Accountant:
         self._house.add_by_source(
             split_by_source(grew, retained.sources, retained.consumption),
             retained.forgone_prices,
+            retained.solar_shares,
         )
         retained.draw += kwh
 
@@ -1865,20 +1903,29 @@ class Accountant:
         served = self._decompose(raw, start)
         self._weigh_plausibility(served, claimed, start)
         draws = self._own_draws(self._believable(claimed, start), start)
-        prices, sources, forgone_prices = self._price_sources(
+        prices, sources, forgone_prices, solar_shares = self._price_sources(
             served, self._import_price(start, imported), start
         )
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
         remainder = self._settle(start, allocation.untracked, draws, sources, prices)
         for device, share in allocation.devices.items():
-            self._running.setdefault(device, _Running()).add(share, forgone_prices)
+            self._running.setdefault(device, _Running()).add(
+                share, forgone_prices, solar_shares
+            )
         for share in allocation.devices.values():
-            self._house.add(share, forgone_prices)
-        self._house.add(remainder, forgone_prices)
+            self._house.add(share, forgone_prices, solar_shares)
+        self._house.add(remainder, forgone_prices, solar_shares)
         # After the remainder has been banked, so the budget it funds is real.
         self._release_held(remainder, start)
-        self._retain(start, sources, prices, draws, forgone_prices)
+        self._retain(
+            start,
+            sources,
+            prices,
+            draws,
+            forgone_prices=forgone_prices,
+            solar_shares=solar_shares,
+        )
         self._resolve_bounds(start)
 
     def _hold(self, correction: _HeldCorrection) -> None:
@@ -1912,6 +1959,7 @@ class Accountant:
             battery_savings=Decimal(0),
             # The budget is weighed, never attributed, so no rate applies to it.
             forgone_prices={},
+            solar_shares={},
             by_source={},
         )
         outstanding: list[_HeldCorrection] = []
@@ -1927,7 +1975,7 @@ class Accountant:
             run.naive_cost += paid.naive_cost
             run.cost_savings += paid.cost_savings
             run.battery_savings += paid.battery_savings
-            run.add_by_source(paid.by_source, paid.forgone_prices)
+            run.add_by_source(paid.by_source, paid.forgone_prices, paid.solar_shares)
             budget = budget.less(paid)
             if fraction < 1:
                 outstanding.append(held.less(paid))
@@ -1959,7 +2007,7 @@ class Accountant:
             run.naive_cost += held.naive_cost
             run.cost_savings += held.cost_savings
             run.battery_savings += held.battery_savings
-            run.add_by_source(held.by_source, held.forgone_prices)
+            run.add_by_source(held.by_source, held.forgone_prices, held.solar_shares)
 
     def _resolve_bounds(self, start: datetime) -> None:
         """Price every waiting delta whose last slice has now closed.
@@ -2343,13 +2391,15 @@ class Accountant:
         if source is not None:
             source.note_implausible(at, kwh)
 
-    def _retain(
+    def _retain(  # noqa: PLR0913 - each argument is one fact the bucket settled at
         self,
         start: datetime,
         sources: Mapping[SourceKind, Decimal],
         prices: Mapping[SourceKind, Decimal],
         draws: Mapping[str, Decimal],
+        *,
         forgone_prices: Mapping[SourceKind, Decimal],
+        solar_shares: Mapping[SourceKind, Decimal],
     ) -> None:
         consumption = _sum(sources.values())
         total_cost = _sum(energy * prices[kind] for kind, energy in sources.items())
@@ -2359,6 +2409,7 @@ class Accountant:
             import_price=prices[SourceKind.IMPORT],
             battery_price=prices.get(SourceKind.BATTERY, Decimal(0)),
             forgone_prices=dict(forgone_prices),
+            solar_shares=dict(solar_shares),
             draw=_sum(draws.values()),
             sources=dict(sources),
         )
@@ -2472,6 +2523,7 @@ class Accountant:
         dict[SourceKind, Decimal],
         dict[SourceKind, Decimal],
         dict[SourceKind, Decimal],
+        dict[SourceKind, Decimal],
     ]:
         if served.grid_charge > 0:
             self._battery.charge_from_grid(served.grid_charge, price)
@@ -2496,6 +2548,7 @@ class Accountant:
         # what was actually taken out, not to a share the house happened to keep.
         battery_price = Decimal(0)
         battery_forgone = Decimal(0)
+        battery_solar = Decimal(0)
         if served.discharged > 0:
             withdrawn = self._battery.discharge(served.discharged)
             battery_price = withdrawn.cost / served.discharged
@@ -2503,6 +2556,9 @@ class Accountant:
             # stored, per kWh taken out. Priced off the same withdrawal as the
             # cost, so the two cannot disagree about what left (ADR-0027).
             battery_forgone = withdrawn.forgone / served.discharged
+            # And how much of each kWh was that sunshine, off the same
+            # withdrawal for the same reason (ADR-0033).
+            battery_solar = withdrawn.solar_kwh / served.discharged
 
         prices = {
             SourceKind.IMPORT: price,
@@ -2519,7 +2575,7 @@ class Accountant:
             SourceKind.GENERATION: self._export_price_at(start),
             SourceKind.BATTERY: battery_forgone,
         }
-        return prices, sources, forgone
+        return prices, sources, forgone, {SourceKind.BATTERY: battery_solar}
 
     def _import_price(self, when: datetime, imported: Mapping[str, Decimal]) -> Decimal:
         """The grid price of the interval at ``when``, blended over its registers.
@@ -2644,7 +2700,8 @@ def _loss_totals(loss: BatteryLoss) -> DeviceTotals:
     attributed by source, because the split is the blend of every charge that
     ever went in rather than anything one interval can say. What it could have
     earned is the export its stored sunshine gave up, at that same blend
-    (ADR-0027, HEA-229).
+    (ADR-0027, HEA-229). None of it was sunshine any device used: energy lost to
+    heat reached no device (ADR-0033).
     """
     # Spelled out rather than `replace`d from the zero constant, which types as a
     # bare dataclass and loses what this returns.
@@ -2657,6 +2714,7 @@ def _loss_totals(loss: BatteryLoss) -> DeviceTotals:
         energy_from_grid=Decimal(0),
         energy_from_generation=Decimal(0),
         energy_from_battery=Decimal(0),
+        energy_from_battery_solar=Decimal(0),
         cost_floor=Decimal(0),
         cost_ceiling=Decimal(0),
         forgone_export=loss.forgone,
@@ -2720,6 +2778,7 @@ def _dump_running(running: _Running) -> dict[str, Any]:
         "battery_savings": str(running.battery_savings),
         "cost_floor": str(running.cost_floor),
         "cost_ceiling": str(running.cost_ceiling),
+        "energy_from_battery_solar": str(running.battery_solar),
         "by_source": _dump_by_source(running.by_source),
     }
 
@@ -2740,6 +2799,9 @@ def _load_running(data: Mapping[str, Any]) -> _Running:
         battery_savings=Decimal(data.get("battery_savings", 0)),
         cost_floor=Decimal(data["cost_floor"]),
         cost_ceiling=Decimal(data["cost_ceiling"]),
+        # Absent before stored sunshine was counted, and read as nothing for the
+        # same reason (ADR-0033).
+        battery_solar=Decimal(data.get("energy_from_battery_solar", 0)),
         by_source=_load_by_source(data["by_source"]),
     )
 
