@@ -274,7 +274,8 @@ A battery gives back a few percent less than it took in, the difference lost as
 heat or other battery losses. That energy was imported and paid for, so it is
 counted, against a device called **Battery Losses**. It is kept separate rather
 than spread across your appliances or left in Untracked because it is not theirs,
-and because nothing you track will ever shrink it.
+and because nothing you track will ever shrink it. Lost sunshine cost you
+nothing, so it shows under Could have earned instead of Paid.
 
 Your house meter measures what reached the house, and this energy never did. So
 the two figures differ by roughly what the battery lost over the period you are

@@ -649,6 +649,11 @@ async def test_two_batteries_each_publish_their_own_losses(
     assert _state(hass, f"{growatt}_energy_used") == "0.187500"
     assert _state(hass, f"{anker}_actual_cost") == "0.0338"
     assert _state(hass, f"{growatt}_actual_cost") == "0.0562"
+    # ...and what each could have earned, which for grid charge is nothing
+    # (HEA-229): the engine's tests carry the sunny figures
+    assert _state(hass, "sensor.battery_losses_forgone_export") == "0.0000"
+    assert _state(hass, f"{anker}_forgone_export") == "0.0000"
+    assert _state(hass, f"{growatt}_forgone_export") == "0.0000"
 
 
 async def test_each_battery_sits_inside_the_pool_on_the_devices_list(
@@ -666,9 +671,11 @@ async def test_each_battery_sits_inside_the_pool_on_the_devices_list(
     assert (pool["upstream"], pool["gross"]) == (None, True)
     for name in ("Battery Losses (Anker Solix)", "Battery Losses (Growatt)"):
         assert (rows[name]["upstream"], rows[name]["gross"]) == (pool["key"], False)
-    assert rows["Battery Losses (Anker Solix)"]["statistics"]["actual_cost"] == (
-        "sensor.battery_losses_anker_solix_actual_cost"
-    )
+    assert rows["Battery Losses (Anker Solix)"]["statistics"] == {
+        "energy_used": "sensor.battery_losses_anker_solix_energy_used",
+        "actual_cost": "sensor.battery_losses_anker_solix_actual_cost",
+        "forgone_export": "sensor.battery_losses_anker_solix_forgone_export",
+    }
 
 
 def _device_rows(hass: HomeAssistant) -> dict[str, dict[str, Any]]:

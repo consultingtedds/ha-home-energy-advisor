@@ -2043,6 +2043,11 @@ async def test_a_household_metering_everything_is_told_what_its_battery_lost(
     cost = hass.states.get("sensor.battery_losses_actual_cost")
     assert cost is not None
     assert cost.state == "0.0900"
+    # ...and what it could have earned, which is nothing for a pack filled from
+    # the grid (HEA-229)
+    forgone = hass.states.get("sensor.battery_losses_forgone_export")
+    assert forgone is not None
+    assert forgone.state == "0.0000"
     # A loss has no counterfactual to save against, so no saving is published
     assert hass.states.get("sensor.battery_losses_cost_savings") is None
 

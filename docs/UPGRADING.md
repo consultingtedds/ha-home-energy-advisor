@@ -68,6 +68,12 @@ figure is almost always watt-hours: a 1500 Wh battery is 1.5. A capacity saved
 before this release is not checked until you next edit the battery, so if yours
 reads in the hundreds or thousands, change it there.
 
+**If your battery stores solar, Battery Losses now shows what it could have
+earned.** It read nothing under Could have earned before. The lost energy is
+now valued at what export paid when it was stored, and Whole Home's Could have
+earned rises by the same amount. Paid does not change. The new figure counts
+from this release, so read it over a period that starts after the update.
+
 ## 0.12.0
 
 **If you were told a device "is reporting more energy than the whole house",

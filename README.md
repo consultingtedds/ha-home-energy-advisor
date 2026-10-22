@@ -546,6 +546,11 @@ cannot account for, less whatever the battery actually gained. Nothing in it
 assumes an efficiency figure, and nothing rests on your charge and discharge
 meters agreeing with each other.
 
+Where the battery stores sunshine, what it lost cost you nothing, so Battery
+Losses also carries what that energy could have earned had you exported it
+instead, at what export paid when it was stored. It reads nothing for energy
+the battery took from the grid, and nothing without an export price.
+
 **It runs a day behind.** A battery's level is an estimate that drifts through
 the day and corrects itself when the battery charges, so a loss is published only
 once your meters have shown it for a whole day. Today's loss appears tomorrow,
@@ -626,7 +631,8 @@ device. It does mean your total will be short of your bill.
 selling it used to be a third item here, and is no longer. If you export, it is
 counted and shown as **Forgone Export** per device - including the generation
 that went into your battery first, valued at what export paid when it was
-stored. It sits beside what you paid rather than inside it, so Actual Cost is
+stored, and the stored sunshine your battery lost, under Battery Losses. It sits
+beside what you paid rather than inside it, so Actual Cost is
 still exactly what left your account; the device table shows it as its own
 **Could have earned** column, never added into Paid.
 Without an export price in your Energy Dashboard there is nothing to count, and

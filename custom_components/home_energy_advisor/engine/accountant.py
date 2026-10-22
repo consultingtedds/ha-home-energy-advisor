@@ -49,7 +49,7 @@ from .allocation import (
     split_by_source,
 )
 from .battery_ledger import BatteryLedger
-from .battery_shares import BatteryMeters, BatteryShares
+from .battery_shares import BatteryLoss, BatteryMeters, BatteryShares
 from .debt_ledger import DebtLedger, Settlement
 from .energy_source import (
     MAX_QUIET_SPAN,
@@ -576,6 +576,7 @@ class Accountant:
         self._loss_window: deque[tuple[datetime, Decimal]] = deque()
         self._battery_loss_kwh = Decimal(0)
         self._battery_loss_cost = Decimal(0)
+        self._battery_loss_forgone = Decimal(0)
         # What the battery's own meters have carried, which bounds the loss the
         # house balance infers (HEA-196). Running totals of the *metered* charge
         # and discharge: the ledger's own write-down cannot serve here, because
@@ -764,6 +765,7 @@ class Accountant:
         # history, which is what they reported (HEA-207, GitHub 34).
         self._battery_loss_kwh = Decimal(0)
         self._battery_loss_cost = Decimal(0)
+        self._battery_loss_forgone = Decimal(0)
         self._shares.forget_losses()
         # The measurement underneath carries on - anchor, published amount and the
         # hold's window alike. Re-anchoring would publish nothing for a day, and
@@ -889,6 +891,7 @@ class Accountant:
                 ],
                 "kwh": str(self._battery_loss_kwh),
                 "cost": str(self._battery_loss_cost),
+                "forgone": str(self._battery_loss_forgone),
                 "metered": [str(self._metered_charge), str(self._metered_discharge)],
                 "refused": str(self._loss_refused_kwh),
             },
@@ -1011,6 +1014,8 @@ class Accountant:
         loss = data.get("battery_loss", {})
         self._battery_loss_kwh = Decimal(loss.get("kwh", "0"))
         self._battery_loss_cost = Decimal(loss.get("cost", "0"))
+        # Absent before a loss published what it could have earned (HEA-229).
+        self._battery_loss_forgone = Decimal(loss.get("forgone", "0"))
         metered = loss.get("metered")
         if metered is not None:
             self._metered_charge = Decimal(metered[0])
@@ -1164,13 +1169,19 @@ class Accountant:
         same thing, and reporting the second as the first is what HEA-182 was
         raised about.
         """
-        return _loss_totals(self._battery_loss_kwh, self._battery_loss_cost)
+        return _loss_totals(
+            BatteryLoss(
+                self._battery_loss_kwh,
+                self._battery_loss_cost,
+                self._battery_loss_forgone,
+            )
+        )
 
     def _battery_shares(self) -> dict[str, DeviceTotals]:
         """Each battery's share of that, built the same way (ADR-0031)."""
         return {
-            battery: _loss_totals(kwh, cost)
-            for battery, (kwh, cost) in self._shares.losses().items()
+            battery: _loss_totals(loss)
+            for battery, loss in self._shares.losses().items()
         }
 
     @staticmethod
@@ -1382,20 +1393,24 @@ class Accountant:
         Taken out of the ledger because it really has left the battery, and
         priced at what it cost to put there - the blend of every charge still on
         the books, which is the only price this energy ever had.
+
+        What it could have earned comes out at the same blend: sunshine stored
+        instead of exported carried the export it gave up, and lost to heat it
+        was given up for nothing. Grid charge carried none (ADR-0027, HEA-229).
+        Added to the whole home beside the loss's energy and cost, so the parts
+        still add up to it with Untracked unmoved.
         """
         self._loss_published += lost
-        # Only the cost. The forgone revenue of energy lost to heat leaves the
-        # ledger with it - it is gone either way - but nothing publishes it: no
-        # device used that energy, and the whole-home figure it would have to
-        # reconcile against is accumulated per source through `add_by_source`,
-        # which this path does not go near (ADR-0027).
-        cost = self._battery.discharge(lost).cost
-        self._battery_loss_kwh += lost
-        self._battery_loss_cost += cost
-        self._shares.apportion(lost, cost, self._levels)
-        self._house.energy_kwh += lost
-        self._house.actual_cost += cost
-        self._house.naive_cost += cost
+        withdrawn = self._battery.discharge(lost)
+        loss = BatteryLoss(lost, withdrawn.cost, withdrawn.forgone)
+        self._battery_loss_kwh += loss.kwh
+        self._battery_loss_cost += loss.cost
+        self._battery_loss_forgone += loss.forgone
+        self._shares.apportion(loss, self._levels)
+        self._house.energy_kwh += loss.kwh
+        self._house.actual_cost += loss.cost
+        self._house.naive_cost += loss.cost
+        self._house.forgone_export += loss.forgone
 
     @staticmethod
     def _cheapest_spread(
@@ -2532,22 +2547,22 @@ def _withhold(
     )
 
 
-def _loss_totals(kwh: Decimal, cost: Decimal) -> DeviceTotals:
+def _loss_totals(loss: BatteryLoss) -> DeviceTotals:
     """A battery's loss as the consumer it is.
 
     Its counterfactual equals its cost, so it shows no saving: this energy really
     was bought, and what it would have cost is what it cost. Nothing is
     attributed by source, because the split is the blend of every charge that
-    ever went in rather than anything one interval can say. And nothing forgone:
-    it went into the battery and never came out, so none of it was generation a
-    device used instead of exporting (ADR-0026).
+    ever went in rather than anything one interval can say. What it could have
+    earned is the export its stored sunshine gave up, at that same blend
+    (ADR-0027, HEA-229).
     """
     # Spelled out rather than `replace`d from the zero constant, which types as a
     # bare dataclass and loses what this returns.
     return DeviceTotals(
-        energy_kwh=kwh,
-        actual_cost=cost,
-        naive_cost=cost,
+        energy_kwh=loss.kwh,
+        actual_cost=loss.cost,
+        naive_cost=loss.cost,
         cost_savings=Decimal(0),
         battery_savings=Decimal(0),
         energy_from_grid=Decimal(0),
@@ -2555,7 +2570,7 @@ def _loss_totals(kwh: Decimal, cost: Decimal) -> DeviceTotals:
         energy_from_battery=Decimal(0),
         cost_floor=Decimal(0),
         cost_ceiling=Decimal(0),
-        forgone_export=Decimal(0),
+        forgone_export=loss.forgone,
     )
 
 

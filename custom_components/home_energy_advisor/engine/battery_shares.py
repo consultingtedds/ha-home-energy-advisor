@@ -11,7 +11,8 @@ its meters say went in, less what they say came out, less what its level gained.
 Energy put into a battery has to be somewhere, so that is the most the battery
 can have lost, and it is measured from that battery alone. A loss is shared in
 proportion to those bounds and priced at the pool's cost - the only price any of
-this energy has, since one ledger holds it all.
+this energy has, since one ledger holds it all. What it could have earned is
+shared the same way, for the same reason (HEA-229).
 
 It is an apportionment of a measured figure, not a measurement of its own. Where
 nothing has been measured since the split began - a household upgrading in the
@@ -36,6 +37,14 @@ class BatteryMeters(NamedTuple):
     discharge: tuple[str, ...]
 
 
+class BatteryLoss(NamedTuple):
+    """Energy lost, what it cost, and the export it could have earned (HEA-229)."""
+
+    kwh: Decimal
+    cost: Decimal
+    forgone: Decimal
+
+
 class _Anchor(NamedTuple):
     """Where a battery's bound is measured from."""
 
@@ -52,6 +61,7 @@ class _Battery:
     discharged: Decimal = Decimal(0)
     loss_kwh: Decimal = Decimal(0)
     loss_cost: Decimal = Decimal(0)
+    loss_forgone: Decimal = Decimal(0)
     anchor: _Anchor | None = None
 
 
@@ -110,10 +120,8 @@ class BatteryShares:
                 level=levels.get(battery, Decimal(0)),
             )
 
-    def apportion(
-        self, lost: Decimal, cost: Decimal, levels: Mapping[str, Decimal]
-    ) -> None:
-        """Share a published loss, and what it cost, across the batteries."""
+    def apportion(self, loss: BatteryLoss, levels: Mapping[str, Decimal]) -> None:
+        """Share a published loss, what it cost and could have earned, across them."""
         weights = {
             battery: max(Decimal(0), self._bound(state, levels.get(battery)))
             for battery, state in self._state.items()
@@ -126,8 +134,9 @@ class BatteryShares:
             total = Decimal(len(weights))
         for battery, weight in weights.items():
             state = self._state[battery]
-            state.loss_kwh += lost * weight / total
-            state.loss_cost += cost * weight / total
+            state.loss_kwh += loss.kwh * weight / total
+            state.loss_cost += loss.cost * weight / total
+            state.loss_forgone += loss.forgone * weight / total
 
     @staticmethod
     def _bound(state: _Battery, level: Decimal | None) -> Decimal:
@@ -141,12 +150,12 @@ class BatteryShares:
             - (level - anchor.level)
         )
 
-    def losses(self) -> dict[str, tuple[Decimal, Decimal]]:
-        """Each battery's apportioned loss and its cost, where there is a split."""
+    def losses(self) -> dict[str, BatteryLoss]:
+        """Each battery's apportioned loss, where there is a split."""
         if not self.splits:
             return {}
         return {
-            battery: (state.loss_kwh, state.loss_cost)
+            battery: BatteryLoss(state.loss_kwh, state.loss_cost, state.loss_forgone)
             for battery, state in self._state.items()
         }
 
@@ -155,6 +164,7 @@ class BatteryShares:
         for state in self._state.values():
             state.loss_kwh = Decimal(0)
             state.loss_cost = Decimal(0)
+            state.loss_forgone = Decimal(0)
 
     def diagnostics(
         self, levels: Mapping[str, Decimal] | None = None
@@ -171,6 +181,7 @@ class BatteryShares:
                 ),
                 "loss_kwh": str(state.loss_kwh),
                 "loss_cost": str(state.loss_cost),
+                "loss_forgone": str(state.loss_forgone),
             }
             for battery, state in self._state.items()
         }
@@ -181,7 +192,11 @@ class BatteryShares:
             battery: {
                 "charged": str(state.charged),
                 "discharged": str(state.discharged),
-                "loss": [str(state.loss_kwh), str(state.loss_cost)],
+                "loss": [
+                    str(state.loss_kwh),
+                    str(state.loss_cost),
+                    str(state.loss_forgone),
+                ],
                 "anchor": (
                     None
                     if state.anchor is None
@@ -199,7 +214,11 @@ class BatteryShares:
                 continue
             state.charged = Decimal(saved["charged"])
             state.discharged = Decimal(saved["discharged"])
-            state.loss_kwh, state.loss_cost = (Decimal(part) for part in saved["loss"])
+            # A share saved before HEA-229 has no forgone part: nothing was
+            # published as forgone then, so it carries on from nothing.
+            kwh, cost, *forgone = (Decimal(part) for part in saved["loss"])
+            state.loss_kwh, state.loss_cost = kwh, cost
+            state.loss_forgone = forgone[0] if forgone else Decimal(0)
             anchor = saved.get("anchor")
             state.anchor = (
                 None if anchor is None else _Anchor(*(Decimal(part) for part in anchor))

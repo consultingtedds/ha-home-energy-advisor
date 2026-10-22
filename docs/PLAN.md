@@ -667,9 +667,10 @@ Carried forward rather than closed:
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are
   household-level add-ons, so if either is shown it is a labelled line beside
-  the household's Paid, never a device column. **HEA-229** is the first add-on a
-  household has asked for: the export value of Battery Losses under Could have
-  earned.
+  the household's Paid, never a device column. **HEA-229**, the export value of
+  Battery Losses under Could have earned, turned out not to be one of them: the
+  column already existed, and the ledger already held the value the loss takes
+  out. It ships in 0.13.0 (ADR-0027's update).
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.

@@ -175,6 +175,7 @@ _PERSISTED = frozenset(
         # kept out (HEA-213); the totals are the usual reason - a published figure
         # cannot go backwards (HEA-182).
         "_battery_loss_cost",
+        "_battery_loss_forgone",
         "_battery_loss_kwh",
         "_loss_anchor",
         "_loss_published",

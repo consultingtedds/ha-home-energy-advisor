@@ -110,3 +110,22 @@ a household can already switch off on the card.
 - Revisit if a household reports that the combined figure hides which half it
   came from, or if the scheduling question turns out to need the figures
   themselves to move after all.
+
+## Update - a measured loss hands back what it gave up (2026-10-22)
+
+Appended, not edited: the decision above stands and its Status remains Accepted.
+
+Decision 3 is about the **write-down**, which knows energy left the books and
+not why. Battery Losses (ADR-0028) is a different path: a loss the meters have
+measured, published as the battery's own consumption. It takes its energy out of
+the ledger with a discharge, which hands back the forgone value at the same blend
+as the cost, and until HEA-229 that value was dropped. A household charging only
+from solar saw a loss that cost nothing and could have earned nothing, which was
+true of neither.
+
+**A published loss now carries what it gave up**, by decision 2's rule: sunshine
+stored at the export rate in force, grid charge at nothing. It is added to Battery
+Losses' Forgone Export, shared across batteries as its cost is (ADR-0031), and
+added to the whole home beside the loss's energy and cost, so the parts still sum
+to Whole Home and Untracked does not move. `Actual Cost` does not move either.
+The write-down still publishes nothing.

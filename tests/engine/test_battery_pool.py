@@ -31,6 +31,9 @@ from custom_components.home_energy_advisor.engine.battery_shares import BatteryM
 
 BASE = datetime(2026, 7, 8, 22, 0, tzinfo=UTC)
 OVERNIGHT = Decimal("0.093")
+# What export pays throughout. Grid charge forgoes none of it, so the figures the
+# scenario was written for are unchanged by it (ADR-0027).
+EXPORT = Decimal("0.10")
 # How long a loss has to have been allowed before it is published (HEA-213).
 A_DAY = timedelta(hours=24)
 
@@ -63,6 +66,7 @@ def _home(batteries: dict[str, BatteryMeters]) -> Accountant:
         batteries=batteries,
     )
     acc.record_price(at(0), OVERNIGHT)
+    acc.record_export_price(at(0), EXPORT)
     for meter in _meters(batteries):
         acc.observe(meter, at(0), Decimal(0))
     acc.finalize(at(40))
@@ -88,12 +92,16 @@ def _observe(acc: Accountant, when: datetime, readings: dict[str, str]) -> None:
         acc.observe(meter, when, Decimal(value))
 
 
-def _baseline(acc: Accountant, *, anker: str, growatt: str | None) -> None:
+def _baseline(
+    acc: Accountant, *, anker: str, growatt: str | None, sunny: bool = False
+) -> None:
     """4 kWh imported, 3 into one battery and 1 into the other, then a level.
 
     The first level only anchors the measurement, so nothing before it counts.
+    `sunny` makes the same 4 kWh the panels' instead of the grid's.
     """
-    readings = {"sensor.grid_import": "4.0", "sensor.house_load": "1.0"}
+    supply = "sensor.generation" if sunny else "sensor.grid_import"
+    readings = {supply: "4.0", "sensor.house_load": "1.0"}
     readings["sensor.anker_charge"] = "3.0" if growatt is not None else "4.0"
     if growatt is not None:
         readings["sensor.growatt_charge"] = "1.0"
@@ -102,13 +110,15 @@ def _baseline(acc: Accountant, *, anker: str, growatt: str | None) -> None:
     _reconcile(acc, at(85), anker=anker, growatt=growatt)
 
 
-def _span(acc: Accountant, *, two: bool) -> None:
+def _span(acc: Accountant, *, two: bool, sunny: bool = False) -> None:
     """2 kWh more imported, all into the batteries, and 0.5 more used by the house.
 
     The house's meters cannot account for 1.5 kWh of that, and the pool gained
     1.2, so 0.3 went to heat - the single-battery test's figures exactly.
+    `sunny` makes it generation, as in the baseline.
     """
-    readings = {"sensor.grid_import": "6.0", "sensor.house_load": "1.5"}
+    supply = "sensor.generation" if sunny else "sensor.grid_import"
+    readings = {supply: "6.0", "sensor.house_load": "1.5"}
     if two:
         readings["sensor.anker_charge"] = "4.5"
         readings["sensor.growatt_charge"] = "1.5"
@@ -286,3 +296,134 @@ def test_the_download_of_a_single_battery_is_unchanged() -> None:
 
     # Then - nothing about shares appears
     assert "batteries" not in acc.battery_diagnostics()
+
+
+def _a_sunny_loss(batteries: dict[str, BatteryMeters]) -> Accountant:
+    """The same span charged by the panels, so every stored kWh gave up export."""
+    acc = _home(batteries)
+    two = len(batteries) > 1
+    if two:
+        _baseline(acc, anker="2.0", growatt="0.5", sunny=True)
+        _span(acc, two=True, sunny=True)
+        _settle(acc)
+    else:
+        _baseline(acc, anker="2.5", growatt=None, sunny=True)
+        _span(acc, two=False, sunny=True)
+        _reconcile(acc, at(130), anker="3.7", growatt=None)
+        _reconcile(acc, at(130) + A_DAY, anker="3.7", growatt=None)
+    return acc
+
+
+def test_sunshine_lost_in_the_battery_could_have_been_earned() -> None:
+    """HEA-229: the export a lost kWh gave up, at the blend it was stored at.
+
+    The ledger already carries what its stored sunshine forwent (ADR-0027), and a
+    loss takes its share of that out with its cost. Lost energy never reached a
+    device, so before this the value left the books and nobody was shown it.
+    """
+    # Given / When - a battery charged only by the panels loses 0.3 kWh
+    battery = _a_sunny_loss(ONE_BATTERY).totals().battery
+
+    # Then - it was paid nothing for, and could have earned the export rate
+    assert _q(battery.energy_kwh) == Decimal("0.300000000")
+    assert _q(battery.actual_cost) == Decimal("0E-9")
+    assert _q(battery.forgone_export) == _q(Decimal("0.3") * EXPORT)
+
+
+def test_grid_charge_lost_in_the_battery_forgoes_nothing() -> None:
+    # Given / When - the original scenario, charged from the grid with export
+    # priced throughout
+    acc = _home(TWO_BATTERIES)
+    _baseline(acc, anker="2.0", growatt="0.5")
+    _span(acc, two=True)
+    _settle(acc)
+
+    # Then - bought energy was bought: the loss cost money and gave up no export
+    totals = acc.totals()
+    assert _q(totals.battery.actual_cost) == _q(Decimal("0.3") * OVERNIGHT)
+    assert totals.battery.forgone_export == Decimal(0)
+    assert totals.batteries["anker"].forgone_export == Decimal(0)
+
+
+def test_each_battery_could_have_earned_its_share() -> None:
+    # Given / When - the sunny span split 3:5 between two batteries
+    shares = _a_sunny_loss(TWO_BATTERIES).totals().batteries
+
+    # Then - what was forgone follows the energy, as the cost does
+    assert _q(shares["anker"].forgone_export) == _q(Decimal("0.1125") * EXPORT)
+    assert _q(shares["growatt"].forgone_export) == _q(Decimal("0.1875") * EXPORT)
+
+
+def test_what_the_loss_could_have_earned_reaches_the_whole_home() -> None:
+    """Σ devices + Untracked + Battery Losses == Whole Home, for this figure too.
+
+    The house used 1.5 kWh of sunshine directly, which Untracked carries as it
+    always has; the 0.3 kWh lost is added to the whole home beside it, so the
+    remainder is not moved by it.
+    """
+    # Given / When
+    totals = _a_sunny_loss(TWO_BATTERIES).totals()
+
+    # Then
+    assert _q(totals.untracked.forgone_export) == _q(Decimal("1.5") * EXPORT)
+    assert _q(totals.whole_home.forgone_export) == _q(Decimal("1.8") * EXPORT)
+
+
+def test_what_a_loss_could_have_earned_survives_a_restart() -> None:
+    # Given - a published sunny loss
+    acc = _a_sunny_loss(TWO_BATTERIES)
+    restarted = Accountant(
+        house_sources=_house_sources(TWO_BATTERIES),
+        device_energy_entities={},
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
+        batteries=TWO_BATTERIES,
+    )
+
+    # When
+    restarted.restore(acc.snapshot())
+
+    # Then - the pool and each share carry on from where they stood
+    totals = restarted.totals()
+    assert _q(totals.battery.forgone_export) == _q(Decimal("0.3") * EXPORT)
+    assert _q(totals.batteries["growatt"].forgone_export) == _q(
+        Decimal("0.1875") * EXPORT
+    )
+
+
+def test_a_snapshot_from_before_a_loss_could_have_earned_restores_as_nothing() -> None:
+    # Given - a snapshot as 0.13.0b2 wrote it, with no forgone figure for the
+    # loss or its shares
+    acc = _a_sunny_loss(TWO_BATTERIES)
+    snapshot: dict[str, Any] = acc.snapshot()
+    del snapshot["battery_loss"]["forgone"]
+    for share in snapshot["battery_shares"].values():
+        share["loss"] = share["loss"][:2]
+    restarted = Accountant(
+        house_sources=_house_sources(TWO_BATTERIES),
+        device_energy_entities={},
+        windows=AccountingWindows(max_quiet_span=timedelta(0)),
+        batteries=TWO_BATTERIES,
+    )
+
+    # When
+    restarted.restore(snapshot)
+
+    # Then - it restores, the energy and cost kept, and nothing forgone yet
+    totals = restarted.totals()
+    assert _q(totals.battery.energy_kwh) == Decimal("0.300000000")
+    assert totals.battery.forgone_export == Decimal(0)
+    assert _q(totals.batteries["growatt"].energy_kwh) == Decimal("0.187500000")
+    assert totals.batteries["growatt"].forgone_export == Decimal(0)
+
+
+def test_reset_totals_rebases_what_a_loss_could_have_earned() -> None:
+    # Given - a published sunny loss
+    acc = _a_sunny_loss(TWO_BATTERIES)
+
+    # When
+    acc.reset_totals()
+
+    # Then
+    totals = acc.totals()
+    assert totals.battery.forgone_export == Decimal(0)
+    assert totals.batteries["anker"].forgone_export == Decimal(0)

@@ -409,17 +409,20 @@ _HOME_CONCEPTS: tuple[HeaSensorDescription, ...] = (
     ),
 )
 
-# What the battery itself consumed: energy it took in and never gave back, and
-# what that cost. Only these two of the seven concepts, because the rest cannot
-# say anything about a loss - its counterfactual equals its cost, so there is no
-# saving, and its source split is the blend of every charge that ever went in.
+# What the battery itself consumed: energy it took in and never gave back, what
+# that cost, and the export its stored sunshine could have earned instead
+# (HEA-229). Only these three concepts, because the rest cannot say anything
+# about a loss - its counterfactual equals its cost, so there is no saving, and
+# its source split is the blend of every charge that ever went in.
 #
 # A device of its own rather than a figure on the whole home, because the cards
 # sum device rows to reach a household total (ADR-0002). A term outside that sum
 # would make every card disagree with Whole Home; a row keeps them right and
 # names the battery as the consumer it is (HEA-174).
 _BATTERY_CONCEPTS: tuple[HeaSensorDescription, ...] = tuple(
-    concept for concept in _CONCEPTS if concept.key in {"energy_used", "actual_cost"}
+    concept
+    for concept in _CONCEPTS
+    if concept.key in {"energy_used", "actual_cost", "forgone_export"}
 )
 
 
