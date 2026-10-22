@@ -679,14 +679,14 @@ Carried forward rather than closed:
   does, and the households in this epic are the evidence that justified going.
   Reviewed on 2026-10-19 with changes requested (hacs/default #11192): **HEA-235**
   made them, and review is requested again once 0.13.0 carries them.
-- **HEA-216** - count the battery's solar share towards self-sufficiency, from
-  Discussion 35. The engine already splits every charge into grid and
-  generation; the ledger does not yet keep the generation share in kWh, and
-  nothing publishes it. Whether the headline changes is still to decide, and the
-  split it counts follows `battery_charging`. The self-sufficiency card's note
-  still says the readings cannot tell what charged the battery, which has not
-  been true for some time; the note changes with this ticket. It touches the
-  battery ledger, so it follows HEA-220.
+- **HEA-216 is decided** (ADR-0033): count the battery's solar share towards
+  self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
+  each discharge hands its share to the device that used it, and a new Energy
+  From Battery (Solar) per device (enabled only with a battery) feeds the
+  gauge, whose headline then includes stored solar. The sources card does not
+  change. One sensor per device was accepted reluctantly, over a household
+  figure that would be approximate under a filter. Built after 0.13.0, with
+  HEA-221.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has
