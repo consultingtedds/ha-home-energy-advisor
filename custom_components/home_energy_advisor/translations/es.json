@@ -302,6 +302,9 @@
       "energy_from_battery": {
         "name": "Energía de la batería"
       },
+      "energy_from_battery_solar": {
+        "name": "Energía de la batería (solar)"
+      },
       "devices": {
         "name": "Dispositivos"
       },

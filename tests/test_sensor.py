@@ -1911,8 +1911,13 @@ async def test_a_grid_only_home_is_not_given_sensors_that_can_only_read_zero(
 
     # Then - created, so identity is fixed from day one and adding panels later
     # needs no migration, but disabled, so they record nothing. The battery's own
-    # saving goes with them: no battery, nothing for it to have saved (HEA-173)
-    assert _disabled_concepts(hass) == {*_SUPPLY_ONLY_CONCEPTS, "battery_savings"}
+    # saving goes with them: no battery, nothing for it to have saved (HEA-173),
+    # and no sunshine stored in one (ADR-0033)
+    assert _disabled_concepts(hass) == {
+        *_SUPPLY_ONLY_CONCEPTS,
+        "battery_savings",
+        "energy_from_battery_solar",
+    }
 
 
 async def test_a_household_with_a_battery_is_told_what_it_saved(
@@ -2096,8 +2101,10 @@ async def test_a_home_with_solar_but_no_battery_is_not_given_the_figure(
     await _setup(hass, _entry(extra_data={CONF_GENERATION_ENTITY: "sensor.generation"}))
 
     # Then - created, so fitting a battery later needs no migration, and disabled,
-    # because a figure that can only ever read zero is worse than no figure
-    assert _disabled_concepts(hass) == {"battery_savings"}
+    # because a figure that can only ever read zero is worse than no figure. The
+    # panels' sunshine is all used directly, so none of it came from a battery
+    # (ADR-0033)
+    assert _disabled_concepts(hass) == {"battery_savings", "energy_from_battery_solar"}
 
 
 async def test_a_home_with_solar_and_a_battery_keeps_every_figure(
@@ -2118,3 +2125,37 @@ async def test_a_home_with_solar_and_a_battery_keeps_every_figure(
 
     # Then - nothing is disabled; every figure can carry information here
     assert _disabled_concepts(hass) == set()
+
+
+async def test_a_household_with_a_battery_is_told_how_much_of_it_was_sunshine(
+    hass: HomeAssistant,
+) -> None:
+    """ADR-0033: one figure per device, beside Energy From Battery."""
+    # Given - a home with solar and a battery
+    _seed_states(hass)
+    for entity in ("sensor.generation", "sensor.battery_charge"):
+        hass.states.async_set(entity, "0", _ENERGY)
+    hass.states.async_set("sensor.battery_discharge", "0", _ENERGY)
+
+    # When
+    await _setup(hass, _supply_entry())
+
+    # Then - every device carries it, as energy that only ever rises, named for
+    # what it is a part of so it sorts beside it
+    device = hass.states.get("sensor.coarse_step_aircon_energy_from_battery_solar")
+    assert device is not None
+    assert device.state == "0.000000"
+    assert device.attributes["state_class"] == "total_increasing"
+    assert device.attributes["device_class"] == "energy"
+    assert device.attributes["unit_of_measurement"] == "kWh"
+    assert device.attributes["friendly_name"] == (
+        "Coarse Step Aircon Energy From Battery (Solar)"
+    )
+    # ...and Untracked's may fall, like its other source figures, because a late
+    # device claims energy it was credited with (HEA-48)
+    untracked = hass.states.get(
+        "sensor.untracked_energy_devices_energy_from_battery_solar"
+    )
+    assert untracked is not None
+    assert untracked.attributes["state_class"] == "total"
+    assert hass.states.get("sensor.whole_home_energy_from_battery_solar") is not None

@@ -302,6 +302,9 @@
       "energy_from_battery": {
         "name": "Energy From Battery"
       },
+      "energy_from_battery_solar": {
+        "name": "Energy From Battery (Solar)"
+      },
       "devices": {
         "name": "Devices"
       },

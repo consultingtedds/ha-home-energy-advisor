@@ -99,6 +99,7 @@ _UNTRACKED_TOTAL_CONCEPTS = frozenset(
         "energy_from_grid",
         "energy_from_generation",
         "energy_from_battery",
+        "energy_from_battery_solar",
     }
 )
 
@@ -137,6 +138,12 @@ _SUPPLY_ONLY_CONCEPTS = frozenset(
         "forgone_export",
     }
 )
+
+# Figures that can only carry information where the house has a battery, which
+# panels alone do not give it: sunshine used straight off them never went
+# through one. Created and disabled for the same reason as the set above
+# (ADR-0033).
+_BATTERY_ONLY_CONCEPTS = frozenset({"energy_from_battery_solar"})
 
 
 def _has_a_battery(entry: HeaConfigEntry) -> bool:
@@ -216,21 +223,27 @@ def _home_concepts(*, has_a_battery: bool) -> tuple[HeaSensorDescription, ...]:
 
 
 def _concepts_for(
-    device_key: str, *, supply_beyond_the_grid: bool = True
+    device_key: str,
+    *,
+    supply_beyond_the_grid: bool = True,
+    has_a_battery: bool = True,
 ) -> tuple[HeaSensorDescription, ...]:
     """The concept descriptions for a device key.
 
     Untracked's cumulative figures become `total` rather than `total_increasing`,
     because it is derived by subtraction and can legitimately fall.
     """
-    concepts = _CONCEPTS
+    disabled: set[str] = set()
     if not supply_beyond_the_grid:
-        concepts = tuple(
-            replace(concept, entity_registry_enabled_default=False)
-            if concept.key in _SUPPLY_ONLY_CONCEPTS
-            else concept
-            for concept in concepts
-        )
+        disabled |= _SUPPLY_ONLY_CONCEPTS
+    if not has_a_battery:
+        disabled |= _BATTERY_ONLY_CONCEPTS
+    concepts = tuple(
+        replace(concept, entity_registry_enabled_default=False)
+        if concept.key in disabled
+        else concept
+        for concept in _CONCEPTS
+    )
     if device_key != _UNTRACKED_KEY:
         return concepts
     return tuple(
@@ -328,6 +341,21 @@ _CONCEPTS: tuple[HeaSensorDescription, ...] = (
         suggested_display_precision=3,
         publish_precision=_ENERGY_PRECISION,
         value_fn=lambda totals: totals.energy_from_battery,
+    ),
+    # The part of Energy From Battery that was sunshine stored earlier, which the
+    # battery's ledger knows and its meters cannot say. Beside that figure rather
+    # than splitting it, so a figure households already chart keeps its meaning
+    # and its history. What lets a self-sufficiency headline count stored
+    # sunshine without counting a battery filled from the grid (ADR-0033).
+    HeaSensorDescription(
+        key="energy_from_battery_solar",
+        translation_key="energy_from_battery_solar",
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=3,
+        publish_precision=_ENERGY_PRECISION,
+        value_fn=lambda totals: totals.energy_from_battery_solar,
     ),
     # What the generation this device consumed would have earned had it been
     # exported instead, at the export rate in force at the time (ADR-0026).
@@ -485,6 +513,7 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     currency = entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
     supply = _has_supply_beyond_the_grid(entry)
+    battery = _has_a_battery(entry)
 
     expected_enabled: set[str] = set()
 
@@ -546,7 +575,9 @@ async def async_setup_entry(
             device_info=untracked_info,
             currency=currency,
         )
-        for concept in _concepts_for(_UNTRACKED_KEY, supply_beyond_the_grid=supply)
+        for concept in _concepts_for(
+            _UNTRACKED_KEY, supply_beyond_the_grid=supply, has_a_battery=battery
+        )
     )
 
     # The whole-home aggregate: the monotonic total the derived split rolls up to
@@ -570,9 +601,11 @@ async def async_setup_entry(
             currency=currency,
         )
         for concept in (
-            *_concepts_for(_WHOLE_HOME_KEY, supply_beyond_the_grid=supply),
+            *_concepts_for(
+                _WHOLE_HOME_KEY, supply_beyond_the_grid=supply, has_a_battery=battery
+            ),
             *_BOUND_CONCEPTS,
-            *_home_concepts(has_a_battery=_has_a_battery(entry)),
+            *_home_concepts(has_a_battery=battery),
         )
     )
 
@@ -598,7 +631,9 @@ async def async_setup_entry(
         )
         add_battery_shares(entry, add, coordinator, currency)
 
-    device_concepts = _concepts_for("", supply_beyond_the_grid=supply)
+    device_concepts = _concepts_for(
+        "", supply_beyond_the_grid=supply, has_a_battery=battery
+    )
     if entry.options.get(CONF_DEVICE_COST_BOUNDS):
         device_concepts = (*device_concepts, *_BOUND_CONCEPTS)
 

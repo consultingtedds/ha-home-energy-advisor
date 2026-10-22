@@ -1545,6 +1545,7 @@ def _totals_to_dict(totals: DeviceTotals) -> dict[str, str]:
         "energy_from_grid": str(totals.energy_from_grid),
         "energy_from_generation": str(totals.energy_from_generation),
         "energy_from_battery": str(totals.energy_from_battery),
+        "energy_from_battery_solar": str(totals.energy_from_battery_solar),
         # Always here, whether or not this household publishes them as sensors:
         # a figure that fails to sit inside its own bounds is the first thing to
         # look for when a cost is disputed (ADR-0016).
