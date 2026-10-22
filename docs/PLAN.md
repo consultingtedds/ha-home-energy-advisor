@@ -622,8 +622,11 @@ Carried forward rather than closed:
   **0.13.0b1** on 2026-10-19, the first beta (**HEA-232**: a GitHub
   pre-release that HACS offers only to a household that switches pre-releases
   on). The reference home and two Discussion 35 households are testing it; the
-  stable 0.13.0 follows their reports. HEA-220 followed as **0.13.0b2** (below),
-  then **HEA-235**, the HACS review's changes, then HEA-221.
+  stable 0.13.0 follows their reports. HEA-220 followed as **0.13.0b2** (below).
+  Since then **HEA-235** (the HACS review's changes), **HEA-236** (the Energy
+  Dashboard Repair listing a battery as it will be taken, from the Discussion 42
+  household's report) and **HEA-229** have landed for 0.13.0. HEA-221 follows
+  it.
 - **HEA-234** - an optimiser's live "grid-charging now" signal for the charge
   source, for a battery that charges from spare solar most of the day and from
   the grid sometimes. Parked until the reference household's Predbat is out of
@@ -661,8 +664,8 @@ Carried forward rather than closed:
   Dashboard with a source that is not an energy counter (a standing charge)
   left out. Each interval's import is priced per register and blended, with the
   plain average where nothing imported. Export meters add up and the export
-  price stays the one read live today. The code waits for 0.13.0, because a
-  release is cut from `main`.
+  price stays the one read live today. Built, and held until 0.13.0 is cut,
+  because a release is cut from `main`.
 - **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
   payback remain, and the second is harder to leave alone now that a household
   can see what their export was worth. ADR-0029 now frames the answer: both are
@@ -675,7 +678,7 @@ Carried forward rather than closed:
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
   Reviewed on 2026-10-19 with changes requested (hacs/default #11192): **HEA-235**
-  carries them, and a release follows before review is requested again.
+  made them, and review is requested again once 0.13.0 carries them.
 - **HEA-216** - count the battery's solar share towards self-sufficiency, from
   Discussion 35. The engine already splits every charge into grid and
   generation; the ledger does not yet keep the generation share in kWh, and
