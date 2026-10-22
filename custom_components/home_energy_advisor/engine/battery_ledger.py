@@ -39,17 +39,20 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Withdrawal:
-    """What a discharge took out: what it cost, and what it gave up.
+    """What a discharge took out: what it cost, what it gave up, and how much was sun.
 
-    Two figures rather than one because they answer different questions and are
-    treated differently. ``cost`` is what the household paid to put that energy
-    there and enters their totals; ``forgone`` is the export revenue the stored
-    sunshine gave up, which is published beside those totals and never inside
-    them (ADR-0026, ADR-0027).
+    Separate figures because they answer different questions and are treated
+    differently. ``cost`` is what the household paid to put that energy there and
+    enters their totals; ``forgone`` is the export revenue the stored sunshine
+    gave up, which is published beside those totals and never inside them
+    (ADR-0026, ADR-0027). ``solar_kwh`` is how much of the energy was generated
+    here, which counts towards self-sufficiency (ADR-0033). It cannot be read
+    from ``forgone``, which is zero for a household paid nothing for export.
     """
 
     cost: Decimal
     forgone: Decimal
+    solar_kwh: Decimal
 
 
 class BatteryLedger:
@@ -69,6 +72,10 @@ class BatteryLedger:
         # Accumulated and drawn down by exactly the rules `_stored_cost` is, so
         # a discharge carries its share of both.
         self._stored_forgone = Decimal(0)
+        # How much of the stored energy was generated here, by the same rules
+        # again: in with a charge from generation, out by a discharge's share,
+        # scaled by a write-down (ADR-0033).
+        self._stored_solar_kwh = Decimal(0)
         # What reconciliation has written off in total, kept so a cost published
         # on the household's figures can be accounted for in the diagnostics, and
         # so the loss itself can be published (HEA-174).
@@ -114,7 +121,7 @@ class BatteryLedger:
         allocated must equal the real grid bill, which was negative (HEA-165).
         """
         # Buying energy forgoes no export: it was imported, not generated.
-        self._charge(kwh, kwh * price_per_kwh, Decimal(0))
+        self._charge(kwh, kwh * price_per_kwh, Decimal(0), solar_kwh=Decimal(0))
 
     def charge_from_generation(
         self, kwh: Decimal, export_price: Decimal = Decimal(0)
@@ -126,18 +133,19 @@ class BatteryLedger:
         than whenever the battery is next emptied (ADR-0027). Zero for a
         household who export nothing, which is what they forgo.
         """
-        self._charge(kwh, Decimal(0), kwh * export_price)
+        self._charge(kwh, Decimal(0), kwh * export_price, solar_kwh=kwh)
 
     def discharge(self, kwh: Decimal) -> Withdrawal:
         """Removes energy and returns what it cost and what it gave up.
 
         Any part of the draw beyond what the ledger has tracked is priced at
-        zero and forgoes nothing (see the module docstring): energy the ledger
-        never saw cannot have given anything up. The ledger never goes negative.
+        zero, forgoes nothing and is not sunshine (see the module docstring):
+        energy the ledger never saw cannot have given anything up, and has no
+        known source. The ledger never goes negative.
 
-        The forgone revenue is drawn down by the same share as the cost, so a
-        partial discharge takes its part of a blend that may have been stored at
-        several different export rates (ADR-0027).
+        The forgone revenue and the sunshine are drawn down by the same share as
+        the cost, so a partial discharge takes its part of a blend that may have
+        been stored at several different export rates (ADR-0027, ADR-0033).
         """
         if kwh < 0:
             msg = f"discharge cannot be negative: {kwh}"
@@ -147,17 +155,21 @@ class BatteryLedger:
         if from_stored == self._stored_kwh:
             cost = self._stored_cost
             forgone = self._stored_forgone
+            solar_kwh = self._stored_solar_kwh
             self._stored_kwh = Decimal(0)
             self._stored_cost = Decimal(0)
             self._stored_forgone = Decimal(0)
+            self._stored_solar_kwh = Decimal(0)
         else:
             share = from_stored / self._stored_kwh
             cost = from_stored * self.unit_cost
             forgone = self._stored_forgone * share
+            solar_kwh = self._stored_solar_kwh * share
             self._stored_kwh -= from_stored
             self._stored_cost -= cost
             self._stored_forgone -= forgone
-        return Withdrawal(cost=cost, forgone=forgone)
+            self._stored_solar_kwh -= solar_kwh
+        return Withdrawal(cost=cost, forgone=forgone, solar_kwh=solar_kwh)
 
     def reconcile(
         self, available_kwh: Decimal, ceiling: Decimal | None = None
@@ -202,9 +214,9 @@ class BatteryLedger:
             if available_kwh >= self._stored_kwh:
                 return Decimal(0)
         self._written_off_kwh += self._stored_kwh - max(available_kwh, Decimal(0))
-        # The forgone revenue of a phantom is as phantom as its energy, so it
-        # goes with the inventory - and like the cost beside it, nothing about
-        # the write-down is published (ADR-0027).
+        # The forgone revenue and sunshine of a phantom are as phantom as its
+        # energy, so they go with the inventory - and like the cost beside them,
+        # nothing about the write-down is published (ADR-0027, ADR-0033).
         kept_share = (
             Decimal(0)
             if self._stored_kwh == 0
@@ -215,12 +227,14 @@ class BatteryLedger:
             self._stored_kwh = Decimal(0)
             self._stored_cost = Decimal(0)
             self._stored_forgone = Decimal(0)
+            self._stored_solar_kwh = Decimal(0)
         else:
             kept = available_kwh * self.unit_cost
             written_off = self._stored_cost - kept
             self._stored_kwh = available_kwh
             self._stored_cost = kept
             self._stored_forgone *= kept_share
+            self._stored_solar_kwh *= kept_share
         self._written_off_cost += written_off
         return written_off
 
@@ -233,13 +247,16 @@ class BatteryLedger:
         self._written_off_kwh = Decimal(0)
         self._written_off_cost = Decimal(0)
 
-    def _charge(self, kwh: Decimal, cost: Decimal, forgone: Decimal) -> None:
+    def _charge(
+        self, kwh: Decimal, cost: Decimal, forgone: Decimal, *, solar_kwh: Decimal
+    ) -> None:
         if kwh < 0:
             msg = f"charge cannot be negative: {kwh}"
             raise ValueError(msg)
         self._stored_kwh += kwh
         self._stored_cost += cost
         self._stored_forgone += forgone
+        self._stored_solar_kwh += solar_kwh
 
     def diagnostics(self) -> dict[str, str]:
         """What the ledger holds, so a discharge price can be explained.
@@ -268,6 +285,7 @@ class BatteryLedger:
             "stored_kwh": str(self._stored_kwh),
             "stored_cost": str(self._stored_cost),
             "stored_forgone": str(self._stored_forgone),
+            "stored_solar_kwh": str(self._stored_solar_kwh),
             "written_off_kwh": str(self._written_off_kwh),
             "written_off_cost": str(self._written_off_cost),
         }
@@ -286,5 +304,8 @@ class BatteryLedger:
         # household upgrading holds sunshine whose forgone value nobody
         # recorded, so it starts at nothing and is right from the next charge.
         self._stored_forgone = Decimal(data.get("stored_forgone", 0))
+        # Absent for the same reason, and read the same way: energy whose source
+        # nobody recorded counts as bought until it cycles out (ADR-0033).
+        self._stored_solar_kwh = Decimal(data.get("stored_solar_kwh", 0))
         self._written_off_kwh = Decimal(data.get("written_off_kwh", 0))
         self._written_off_cost = Decimal(data.get("written_off_cost", 0))

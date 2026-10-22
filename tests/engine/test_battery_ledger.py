@@ -419,3 +419,103 @@ def test_a_write_down_drops_what_was_given_up_with_the_inventory() -> None:
     # Then - a quarter of the forgone revenue survives with the quarter of the
     # energy, so the next discharge is not valued against energy that is not there
     assert ledger.discharge(Decimal(1)).forgone == Decimal("0.12")
+
+
+def test_stored_sunshine_comes_back_out_as_sunshine() -> None:
+    """ADR-0033: the ledger carries stored generation in kWh.
+
+    Not read from the forgone value: that is zero for a household with no export
+    price, whose stored sunshine is still sunshine.
+    """
+    # Given - 4 kWh of sunshine stored by a household who are paid nothing for
+    # export, and 2 kWh bought overnight
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(4))
+    ledger.charge_from_grid(Decimal(2), OVERNIGHT)
+
+    # When - all of it is drawn back out
+    withdrawn = ledger.discharge(Decimal(6))
+
+    # Then - the 4 kWh that came from the panels are said to have, though they
+    # gave up nothing in money
+    assert withdrawn.solar_kwh == Decimal(4)
+    assert withdrawn.forgone == Decimal(0)
+
+
+def test_a_partial_discharge_takes_its_share_of_the_stored_sunshine() -> None:
+    """Drawn down by the same proportional rule as the cost beside it."""
+    # Given - 2 kWh bought and 6 kWh generated, so three quarters is sunshine
+    ledger = BatteryLedger()
+    ledger.charge_from_grid(Decimal(2), OVERNIGHT)
+    ledger.charge_from_generation(Decimal(6))
+
+    # When - 2 kWh are used
+    withdrawn = ledger.discharge(Decimal(2))
+
+    # Then - three quarters of it was sunshine, and the rest is still on the
+    # books in the same proportion for whatever uses it next
+    assert withdrawn.solar_kwh == Decimal("1.5")
+    assert ledger.discharge(Decimal(6)).solar_kwh == Decimal("4.5")
+
+
+def test_a_draw_beyond_what_is_stored_is_not_called_sunshine() -> None:
+    """Energy the ledger never saw has no known source, so it is not counted.
+
+    The household's headline then undercounts rather than claiming energy as
+    their own that may have come from the grid (ADR-0033).
+    """
+    # Given - 1 kWh of stored sunshine
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(1))
+
+    # When - 3 kWh are drawn
+    withdrawn = ledger.discharge(Decimal(3))
+
+    # Then - the kilowatt hour it held, and nothing for the rest
+    assert withdrawn.solar_kwh == Decimal(1)
+
+
+def test_a_write_down_drops_the_sunshine_with_the_inventory() -> None:
+    """A phantom's sunshine is as phantom as its energy."""
+    # Given - a ledger believing it holds 4 kWh of sunshine and 4 kWh bought
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(4))
+    ledger.charge_from_grid(Decimal(4), OVERNIGHT)
+
+    # When - the battery reports it actually holds 2
+    ledger.reconcile(Decimal(2))
+
+    # Then - the blend survives the write-down: half of what is left is sunshine
+    assert ledger.discharge(Decimal(2)).solar_kwh == Decimal(1)
+
+
+def test_the_stored_sunshine_survives_a_restart() -> None:
+    # Given - a ledger holding 3 kWh of sunshine among 5
+    ledger = BatteryLedger()
+    ledger.charge_from_generation(Decimal(3))
+    ledger.charge_from_grid(Decimal(2), OVERNIGHT)
+
+    # When - it is restored from its own snapshot
+    restored = BatteryLedger()
+    restored.restore(ledger.snapshot())
+
+    # Then - the sunshine is still in there
+    assert restored.discharge(Decimal(5)).solar_kwh == Decimal(3)
+
+
+def test_a_battery_from_before_it_was_counted_holds_no_sunshine() -> None:
+    """Upgrading starts from nothing stored, as the forgone value did (ADR-0033)."""
+    # Given - a snapshot written before stored sunshine was carried
+    old = BatteryLedger()
+    old.charge_from_generation(Decimal(3))
+    snapshot = old.snapshot()
+    del snapshot["stored_solar_kwh"]
+
+    # When - it is restored
+    restored = BatteryLedger()
+    restored.restore(snapshot)
+
+    # Then - the energy is all there, and none of it is called sunshine until
+    # the next charge, because nobody recorded where it came from
+    assert restored.stored_kwh == Decimal(3)
+    assert restored.discharge(Decimal(3)).solar_kwh == Decimal(0)
