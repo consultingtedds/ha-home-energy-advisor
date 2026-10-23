@@ -104,6 +104,28 @@ const HOURLY_DAYS = 2;
 const statisticIdFor = (device, concept) => device?.statistics?.[concept];
 
 /**
+ * Whether a row has a Would have paid of its own.
+ *
+ * Battery Losses has none: its energy was bought and is gone, so what it would
+ * have cost is what it cost, and the integration publishes no such entity for
+ * it (HEA-174). A figure switched off for a grid-only home still has its entity,
+ * so this is only ever a battery's loss.
+ */
+export const hasACounterfactual = (device) =>
+  CONCEPTS.costAtGridPrice in (device?.statistics ?? {});
+
+/**
+ * The statistic a figure is read from: its own, except a Would have paid that
+ * does not exist, which is read as the row's cost, the engine's own rule. So
+ * every card sums a loss into Would have paid at its cost and saves nothing on
+ * it, rather than taking it off the household's saving.
+ */
+const sourceOf = (device, field, concept) =>
+  field === "costAtGridPrice" && !hasACounterfactual(device)
+    ? statisticIdFor(device, CONCEPTS.actualCost)
+    : statisticIdFor(device, concept);
+
+/**
  * Every statistic the given devices need, in a stable order.
  *
  * The bounds are requested unconditionally. A card cannot ask whether the
@@ -327,7 +349,7 @@ const seriesFrom = (devices, buckets, period, settledUntil) => {
   const gross = new Set(devices.filter((device) => device.gross).map((device) => device.key));
   for (const device of devices.filter((row) => !gross.has(row.upstream))) {
     for (const [field, concept] of Object.entries(CONCEPTS)) {
-      const statistic = buckets?.[statisticIdFor(device, concept)];
+      const statistic = buckets?.[sourceOf(device, field, concept)];
       for (const bucket of bucketsWithin(statistic, period)) {
         const row = byStart.get(bucket.start) ?? zeroed();
         row[field] += bucket.change;
@@ -353,7 +375,7 @@ const totalsFor = (device, buckets, period) => {
   const totals = Object.fromEntries(
     Object.entries(CONCEPTS).map(([field, concept]) => [
       field,
-      changeWithin(buckets?.[statisticIdFor(device, concept)], period),
+      changeWithin(buckets?.[sourceOf(device, field, concept)], period),
     ]),
   );
   return {

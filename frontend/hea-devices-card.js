@@ -18,7 +18,7 @@ import {
   rateUnit,
 } from "./hea-format.js";
 import { fill, labelsFor } from "./hea-labels.js";
-import { BOUNDS, CONCEPTS } from "./hea-statistics.js";
+import { BOUNDS, hasACounterfactual } from "./hea-statistics.js";
 import { HeaTableCard, sortSchemaFor } from "./hea-table-card.js";
 
 export const TAG = "hea-devices-card";
@@ -45,35 +45,24 @@ const offersARange = (row) =>
   Object.values(BOUNDS).every((concept) => concept in (row.statistics ?? {}));
 
 /**
- * Whether a row has a Would have paid of its own, read the same way.
+ * A figure that only exists beside a Would have paid, blank on a row without one.
  *
- * Battery Losses has none: its energy was bought and is gone, so what it would
- * have cost is what it cost, and the integration publishes no such figure for
- * it (HEA-174). The total has no `statistics` and always has one.
+ * The data already counts such a row - Battery Losses - at its own cost and
+ * saving nothing (`hasACounterfactual`), so the total is right either way. Its
+ * own cells are a dash rather than that figure: a Would have paid equal to Paid
+ * and a Saved of nought would read as a comparison nobody made. The total has
+ * no `statistics`, and is always shown.
  */
-const hasACounterfactual = (row) =>
-  !row.statistics || CONCEPTS.costAtGridPrice in row.statistics;
-
-/**
- * A figure that only exists beside a counterfactual: blank on a row without
- * one, and in the total at what that row's counterfactual is taken to be.
- */
-const besideTheCounterfactual = (field, { counted }) => ({
+const besideTheCounterfactual = (field) => ({
   field,
   fields: [field],
-  derive: (row) => (hasACounterfactual(row) ? row[field] : undefined),
-  readField: (row) => (hasACounterfactual(row) ? row[field] : counted(row)),
+  derive: (row) =>
+    !row.statistics || hasACounterfactual(row) ? row[field] : undefined,
 });
 
-/**
- * Would have paid and Saved, blank on Battery Losses rather than nought.
- *
- * Nought would read as a loss that could have cost nothing, and its Saved as
- * money lost. In the total the loss counts at its own cost and saves nothing,
- * which is the engine's own rule, so the total's saving is the devices' alone.
- */
+/** Would have paid and Saved, blank on Battery Losses (HEA-174). */
 const WOULD_HAVE_PAID = {
-  ...besideTheCounterfactual("costAtGridPrice", { counted: (row) => row.actualCost }),
+  ...besideTheCounterfactual("costAtGridPrice"),
   label: "would_have_paid",
   format: formatMoney,
   // The baseline Paid is judged against: no verdict of its own, and muted, since
@@ -82,7 +71,7 @@ const WOULD_HAVE_PAID = {
 };
 
 const SAVED = {
-  ...besideTheCounterfactual("costSavings", { counted: () => 0 }),
+  ...besideTheCounterfactual("costSavings"),
   label: "saved",
   format: formatMoney,
 };

@@ -751,6 +751,61 @@ describe("fetchDeviceStatistics", () => {
   });
 });
 
+describe("a battery's loss", () => {
+  // As the integration publishes it: no Would have paid entity at all, because
+  // a loss's energy was bought and is gone, so what it would have cost is what
+  // it cost (HEA-174)
+  const LOSSES = aDevice("battery_losses", "Battery Losses", {
+    statistics: {
+      energy_used: "sensor.battery_losses_energy_used",
+      actual_cost: "sensor.battery_losses_actual_cost",
+      forgone_export: "sensor.battery_losses_forgone_export",
+    },
+  });
+  const oneDay = aPeriod(new Date("2026-08-04T00:00:00Z"), new Date("2026-08-05T00:00:00Z"));
+  const DAY = new Date("2026-08-04T00:00:00Z");
+  const hass = () =>
+    aHass({
+      "sensor.slow_poll_aircon_energy_used": [aBucket(DAY, 10)],
+      "sensor.slow_poll_aircon_actual_cost": [aBucket(DAY, 1.0)],
+      "sensor.slow_poll_aircon_cost_at_grid_price": [aBucket(DAY, 3.0)],
+      "sensor.battery_losses_energy_used": [aBucket(DAY, 0.4)],
+      "sensor.battery_losses_actual_cost": [aBucket(DAY, 0.05)],
+    });
+
+  it("would have cost what it cost, and saved nothing", async () => {
+    // When
+    const result = await fetchDeviceStatistics(hass(), [AIRCON, LOSSES], oneDay);
+
+    // Then - its own row, read the engine's way rather than as nought
+    const losses = result.devices.find((row) => row.key === "battery_losses");
+    expect([losses.costAtGridPrice, losses.costSavings]).toEqual([0.05, 0]);
+  });
+
+  it("leaves the household's saving at the devices' alone", async () => {
+    // When
+    const result = await fetchDeviceStatistics(hass(), [AIRCON, LOSSES], oneDay);
+
+    // Then - Would have paid includes the loss at its own cost, so the saving
+    // is the aircon's 2.00 and not 1.95. Every card reading the totals agrees
+    expect(result.totals.costAtGridPrice).toBeCloseTo(3.05, 10);
+    expect(result.totals.costSavings).toBeCloseTo(2.0, 10);
+  });
+
+  it("is counted the same way bucket by bucket", async () => {
+    // When
+    const result = await fetchDeviceStatistics(hass(), [AIRCON, LOSSES], oneDay);
+
+    // Then - the chart's buckets agree with the totals beside them
+    expect(result.series.map((bucket) => bucket.costAtGridPrice)).toEqual([
+      expect.closeTo(3.05, 10),
+    ]);
+    expect(result.series.map((bucket) => bucket.costSavings)).toEqual([
+      expect.closeTo(2.0, 10),
+    ]);
+  });
+});
+
 describe("a pooled battery", () => {
   // The pool's Battery Losses holds both batteries' shares (ADR-0031); a
   // circuit's row would already be less what is metered inside it
