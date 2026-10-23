@@ -482,7 +482,8 @@ would have fired on households with nothing wrong.
    is failing makes a dead device indistinguishable from one that is switched
    off, and every health check we have is satisfied (HEA-158). Moved here
    2026-09-21: the defect is the integration's, and the reference case cannot be
-   re-examined until that integration is fixed
+   re-examined until that integration is fixed. **Decided against 2026-10-23**
+   (see Out of scope > Decided against)
 
 ### Epic 10 - Respect nested/upstream devices in cost allocation
 
@@ -1174,6 +1175,20 @@ it again. Each has a closed Linear ticket with the detail.
 - **Following an optimiser's grid-charging signal** (HEA-234, closed
   2026-10-23). Measured on the reference home and worth about €0.001 a day; see
   its entry above for what would reopen it.
+- **A setting to raise the 100 kW credible-step limit** (HEA-138, closed
+  2026-10-23). For a farm, workshop or small commercial site, not a home: 100 kW
+  is about 1.4 times the largest domestic supply. Nobody has asked, and a
+  setting on a guess is one to maintain for ever and a way to switch the guard
+  off. A site that does exceed it sees the refusal in a Repair naming the input,
+  so it is not silent. Reopen when such a household asks.
+- **Flagging a power-only device whose upstream has died** (HEA-158, closed
+  2026-10-23). An integration that publishes `0` W instead of `unavailable` when
+  its backend fails makes a dead device look exactly like one switched off, and
+  "zero for N hours" would fire on every seasonal device and teach households
+  to ignore Repairs. The fault and its notice belong to the upstream
+  integration: a failed login raises its own reauthentication there. Seen only
+  once, on the reference home. Reopen if a household is misled by it with no
+  upstream notice to go on.
 
 The README's "What Actual Cost does not include" tells households about the
 first two.
