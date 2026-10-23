@@ -477,7 +477,8 @@ would have fired on households with nothing wrong.
    meanwhile, with the mitigation
 2. View strategies are not offered in the add-view dialog, so a household cannot
    add HEA's view to a dashboard they already have without two lines of YAML
-   (HEA-108). `docs/dashboard.md` carries those two lines
+   (HEA-108). `docs/dashboard.md` carries those two lines. **Decided against
+   2026-10-23** (see Out of scope > Decided against)
 3. An integration that publishes `0` W rather than `unavailable` when its backend
    is failing makes a dead device indistinguishable from one that is switched
    off, and every health check we have is satisfied (HEA-158). Moved here
@@ -1189,6 +1190,11 @@ it again. Each has a closed Linear ticket with the detail.
   integration: a failed login raises its own reauthentication there. Seen only
   once, on the reference home. Reopen if a household is misled by it with no
   upstream notice to go on.
+- **Offering HEA's view in Home Assistant's add-view dialog** (HEA-108, closed
+  2026-10-23). A change to Home Assistant's own frontend to save two lines of
+  YAML on one of three ways to get the cards; the other two (a new dashboard,
+  or cards added one at a time) need none, and `docs/dashboard.md` shows the
+  two lines. Reopen if households keep asking how to add the view.
 
 The README's "What Actual Cost does not include" tells households about the
 first two.
