@@ -54,6 +54,7 @@ export const STAT_CONCEPTS = [
   "energy_from_grid",
   "energy_from_generation",
   "energy_from_battery",
+  "energy_from_battery_solar",
   // Published for every row including Untracked, unlike the bounds below:
   // `_CONCEPTS` carries it, so `sensor.py` creates one per device (ADR-0026).
   "forgone_export",
@@ -168,6 +169,18 @@ export const boundsFor = (key, costFloor, costCeiling, at = MAY) => ({
 export const forgoneFor = (key, forgoneExport, at = MAY) => ({
   [`sensor.${key}_forgone_export`]: [
     { start: at.getTime(), change: forgoneExport },
+  ],
+});
+
+/**
+ * How much of a key's battery energy was sunshine stored earlier (ADR-0033).
+ *
+ * Absent for a household with no battery, and for any period before the figure
+ * existed - both of which count the battery as grid-charged.
+ */
+export const solarFor = (key, batterySolar, at = MAY) => ({
+  [`sensor.${key}_energy_from_battery_solar`]: [
+    { start: at.getTime(), change: batterySolar },
   ],
 });
 

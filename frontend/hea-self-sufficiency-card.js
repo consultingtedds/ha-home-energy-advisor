@@ -17,15 +17,15 @@
  * HA's and only the arithmetic is ours (ADR-0017's ladder, recorded on the
  * ticket).
  *
- * **Battery discharge is not in the headline.** HA's own formula is a grid
+ * **The battery counts as far as it held sunshine.** HA's own formula is a grid
  * complement, `1 - from_grid / consumption`, which silently counts battery
  * discharge as self-produced whatever charged it - and counts the unaccounted
- * remainder that way too. We cannot make that claim: `BatteryLedger` records
- * what the stored energy cost, never what share of it was generated, and on the
- * reference instance Predbat force-charges from the grid overnight, so a
- * battery-heavy evening would read as self-sufficiency that was really cheap
- * grid power. The battery share is shown beside the headline instead, named,
- * with the reason on the card (maintainer's decision, 2026-08-28).
+ * remainder that way too. A battery filled from cheap overnight import would
+ * read as self-sufficiency that was really grid power. The battery's ledger
+ * knows the split, so each device's Energy From Battery (Solar) is the part
+ * that was stored sunshine: the headline counts that, and the rest of the
+ * discharge is shown beside it as bought (ADR-0033, revising the maintainer's
+ * 2026-08-28 decision to leave the battery out altogether).
  *
  * No severity colouring, deliberately. HA's card grades its gauge red to green,
  * but a "good" self-sufficiency figure is a property of the household's roof,
@@ -48,6 +48,7 @@ const FIELDS = [
   "energyFromGrid",
   "energyFromGeneration",
   "energyFromBattery",
+  "energyFromBatterySolar",
 ];
 
 /**
@@ -167,6 +168,10 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
   /**
    * Each source as a fraction of the energy used, plus whatever is left over.
    *
+   * Generation is the household's own: what the panels served directly, and
+   * what they stored in the battery for later. The battery's share is only the
+   * rest of its discharge, the energy it was charged with from the grid.
+   *
    * The three need not add up. A bucket with draw the house-level meters never
    * accounted for contributes to energy and to no source, so the remainder is
    * real and is shown rather than folded into one of the three.
@@ -175,11 +180,13 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
     const totals = this._totals();
     const used = totals.energyUsed;
     const share = (field) => totals[field] / used;
-    const generation = share("energyFromGeneration");
-    const battery = share("energyFromBattery");
+    const storedSolar = share("energyFromBatterySolar");
+    const generation = share("energyFromGeneration") + storedSolar;
+    const battery = share("energyFromBattery") - storedSolar;
     const grid = share("energyFromGrid");
     return {
       generation,
+      storedSolar,
       battery,
       grid,
       // Never negative: sources that overshoot the energy are the same rounding
@@ -194,17 +201,26 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
     return `${body}${this._breakdown(locale)}`;
   }
 
-  /** The gauge, and the concept its number is a share of. */
+  /**
+   * The gauge, and the concept its number is a share of.
+   *
+   * Said to include stored solar only where some was, so a home with panels and
+   * no battery is not told about a battery it does not have.
+   */
   _chartMarkup() {
+    const stored =
+      this._shares().storedSolar > ROUNDING
+        ? `<div class="headline">${this._labels.including_stored_solar}</div>`
+        : "";
     return `<ha-gauge></ha-gauge>
-      <div class="headline">${this._labels.from_generation}</div>`;
+      <div class="headline">${this._labels.from_generation}</div>${stored}`;
   }
 
-  /** What the rest of the energy was, and why the battery is its own figure. */
+  /** What the rest of the energy was, and what the headline counts. */
   _breakdown(locale) {
     const { battery, grid, unaccounted } = this._shares();
     const figures = [
-      { label: "from_battery", value: battery },
+      { label: "from_battery_grid", value: battery },
       { label: "from_grid", value: grid },
       { label: "unaccounted", value: unaccounted },
     ]

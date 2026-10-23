@@ -100,11 +100,13 @@ export const DEFAULTS = Object.freeze({
   from_grid: "From the grid",
   from_generation: "From generation",
   from_battery: "From the battery",
+  from_battery_grid: "From battery (grid)",
+  including_stored_solar: "including stored solar",
   energy_used: "Energy used",
   unaccounted: "Unaccounted",
   self_sufficiency_note:
-    "Battery energy is counted on its own: it was charged from generation or " +
-    "from the grid, and these readings cannot say which.",
+    "Solar stored in the battery counts as your own. Battery energy charged " +
+    "from the grid does not, and is shown on its own.",
   household: "Household",
   title_totals: "Cost summary",
   title_devices: "Cost by device",

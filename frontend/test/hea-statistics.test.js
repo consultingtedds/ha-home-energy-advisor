@@ -63,6 +63,7 @@ describe("statisticIdsFor", () => {
       "sensor.slow_poll_aircon_energy_from_grid",
       "sensor.slow_poll_aircon_energy_from_generation",
       "sensor.slow_poll_aircon_energy_from_battery",
+      "sensor.slow_poll_aircon_energy_from_battery_solar",
       "sensor.slow_poll_aircon_forgone_export",
       "sensor.slow_poll_aircon_lowest_possible_cost",
       "sensor.slow_poll_aircon_highest_possible_cost",
@@ -430,6 +431,8 @@ describe("fetchDeviceStatistics", () => {
       energyFromGrid: 0,
       energyFromGeneration: 0,
       energyFromBattery: 0,
+      // No battery, so no sunshine stored in one (ADR-0033)
+      energyFromBatterySolar: 0,
       // Nothing forgone, for the same reason: no generation to have used
       // instead of exporting. Zero rather than absent, unlike a bound
       // (ADR-0026).
@@ -742,6 +745,7 @@ describe("fetchDeviceStatistics", () => {
       energyFromGrid: "energy_from_grid",
       energyFromGeneration: "energy_from_generation",
       energyFromBattery: "energy_from_battery",
+      energyFromBatterySolar: "energy_from_battery_solar",
       forgoneExport: "forgone_export",
     });
   });

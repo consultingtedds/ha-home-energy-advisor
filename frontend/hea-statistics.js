@@ -35,6 +35,11 @@ export const CONCEPTS = Object.freeze({
   energyFromGrid: "energy_from_grid",
   energyFromGeneration: "energy_from_generation",
   energyFromBattery: "energy_from_battery",
+  // The part of `energyFromBattery` that was sunshine stored earlier (ADR-0033).
+  // Absent means zero for the same reason as below: a household with no
+  // battery stored none, and a period from before the figure existed counts its
+  // battery as grid-charged, which is the rule the engine applies on upgrade.
+  energyFromBatterySolar: "energy_from_battery_solar",
   // What the generation a device consumed would have earned if exported instead
   // (ADR-0026). Here rather than with the bounds, although it can also be
   // missing, because **absent genuinely means zero**: a household with no panels

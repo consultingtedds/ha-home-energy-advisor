@@ -6,9 +6,10 @@
  * The lifecycle and the lazy-component race live in `HeaCard` and
  * `HeaChartCard` and are tested by their own suites. What is tested here is the
  * arithmetic and the claim it makes: that the share is weighted by energy
- * rather than averaged across devices, that battery discharge is kept out of
- * the headline, that energy the meters never accounted for is shown rather than
- * absorbed, and that no energy produces no figure rather than nought percent.
+ * rather than averaged across devices, that the battery counts towards the
+ * headline only as far as it held stored sunshine (ADR-0033), that energy the
+ * meters never accounted for is shown rather than absorbed, and that no energy
+ * produces no figure rather than nought percent.
  */
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +22,7 @@ import {
   bucketsFor,
   mountCard,
   settled,
+  solarFor,
   sourcesFor,
   text,
 } from "./doubles.js";
@@ -36,15 +38,29 @@ const METER = aDeviceRow("fine_meter_aircon", "Fine Meter Aircon");
  * about 17%. A fixture where the two agreed could not tell the implementations
  * apart.
  *
- * Battery is deliberately 1 kWh of the 110: enough that counting it in the
- * headline would move the figure to 18%, so the decision to keep it out is
- * visible in the number rather than only in a label.
+ * Battery is deliberately 1 kWh of the 110, none of it known to be sunshine:
+ * enough that counting it in the headline would move the figure to 18%, so the
+ * decision to keep it out is visible in the number rather than only in a label.
  */
 const TWO_DEVICES = {
   ...bucketsFor("slow_poll_aircon", 100, 12.5, 14.0),
   ...sourcesFor("slow_poll_aircon", 90, 10, 0),
   ...bucketsFor("fine_meter_aircon", 10, 0.2, 1.4),
   ...sourcesFor("fine_meter_aircon", 0, 9, 1),
+};
+
+/**
+ * A battery holding some of each: 30 of the aircon's 100 kWh came out of it, 20
+ * of those were sunshine stored earlier and 10 were bought.
+ *
+ * Far enough apart that each reading lands on its own number: 10% leaving the
+ * battery out, 30% counting its sunshine, 40% counting all of it as Home
+ * Assistant's own gauge does.
+ */
+const STORED_SUNSHINE = {
+  ...bucketsFor("slow_poll_aircon", 100, 12.5, 14.0),
+  ...sourcesFor("slow_poll_aircon", 60, 10, 30),
+  ...solarFor("slow_poll_aircon", 20),
 };
 
 const mount = (hass, config) => mountCard(TAG, hass, config);
@@ -110,39 +126,93 @@ describe("the share", () => {
     expect(gaugeOf(card).value).not.toBeCloseTo(50, 1);
   });
 
-  it("keeps battery discharge out of the headline", async () => {
-    // Given - 1 kWh of the 110 came out of the battery
+  it("keeps battery energy out of the headline where none was sunshine", async () => {
+    // Given - 1 kWh of the 110 came out of the battery, with no stored sunshine
+    // published: a battery filled from the grid, or a period from before the
+    // figure existed, which counts the same way (ADR-0033)
     const card = mount(aHouse());
 
     // When
     await ready(card);
 
-    // Then - 17%, not the 18% that counting the battery as ours would give.
-    // The engine cannot say what charged it: `BatteryLedger` records what the
-    // stored energy cost, never what share of it was generated, and on the
-    // reference instance Predbat force-charges from the grid overnight
+    // Then - 17%, not the 18% that counting the battery as ours would give
     expect(gaugeOf(card).value).toBeCloseTo(17.27, 1);
     expect(gaugeOf(card).value).not.toBeCloseTo(18.18, 1);
   });
 
-  it("shows the battery and the grid beside it, each named", async () => {
+  it("counts the sunshine the battery stored towards the headline", async () => {
+    // Given - 10 kWh straight off the panels and 20 more that went through the
+    // battery first
+    const card = mount(aHouse(STORED_SUNSHINE));
+
+    // When
+    await ready(card);
+
+    // Then - 30%. Leaving the battery out undercounts this household by the
+    // whole of it, which is what they asked about (HEA-216)
+    expect(gaugeOf(card).value).toBeCloseTo(30, 1);
+    expect(gaugeOf(card).value).not.toBeCloseTo(10, 1);
+  });
+
+  it("never counts battery energy bought from the grid as the household's own", async () => {
+    // Given - 10 of the battery's 30 kWh were bought
+    const card = mount(aHouse(STORED_SUNSHINE));
+
+    // When
+    await ready(card);
+
+    // Then - not 40%, which is what Home Assistant's grid-complement gauge
+    // reads, counting a battery filled from cheap overnight import as self-made.
+    // The bought part is its own figure beside the headline
+    expect(gaugeOf(card).value).not.toBeCloseTo(40, 1);
+    const shown = text(card);
+    expect(shown).toContain(LABELS.from_battery_grid);
+    expect(shown).toMatch(/10\s*%/);
+  });
+
+  it("says the headline includes stored solar when it does", async () => {
+    // Given
+    const card = mount(aHouse(STORED_SUNSHINE));
+
+    // When
+    await ready(card);
+
+    // Then - beneath the headline, so the figure is never read as sunshine used
+    // straight off the panels alone
+    expect(text(card)).toContain(LABELS.including_stored_solar);
+  });
+
+  it("says nothing about stored solar when there was none", async () => {
+    // Given - no stored sunshine in the period
+    const card = mount(aHouse());
+
+    // When
+    await ready(card);
+
+    // Then - a home with panels and no battery would otherwise be told about a
+    // battery it does not have
+    expect(text(card)).not.toContain(LABELS.including_stored_solar);
+  });
+
+  it("shows the bought battery energy and the grid beside it, each named", async () => {
     // Given
     const card = mount(aHouse());
 
     // When
     await ready(card);
 
-    // Then - 1 of 110 from the battery, 90 of 110 from the grid. Shown so a
-    // household with a battery still sees where its energy came from, without
-    // one figure claiming more than the data supports
+    // Then - 1 of 110 from the battery, none of it known to be sunshine, and 90
+    // of 110 from the grid. Shown so a household with a battery still sees where
+    // its energy came from, without one figure claiming more than the data
+    // supports
     const shown = text(card);
-    expect(shown).toContain(LABELS.from_battery);
+    expect(shown).toContain(LABELS.from_battery_grid);
     expect(shown).toMatch(/1\s*%/);
     expect(shown).toContain(LABELS.from_grid);
     expect(shown).toMatch(/82\s*%/);
   });
 
-  it("says why the battery is counted on its own", async () => {
+  it("says what the headline counts", async () => {
     // Given
     const card = mount(aHouse());
 
