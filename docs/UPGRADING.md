@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 0.13.0
 
 **If something charges your battery from the grid while the sun is up, say
 so.** The house settings now ask **How your battery charges**, in place of
