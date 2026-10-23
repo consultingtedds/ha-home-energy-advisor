@@ -151,3 +151,60 @@ def test_an_ordinary_reset_still_counts_what_followed_it() -> None:
     # into a refusal
     assert delta is not None
     assert delta.kwh == Decimal("0.4")
+
+
+def a_meter_reporting_still_for(seconds: int) -> CumulativeEnergySource:
+    """A counter re-reporting its unchanged value every five seconds.
+
+    The shape of GitHub #45: a Deye inverter through ha-solarman reports every
+    few seconds, and its counter only moves every ten minutes or so.
+    """
+    source = a_meter()
+    for second in range(5, seconds + 1, 5):
+        source.observe(kwh(at(second), Decimal(100)))
+    return source
+
+
+def test_a_step_after_a_still_run_is_judged_over_the_run() -> None:
+    """The step is power over the time since the counter last moved (HEA-238).
+
+    Judged from the last *report*, five seconds earlier and floored at a minute,
+    any step above 1.67 kWh read as over 100 kW and was refused. One household
+    lost a night's import while an EV charged, and the charger was then set
+    aside for drawing more than the house.
+    """
+    # Given - ten minutes of unchanged reports
+    source = a_meter_reporting_still_for(600)
+
+    # When - the counter steps 1.8 kWh, which over those ten minutes is 10.8 kW
+    delta = source.observe(kwh(at(605), "101.8"))
+
+    # Then - counted, as an EV charging is
+    assert delta is not None
+    assert delta.kwh == Decimal("1.8")
+
+
+def test_a_counter_replaced_after_a_still_run_is_still_refused() -> None:
+    # Given - ten minutes of unchanged reports
+    source = a_meter_reporting_still_for(600)
+
+    # When - the sensor is replaced by one counting from somewhere else
+    delta = source.observe(kwh(at(605), "5436.38"))
+
+    # Then - refused. 5,336 kWh over ten minutes is 32 MW, which judging over
+    # the run does not make a house
+    assert delta is None
+    assert reasons(source)[-1] == DecisionReason.IMPLAUSIBLE_STEP.value
+
+
+def test_a_long_still_run_excuses_no_more_than_two_hours() -> None:
+    # Given - three hours of unchanged reports
+    source = a_meter_reporting_still_for(3 * 3600)
+
+    # When - the counter steps 250 kWh. Over three hours that is 83 kW, but the
+    # energy is spread over two at most (HEA-74), which makes it 125 kW
+    delta = source.observe(kwh(at(3 * 3600 + 5), Decimal(350)))
+
+    # Then - refused: it is judged over the span it would be booked across
+    assert delta is None
+    assert reasons(source)[-1] == DecisionReason.IMPLAUSIBLE_STEP.value

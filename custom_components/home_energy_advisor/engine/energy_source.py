@@ -364,7 +364,7 @@ class CumulativeEnergySource:
         if kwh == 0:
             self._log(current.at, DecisionReason.NO_MOVEMENT, None)
             return None
-        if not self._credible(kwh, previous.at, current.at):
+        if not self._credible(kwh, accrued_from, current.at):
             # The counter's position is already ``current``, so the replacement
             # becomes the baseline and everything after it is counted normally.
             self._note_scale_change(previous, current)
@@ -463,15 +463,22 @@ class CumulativeEnergySource:
             return held.before
         return previous
 
-    def _credible(self, kwh: Decimal, previous: datetime, current: datetime) -> bool:
+    def _credible(self, kwh: Decimal, since: datetime, current: datetime) -> bool:
         """Whether a reading could be energy rather than a replaced counter.
 
-        Weighed as power over the span the reading covers, never as energy in a
-        bucket: a meter that reports once a day delivers a day's energy in one
-        step, and it is telling the truth. The span is the real gap between
-        readings, so a source quiet for three days is judged over three days.
+        Weighed as power over the span the energy is booked across, never as
+        energy in a bucket: a meter that reports once a day delivers a day's
+        energy in one step, and it is telling the truth. So a source quiet for
+        three days is judged over three days.
+
+        That span starts when the counter last *moved*, not at its last report.
+        A counter re-reporting an unchanged value every few seconds had each
+        step judged over the one-minute floor, and refused anything above
+        1.67 kWh - a night's import while an EV charged (HEA-238, GitHub #45).
+        A still run counts for at most `MAX_QUIET_SPAN`, as it does when the
+        energy is spread (HEA-74).
         """
-        span = max(current - previous, _MIN_JUDGED_SPAN)
+        span = max(current - since, _MIN_JUDGED_SPAN)
         hours = Decimal(span.total_seconds()) / Decimal(3600)
         return kwh / hours <= CREDIBLE_POWER_KW
 
