@@ -31,6 +31,7 @@ from scripts.release_version import (
     latest_tag,
     next_version,
     pending_note,
+    promote_version,
     release_notes,
     stamp_pending_note,
 )
@@ -168,6 +169,38 @@ def test_a_breaking_change_after_one_point_zero_bumps_the_major() -> None:
     # is exactly what a major release says
     assert next_version("1.4.2", ["feat!: rename every cost sensor"]) == "2.0.0"
     assert next_version("1.4.2", ["feat: add a card"]) == "1.5.0"
+
+
+def test_the_maintainer_can_cut_one_point_zero_on_purpose() -> None:
+    """The route the rule above leaves for the decision it reserves (HEA-240).
+
+    No commit can produce 1.0.0, by design, so a maintainer asks for it - and
+    whatever the commits since the last release hold, even nothing releasable.
+    """
+    # Given / When / Then
+    assert promote_version("0.13.0") == "1.0.0"
+
+
+def test_one_point_zero_can_only_be_cut_once() -> None:
+    # Given - the promise already made
+    # When / Then - asking again is a mistake, not a release: 2.0.0 is for a
+    # breaking change, which the commits announce for themselves
+    assert promote_version("1.0.0") is None
+    assert promote_version("1.4.2") is None
+
+
+def test_the_workflow_offers_one_point_zero_beside_the_channel() -> None:
+    """Asked for on a stable release, so every stable step runs as usual."""
+    # Given - the workflow as it will run, with the prose stripped out
+    workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+    steps = "\n".join(
+        line for line in workflow.splitlines() if not line.lstrip().startswith("#")
+    )
+
+    # Then - a separate yes/no input, read only where the version is worked out
+    assert "promise_one_point_zero:" in steps
+    assert "--promote" in steps
+    assert steps.index("--promote") < steps.index("Put the version in the manifest")
 
 
 def test_the_notes_group_what_a_household_can_see(with_notes: list[str]) -> None:

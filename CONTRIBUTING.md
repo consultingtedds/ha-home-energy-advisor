@@ -116,6 +116,9 @@ than no notification.
 A breaking change staying inside `0.x` is deliberate. `0.x` already means
 anything here may change, and `1.0.0` is a promise about stability that a
 maintainer makes on purpose - not one a commit subject makes on their behalf.
+So no commit reaches it: it is asked for, with the release workflow's **Cut
+1.0.0** option on a stable release, and only once. After that a breaking change
+bumps the major by itself.
 
 The rules are `scripts/release_version.py`, and `tests/test_release_version.py`
 holds them against the table above: adding a type here without deciding whether

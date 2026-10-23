@@ -27,6 +27,14 @@ on:
         type: choice
         options: [stable, beta]
         default: stable
+      # 1.0.0 is a promise the maintainer makes, and no commit can reach it
+      # (`next_version`), so it is asked for here. A stable release in every
+      # other respect: notes, the upgrade paragraph and the tag as usual. Once
+      # 1.0.0 exists, asking again fails rather than releasing (HEA-240).
+      promise_one_point_zero:
+        description: "Cut 1.0.0 (stable only, once)"
+        type: boolean
+        default: false
 
 # Never cancel a release in flight. A cancelled one can leave a tag pushed with
 # no release behind it, which is a worse state than a slow queue.
@@ -83,7 +91,13 @@ jobs:
             exit 0
           fi
 
-          if [ "${{ inputs.channel }}" = "beta" ]; then
+          if [ "${{ inputs.promise_one_point_zero }}" = "true" ]; then
+            if [ "${{ inputs.channel }}" != "stable" ]; then
+              echo "1.0.0 is cut on the stable channel, never as a beta."
+              exit 1
+            fi
+            next=$(python scripts/release_version.py --promote "$current")
+          elif [ "${{ inputs.channel }}" = "beta" ]; then
             next=$(python scripts/release_version.py --beta "$current")
           else
             next=$(python scripts/release_version.py "$current")

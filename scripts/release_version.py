@@ -16,6 +16,7 @@ Used by `.github/workflows/release.yml`:
     python scripts/release_version.py --notes     # prints what went into it
     python scripts/release_version.py --stamp 0.5.0   # dates the paragraph
     python scripts/release_version.py --beta 0.4.2    # prints 0.5.0b1, or nothing
+    python scripts/release_version.py --promote 0.13.0  # prints 1.0.0, once
 
 Printing nothing is a real answer, and the common one: a week of documentation
 and dependency work earns no release.
@@ -143,6 +144,20 @@ def next_version(current: str, messages: list[str]) -> str | None:
     if bump is Bump.MINOR:
         return f"{major}.{minor + 1}.0"
     return f"{major}.{minor}.{patch + 1}"
+
+
+def promote_version(current: str) -> str | None:
+    """1.0.0, cut because the maintainer asked for it, or None once it exists.
+
+    The route the rule in `next_version` reserves (HEA-240). The commits cannot
+    reach 1.0.0, so it is asked for, and whatever they hold: the promise is the
+    release, and a run of documentation commits is no reason to withhold it.
+
+    Once 1.0.0 exists the promise is made, and asking again is a mistake rather
+    than a release: a breaking change after it announces its own major.
+    """
+    major = int(current.split(".", maxsplit=1)[0])
+    return "1.0.0" if major == 0 else None
 
 
 def beta_version(current: str, messages: list[str], tags: list[str]) -> str | None:
@@ -417,8 +432,12 @@ def main() -> int:
     `--beta <current>` prints the next pre-release instead. A beta's notes are
     the same `--notes`, and it is never stamped: the paragraph waits for the
     stable release that will carry it on `main`.
+
+    `--promote <current>` prints 1.0.0, and fails once it exists (HEA-240).
     """
     match sys.argv[1:]:
+        case ["--promote", *rest]:
+            return _promote(rest)
         case ["--stamp", version]:
             return _stamp(version)
         case ["--stamp", *_]:
@@ -439,6 +458,19 @@ def main() -> int:
 
     if release is not None:
         print(release)
+    return 0
+
+
+def _promote(args: list[str]) -> int:
+    """Print 1.0.0, or fail: once it exists, asking again is a mistake."""
+    if len(args) != 1:
+        print("--promote needs the current version, as the manifest states it.")
+        return 1
+    release = promote_version(args[0])
+    if release is None:
+        print(f"{args[0]} is 1.0.0 or later; that promise is made already.")
+        return 1
+    print(release)
     return 0
 
 
