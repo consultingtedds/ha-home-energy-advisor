@@ -1255,6 +1255,47 @@ describe("the table", () => {
   });
 });
 
+describe("the battery's own losses", () => {
+  /**
+   * Battery Losses as the integration publishes it: energy, what it cost, and
+   * what its sunshine could have earned - no Would have paid, because a loss
+   * has no counterfactual of its own. Its energy was bought and is gone, so
+   * what it would have cost is what it cost (HEA-174).
+   */
+  const LOSSES = aDeviceRow("battery_losses", "Battery Losses", false, {
+    energy_used: "sensor.battery_losses_energy_used",
+    actual_cost: "sensor.battery_losses_actual_cost",
+    forgone_export: "sensor.battery_losses_forgone_export",
+  });
+  const WITH_LOSSES = aHass({
+    devices: [...THREE_DEVICES, LOSSES],
+    response: { ...THREE_RESPONSE, ...bucketsFor("battery_losses", 0.4, 0.05, 0) },
+  });
+
+  it("leaves Would have paid and Saved blank on its row", async () => {
+    // Given / When
+    const card = mount(WITH_LOSSES);
+    await ready(card);
+
+    // Then - a dash, the mark for a figure that does not exist. Zero would read
+    // as a loss that could have cost nothing, and its Saved as money lost
+    const losses = rows(card).find(([name]) => name === "Battery Losses");
+    expect(losses.slice(0, 5)).toEqual(["Battery Losses", "0.4 kWh", "€0.05", "-", "-"]);
+  });
+
+  it("still adds up in the total, at what the loss cost", async () => {
+    // Given / When
+    const card = mount(WITH_LOSSES);
+    await ready(card);
+
+    // Then - Would have paid includes the loss at its own cost, so the total
+    // saving is the devices' and nothing taken off for the loss: 5.67 + 1.00 +
+    // 8.00. Leaving it out would make the total's Saved €0.05 too low
+    const total = totalCells(card).map((cell) => cell.textContent.trim());
+    expect(total.slice(2, 5)).toEqual(["€4.66", "€19.33", "€14.67"]);
+  });
+});
+
 describe("what the household's own generation gave up", () => {
   /**
    * A solar household who export, so using a unit at home costs them the export

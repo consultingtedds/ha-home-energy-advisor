@@ -18,7 +18,7 @@ import {
   rateUnit,
 } from "./hea-format.js";
 import { fill, labelsFor } from "./hea-labels.js";
-import { BOUNDS } from "./hea-statistics.js";
+import { BOUNDS, CONCEPTS } from "./hea-statistics.js";
 import { HeaTableCard, sortSchemaFor } from "./hea-table-card.js";
 
 export const TAG = "hea-devices-card";
@@ -43,6 +43,49 @@ const effectiveRate = ({ actualCost, energyUsed }) =>
  */
 const offersARange = (row) =>
   Object.values(BOUNDS).every((concept) => concept in (row.statistics ?? {}));
+
+/**
+ * Whether a row has a Would have paid of its own, read the same way.
+ *
+ * Battery Losses has none: its energy was bought and is gone, so what it would
+ * have cost is what it cost, and the integration publishes no such figure for
+ * it (HEA-174). The total has no `statistics` and always has one.
+ */
+const hasACounterfactual = (row) =>
+  !row.statistics || CONCEPTS.costAtGridPrice in row.statistics;
+
+/**
+ * A figure that only exists beside a counterfactual: blank on a row without
+ * one, and in the total at what that row's counterfactual is taken to be.
+ */
+const besideTheCounterfactual = (field, { counted }) => ({
+  field,
+  fields: [field],
+  derive: (row) => (hasACounterfactual(row) ? row[field] : undefined),
+  readField: (row) => (hasACounterfactual(row) ? row[field] : counted(row)),
+});
+
+/**
+ * Would have paid and Saved, blank on Battery Losses rather than nought.
+ *
+ * Nought would read as a loss that could have cost nothing, and its Saved as
+ * money lost. In the total the loss counts at its own cost and saves nothing,
+ * which is the engine's own rule, so the total's saving is the devices' alone.
+ */
+const WOULD_HAVE_PAID = {
+  ...besideTheCounterfactual("costAtGridPrice", { counted: (row) => row.actualCost }),
+  label: "would_have_paid",
+  format: formatMoney,
+  // The baseline Paid is judged against: no verdict of its own, and muted, since
+  // it is a comparison rather than money anyone paid (ADR-0029).
+  muted: true,
+};
+
+const SAVED = {
+  ...besideTheCounterfactual("costSavings", { counted: () => 0 }),
+  label: "saved",
+  format: formatMoney,
+};
 
 /**
  * What the figure beside it could honestly have been (ADR-0016).
@@ -161,10 +204,8 @@ const COLUMNS = [
   PAID,
   CHANGE,
   RANGE,
-  // The baseline Paid is judged against: no verdict of its own, and muted, since
-  // it is a comparison rather than money anyone paid (ADR-0029).
-  { field: "costAtGridPrice", label: "would_have_paid", format: formatMoney, muted: true },
-  { field: "costSavings", label: "saved", format: formatMoney },
+  WOULD_HAVE_PAID,
+  SAVED,
   FORGONE,
   {
     derive: effectiveRate,
