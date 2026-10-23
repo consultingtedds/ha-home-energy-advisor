@@ -132,6 +132,9 @@ off to see only what each device ran through.
 ![The self-sufficiency card, showing the share of the house that ran on its own generation](images/card-self-sufficiency.png)
 
 What share of the house ran on your own electricity rather than the grid's.
+Solar your battery stored and gave back later counts as your own, and the
+headline says so beneath it. Battery energy charged from the grid does not, and
+is shown on its own as **From battery (grid)**.
 
 ### Filter
 

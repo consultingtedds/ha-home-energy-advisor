@@ -441,6 +441,25 @@ On the cost-over-time chart the interval still being counted is drawn faded,
 with a note saying so, so a bar that looks short is one that is still filling
 rather than a figure to compare.
 
+## Self-sufficiency is lower than the Energy Dashboard's
+
+Expected if you have a battery that sometimes charges from the grid. The Energy
+Dashboard's gauge counts everything the battery gives back as your own, even
+energy it was charged with from the grid overnight. Home Energy Advisor counts
+only the solar the battery stored, and shows the rest as **From battery (grid)**.
+
+Three things can make it lower still:
+
+- **A period from before the update that added stored solar.** Battery energy
+  from then counts as charged from the grid, because nothing recorded where it
+  came from. The gap closes as those days fall out of the period you pick.
+- **Energy already in the battery at the update** counts the same way, until
+  the battery has emptied and filled again.
+- **How your battery charges**, in the house settings, decides the minutes when
+  the battery charges while the house also uses the grid. If it is set to
+  **From the grid as well** and yours only ever charges from solar, choose
+  **Only from solar**.
+
 ## HACS is not offering the update yet
 
 HACS checks repositories it does not carry in its own store - which is all

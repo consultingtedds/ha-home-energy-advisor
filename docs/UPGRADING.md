@@ -86,6 +86,15 @@ you had added the two together with a helper, replace it with the two
 registers. A price can now be typed in as a number, so a fixed rate no longer
 needs a Number helper.
 
+**If you have a battery, the self-sufficiency card now counts the solar it
+stored.** Its headline used to leave the battery out, because nothing said what
+had charged it. Now the solar your battery gave back counts as your own, and
+what it was charged with from the grid is shown on its own as **From battery
+(grid)**. Each device gains **Energy From Battery (Solar)**, switched off if you
+have no battery. It counts from this release: energy already in the battery, and
+any period from before the update, count as charged from the grid, so read it
+over a period that starts after the update.
+
 ## 0.12.0
 
 **If you were told a device "is reporting more energy than the whole house",

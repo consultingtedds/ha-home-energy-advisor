@@ -464,7 +464,9 @@ see the answer rather than work it out.
 ![The self-sufficiency card, showing the share of energy that came from generation, from the battery and from the grid](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/card-self-sufficiency.png)
 
 What share of the house ran on your own electricity rather than the grid's, in
-energy and in money.
+energy and in money. Solar your battery stored and gave back later counts as
+your own. Battery energy charged from the grid does not, and is shown on its
+own.
 
 **Where the cost went.**
 
@@ -488,12 +490,16 @@ Each tracked device gets its own device in Home Assistant, carrying these:
 | Energy From Grid | kWh | How much of Energy Used came off the meter |
 | Energy From Generation | kWh | How much came from your own generation |
 | Energy From Battery | kWh | How much came from the battery |
+| Energy From Battery (Solar) | kWh | How much of Energy From Battery was solar the battery stored earlier |
 | Forgone Export | your currency | What the generation it used could have earned exported instead, at your export rate at the time |
 
-**If you have no generation and no battery, six of those are switched off.**
+**If you have no generation and no battery, seven of those are switched off.**
 Without a second source there is nothing to split: Cost at Grid Price would
 equal Actual Cost, Cost Savings would always be zero, Energy From Grid would
-equal Energy Used, and the other three would never move.
+equal Energy Used, and the other four would never move.
+
+**If you have no battery, Energy From Battery (Solar) is switched off**, for the
+same reason: solar used straight off your panels never went through a battery.
 
 With **Publish a cost range for each device** turned on in the integration's
 options, each device also carries **Lowest Possible Cost** and **Highest Possible
