@@ -749,8 +749,8 @@ for you your own generation really is free.
 
 ## Known issues
 
-**Statistics unit warnings on a fresh install.** The first time each device
-accrues a cost, Home Assistant may raise a warning like:
+**Statistics unit warnings after turning on daily or monthly totals.** The
+first time each device accrues a cost, Home Assistant may raise a warning like:
 
 ```
 The unit of 'Tumble Dryer Cost at Grid Price Daily' changed to 'EUR' which
@@ -769,8 +769,7 @@ the old values or to delete them and start over. Either one clears it for good.
 Resetting all totals puts every total back into that state, so it can happen
 again after a reset.
 
-A fix belongs in Home Assistant itself rather than here, and is being pursued
-upstream.
+A fix belongs in Home Assistant itself rather than here.
 
 ## Troubleshooting and help
 

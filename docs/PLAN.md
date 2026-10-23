@@ -456,7 +456,11 @@ Presentation
 > The reference home moved onto the HACS install of v0.1.1 without losing a
 > figure, and now updates the way any household does.
 
-### Epic 9 - Fixes that belong below us, not here
+### Epic 9 - Fixes that belong below us, not here (CLOSED 2026-10-23)
+
+> **Closed 2026-10-23** with nothing taken upstream: each of the three was
+> decided against (see Out of scope > Decided against). The rule below still
+> holds for anything new of this kind.
 
 Split out of the MVP project on 2026-09-14 (HEA-125). Each is a defect *below*
 this integration - in Home Assistant itself, or in an integration we consume -
@@ -474,7 +478,8 @@ would have fired on households with nothing wrong.
    Assistant then flags a unit change - up to 30 notifications on a fresh
    install. Cause traced through the 2026.7 source; a fix and a regression test
    are written but unpublished (HEA-62). Documented in the README's known issues
-   meanwhile, with the mitigation
+   with the mitigation. **Decided against 2026-10-23** (see Out of scope >
+   Decided against)
 2. View strategies are not offered in the add-view dialog, so a household cannot
    add HEA's view to a dashboard they already have without two lines of YAML
    (HEA-108). `docs/dashboard.md` carries those two lines. **Decided against
@@ -1097,9 +1102,9 @@ Closed since:
   and that remains true in both directions.
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
-start as soon as Epic 1 landed. Epic 7 is cancelled. Epics 9 and 10 run whenever
-there is appetite for them and block nothing - Epic 9 because it is not ours to
-schedule, Epic 10 because it is new capability rather than a fix. Epic 11 is not
+start as soon as Epic 1 landed. Epic 7 is cancelled, and Epic 9 closed with
+nothing taken upstream. Epic 10 runs whenever there is appetite for it and
+blocks nothing, because it is new capability rather than a fix. Epic 11 is not
 scheduled at all: it is whatever households report next.
 
 ## Risks and open questions
@@ -1195,6 +1200,16 @@ it again. Each has a closed Linear ticket with the detail.
   YAML on one of three ways to get the cards; the other two (a new dashboard,
   or cards added one at a time) need none, and `docs/dashboard.md` shows the
   two lines. Reopen if households keep asking how to add the view.
+- **Fixing `utility_meter`'s unit adoption upstream** (HEA-62, closed
+  2026-10-23). Still a bug in Home Assistant: a cycle reset or calibrate
+  publishes a value before the meter has a unit, so a total over a device that
+  has not run yet is recorded without one and Home Assistant later flags the
+  change. But cycle totals have been opt-in since HEA-145, the rows involved
+  hold only zeros, Home Assistant's own repair clears it in one click, the
+  README's Known issues says so, and no household has reported it. Not worth an
+  upstream PR that has to argue past PR #56112's design. The fix and its test
+  are kept on the `utility-meter-adopt-source-unit` branch of a local core
+  checkout. Reopen if households report the notices.
 
 The README's "What Actual Cost does not include" tells households about the
 first two.
