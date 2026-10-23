@@ -441,6 +441,23 @@ On the cost-over-time chart the interval still being counted is drawn faded,
 with a note saying so, so a bar that looks short is one that is still filling
 rather than a figure to compare.
 
+## Paid shows in hours I used no grid
+
+Expected if you have a battery. Home Energy Advisor shows what each device cost
+to run, so a cost is shown when the energy is *used*, not when it was bought.
+Energy the battery gives back is paid for at what it cost to put in.
+
+Say the battery charges from the grid at midday, and the aircon runs on it
+through the night. The grid energy was bought at midday, but it is the aircon
+that used it, overnight. So the cost appears against the aircon, in the hours
+it was running, even though nothing came from the grid then. The midday hours
+show only what the house itself used. What you paid over the day is the same
+either way; it is shown where the energy went.
+
+If you charge your battery from the grid while the sun is up, check **How your
+battery charges**, in the house settings, is set to **From the grid as well**.
+Otherwise that charge is taken as solar, and the evening reads as free.
+
 ## Self-sufficiency is lower than the Energy Dashboard's
 
 Expected if you have a battery that sometimes charges from the grid. The Energy
