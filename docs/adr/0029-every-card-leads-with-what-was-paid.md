@@ -70,3 +70,16 @@ always means that.** Four things follow.
   of a large screen.
 - Every future figure is checked against this before it reaches a card: if it is
   not what was paid, it is an add-on with a name of its own.
+
+## Update - 2026-10-23: standing charges and export earnings will not be built
+
+Decisions 1 and 3 name export earnings and a standing charge as add-ons HEA-97
+might bring, and say where they would appear if it did. Neither will be built
+(maintainer, HEA-97 closed). This integration counts what each device's use
+cost. A standing charge is a fixed fee no device's use causes, and export
+earnings are money received for energy no device used, so neither is a cost of
+running anything, at the device or the household level.
+
+The rules above stand for any add-on that is built. The Could have earned
+column, the one add-on HEA-97 did produce (HEA-38, HEA-229), is unaffected. A
+request for either of the two is answered by PLAN.md's Decided against list.

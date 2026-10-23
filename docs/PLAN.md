@@ -629,8 +629,13 @@ Carried forward rather than closed:
   it.
 - **HEA-234** - an optimiser's live "grid-charging now" signal for the charge
   source, for a battery that charges from spare solar most of the day and from
-  the grid sometimes. Parked until the reference household's Predbat is out of
-  read-only and its daytime charges have been measured.
+  the grid sometimes. **Decided against, 2026-10-23**, on the measurement it was
+  parked for: four days of Predbat in control on the reference home (19-23 Oct)
+  had its charge windows either before the panels start, where every answer
+  agrees, or fully covered by solar with no import. The only overlap was 11-14
+  Wh of morning charge, about €0.001 a day at a flat 9.3 c. Reopen for a
+  household on a time-of-use tariff whose battery takes both grid and solar
+  charge and whom one answer to How your battery charges does not describe.
 - **Matching the Energy Dashboard's house configuration before 1.0** (Paul,
   2026-10-15). Generation already takes several meters (HEA-219). Following the
   Energy Dashboard live (**HEA-222**) was cancelled on 2026-10-19 in favour of
@@ -657,7 +662,9 @@ Carried forward rather than closed:
   totals and statistics carried through, and the Repair appeared once (its
   meters differ from the Energy Dashboard's on purpose), was answered Keep mine
   and stayed cleared across the reload. The Discussion 42 household's two
-  batteries are the test that matters; stable 0.13.0 waits on their report.
+  batteries were the test that mattered: their report on 2026-10-23 matched
+  their own reconciliation on three of four battery-days, and 0.13.0 was
+  released the same day.
   HEA-221 extends the same Repair to grid meters.
 - **HEA-221 is built** (ADR-0032): each grid source a config subentry, its
   price a sensor, Number helper or plain number, prefilled from the Energy
@@ -667,30 +674,27 @@ Carried forward rather than closed:
   price stays the one read live today. Config entry v7 moves the old meter and
   price into one grid entry, and the Energy Dashboard change Repair covers grid
   meters, with an answer given before the grid was compared counting for the
-  grid as it stands. The demo house is dual-rate. It is held back until 0.13.0
-  is cut, because a release is cut from `main`.
-- **HEA-97** - its third item was HEA-38 and is done. Standing charges and export
-  payback remain, and the second is harder to leave alone now that a household
-  can see what their export was worth. ADR-0029 now frames the answer: both are
-  household-level add-ons, so if either is shown it is a labelled line beside
-  the household's Paid, never a device column. **HEA-229**, the export value of
-  Battery Losses under Could have earned, turned out not to be one of them: the
-  column already existed, and the ledger already held the value the loss takes
-  out. It ships in 0.13.0 (ADR-0027's update).
+  grid as it stands. The demo house is dual-rate. Released in 0.13.0, after
+  0.13.0b3 moved the reference home's grid meter into its own entry cleanly.
+- **HEA-97** - closed 2026-10-23. Its third item, what self-consumed solar could
+  have earned, was HEA-38, and **HEA-229** added the same for Battery Losses in
+  0.13.0. The other two, standing charges and payback for exported energy, are
+  **decided against** (see Out of scope below and ADR-0029's update).
 - **HEA-129** - the HACS default store submission, made on 2026-09-22 and
   awaiting review. Epic 8 above says it waits for outside installs; it no longer
   does, and the households in this epic are the evidence that justified going.
   Reviewed on 2026-10-19 with changes requested (hacs/default #11192): **HEA-235**
-  made them, and review is requested again once 0.13.0 carries them.
+  made them, 0.13.0 carries them, and review was requested again on
+  2026-10-23.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
   From Battery (Solar) per device (enabled only with a battery) feeds the
   gauge, whose headline then includes stored solar. The sources card does not
   change. One sensor per device was accepted reluctantly, over a household
-  figure that would be approximate under a filter. Built, and held with HEA-221
-  until 0.13.0 is cut. The gauge says "including stored solar" only where the
-  period had some, so a home without a battery is not told about one.
+  figure that would be approximate under a filter. Released in 0.13.0. The
+  gauge says "including stored solar" only where the period had some, so a home
+  without a battery is not told about one.
 - **HEA-202** - the battery ledger holds far more than the pack does, and the
   ticket's own claim that it was still *gaining* did not survive being measured.
   Read directly rather than inferred from lifetime counters, `stored_kwh` has
@@ -1149,9 +1153,30 @@ scheduled at all: it is whatever households report next.
 ## Out of scope (MVP)
 
 Per `PRD.md`: forecasting, optimisation, automation, scheduling recommendations.
-Additionally deferred: **export opportunity cost** (documented bias, backlog
-issue), tariff-integration adapters, devices with neither power nor energy
-data, `total` state_class device sources.
+Additionally deferred: tariff-integration adapters, devices with neither power
+nor energy data, `total` state_class device sources. (Export opportunity cost
+was on this list and is now built, as Could have earned: HEA-38, HEA-229.)
+
+### Decided against
+
+Recorded so a request for one of these finds the reasoning rather than starting
+it again. Each has a closed Linear ticket with the detail.
+
+- **Standing charges** (HEA-97, closed 2026-10-23). A fixed daily fee is not a
+  cost of running any device, and this integration counts what each device's
+  use cost. A household whose Energy Dashboard prices one as a grid source
+  already sees it there; setup leaves such a source out (HEA-221). It would
+  take a very good case to reopen this (maintainer).
+- **Payback for exported energy** (HEA-97, closed 2026-10-23). Money received
+  for energy that no device used, so not a cost of running anything either. Not
+  to be confused with Could have earned, which is what solar the house used
+  could have earned had it been exported, and is built.
+- **Following an optimiser's grid-charging signal** (HEA-234, closed
+  2026-10-23). Measured on the reference home and worth about €0.001 a day; see
+  its entry above for what would reopen it.
+
+The README's "What Actual Cost does not include" tells households about the
+first two.
 
 > The custom Lovelace card was previously listed here as out of scope ("only if
 > evidence demands it"). ADR-0008 moved it **into** scope as the flagship
