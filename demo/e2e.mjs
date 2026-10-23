@@ -437,6 +437,18 @@ async function figureChecks(page) {
     );
   });
 
+  await check("self-sufficiency counts the solar the battery stored", async () => {
+    // The seeded battery holds stored sunshine (ADR-0033), so the headline
+    // counts it and says so. Missing, the new statistic never reached the card,
+    // and the headline is quietly leaving the battery out. Either language,
+    // because card strings follow the instance's.
+    const text = await cardText(page, "hea-self-sufficiency-card");
+    assert(
+      /including stored solar|incluida la solar almacenada/.test(text),
+      "the headline does not say it includes stored solar",
+    );
+  });
+
   await check("no card renders the empty-period message", async () => {
     const empty = await page.getByText("No cost recorded in this period").count();
     assert(empty === 0, "a card reported an empty period against a seeded week");

@@ -31,6 +31,7 @@ import {
   BOUND_CONCEPTS,
   DEVICES,
   HOUSE,
+  STORED_SOLAR_SHARE,
   TARIFF,
   UNTRACKED,
   WINDOW_DAYS,
@@ -88,6 +89,23 @@ const OPTIONAL_CONCEPTS = BOUND_CONCEPTS;
  * is there for (ADR-0029).
  */
 const FORGONE_CONCEPT = "forgone_export";
+
+/**
+ * How much of a device's battery energy was stored sunshine, optional for the
+ * same reason again: it is switched off where the household has no battery
+ * (ADR-0033). Written, the self-sufficiency headline counts it.
+ */
+const STORED_SOLAR_CONCEPT = "energy_from_battery_solar";
+
+/** Everything written beyond what every row must carry. */
+const WRITTEN_WHERE_PUBLISHED = [
+  ...OPTIONAL_CONCEPTS,
+  FORGONE_CONCEPT,
+  STORED_SOLAR_CONCEPT,
+];
+
+/** Which written concepts are measured in kWh; the rest are money. */
+const KWH_CONCEPTS = [...ENERGY_CONCEPTS, STORED_SOLAR_CONCEPT];
 
 async function main() {
   const auth = await freshAuth();
@@ -308,7 +326,7 @@ function statisticIds(rows) {
   // front of the old ones, which Home Assistant reads as a week-sized negative
   // hour (HEA-121).
   const concepts = rows.flatMap((row) =>
-    [...CONCEPTS, ...OPTIONAL_CONCEPTS, FORGONE_CONCEPT]
+    [...CONCEPTS, ...WRITTEN_WHERE_PUBLISHED]
       .map((concept) => row.statistics?.[concept])
       .filter(Boolean),
   );
@@ -440,7 +458,7 @@ function profileSeries(profile, hours) {
   const perDay = profile.weekKwh / WINDOW_DAYS;
   const shape = dailyShape(profile);
   const series = Object.fromEntries(
-    [...CONCEPTS, ...OPTIONAL_CONCEPTS, FORGONE_CONCEPT].map((concept) => [
+    [...CONCEPTS, ...WRITTEN_WHERE_PUBLISHED].map((concept) => [
       concept,
       [],
     ]),
@@ -454,11 +472,17 @@ function profileSeries(profile, hours) {
     const battery = used * profile.share.battery;
     const grid = used - solar - battery;
 
+    // The part of the battery's energy that was sunshine stored earlier, and
+    // the part that was bought.
+    const storedSolar = battery * (profile.storedSolar ?? STORED_SOLAR_SHARE);
+    const bought = battery - storedSolar;
+
     const price = priceAt(hour);
     // What the household actually paid: grid at the price of the moment, own
-    // generation free, battery at what its stored energy cost to put in.
+    // generation free whether used at once or stored first, and the battery's
+    // bought energy at what it cost to put in.
     const stored = TARIFF.offPeak * (profile.storedCostPremium ?? 1);
-    const actual = grid * price + battery * stored;
+    const actual = grid * price + bought * stored;
     // The same energy bought off the meter as it was used.
     const atGridPrice = used * price;
 
@@ -466,22 +490,24 @@ function profileSeries(profile, hours) {
     series.energy_from_grid.push(grid);
     series.energy_from_generation.push(solar);
     series.energy_from_battery.push(battery);
+    series[STORED_SOLAR_CONCEPT].push(storedSolar);
     series.actual_cost.push(actual);
     series.cost_at_grid_price.push(atGridPrice);
     series.cost_savings.push(atGridPrice - actual);
-    // Only the generation this device used, valued at the export rate - the
-    // engine's own rule, with no battery share because the seed stores no
-    // sunshine in it.
-    series.forgone_export.push(solar * TARIFF.export);
+    // The generation this device used, directly and through the battery,
+    // valued at the export rate - the engine's own rule (ADR-0027). One rate
+    // all week, so the rate it was stored at is the rate now.
+    series.forgone_export.push((solar + storedSolar) * TARIFF.export);
 
     // The cost range, which must bracket the actual cost rather than merely
-    // look like it does. Generation is free whichever way the hour went, so
-    // only the energy that came off a meter can be priced differently - and
-    // every price it could have carried lies between the cheapest and the
-    // dearest the household's tariff and stored energy allow. Pricing all of it
-    // at each end therefore contains the real figure by construction, with no
-    // fudge factor and nothing to drift out of step with the engine.
-    const offMeter = grid + battery;
+    // look like it does. Generation is free whichever way the hour went, stored
+    // first or not, so only the energy that came off a meter can be priced
+    // differently - and every price it could have carried lies between the
+    // cheapest and the dearest the household's tariff and stored energy allow.
+    // Pricing all of it at each end therefore contains the real figure by
+    // construction, with no fudge factor and nothing to drift out of step with
+    // the engine.
+    const offMeter = grid + bought;
     const cheapest = Math.min(TARIFF.offPeak, stored);
     const dearest = Math.max(TARIFF.peak, stored);
     series.lowest_possible_cost.push(offMeter * cheapest);
@@ -526,13 +552,13 @@ function importOne(socket, statisticId, unit, stats, { mean = false } = {}) {
 /** The integration's own sensors: what the cards draw. */
 async function importConcepts(socket, statistics, series, hours) {
   let written = 0;
-  for (const concept of [...CONCEPTS, ...OPTIONAL_CONCEPTS, FORGONE_CONCEPT]) {
-    // A device only publishes the concepts it has. The cost bounds are opt-in
-    // and forgone export needs an export price, so a missing entity id is the
-    // ordinary case, not a fault.
+  for (const concept of [...CONCEPTS, ...WRITTEN_WHERE_PUBLISHED]) {
+    // A device only publishes the concepts it has. The cost bounds are opt-in,
+    // forgone export needs an export price and stored solar a battery, so a
+    // missing entity id is the ordinary case, not a fault.
     const statisticId = statistics?.[concept];
     if (!statisticId) continue;
-    const unit = ENERGY_CONCEPTS.includes(concept) ? "kWh" : CURRENCY;
+    const unit = KWH_CONCEPTS.includes(concept) ? "kWh" : CURRENCY;
     await importOne(socket, statisticId, unit, runningTotal(series[concept], hours));
     written += 1;
   }

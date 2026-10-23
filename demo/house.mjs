@@ -101,6 +101,15 @@ export const TARIFF = {
 };
 
 /**
+ * How much of what the battery gives back was sunshine it stored earlier, where
+ * a device says nothing else. The rest was bought off-peak. Stored sunshine is
+ * free in what was paid and gave up its export, as the engine has it, so the
+ * self-sufficiency card can count it without the cost cards disagreeing
+ * (ADR-0033).
+ */
+export const STORED_SOLAR_SHARE = 0.6;
+
+/**
  * A dual-rate meter, as the Energy Dashboard holds it: one grid source per
  * register, each with its own price (ADR-0032). The day register is priced by a
  * sensor and carries the export meter; the night register's price is a plain
@@ -224,8 +233,10 @@ export const DEVICES = [
     weekKwh: 34.5,
     share: { grid: 0.15, generation: 0.0, battery: 0.85 },
     hours: [1, 6],
-    // Stored dear, drawn cheap. The saving comes out negative on purpose.
+    // Stored dear, drawn cheap. The saving comes out negative on purpose, so
+    // none of it is sunshine: the battery was filled from the grid for it.
     storedCostPremium: 1.6,
+    storedSolar: 0,
   },
   {
     name: "Ceiling Fan",
