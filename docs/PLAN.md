@@ -693,6 +693,11 @@ Carried forward rather than closed:
   Reviewed on 2026-10-19 with changes requested (hacs/default #11192): **HEA-235**
   made them, 0.13.0 carries them, and review was requested again on
   2026-10-23.
+- **HEA-240** - 1.0.0. 0.13.0 completed matching the Energy Dashboard's house
+  configuration, the bar set for it above, so 1.0.0 is cut next, once HEA-129's
+  submission is accepted and it can be announced as being in the HACS store.
+  The release workflow's "Cut 1.0.0" option is the route, since no commit
+  reaches it; its upgrade paragraph is added at cut time, not before.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
