@@ -113,11 +113,9 @@ So a week of documentation and dependency work releases nothing, which is the
 intended outcome: an update notification a household learns to ignore is worse
 than no notification.
 
-A breaking change staying inside `0.x` is deliberate. `0.x` already means
-anything here may change, and `1.0.0` is a promise about stability that a
-maintainer makes on purpose - not one a commit subject makes on their behalf.
-So no commit reaches it: it is asked for, with the release workflow's **Cut
-1.0.0** option on a stable release, and only once. After that a breaking change
+`1.0.0` was a decision rather than a commit: no commit subject reaches it, so it
+was cut on purpose with the release workflow's **Cut 1.0.0** option, which
+refuses to run again now that it exists. From `1.0.0` on, a breaking change
 bumps the major by itself.
 
 The rules are `scripts/release_version.py`, and `tests/test_release_version.py`

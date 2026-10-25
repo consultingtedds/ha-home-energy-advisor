@@ -479,11 +479,10 @@ Three things can make it lower still:
 
 ## HACS is not offering the update yet
 
-HACS checks repositories it does not carry in its own store - which is all
-custom repositories, including this one - about **every two days**. A new release
-can therefore exist for a while before your instance is told about it, and
-**Check for updates** under Settings > System will not change that, because it
-asks HACS rather than GitHub.
+HACS learns about new releases on its own schedule, not the moment one is
+published, so a new release can exist for a while before your instance is told
+about it. **Check for updates** under Settings > System will not change that,
+because it asks HACS rather than GitHub.
 
 To fetch it now: **HACS** > **Home Energy Advisor** > three-dot menu > **Update
 information**.

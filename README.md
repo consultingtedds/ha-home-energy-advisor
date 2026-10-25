@@ -66,18 +66,13 @@ Off-grid homes are not supported: see
 The button opens Home Energy Advisor in HACS on your own Home Assistant. Select
 **Download**, then restart Home Assistant.
 
-Or add it by hand:
-
-1. In Home Assistant, go to **HACS**.
-2. Open the three-dot menu at the top right and choose **Custom repositories**.
-3. Paste `https://github.com/consultingtedds/ha-home-energy-advisor` into the
-   repository box, choose **Integration** as the type, and select **Add**.
-4. Search for **Home Energy Advisor** in HACS, open it and select **Download**.
-5. Restart Home Assistant.
+Or find it yourself: it is in the HACS default store, so in **HACS**, search for
+**Home Energy Advisor**, open it and select **Download**, then restart Home
+Assistant. No custom repository is needed.
 
 ### Testing a pre-release
 
-Before some releases there is a beta, such as `0.13.0b1`, for anyone willing to
+Before some releases there is a beta, such as `1.1.0b1`, for anyone willing to
 try it on their own home first:
 
 1. Go to **Settings** > **Devices & services** > **Entities** and search for
