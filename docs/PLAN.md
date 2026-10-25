@@ -38,7 +38,7 @@ reference, not as target outputs.
 | Local dev environment | **WSL (Ubuntu-24.04) + uv**, Python 3.14, venv at `~/.venvs/hea` - not Windows | Discovered 2026-07-12 while building the CI pipeline: Home Assistant imports `fcntl` (Unix-only) and `pytest-homeassistant-custom-component` loads as a pytest plugin, so on Windows `pytest` dies at collection even for tests with no HA imports. Windows is not a supported HA platform and never will be. WSL also makes the local pre-commit gate byte-identical to CI (same Linux, Python and HA versions), so the gate genuinely predicts CI rather than approximating it. ruff and mypy do still run natively on Windows - they never execute the code - but the split is not worth maintaining |
 | Workflow | TDD, conventional commits with ticket scope (`fix(HEA-nn):`), direct-to-main, append-only ADRs, a standing checklist of project rules | Carried over from the maintainer's other projects and tuned for Python/HA; `docs/CRITICAL_INSTRUCTIONS.md` is the checklist |
 | Tracking | Linear team **Home Energy Advisor (HEA)**, one project "MVP - Device Cost Accounting", epics as parent issues | Clean separation from retirement-platform work |
-| Distribution | Public GitHub repo under `consultingtedds`, MIT licence, HACS custom repository first; HACS default store later | HACS requires a public repo; matches the charter's Open Source First principle (MIT is the norm for HA custom integrations). Public repos get unlimited GitHub Actions minutes |
+| Distribution | Public GitHub repo under `consultingtedds`, MIT licence, HACS custom repository first; HACS default store since 2026-10-24 | HACS requires a public repo; matches the charter's Open Source First principle (MIT is the norm for HA custom integrations). Public repos get unlimited GitHub Actions minutes |
 
 ## Architecture
 
@@ -446,8 +446,8 @@ Presentation
 > there is no pull request left to make. The placeholder is HACS's to fix.
 >
 > **Epic 8 and the MVP closed 2026-09-15.** The HACS default store submission
-> (HEA-129) sits outside both. It waits for households other than the reference
-> one to install it successfully, and the forum thread is where that will show.
+> (HEA-129) sits outside both. It waited for households other than the reference
+> one to install it successfully, and was accepted on 2026-10-24.
 >
 > The same day, v0.1.0 was installed through HACS on a clean instance, byte for
 > byte what the tag holds, and the e2e suite passed against it (HEA-131). The
@@ -692,12 +692,14 @@ Carried forward rather than closed:
   does, and the households in this epic are the evidence that justified going.
   Reviewed on 2026-10-19 with changes requested (hacs/default #11192): **HEA-235**
   made them, 0.13.0 carries them, and review was requested again on
-  2026-10-23.
+  2026-10-23. **Accepted 2026-10-24**: Home Energy Advisor is in the HACS
+  default store.
 - **HEA-240** - 1.0.0. 0.13.0 completed matching the Energy Dashboard's house
-  configuration, the bar set for it above, so 1.0.0 is cut next, once HEA-129's
-  submission is accepted and it can be announced as being in the HACS store.
-  The release workflow's "Cut 1.0.0" option is the route, since no commit
-  reaches it; its upgrade paragraph is added at cut time, not before.
+  configuration, the bar set for it above, and 1.0.0 waited for HEA-129's
+  acceptance so it could be announced as being in the HACS store. The release
+  workflow's "Cut 1.0.0" option is the route, since no commit reaches it.
+  **Released 2026-10-25**; it changes nothing on an installed system, and its
+  upgrade note says only that it is now in the store.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
