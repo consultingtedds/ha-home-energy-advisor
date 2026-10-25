@@ -32,6 +32,13 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**Home Energy Advisor is now in the HACS default store.** Anyone can find it by
+searching HACS, with no custom repository to add. This update changes nothing on
+your system: your figures, cards and settings carry on as before. Thank you to
+everyone who tested it, reported what didn't add up, and helped it get here.
+
 ## 0.13.0
 
 **If something charges your battery from the grid while the sun is up, say
