@@ -1184,7 +1184,9 @@ it again. Each has a closed Linear ticket with the detail.
 - **Payback for exported energy** (HEA-97, closed 2026-10-23). Money received
   for energy that no device used, so not a cost of running anything either. Not
   to be confused with Could have earned, which is what solar the house used
-  could have earned had it been exported, and is built.
+  could have earned had it been exported, and is built. **Reconsidered
+  2026-10-25** as one part of a whole-home return on the installation, never a
+  device figure (HEA-241, with payback on top in HEA-242).
 - **Following an optimiser's grid-charging signal** (HEA-234, closed
   2026-10-23). Measured on the reference home and worth about €0.001 a day; see
   its entry above for what would reopen it.
@@ -1225,3 +1227,20 @@ first two.
 > evidence demands it"). ADR-0008 moved it **into** scope as the flagship
 > presentation deliverable: core cards cannot express an arbitrary date range
 > with a device filter, which is the product's central question.
+
+### Ideas, not planned
+
+Worth doing one day, but not tickets: kept here so they are not lost, and out of
+the backlog until someone asks or the case gets stronger.
+
+- **Costing a stored fuel or water supply** (2026-10-25). A tank of heating oil,
+  or a water tank filled from deliveries, a pumped well or rainwater, works like
+  a battery. It fills from sources at different prices, and what is drawn off is
+  costed at what it cost to put in, which the battery accounting already does.
+  A pumped well's cost is a device HEA already tracks. Not planned: each
+  delivery has its own price, so it has to be entered by hand. Telling the
+  sources apart from a tank level is fragile, and a per-device water cost needs
+  flow meters almost no home has. The likely value is a whole-home cost per
+  litre, and it may be better as a separate integration that borrows the battery
+  accounting. Gas is left out: one supply and almost no per-device gas meters,
+  so the Energy Dashboard already gives its cost.
