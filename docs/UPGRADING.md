@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 1.0.0
 
 **Home Energy Advisor is now in the HACS default store.** Anyone can find it by
 searching HACS, with no custom repository to add. This update changes nothing on
