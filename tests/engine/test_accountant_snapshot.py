@@ -196,6 +196,9 @@ _PERSISTED = frozenset(
         "_draws",
         "_held",
         "_house",
+        # Each house meter's step, the plausibility guard's allowance. Kept so a
+        # meter slow to move after a restart is not judged without one (HEA-243).
+        "_house_meter_steps",
         "_implausible",
         "_pending_bounds",
         "_prices",

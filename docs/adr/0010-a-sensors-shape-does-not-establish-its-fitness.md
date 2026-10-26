@@ -247,3 +247,33 @@ It reached a household before it reached us
 ([discussion 18](https://github.com/consultingtedds/ha-home-energy-advisor/discussions/18)),
 who concluded the problem was his units, answered his own question wrongly, and
 closed it - so the record said the rule worked (HEA-162).
+
+## Update, 2026-10-26: the house is weighed with one step of each of its meters
+
+The first two checks in the table above compared a device with the house's bare
+metered figure. That figure is built from readings each rounded down to the
+meter's step, so over any span it can read short by up to one step per house
+meter, and never by more. Where a device is metered more finely than the house
+and is nearly all of its load, the rounding alone puts it ahead: a heat pump
+read every 30 seconds under an inverter register counting 0.1 kWh was set aside
+on a heating day for "1.51 kWh against 1.50 kWh"
+([discussion 47](https://github.com/consultingtedds/ha-home-energy-advisor/discussions/47)),
+and its energy went to Untracked for as long as the rounding lasted (HEA-243).
+
+**Both checks now allow one step of every house meter**, learned as the
+smallest movement each has reported and kept across a restart. A learned step
+is never smaller than the real one, so the allowance can only be generous, by a
+step or two where a reading did not use every meter. A fixed allowance or a
+percentage was rejected: no fixed figure fits both a register counting 0.1 kWh
+and one counting a watt-hour, and 0.1 kWh is 8% of a busy hour and 20% of a
+quiet one. The protection is unchanged in kind: the faults these checks were
+raised for were two to 49 times the house (HEA-60, HEA-157), not a step beyond
+it.
+
+**The window also sees late house energy.** A house meter's reading that
+arrived after its interval had closed raised the house's figures but not the
+window's copy, while a device's late reading reached both. A house meter quieter
+than the twenty minutes an interval stays open therefore made every device look
+larger than it was, and a dominant one condemned. Late house energy now reaches
+the window entry for its own interval, and only that one: unlike a device's
+claim, it is no evidence about the newest interval.

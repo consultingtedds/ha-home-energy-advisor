@@ -124,6 +124,12 @@ sensor:
   appliance's power over that time.** The sensor is fine and only slow. Versions
   before 0.11.1 could set such a sensor aside wrongly when one step covered more
   than an hour; update, and it is weighed against the right hour.
+- **The two figures in the notification are close, and the device is most of
+  what your house uses**, such as a heat pump on a cold day. The sensor is fine.
+  Your house's own meters count in steps, often 0.1 kWh on an inverter, so the
+  house's figure can read a step low while the device's does not. Releases up to
+  1.0.0 could set such a device aside for that; update, and the house is given
+  the benefit of its meters' steps.
 
 If you report it on GitHub, include the two figures from the notification and a
 diagnostics download (Settings > Devices & services > Home Energy Advisor >

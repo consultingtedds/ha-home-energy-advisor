@@ -650,6 +650,9 @@ class Accountant:
         self._entity_of = dict(device_energy_entities)
         self._window: deque[_WindowBucket] = deque(maxlen=_PLAUSIBILITY_WINDOW)
         self._implausible: frozenset[str] = frozenset()
+        # The smallest movement each house meter has reported: its step, or as
+        # near to it as its readings have shown (HEA-243).
+        self._house_meter_steps: dict[str, Decimal] = {}
         # House meters that are currently silent. Distinct from configured-but-
         # still: a meter that reports an unchanged reading is healthy (HEA-67).
         # Kept per meter, not per role: where a role has several, one reporting
@@ -1021,6 +1024,9 @@ class Accountant:
                 for bucket in self._window
             ],
             "implausible": sorted(self._implausible),
+            "house_meter_steps": {
+                entity: str(step) for entity, step in self._house_meter_steps.items()
+            },
         }
 
     def restore(self, data: Mapping[str, Any]) -> None:
@@ -1210,6 +1216,13 @@ class Accountant:
             maxlen=_PLAUSIBILITY_WINDOW,
         )
         self._implausible = frozenset(data["implausible"])
+        # Absent from a snapshot written before HEA-243. The house meters move
+        # again within minutes, long before an interval closes, and relearn them.
+        self._house_meter_steps = {
+            entity: Decimal(step)
+            for entity, step in data.get("house_meter_steps", {}).items()
+            if entity in self._role_of
+        }
 
     def totals(self) -> Totals:
         """Returns the since-startup running totals per device, home and Untracked.
@@ -1668,6 +1681,11 @@ class Accountant:
         puts a household's total *below* their own meter (HEA-186). That ADR set
         "revisit if evidence shows otherwise" as the trigger, and this is it.
         """
+        if delta.kwh > 0:
+            known = self._house_meter_steps.get(entity_id)
+            self._house_meter_steps[entity_id] = (
+                delta.kwh if known is None else min(known, delta.kwh)
+            )
         for portion in spread_energy(delta):
             if not self._is_finalised(portion.start):
                 bucket = self._raw.setdefault(portion.start, {})
@@ -1681,6 +1699,7 @@ class Accountant:
                 continue
             elif (retained := self._retained.get(portion.start)) is not None:
                 self._correct_house(kind, retained, portion.kwh)
+                self._weigh_late_house(portion.start, portion.kwh)
             else:
                 source.note_dropped_late(portion.start, portion.kwh)
 
@@ -1713,6 +1732,21 @@ class Accountant:
         # So a further late portion for the same interval sees the headroom this
         # one created, rather than funding itself against a stale figure.
         retained.consumption += kwh
+
+    def _weigh_late_house(self, start: datetime, kwh: Decimal) -> None:
+        """Add late house energy to the guard's evidence for its own interval.
+
+        A device's late energy already reaches the window (`_claim`), so leaving
+        the house's out weighed every device against a house short of exactly
+        what its meters reported late, and a device that is most of the load
+        came out ahead of it (HEA-243). Only the interval it belongs to: unlike
+        a claim, house energy with nowhere to go is no evidence about anything,
+        so it is never moved onto the newest entry.
+        """
+        for entry in self._window:
+            if entry.start == start:
+                entry.consumption += kwh
+                return
 
     def _spread_device(
         self, device: str, delta: EnergyDelta, source: CumulativeEnergySource
@@ -1778,11 +1812,13 @@ class Accountant:
         silent for three days really did meter those three days and there is
         nothing left to compare it with. In that last case `CREDIBLE_POWER_KW`
         stands alone, which is the case it was written for.
+
+        The house is read with `_house_meter_margin`, as in `_judge`.
         """
         if len(self._window) < _PLAUSIBILITY_WINDOW:
             return True
         served = self._served_between(delta.start, delta.end)
-        return served is None or delta.kwh <= served
+        return served is None or delta.kwh <= served + self._house_meter_margin()
 
     def _served_between(self, start: datetime, end: datetime) -> Decimal | None:
         """What the house was metered as consuming over a span, or ``None``.
@@ -2270,6 +2306,9 @@ class Accountant:
         would be the per-bucket test that coarse devices legitimately fail. A
         house total of zero judges nothing either - a silent house meter is its
         own fault, reported elsewhere, and is no evidence against a device.
+
+        A device is judged against the house plus `_house_meter_margin`, never
+        the bare figure.
         """
         if len(self._window) < _PLAUSIBILITY_WINDOW:
             return frozenset()
@@ -2280,7 +2319,26 @@ class Accountant:
         for bucket in self._window:
             for device, kwh in bucket.claimed.items():
                 totals[device] = totals.get(device, Decimal(0)) + kwh
-        return frozenset(device for device, drawn in totals.items() if drawn > house)
+        ceiling = house + self._house_meter_margin()
+        return frozenset(device for device, drawn in totals.items() if drawn > ceiling)
+
+    def _house_meter_margin(self) -> Decimal:
+        """How far below the truth the house's metered figure can honestly read.
+
+        A house meter's reading is rounded down to its step, so what it says the
+        house used over any span is short by up to one step, and each house meter
+        adds its own. A device metered more finely than the house, and nearly all
+        of its load, otherwise comes out ahead of the house it sits in: a heat
+        pump read every 30 seconds under an inverter register counting 0.1 kWh
+        was set aside for 1.51 kWh against 1.50 (HEA-243, GitHub discussion 47).
+
+        One step per meter is the whole allowance. It removes the rounding at
+        any load and on any meter, and the faults the guard exists for are many
+        times the house, not a step beyond it (HEA-60, HEA-157). Every house
+        meter's step is counted, though a reading may not use them all: that is
+        generous by a step or two, never short.
+        """
+        return _sum(self._house_meter_steps.values())
 
     def _believable(
         self, claimed: Mapping[str, Decimal], start: datetime

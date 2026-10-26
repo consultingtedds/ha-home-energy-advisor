@@ -700,6 +700,13 @@ Carried forward rather than closed:
   workflow's "Cut 1.0.0" option is the route, since no commit reaches it.
   **Released 2026-10-25**; it changes nothing on an installed system, and its
   upgrade note says only that it is now in the store.
+- **HEA-243** - discussion 47: a heat pump that is most of the house load was
+  set aside for claiming 1.51 kWh against the house's 1.50. Two causes, each
+  enough alone and each reproduced by replay: the house's meters round down to
+  their step (0.1 kWh on an inverter register), and late house energy never
+  reached the plausibility window while late device energy did. Both checks now
+  allow one step per house meter, learned from its smallest movement, and the
+  window takes late house energy (ADR-0010's 2026-10-26 update).
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
