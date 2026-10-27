@@ -74,11 +74,11 @@
     },
     "error": {
       "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong house-level input makes every device's figure wrong.",
-      "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at, which would leave this input contributing nothing.",
-      "battery_not_countable": "One of these batteries has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in kWh or Wh. Leave that battery unticked, and add it afterwards with Add battery, where you can choose another meter.",
-      "grid_meter_not_countable": "One of these grid meters has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in kWh or Wh. Leave it unticked and add it afterwards with Add grid meter, where you can choose another meter, or tick none to enter your own now.",
+      "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in every energy unit Home Assistant uses, such as kWh, Wh and MWh, and converts between them, so any of them is fine and a mixture is fine. A unit that is not energy, such as kW, is left uncounted rather than guessed at, which would leave this input contributing nothing.",
+      "battery_not_countable": "One of these batteries has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in an energy unit such as kWh. Leave that battery unticked, and add it afterwards with Add battery, where you can choose another meter.",
+      "grid_meter_not_countable": "One of these grid meters has a meter Home Energy Advisor cannot count: it has to be a total-increasing counter in an energy unit such as kWh. Leave it unticked and add it afterwards with Add grid meter, where you can choose another meter, or tick none to enter your own now.",
       "select_one_price": "Fill in the import price or the fixed import price, not both and not neither.",
-      "grid_export_not_countable": "Without a house consumption meter, your grid meters' export meters are read too, and one of them cannot be counted: it has to be a total-increasing counter in kWh or Wh. Keep a house consumption meter, or change that grid meter first."
+      "grid_export_not_countable": "Without a house consumption meter, your grid meters' export meters are read too, and one of them cannot be counted: it has to be a total-increasing counter in an energy unit such as kWh. Keep a house consumption meter, or change that grid meter first."
     },
     "abort": {
       "single_instance_allowed": "Home Energy Advisor is already configured; only one instance is needed."
@@ -177,7 +177,7 @@
       },
       "error": {
         "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong grid meter makes every device's figure wrong.",
-        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at.",
+        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in every energy unit Home Assistant uses, such as kWh, Wh and MWh, and converts between them, so any of them is fine and a mixture is fine. A unit that is not energy, such as kW, is left uncounted rather than guessed at.",
         "select_one_price": "Fill in the import price or the fixed import price, not both and not neither."
       }
     },
@@ -227,7 +227,7 @@
       },
       "error": {
         "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong battery meter makes every device's figure wrong.",
-        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine and a mixture is fine. Anything else is left uncounted rather than guessed at.",
+        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in every energy unit Home Assistant uses, such as kWh, Wh and MWh, and converts between them, so any of them is fine and a mixture is fine. A unit that is not energy, such as kW, is left uncounted rather than guessed at.",
         "capacity_needed": "A battery level is a percentage, so it needs the capacity it is a percentage of. Add the capacity in kWh, or leave the level empty.",
         "capacity_not_kwh": "This is in kWh, and no home battery holds this much, so it is probably in watt-hours. A 1500 Wh battery is 1.5 kWh."
       }
@@ -272,7 +272,7 @@
         "select_one_sensor": "Choose exactly one: an energy sensor or a power sensor, not both.",
         "energy_not_total_increasing": "This energy sensor must be a total-increasing counter. A net or measurement sensor would be misread as usage and inflate the cost.",
         "power_not_measurement": "This power sensor must report an instantaneous measurement. A total sensor cannot be integrated into energy correctly.",
-        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in kWh and Wh, and converts between them, so either is fine. Anything else is left uncounted rather than guessed at, which would leave this device sitting at zero."
+        "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in every energy unit Home Assistant uses, such as kWh, Wh and MWh, and converts between them, so any of them is fine. A unit that is not energy, such as kW, is left uncounted rather than guessed at, which would leave this device sitting at zero."
       }
     }
   },
@@ -390,7 +390,7 @@
     },
     "source_unit_unsupported": {
       "title": "An energy input is counting in a unit that cannot be used",
-      "description": "`{entity_id}` reports its energy in {unit}. Home Energy Advisor counts in kWh and Wh, and converts between them, but it cannot convert {unit} - so rather than guess at what the numbers mean, it is not counting this input at all.\n\nWhile that lasts, this input contributes nothing. If it is a device, that device will read zero and its energy will be included in Untracked instead, so your whole-home total stays right.\n\nChoose a sensor for it that reports in kWh or Wh. Many integrations offer both. If this sensor changed unit on its own after a firmware update, its integration is the place to look."
+      "description": "`{entity_id}` reports in {unit}, which is not a unit of energy, so rather than guess at what the numbers mean, Home Energy Advisor is not counting this input at all.\n\nWhile that lasts, this input contributes nothing. If it is a device, that device will read zero and its energy will be included in Untracked instead, so your whole-home total stays right.\n\nChoose a sensor for it that reports energy, such as kWh or Wh. If this is a power sensor, in W or kW, its device usually has an energy sensor beside it. If this sensor changed unit on its own after a firmware update, its integration is the place to look."
     },
     "source_unit_missing": {
       "title": "An energy input does not say what unit it is counting in",
@@ -422,8 +422,8 @@
           }
         },
         "abort": {
-          "battery_not_countable": "{battery} in your Energy Dashboard has a meter Home Energy Advisor cannot count, or a capacity too large to be in kWh, so nothing was changed. The meters have to be total-increasing counters in kWh or Wh. Correct it in your Energy Dashboard, or keep your own batteries.",
-          "grid_meter_not_countable": "{grid} in your Energy Dashboard has a meter Home Energy Advisor cannot count, so nothing was changed. The meters have to be total-increasing counters in kWh or Wh. Correct it in your Energy Dashboard, or keep your own grid meters.",
+          "battery_not_countable": "{battery} in your Energy Dashboard has a meter Home Energy Advisor cannot count, or a capacity too large to be in kWh, so nothing was changed. The meters have to be total-increasing counters in an energy unit such as kWh. Correct it in your Energy Dashboard, or keep your own batteries.",
+          "grid_meter_not_countable": "{grid} in your Energy Dashboard has a meter Home Energy Advisor cannot count, so nothing was changed. The meters have to be total-increasing counters in an energy unit such as kWh. Correct it in your Energy Dashboard, or keep your own grid meters.",
           "entry_removed": "Home Energy Advisor is no longer set up, so there is nothing to change."
         }
       }

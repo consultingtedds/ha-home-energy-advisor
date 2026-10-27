@@ -260,10 +260,9 @@ async def test_adding_a_device_tracked_by_a_riemann_integral_is_accepted(
 async def test_adding_a_device_in_a_unit_the_engine_cannot_count_is_rejected(
     hass: HomeAssistant,
 ) -> None:
-    # Given - a plug whose counter reports megawatt hours. The engine counts in
-    # kWh and Wh; anything else is left uncounted rather than guessed at, so
-    # this device would sit at zero for ever and its energy would land in
-    # Untracked with nothing saying why
+    # Given - a plug whose "energy" sensor reports kilowatts. The engine counts
+    # in every energy unit and nothing else, so this device would sit at zero
+    # for ever and its energy would land in Untracked with nothing saying why
     entry = _parent_entry(hass)
     _register_device_sensors(hass)
     hass.states.async_set(
@@ -272,7 +271,7 @@ async def test_adding_a_device_in_a_unit_the_engine_cannot_count_is_rejected(
         {
             "device_class": "energy",
             "state_class": "total_increasing",
-            "unit_of_measurement": "MWh",
+            "unit_of_measurement": "kW",
         },
     )
     flow_id = await _start_add(hass, entry)

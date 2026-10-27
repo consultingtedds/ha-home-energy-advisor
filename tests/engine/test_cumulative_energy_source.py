@@ -13,6 +13,7 @@ from custom_components.home_energy_advisor.engine.energy_source import (
     EnergyDelta,
     EnergyUnit,
     Reading,
+    energy_unit,
 )
 
 MADRID = ZoneInfo("Europe/Madrid")
@@ -161,6 +162,68 @@ def test_cumulative_source_watt_hour_counter_is_normalised_to_kilowatt_hours() -
     assert delta == EnergyDelta(
         kwh=Decimal("0.250"), start=moment("02:14"), end=moment("02:19")
     )
+
+
+@pytest.mark.parametrize(
+    ("unit", "before", "after", "kwh"),
+    [
+        # GitHub 49: a long-term statistics sensor configured in MWh
+        (EnergyUnit.MWH, "1.234", "1.235", "1"),
+        (EnergyUnit.MILLIWATT_HOUR, "2000000", "3500000", "1.5"),
+        (EnergyUnit.GWH, "0.000001", "0.000003", "2"),
+        (EnergyUnit.TWH, "0", "0.000000004", "4"),
+        # Joules and calories divide by 3.6 million, so exact only where chosen to
+        (EnergyUnit.JOULE, "0", "7200000", "2"),
+        (EnergyUnit.KILOJOULE, "100", "1900", "0.5"),
+        (EnergyUnit.MEGAJOULE, "3.6", "10.8", "2"),
+        (EnergyUnit.GIGAJOULE, "0.0036", "0.0108", "2"),
+        (EnergyUnit.KILOCALORIE, "100", "1000", "1.046"),
+        (EnergyUnit.CALORIE, "0", "900000", "1.046"),
+        (EnergyUnit.MEGACALORIE, "0", "0.9", "1.046"),
+        (EnergyUnit.GIGACALORIE, "0", "0.0009", "1.046"),
+    ],
+)
+def test_every_energy_unit_home_assistant_knows_is_counted_in_kilowatt_hours(
+    unit: EnergyUnit, before: str, after: str, kwh: str
+) -> None:
+    # Given - a counter in one of Home Assistant's energy units
+    source = CumulativeEnergySource()
+    source.observe(reading(at="02:14", value=before, unit=unit))
+
+    # When
+    delta = source.observe(reading(at="02:19", value=after, unit=unit))
+
+    # Then - converted exactly, as Wh always has been
+    assert delta == EnergyDelta(
+        kwh=Decimal(kwh), start=moment("02:14"), end=moment("02:19")
+    )
+
+
+@pytest.mark.parametrize(
+    ("symbol", "unit"),
+    [
+        ("kWh", EnergyUnit.KWH),
+        ("Wh", EnergyUnit.WH),
+        ("MWh", EnergyUnit.MWH),
+        ("mWh", EnergyUnit.MILLIWATT_HOUR),
+        ("GJ", EnergyUnit.GIGAJOULE),
+        # An integration may write a unit in any case, where only one unit could
+        # be meant
+        ("KWH", EnergyUnit.KWH),
+        ("wh", EnergyUnit.WH),
+        (" kWh ", EnergyUnit.KWH),
+        ("gj", EnergyUnit.GIGAJOULE),
+        # ...but not where the case is the whole difference: megawatt or
+        # milliwatt hours, a factor of a billion apart
+        ("mwh", EnergyUnit.UNKNOWN),
+        ("MWH", EnergyUnit.UNKNOWN),
+        # Not energy at all: a power sensor chosen by mistake
+        ("kW", EnergyUnit.UNKNOWN),
+        ("", EnergyUnit.UNKNOWN),
+    ],
+)
+def test_a_unit_is_read_from_its_symbol(symbol: str, unit: EnergyUnit) -> None:
+    assert energy_unit(symbol) is unit
 
 
 def test_a_reading_whose_unit_is_unknown_reveals_nothing() -> None:

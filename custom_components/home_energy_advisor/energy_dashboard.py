@@ -37,6 +37,7 @@ from .const import (
     SUBENTRY_TYPE_GRID,
 )
 from .discovery import source_unit
+from .engine.energy_source import EnergyUnit, energy_unit
 from .house_inputs import (
     Battery,
     GridMeter,
@@ -186,7 +187,7 @@ def _grid_answers(source: Any) -> dict[str, Any] | None:  # noqa: ANN401 - untyp
 
 def _counts_energy(hass: HomeAssistant, entity_id: str) -> bool:
     unit = source_unit(hass, entity_id)
-    return unit is not None and unit.strip().lower() in {"kwh", "wh"}
+    return unit is not None and energy_unit(unit) is not EnergyUnit.UNKNOWN
 
 
 def answered(hass: HomeAssistant, prefs: Any) -> dict[str, list[list[str | None]]]:  # noqa: ANN401 - untyped HA prefs

@@ -5,11 +5,13 @@ from decimal import Decimal
 from typing import TYPE_CHECKING, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_NAME, UnitOfEnergy
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
+from homeassistant.util.unit_conversion import EnergyConverter
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
@@ -33,6 +35,11 @@ from custom_components.home_energy_advisor.const import (
     DOMAIN,
     SERVICE_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
+)
+from custom_components.home_energy_advisor.engine.energy_source import (
+    EnergyUnit,
+    energy_unit,
+    kwh_from,
 )
 from custom_components.home_energy_advisor.issues import (
     ISSUE_UNRECONCILED_ENERGY,
@@ -518,17 +525,18 @@ async def test_a_source_counting_in_a_unit_the_engine_cannot_use_is_named(
     """The half that tells the household (HEA-156).
 
     Since HEA-149 the engine refuses a reading whose unit it cannot convert,
-    which is safe and silent. A device whose counter reports megawatt hours
-    therefore sits at zero for ever, its energy lands in Untracked, and nothing
-    anywhere says why - the quiet wrongness this project exists to avoid.
+    which is safe and silent. A device whose counter reports in kilowatts - a
+    power sensor, not an energy one - therefore sits at zero for ever, its energy
+    lands in Untracked, and nothing anywhere says why - the quiet wrongness this
+    project exists to avoid.
     """
-    # Given - a running home whose device counter then starts reporting MWh.
+    # Given - a running home whose device sensor then starts reporting kW.
     # Setup would refuse this today (HEA-161), but a sensor can change after it
     # was chosen, and an install predating that check may already carry one
     await _setup_running_home(hass, freezer)
-    megawatt_hours = {"unit_of_measurement": "MWh", "device_class": "energy"}
+    kilowatts = {"unit_of_measurement": "kW", "device_class": "energy"}
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
-    hass.states.async_set("sensor.coarse_step_energy", "0.004", megawatt_hours)
+    hass.states.async_set("sensor.coarse_step_energy", "0.004", kilowatts)
     await hass.async_block_till_done()
 
     # When - the next interval is finalised
@@ -545,11 +553,11 @@ async def test_a_source_counting_in_a_unit_the_engine_cannot_use_is_named(
 async def test_a_source_that_starts_reporting_a_usable_unit_again_is_forgiven(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a source that reported MWh and was named for it
+    # Given - a source that reported kW and was named for it
     await _setup_running_home(hass, freezer)
-    megawatt_hours = {"unit_of_measurement": "MWh", "device_class": "energy"}
+    kilowatts = {"unit_of_measurement": "kW", "device_class": "energy"}
     freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
-    hass.states.async_set("sensor.coarse_step_energy", "0.004", megawatt_hours)
+    hass.states.async_set("sensor.coarse_step_energy", "0.004", kilowatts)
     await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
     issue_id = issues.source_unit_unsupported_issue_id("sensor.coarse_step_energy")
     assert _has_issue(hass, issue_id)
@@ -562,6 +570,44 @@ async def test_a_source_that_starts_reporting_a_usable_unit_again_is_forgiven(
     # Then - withdrawn. An accusation nobody is still making is noise, and a
     # household who fixed the thing deserves to see it clear (HEA-146)
     assert not _has_issue(hass, issue_id)
+
+
+async def test_a_source_counting_in_megawatt_hours_is_counted_not_named(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a running home whose device counter reports MWh, as a long-term
+    # statistics sensor can be configured to (GitHub 49)
+    await _setup_running_home(hass, freezer)
+    megawatt_hours = {"unit_of_measurement": "MWh", "device_class": "energy"}
+    freezer.move_to(datetime(2026, 7, 8, 22, 1, tzinfo=UTC))
+    hass.states.async_set("sensor.coarse_step_energy", "0.004", megawatt_hours)
+    await hass.async_block_till_done()
+
+    # When - the next interval is finalised
+    await _tick(hass, freezer, datetime(2026, 7, 8, 22, 30, tzinfo=UTC))
+
+    # Then - nothing to tell the household: it is a unit Home Assistant converts,
+    # and so does the engine (HEA-246)
+    assert not _has_issue(
+        hass, issues.source_unit_unsupported_issue_id("sensor.coarse_step_energy")
+    )
+
+
+def test_the_engine_counts_every_energy_unit_home_assistant_converts() -> None:
+    # Given - every unit Home Assistant's energy sensors may report in, and the
+    # factor its own converter applies to each. Read from Home Assistant, not
+    # copied, so a unit it adds is a failure here rather than a silent zero
+    for unit in UnitOfEnergy:
+        # When
+        engine_unit = energy_unit(unit.value)
+
+        # Then - recognised, and converted as Home Assistant converts it. Its
+        # converter works in floats; the engine is exact
+        assert engine_unit is not EnergyUnit.UNKNOWN, unit
+        expected = EnergyConverter.convert(1, unit, UnitOfEnergy.KILO_WATT_HOUR)
+        assert float(kwh_from(Decimal(1), engine_unit)) == pytest.approx(
+            expected, rel=1e-12
+        ), unit
 
 
 async def test_a_source_reporting_no_unit_is_not_named_straight_away(

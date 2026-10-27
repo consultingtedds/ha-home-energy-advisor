@@ -173,11 +173,12 @@ async def _set_up(
 async def test_a_house_input_in_a_unit_the_engine_cannot_count_is_rejected(
     hass: HomeAssistant,
 ) -> None:
-    # Given - a grid meter reporting megawatt hours. The engine counts in kWh
-    # and Wh; anything else is left uncounted rather than guessed at, so this
-    # would silently contribute nothing to every figure derived from it
+    # Given - a grid meter reporting kilowatts: a power sensor chosen where an
+    # energy one belongs. The engine counts in every energy unit and nothing
+    # else, so this would silently contribute nothing to every figure derived
+    # from it
     _register_source_sensors(hass)
-    _set_unit(hass, "sensor.grid_import", "MWh")
+    _set_unit(hass, "sensor.grid_import", "kW")
 
     # When - it is submitted
     result = await _set_up(
@@ -209,6 +210,21 @@ async def test_a_watt_hour_house_input_is_accepted_beside_kilowatt_hour_ones(
     )
 
     # Then - accepted
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+
+
+async def test_a_megawatt_hour_house_input_is_accepted(hass: HomeAssistant) -> None:
+    # Given - a grid meter in MWh, a unit Home Assistant converts like any other
+    # energy unit (GitHub 49)
+    _register_source_sensors(hass)
+    _set_unit(hass, "sensor.grid_import", "MWh")
+
+    # When
+    result = await _set_up(
+        hass, {**_HOUSE, CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption"}
+    )
+
+    # Then - accepted, and counted in kWh like Wh is (HEA-246)
     assert result["type"] is FlowResultType.CREATE_ENTRY
 
 

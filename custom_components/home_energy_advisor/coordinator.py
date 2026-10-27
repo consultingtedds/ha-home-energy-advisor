@@ -55,7 +55,7 @@ from .const import (
 from .energy_dashboard import async_check as async_check_energy_dashboard
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.battery_shares import BatteryMeters
-from .engine.energy_source import EnergyUnit
+from .engine.energy_source import EnergyUnit, energy_unit
 from .engine.house_balance import ChargeSource
 from .engine.level_log import LevelLog, LevelReason
 from .house_inputs import (
@@ -1512,22 +1512,13 @@ def _unit_of(state: State) -> EnergyUnit:
     carries a different one from the day before - a source told its unit once
     is wrong in both cases and has no way of finding out (GitHub #24, HEA-149).
 
-    Anything other than the two units the engine counts in reads as unknown, so
-    a source reporting megawatt hours is left uncounted rather than counted as a
-    thousandth of itself. Both are silent; only one of them is wrong.
+    Anything that is not an energy unit reads as unknown, so a source reporting
+    kilowatts is left uncounted rather than counted as though it were energy.
     """
     unit = state.attributes.get("unit_of_measurement")
     if not isinstance(unit, str):
         return EnergyUnit.UNKNOWN
-    return _ENERGY_UNITS.get(unit.strip().lower(), EnergyUnit.UNKNOWN)
-
-
-# Keyed on the lowered unit, because a household's integration may write "WH",
-# "Wh" or "wh" and all three are the same unit.
-_ENERGY_UNITS = {
-    "wh": EnergyUnit.WH,
-    "kwh": EnergyUnit.KWH,
-}
+    return energy_unit(unit)
 
 
 def _stringify(value: Decimal | None) -> str | None:

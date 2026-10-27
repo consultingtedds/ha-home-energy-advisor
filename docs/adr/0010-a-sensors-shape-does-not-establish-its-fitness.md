@@ -277,3 +277,22 @@ than the twenty minutes an interval stays open therefore made every device look
 larger than it was, and a dominant one condemned. Late house energy now reaches
 the window entry for its own interval, and only that one: unlike a device's
 claim, it is no evidence about the newest interval.
+
+## Update, 2026-10-27: a unit is countable when it is energy, not when it is kWh or Wh
+
+The unit check above counted in kWh and Wh and filed every other unit with a
+sensor that names none. Those are different cases. A missing unit is a number
+of unknown size, and refusing it stays right. MWh is a known size that was
+simply never listed, so a long-term statistics sensor configured in MWh sat at
+zero ([GitHub 49](https://github.com/consultingtedds/ha-home-energy-advisor/issues/49),
+HEA-246).
+
+**The engine now counts in every unit Home Assistant's energy sensors may
+report in**, each converted to kWh exactly, and a test holds that list to Home
+Assistant's own `EnergyConverter`, so a unit it adds fails there rather than
+going uncounted. What is refused is a unit that is not energy - most often a
+power sensor, in W or kW, chosen where an energy one belongs.
+
+Symbols are matched as Home Assistant writes them, and ignoring case only where
+that leaves one unit. "mwh" is milliwatt or megawatt hours, a billion apart, so
+it is read as unknown rather than guessed at.

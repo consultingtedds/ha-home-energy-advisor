@@ -77,11 +77,11 @@
     },
     "error": {
       "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, una sola entrada de la casa incorrecta hace que la cifra de todos los dispositivos sea incorrecta.",
-      "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla, lo que dejaría esta entrada sin aportar nada.",
-      "battery_not_countable": "Una de estas baterías tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Deja esa batería sin marcar y añádela después con Añadir batería, donde puedes elegir otro contador.",
-      "grid_meter_not_countable": "Uno de estos contadores de red tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Déjalo sin marcar y añádelo después con Añadir contador de red, donde puedes elegir otro contador, o no marques ninguno para introducir el tuyo ahora.",
+      "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en cualquier unidad de energía que use Home Assistant, como kWh, Wh o MWh, y convierte entre ellas, así que cualquiera vale y mezclarlas también. Una unidad que no es de energía, como kW, se deja sin contabilizar en lugar de adivinarla, lo que dejaría esta entrada sin aportar nada.",
+      "battery_not_countable": "Una de estas baterías tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en una unidad de energía como kWh. Deja esa batería sin marcar y añádela después con Añadir batería, donde puedes elegir otro contador.",
+      "grid_meter_not_countable": "Uno de estos contadores de red tiene un contador que Home Energy Advisor no puede contabilizar: tiene que ser un contador acumulativo en una unidad de energía como kWh. Déjalo sin marcar y añádelo después con Añadir contador de red, donde puedes elegir otro contador, o no marques ninguno para introducir el tuyo ahora.",
       "select_one_price": "Rellena el precio de importación o el precio de importación fijo, no los dos ni ninguno.",
-      "grid_export_not_countable": "Sin un contador de consumo del hogar, también se leen los contadores de exportación de tus contadores de red, y uno de ellos no se puede contabilizar: tiene que ser un contador acumulativo en kWh o Wh. Mantén un contador de consumo del hogar, o cambia antes ese contador de red."
+      "grid_export_not_countable": "Sin un contador de consumo del hogar, también se leen los contadores de exportación de tus contadores de red, y uno de ellos no se puede contabilizar: tiene que ser un contador acumulativo en una unidad de energía como kWh. Mantén un contador de consumo del hogar, o cambia antes ese contador de red."
     }
   },
   "options": {
@@ -177,7 +177,7 @@
       },
       "error": {
         "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, un solo contador de red incorrecto hace que la cifra de todos los dispositivos sea incorrecta.",
-        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla.",
+        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en cualquier unidad de energía que use Home Assistant, como kWh, Wh o MWh, y convierte entre ellas, así que cualquiera vale y mezclarlas también. Una unidad que no es de energía, como kW, se deja sin contabilizar en lugar de adivinarla.",
         "select_one_price": "Rellena el precio de importación o el precio de importación fijo, no los dos ni ninguno."
       }
     },
@@ -227,7 +227,7 @@
       },
       "error": {
         "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, un solo contador de batería incorrecto hace que la cifra de todos los dispositivos sea incorrecta.",
-        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale y mezclarlas también. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla.",
+        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en cualquier unidad de energía que use Home Assistant, como kWh, Wh o MWh, y convierte entre ellas, así que cualquiera vale y mezclarlas también. Una unidad que no es de energía, como kW, se deja sin contabilizar en lugar de adivinarla.",
         "capacity_needed": "El nivel de una batería es un porcentaje, así que necesita la capacidad de la que es porcentaje. Añade la capacidad en kWh o deja el nivel vacío.",
         "capacity_not_kwh": "Este valor va en kWh, y ninguna batería doméstica almacena tanto, así que probablemente está en vatios hora. Una batería de 1500 Wh son 1,5 kWh."
       }
@@ -272,7 +272,7 @@
         "select_one_sensor": "Elige exactamente uno: un sensor de energía o uno de potencia, no ambos.",
         "energy_not_total_increasing": "Este sensor de energía debe ser un contador creciente (total_increasing). Un sensor neto o de medición se interpretaría como consumo e inflaría el coste.",
         "power_not_measurement": "Este sensor de potencia debe indicar una medición instantánea (measurement). Un sensor de total no puede integrarse en energía correctamente.",
-        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en kWh y Wh, y convierte entre ambas, así que cualquiera de las dos vale. Cualquier otra unidad se deja sin contabilizar en lugar de adivinarla, lo que dejaría este dispositivo a cero."
+        "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en cualquier unidad de energía que use Home Assistant, como kWh, Wh o MWh, y convierte entre ellas, así que cualquiera vale. Una unidad que no es de energía, como kW, se deja sin contabilizar en lugar de adivinarla, lo que dejaría este dispositivo a cero."
       }
     }
   },
@@ -390,7 +390,7 @@
     },
     "source_unit_unsupported": {
       "title": "Una entrada de energía cuenta en una unidad que no se puede usar",
-      "description": "`{entity_id}` informa su energía en {unit}. Home Energy Advisor cuenta en kWh y Wh, y convierte entre ambas, pero no puede convertir {unit}: así que, en lugar de adivinar qué significan esos números, no está contabilizando esta entrada en absoluto.\n\nMientras eso dure, esta entrada no aporta nada. Si es un dispositivo, marcará cero y su energía se incluirá en Sin seguimiento, de modo que el total de tu casa sigue siendo correcto.\n\nElige para ella un sensor que informe en kWh o Wh. Muchas integraciones ofrecen ambos. Si este sensor cambió de unidad por sí solo tras una actualización de firmware, conviene mirar su integración."
+      "description": "`{entity_id}` informa en {unit}, que no es una unidad de energía, así que, en lugar de adivinar qué significan esos números, Home Energy Advisor no está contabilizando esta entrada en absoluto.\n\nMientras eso dure, esta entrada no aporta nada. Si es un dispositivo, marcará cero y su energía se incluirá en Sin seguimiento, de modo que el total de tu casa sigue siendo correcto.\n\nElige para ella un sensor que informe energía, como kWh o Wh. Si es un sensor de potencia, en W o kW, su dispositivo suele tener un sensor de energía al lado. Si este sensor cambió de unidad por sí solo tras una actualización de firmware, conviene mirar su integración."
     },
     "source_unit_missing": {
       "title": "Una entrada de energía no dice en qué unidad cuenta",
@@ -422,8 +422,8 @@
           }
         },
         "abort": {
-          "battery_not_countable": "{battery} en tu Panel de energía tiene un contador que Home Energy Advisor no puede contabilizar, o una capacidad demasiado grande para estar en kWh, así que no se ha cambiado nada. Los contadores tienen que ser acumulativos en kWh o Wh. Corrígelo en tu Panel de energía, o conserva tus baterías.",
-          "grid_meter_not_countable": "{grid} en tu Panel de energía tiene un contador que Home Energy Advisor no puede contabilizar, así que no se ha cambiado nada. Los contadores tienen que ser acumulativos en kWh o Wh. Corrígelo en tu Panel de energía, o conserva tus contadores de red.",
+          "battery_not_countable": "{battery} en tu Panel de energía tiene un contador que Home Energy Advisor no puede contabilizar, o una capacidad demasiado grande para estar en kWh, así que no se ha cambiado nada. Los contadores tienen que ser acumulativos en una unidad de energía como kWh. Corrígelo en tu Panel de energía, o conserva tus baterías.",
+          "grid_meter_not_countable": "{grid} en tu Panel de energía tiene un contador que Home Energy Advisor no puede contabilizar, así que no se ha cambiado nada. Los contadores tienen que ser acumulativos en una unidad de energía como kWh. Corrígelo en tu Panel de energía, o conserva tus contadores de red.",
           "entry_removed": "Home Energy Advisor ya no está configurado, así que no hay nada que cambiar."
         }
       }

@@ -63,6 +63,7 @@ from .discovery import (
     source_unit,
 )
 from .energy_dashboard import answered, batteries_in, grid_meters_in, priced
+from .engine.energy_source import EnergyUnit, energy_unit
 from .engine.house_balance import ChargeSource
 from .house_inputs import batteries_of, grid_meters, grid_meters_of, house_entities
 from .reset import async_reset_totals
@@ -776,15 +777,15 @@ _UNIT_ERROR = "unit_not_energy"
 def _uncountable_unit_error(hass: HomeAssistant, entity_id: str) -> str | None:
     """Reject an energy source reporting in a unit the engine cannot count in.
 
-    The engine works in kWh and Wh and converts between them from each reading
-    (HEA-149), so a mixture of the two is correct and is deliberately *not*
-    flagged: telling a household their working setup is wrong would have them
-    swap the entity, which re-baselines the counter and loses accounting for
-    nothing. Two households have already lost time believing a Wh sensor was
-    their fault (GitHub #24, #27) - it is not.
+    The engine works in every energy unit Home Assistant does and converts
+    between them from each reading (HEA-149, HEA-246), so a mixture is correct
+    and is deliberately *not* flagged: telling a household their working setup
+    is wrong would have them swap the entity, which re-baselines the counter and
+    loses accounting for nothing. Two households have already lost time
+    believing a Wh sensor was their fault (GitHub #24, #27) - it is not.
 
-    Anything else is a different matter. A megawatt-hour counter is not
-    converted and not counted, so the device sits at zero for ever and its
+    A unit that is not energy is a different matter. A sensor in kilowatts is
+    not converted and not counted, so the device sits at zero for ever and its
     energy falls into Untracked with nothing saying why. Refusing it while
     somebody is still choosing beats a Repair a week later (HEA-161).
 
@@ -794,14 +795,9 @@ def _uncountable_unit_error(hass: HomeAssistant, entity_id: str) -> str | None:
     is the mistake HEA-149 exists to correct.
     """
     unit = source_unit(hass, entity_id)
-    if unit is None or unit.strip().lower() in _COUNTABLE_UNITS:
+    if unit is None or energy_unit(unit) is not EnergyUnit.UNKNOWN:
         return None
     return _UNIT_ERROR
-
-
-# Lowered, because a household's integration may write "WH", "Wh" or "wh" and
-# all three are the same unit.
-_COUNTABLE_UNITS = frozenset({"kwh", "wh"})
 
 
 def _validate_device_sources(

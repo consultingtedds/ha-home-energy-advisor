@@ -41,7 +41,8 @@ figures sit at zero because there is nothing to save against.
 - Home Assistant 2026.7 or newer.
 - **A grid connection**, with your import price per kWh: a sensor, which dynamic
   tariff integrations provide, or on a fixed rate simply the rate itself.
-- **A cumulative grid import energy sensor**, in kWh or Wh. If you have set up
+- **A cumulative grid import energy sensor**, in kWh, Wh or any other energy
+  unit Home Assistant uses. If you have set up
   the Energy Dashboard you already have one. A meter with a day and a night
   rate usually has one for each, and both can be added, each with its own price.
 - **An energy or power sensor for each device you want to track.** Smart plugs,
@@ -213,7 +214,7 @@ Dashboard holds for a grid source:
 | Input | Required | What to choose |
 | --- | --- | --- |
 | Name | Yes | How the grid meter appears in Home Assistant |
-| Grid import energy | Yes | Its cumulative import meter, in kWh or Wh |
+| Grid import energy | Yes | Its cumulative import meter, in an energy unit such as kWh |
 | Import price | One of these two | The sensor or Number helper holding its current price per kWh |
 | Fixed import price | One of these two | Its price per kWh, if it never changes |
 | Grid export energy | No | Its cumulative export meter |
@@ -234,7 +235,7 @@ and one price, every kWh would be priced the same.
 
 **A standing charge is not a grid meter.** The Energy Dashboard lets you price
 a standing charge by declaring it as a grid source, and setup leaves any source
-that is not counted in kWh or Wh out of its list. Home Energy Advisor prices the
+that is not counted in an energy unit out of its list. Home Energy Advisor prices the
 energy your devices use, not your bill, so a daily fee has no place in it.
 
 The export price is read from the Energy Dashboard, as before: what you are paid
@@ -296,8 +297,9 @@ give it a name, and pick the one sensor that measures it.
 
 That sensor can be either:
 
-- **an energy sensor**, a cumulative counter in kWh or Wh - either is fine, and
-  a house with some of each is fine, or
+- **an energy sensor**, a cumulative counter in kWh, Wh, MWh or any other energy
+  unit Home Assistant uses - any of them is fine, and a house with a mixture is
+  fine, or
 - **a power sensor** reading in watts, in which case Home Assistant's own
   Integral helper is created for you to turn it into energy. You do not have to
   set that up or maintain it.

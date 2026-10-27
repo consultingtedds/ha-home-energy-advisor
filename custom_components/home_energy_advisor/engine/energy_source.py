@@ -34,8 +34,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
-_WH_PER_KWH = Decimal(1000)
-
 # How far back into a *quiet* run - one where the source kept reporting an
 # unchanged counter - a delta may reach for the energy it finally reveals.
 #
@@ -131,16 +129,79 @@ _SCALE_TOLERANCE = Decimal("0.02")
 class EnergyUnit(Enum):
     """The unit a device's counter reports in, normalised to kWh on the way in.
 
+    Every unit Home Assistant's energy sensors may report in, by the symbol it
+    writes. A counter in MWh is as countable as one in Wh; leaving it out once
+    left such a sensor at zero, filed beside the sensors that say nothing
+    (HEA-246, GitHub 49). A test holds this list to Home Assistant's own
+    converter, so a unit it adds fails there rather than going uncounted.
+
     ``UNKNOWN`` is a unit in its own right here, and deliberately not ``None``:
     "the sensor did not say" is a state a reading is genuinely in - while a
-    plug is reconnecting, or where an integration publishes a unit this engine
-    does not count in - and it has to be as sayable as the other two. Modelling
-    it as an absence is what let it be quietly read as kWh (GitHub #24).
+    plug is reconnecting, or where an integration publishes a unit that is not
+    energy - and it has to be as sayable as the others. Modelling it as an
+    absence is what let it be quietly read as kWh (GitHub #24).
     """
 
-    KWH = "kWh"
+    MILLIWATT_HOUR = "mWh"
     WH = "Wh"
+    KWH = "kWh"
+    MWH = "MWh"
+    GWH = "GWh"
+    TWH = "TWh"
+    JOULE = "J"
+    KILOJOULE = "kJ"
+    MEGAJOULE = "MJ"
+    GIGAJOULE = "GJ"
+    CALORIE = "cal"
+    KILOCALORIE = "kcal"
+    MEGACALORIE = "Mcal"
+    GIGACALORIE = "Gcal"
     UNKNOWN = "unknown"
+
+
+_JOULES_PER_KWH = Decimal(3_600_000)
+_JOULES_PER_CALORIE = Decimal("4.184")
+
+# Each unit as a fraction of a kWh, kept as numerator and denominator so the
+# watt-hour family converts exactly and the rest divide only once.
+_KWH_FRACTION: dict[EnergyUnit, tuple[Decimal, Decimal]] = {
+    EnergyUnit.MILLIWATT_HOUR: (Decimal(1), Decimal(1_000_000)),
+    EnergyUnit.WH: (Decimal(1), Decimal(1000)),
+    EnergyUnit.KWH: (Decimal(1), Decimal(1)),
+    EnergyUnit.MWH: (Decimal(1000), Decimal(1)),
+    EnergyUnit.GWH: (Decimal(1_000_000), Decimal(1)),
+    EnergyUnit.TWH: (Decimal(1_000_000_000), Decimal(1)),
+    EnergyUnit.JOULE: (Decimal(1), _JOULES_PER_KWH),
+    EnergyUnit.KILOJOULE: (Decimal(1000), _JOULES_PER_KWH),
+    EnergyUnit.MEGAJOULE: (Decimal(1_000_000), _JOULES_PER_KWH),
+    EnergyUnit.GIGAJOULE: (Decimal(1_000_000_000), _JOULES_PER_KWH),
+    EnergyUnit.CALORIE: (_JOULES_PER_CALORIE, _JOULES_PER_KWH),
+    EnergyUnit.KILOCALORIE: (_JOULES_PER_CALORIE * 1000, _JOULES_PER_KWH),
+    EnergyUnit.MEGACALORIE: (_JOULES_PER_CALORIE * 1_000_000, _JOULES_PER_KWH),
+    EnergyUnit.GIGACALORIE: (_JOULES_PER_CALORIE * 1_000_000_000, _JOULES_PER_KWH),
+}
+
+
+def kwh_from(value: Decimal, unit: EnergyUnit) -> Decimal:
+    """``value`` in ``unit``, as kWh. Never asked of ``UNKNOWN``."""
+    numerator, denominator = _KWH_FRACTION[unit]
+    return value * numerator / denominator
+
+
+def energy_unit(symbol: str) -> EnergyUnit:
+    """The unit a sensor's ``unit_of_measurement`` names, or ``UNKNOWN``.
+
+    The symbol as Home Assistant writes it first. Failing that, ignoring case,
+    because an integration may write "WH" or "kwh" - but only where that leaves
+    one unit: "mwh" could be milliwatt or megawatt hours, a billion apart, and a
+    guess between them is how the wrong figure gets published.
+    """
+    symbol = symbol.strip()
+    for unit in _KWH_FRACTION:
+        if unit.value == symbol:
+            return unit
+    folded = [unit for unit in _KWH_FRACTION if unit.value.lower() == symbol.lower()]
+    return folded[0] if len(folded) == 1 else EnergyUnit.UNKNOWN
 
 
 @dataclass(frozen=True)
@@ -663,9 +724,7 @@ class CumulativeEnergySource:
         return current.value - previous.value
 
     def _to_kwh(self, value: Decimal, unit: EnergyUnit) -> Decimal:
-        if unit is EnergyUnit.WH:
-            return value / _WH_PER_KWH
-        return value
+        return kwh_from(value, unit)
 
 
 def _scale_change(previous: _Observation, current: _Observation) -> ScaleChange | None:

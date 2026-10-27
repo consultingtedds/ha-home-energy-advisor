@@ -85,11 +85,14 @@ if it is one device, or the entry above if it is all of them.
 - **A notification says the device "is reporting more energy than the whole
   house".** See [A device is reporting more energy than the whole
   house](#a-device-is-reporting-more-energy-than-the-whole-house) below.
-- **Its sensor does not say what unit it is in.** Home Energy Advisor counts in
-  kWh and Wh. A sensor reporting something else - MWh, or no unit at all - is
-  left uncounted rather than guessed at, because a number whose size is unknown
-  is worse than no number. Its energy goes to Untracked, so your house total
-  stays right. Choose a sensor that reports in kWh or Wh.
+- **Its sensor does not say what unit it is in, or the unit is not energy.**
+  Home Energy Advisor counts in every energy unit Home Assistant uses - kWh, Wh,
+  MWh and the rest. A sensor reporting no unit at all, or one that is not
+  energy, such as a power sensor in kW, is left uncounted rather than guessed
+  at, because a number whose size is unknown is worse than no number. Its energy
+  goes to Untracked, so your house total stays right. Choose a sensor that
+  reports energy. Releases up to 1.0.1 counted only kWh and Wh, and left MWh
+  uncounted too.
 - **It is a power-only device and the integration behind it has stopped.** Where
   a device is tracked by a power sensor, Home Energy Advisor builds its energy
   from that sensor. An integration that reports zero watts when it has actually
