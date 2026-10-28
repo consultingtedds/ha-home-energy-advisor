@@ -108,6 +108,64 @@ def test_the_forgone_revenue_uses_the_rate_in_force_not_an_average() -> None:
     assert aircon.forgone_export != naive
 
 
+def _spot_export_price(minute: int) -> Decimal:
+    """A five-minute export tariff, alternating, so no two neighbours agree."""
+    return EARLY_EXPORT if (minute // 5) % 2 == 0 else LATE_EXPORT
+
+
+def _two_hours_on_a_spot_export_tariff(*, aircon_every: int) -> Accountant:
+    """A solar home on an export price that changes every five minutes.
+
+    The sun serves 1 kWh of house load in each of 24 intervals and the aircon
+    takes half of it. ``aircon_every`` is how often the aircon's counter
+    reports, in minutes: 5 for a live plug, 40 for one whose readings each
+    arrive after half their intervals have closed.
+    """
+    acc = a_solar_home()
+    acc.record_price(at(0), IMPORT_PRICE)
+    for entity in (GRID, GENERATION, HOUSE, AIRCON):
+        acc.observe(entity, at(0), Decimal(0))
+    for minute in range(0, 125, 5):
+        acc.record_export_price(at(minute), _spot_export_price(minute))
+        if minute:
+            acc.observe(GRID, at(minute), Decimal(0))
+            acc.observe(GENERATION, at(minute), Decimal(minute) / 5)
+            acc.observe(HOUSE, at(minute), Decimal(minute) / 5)
+            if minute % aircon_every == 0:
+                acc.observe(AIRCON, at(minute), Decimal(minute) / 10)
+        acc.finalize(at(minute))
+    acc.finalize(at(150))
+    return acc
+
+
+def test_a_spot_export_tariff_keeps_only_the_prices_still_needed() -> None:
+    # Given / When - two hours of a five-minute export tariff, all of it closed
+    acc = _two_hours_on_a_spot_export_tariff(aircon_every=5)
+
+    # Then - only the rate in force at the last closed interval, and any after
+    # it, are kept: a superseded rate can price nothing again (HEA-249). Kept,
+    # the list grew by 105,000 entries a year and was rescanned for every
+    # interval
+    assert acc.snapshot()["export_prices"] == [
+        {"at": at(115).isoformat(), "price": str(LATE_EXPORT)},
+        {"at": at(120).isoformat(), "price": str(EARLY_EXPORT)},
+    ]
+
+    # And - every interval was priced at its own rate: twelve halves of a kWh
+    # at five cents and twelve at twenty
+    assert acc.totals().devices["aircon"].forgone_export == Decimal("1.5")
+
+
+def test_energy_arriving_late_is_priced_at_its_interval_s_rate_after_pruning() -> None:
+    # Given / When - the same two hours, with the aircon reporting every 40
+    # minutes, so half of each reading corrects intervals whose rates are pruned
+    acc = _two_hours_on_a_spot_export_tariff(aircon_every=40)
+
+    # Then - the same figure as reported live: a correction is priced at the
+    # rate its interval kept, never at whatever survived the pruning
+    assert acc.totals().devices["aircon"].forgone_export == Decimal("1.5")
+
+
 def test_what_the_household_paid_is_untouched_by_the_forgone_figure() -> None:
     """A sibling, not a re-pricing (ADR-0026 decision 1, HEA-97's constraint).
 

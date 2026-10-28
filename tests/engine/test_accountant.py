@@ -699,7 +699,7 @@ def test_finalising_prunes_superseded_prices_but_keeps_costs_correct() -> None:
     # Then - the superseded first price is pruned (only the price active at the
     # watermark and any later survive), yet the accounting still reflects both
     # tariffs: 12 intervals of 0.5 kWh at 0.10 then 12 more at 0.30
-    assert len(acc._prices) == 1  # noqa: SLF001
+    assert acc._prices == {"sensor.grid_import": [(at(60), Decimal("0.30"))]}  # noqa: SLF001
     aircon = acc.totals().devices["coarse_step_aircon"]
     assert aircon.energy_kwh == Decimal("12.0")
     assert aircon.actual_cost == Decimal("2.4")

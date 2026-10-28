@@ -2486,10 +2486,15 @@ class Accountant:
         price at or before the watermark that can still apply is the newest one;
         anything older is superseded. Without this the list grows unbounded and is
         rescanned from index zero per bucket - pathological for a spot tariff.
+
+        The export rate is pruned the same way. It was left out, and a five-minute
+        export tariff grew it by 105,000 entries a year, every one of them saved in
+        the snapshot and rescanned twice per interval (HEA-249). A late correction
+        never needs a pruned rate: it is priced at what its retained interval kept.
         """
         if self._watermark is None:
             return
-        for series in self._prices.values():
+        for series in (*self._prices.values(), self._export_prices):
             keep_from = 0
             for index, (when, _price) in enumerate(series):
                 if when > self._watermark:
