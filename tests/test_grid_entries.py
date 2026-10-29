@@ -405,6 +405,131 @@ async def test_a_grid_meter_is_edited_to_a_fixed_price(hass: HomeAssistant) -> N
     assert (grid.price_entity, grid.fixed_price) == (None, Decimal("0.28"))
 
 
+# The export price, which is the Energy Dashboard's and only shown here
+
+
+_DAY_REGISTER = {
+    CONF_NAME: "Day",
+    CONF_GRID_IMPORT_ENTITY: "sensor.day_register",
+    CONF_PRICE_ENTITY: "sensor.day_price",
+}
+
+
+async def _edit_grid_meter(hass: HomeAssistant) -> Any:  # noqa: ANN401 - a flow result
+    entry = await _house(hass, _DAY_REGISTER)
+    (grid_id,) = grid_meters_of(entry)
+    return await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_GRID),
+        context={"source": "reconfigure", "subentry_id": grid_id},
+    )
+
+
+@pytest.mark.parametrize(
+    ("export", "said"),
+    [
+        pytest.param(
+            {"entity_energy_price_export": "sensor.grid_sell_price"},
+            "Exports are priced by sensor.grid_sell_price, from your Energy "
+            "Dashboard's grid settings. Change it there.",
+            id="a sensor",
+        ),
+        pytest.param(
+            {"number_energy_price_export": 0.08},
+            "Exports are priced at 0.08 per kWh, from your Energy Dashboard's "
+            "grid settings. Change it there.",
+            id="a fixed price",
+        ),
+        pytest.param(
+            {},
+            "No export price is set in your Energy Dashboard, so Could have "
+            "earned stays at zero. Set one in its grid settings to see it.",
+            id="none",
+        ),
+    ],
+)
+async def test_editing_a_grid_meter_says_which_export_price_is_used(
+    hass: HomeAssistant, export: dict[str, Any], said: str
+) -> None:
+    # Given - the Energy Dashboard's grid source, with its export price or none.
+    # A household looking for it in Edit grid meter found only the import price
+    # and could not tell which export price was in use (discussion 48)
+    with _with_energy_dashboard({**_DAY, **export}):
+        # When
+        result = await _edit_grid_meter(hass)
+
+    # Then - said where they look, and where to change it (HEA-250)
+    assert result["description_placeholders"] == {"export_price": said}
+
+
+async def test_the_older_flow_arrays_name_the_export_price_just_the_same(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the shape before 2026.9, where the export price sits on the flow_to
+    # entry under the name the source uses for the import price (HEA-209)
+    older = {
+        "type": "grid",
+        "flow_from": [
+            {
+                "stat_energy_from": "sensor.day_register",
+                "entity_energy_price": "sensor.day_price",
+            }
+        ],
+        "flow_to": [
+            {
+                "stat_energy_to": "sensor.grid_export",
+                "entity_energy_price": "sensor.grid_sell_price",
+            }
+        ],
+    }
+    with _with_energy_dashboard(older):
+        # When
+        result = await _edit_grid_meter(hass)
+
+    # Then - the export price, never the import one
+    assert result["description_placeholders"] == {
+        "export_price": "Exports are priced by sensor.grid_sell_price, from your "
+        "Energy Dashboard's grid settings. Change it there."
+    }
+
+
+_SELL_PRICE_SAID = {
+    "export_price": "Exports are priced by sensor.grid_sell_price, from your "
+    "Energy Dashboard's grid settings. Change it there."
+}
+_SELLING = {**_DAY, "entity_energy_price_export": "sensor.grid_sell_price"}
+
+
+async def test_add_grid_meter_and_reconfigure_say_it_too(hass: HomeAssistant) -> None:
+    # Given - an export price in the Energy Dashboard
+    entry = await _house(hass, _DAY_REGISTER)
+    with _with_energy_dashboard(_SELLING):
+        # When - Add grid meter, and Reconfigure, the other place a household
+        # looked for it
+        added = await hass.config_entries.subentries.async_init(
+            (entry.entry_id, SUBENTRY_TYPE_GRID), context={"source": SOURCE_USER}
+        )
+        reconfigured = await entry.start_reconfigure_flow(hass)
+
+    # Then
+    assert added["description_placeholders"] == _SELL_PRICE_SAID
+    assert reconfigured["description_placeholders"] == _SELL_PRICE_SAID
+
+
+async def test_setup_s_grid_meter_screens_say_it_too(hass: HomeAssistant) -> None:
+    # Given - an export price in the Energy Dashboard, at first setup
+    with _with_energy_dashboard(_SELLING):
+        # When - the grid meters offered, and the form to enter one by hand
+        offered = await _house_screen(hass)
+        by_hand = await hass.config_entries.flow.async_configure(
+            offered["flow_id"], {"grid_meters": []}
+        )
+
+    # Then
+    assert (offered["step_id"], by_hand["step_id"]) == ("grid_meters", "grid_meter")
+    assert offered["description_placeholders"] == _SELL_PRICE_SAID
+    assert by_hand["description_placeholders"] == _SELL_PRICE_SAID
+
+
 # Migration
 
 

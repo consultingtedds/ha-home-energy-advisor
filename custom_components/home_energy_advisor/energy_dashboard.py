@@ -14,6 +14,7 @@ and listed together.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -75,6 +76,93 @@ async def async_energy_prefs(hass: HomeAssistant) -> Any:  # noqa: ANN401 - unty
     except Exception:  # noqa: BLE001 - optional; it must never block anything
         return None
     return manager.data
+
+
+def export_price_in(prefs: Any) -> tuple[str | None, Decimal | None]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    """What a household is paid for exporting, as an entity or a flat number.
+
+    Home Assistant holds a grid source's flows two ways: on the source itself
+    from 2026.9, and as lists before that, with `hacs.json` supporting back to
+    2026.7. A stored preference is migrated to the newer shape when it is loaded,
+    so both are live and neither can be assumed - the config flow's prefill reads
+    them the same way, for the same reason.
+
+    The first grid source that names a price wins. A household can hold more than
+    one - pricing a standing charge means declaring one - and a grid that exports
+    nothing simply offers neither answer.
+
+    Neither is returned for a household who tracks export as a compensation
+    statistic rather than a rate: there is no price in that, and a guessed one
+    would be worse than the honest nothing they get today.
+
+    Read here for both the engine and the settings that show it (HEA-250), so
+    the price a household is shown is the one the figures use.
+    """
+    # `prefs` is None on a household with no Energy Dashboard configured, which
+    # is ordinary - the nesting reader guards the same way for the same reason.
+    for source in (prefs.get("energy_sources") or []) if prefs else []:
+        if source.get("type") != "grid":
+            continue
+        # Read by shape, never by falling back from one to the other. The two
+        # do not name this the same: on a `flow_to` entry the export price is
+        # `entity_energy_price`, while on the source that key is the *import*
+        # price and the export one carries a suffix. Treating the source as a
+        # flow therefore reads the import price and calls it export - which is
+        # what 0.8.0 did, on the shape most households are on (HEA-209).
+        exports = source.get("flow_to")
+        if exports:
+            entity = exports[0].get("entity_energy_price")
+            number = exports[0].get("number_energy_price")
+        else:
+            entity = source.get("entity_energy_price_export")
+            number = source.get("number_energy_price_export")
+        if entity:
+            return str(entity), None
+        if number is not None:
+            try:
+                return None, Decimal(str(number))
+            except InvalidOperation:
+                return None, None
+    return None, None
+
+
+async def async_export_price_said(hass: HomeAssistant, prefs: Any) -> str:  # noqa: ANN401 - untyped HA prefs
+    """Which export price is in use and where it is changed, translated.
+
+    For the grid settings, where a household looks for it and finds only the
+    import price: the export price is the Energy Dashboard's, never a copy kept
+    here (ADR-0026), so they are told which one it is rather than given a field
+    (HEA-250, discussion 48).
+    """
+    entity, number = export_price_in(prefs)
+    strings = await translation.async_get_translations(
+        hass, hass.config.language, "common", {DOMAIN}
+    )
+    prefix = f"component.{DOMAIN}.common."
+    if entity is not None:
+        return strings.get(f"{prefix}export_price_entity", _SAID_ENTITY).replace(
+            "{entity}", entity
+        )
+    if number is not None:
+        return strings.get(f"{prefix}export_price_fixed", _SAID_FIXED).replace(
+            "{price}", str(number)
+        )
+    return strings.get(f"{prefix}export_price_none", _SAID_NONE)
+
+
+# Fallbacks only; the translated strings are the source.
+_SAID_ENTITY = (
+    "Exports are priced by {entity}, from your Energy Dashboard's grid settings. "
+    "Change it there."
+)
+_SAID_FIXED = (
+    "Exports are priced at {price} per kWh, from your Energy Dashboard's grid "
+    "settings. Change it there."
+)
+_SAID_NONE = (
+    "No export price is set in your Energy Dashboard, so Could have earned stays "
+    "at zero. Set one in its grid settings to see it."
+)
 
 
 def batteries_in(prefs: Any) -> list[dict[str, Any]]:  # noqa: ANN401 - untyped HA prefs

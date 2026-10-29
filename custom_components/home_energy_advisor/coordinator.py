@@ -53,6 +53,7 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
 )
 from .energy_dashboard import async_check as async_check_energy_dashboard
+from .energy_dashboard import export_price_in
 from .engine.accountant import Accountant, SourceRole, Totals
 from .engine.battery_shares import BatteryMeters
 from .engine.energy_source import EnergyUnit, energy_unit
@@ -336,7 +337,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         at startup names a fixed list. Doing nothing where it has not changed
         keeps an edit elsewhere in the preferences from dropping a reading.
         """
-        entity, number = _export_price_of(prefs)
+        entity, number = export_price_in(prefs)
         if number is not None:
             self._accountant.record_export_price(dt_util.utcnow(), number)
         if entity == self._export_price_entity:
@@ -1414,48 +1415,6 @@ def _meters_for(entry: HeaConfigEntry, conf: str) -> tuple[str, ...]:
     if conf in _GRID_CONF:
         return grid_meters(entry, conf)
     return house_entities(entry.data, conf)
-
-
-def _export_price_of(prefs: Any) -> tuple[str | None, Decimal | None]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
-    """What a household is paid for exporting, as an entity or a flat number.
-
-    Home Assistant holds a grid source's flows two ways: on the source itself
-    from 2026.9, and as lists before that, with `hacs.json` supporting back to
-    2026.7. A stored preference is migrated to the newer shape when it is loaded,
-    so both are live and neither can be assumed - the config flow's prefill reads
-    them the same way, for the same reason.
-
-    The first grid source that names a price wins. A household can hold more than
-    one - pricing a standing charge means declaring one - and a grid that exports
-    nothing simply offers neither answer.
-
-    Neither is returned for a household who tracks export as a compensation
-    statistic rather than a rate: there is no price in that, and a guessed one
-    would be worse than the honest nothing they get today.
-    """
-    # `prefs` is None on a household with no Energy Dashboard configured, which
-    # is ordinary - the nesting reader guards the same way for the same reason.
-    for source in (prefs.get("energy_sources") or []) if prefs else []:
-        if source.get("type") != "grid":
-            continue
-        # Read by shape, never by falling back from one to the other. The two
-        # do not name this the same: on a `flow_to` entry the export price is
-        # `entity_energy_price`, while on the source that key is the *import*
-        # price and the export one carries a suffix. Treating the source as a
-        # flow therefore reads the import price and calls it export - which is
-        # what 0.8.0 did, on the shape most households are on (HEA-209).
-        exports = source.get("flow_to")
-        if exports:
-            entity = exports[0].get("entity_energy_price")
-            number = exports[0].get("number_energy_price")
-        else:
-            entity = source.get("entity_energy_price_export")
-            number = source.get("number_energy_price_export")
-        if entity:
-            return str(entity), None
-        if number is not None:
-            return None, _to_decimal(str(number))
-    return None, None
 
 
 def _nesting_of(prefs: Any, device_of_entity: Mapping[str, str]) -> dict[str, str]:  # noqa: ANN401 - untyped Energy Dashboard preference structure

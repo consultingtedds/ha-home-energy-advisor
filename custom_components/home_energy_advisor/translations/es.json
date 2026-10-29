@@ -19,7 +19,7 @@
       },
       "grid_meters": {
         "title": "Tus contadores de red",
-        "description": "Estos contadores de red están en tu Panel de energía, cada uno con su precio. Un contador con tarifa de día y de noche son dos. Marca los que quieras incluir, o no marques ninguno para introducir el tuyo. Puedes añadir, cambiar o quitar contadores de red más adelante.",
+        "description": "Estos contadores de red están en tu Panel de energía, cada uno con su precio. Un contador con tarifa de día y de noche son dos. Marca los que quieras incluir, o no marques ninguno para introducir el tuyo. Puedes añadir, cambiar o quitar contadores de red más adelante.\n\n{export_price}",
         "data": {
           "grid_meters": "Contadores de red"
         },
@@ -29,7 +29,7 @@
       },
       "grid_meter": {
         "title": "Tu contador de red",
-        "description": "El contador de la energía que importas y su precio. Un contador con tarifa de día y de noche tiene un registro para cada una: introduce uno aquí y añade el otro después con Añadir contador de red.",
+        "description": "El contador de la energía que importas y su precio. Un contador con tarifa de día y de noche tiene un registro para cada una: introduce uno aquí y añade el otro después con Añadir contador de red.\n\n{export_price}",
         "data": {
           "name": "Nombre",
           "grid_import_entity": "Energía importada de la red",
@@ -57,7 +57,7 @@
       },
       "reconfigure": {
         "title": "Editar Home Energy Advisor",
-        "description": "Actualiza las entradas de energía del hogar. Todas las entradas de aquí son opcionales; los contadores de red y las baterías se editan por separado.",
+        "description": "Actualiza las entradas de energía del hogar. Todas las entradas de aquí son opcionales; los contadores de red y las baterías se editan por separado.\n\n{export_price}",
         "data": {
           "currency": "Moneda",
           "generation_entity": "Energía de generación local (opcional)",
@@ -140,7 +140,7 @@
       "step": {
         "user": {
           "title": "Añadir un contador de red",
-          "description": "Los mismos datos que tu Panel de energía guarda para una fuente de red. Un contador con tarifa de día y de noche tiene un registro para cada una: añade cada uno como su propio contador de red, con su propio precio. Una fuente de red de tu Panel de energía que aún no está añadida aparece rellenada.",
+          "description": "Los mismos datos que tu Panel de energía guarda para una fuente de red. Un contador con tarifa de día y de noche tiene un registro para cada una: añade cada uno como su propio contador de red, con su propio precio. Una fuente de red de tu Panel de energía que aún no está añadida aparece rellenada.\n\n{export_price}",
           "data": {
             "name": "Nombre",
             "grid_import_entity": "Energía importada de la red",
@@ -158,7 +158,7 @@
         },
         "reconfigure": {
           "title": "Editar contador de red",
-          "description": "Cambia el nombre, los contadores o el precio del contador de red.",
+          "description": "Cambia el nombre, los contadores o el precio del contador de red.\n\n{export_price}",
           "data": {
             "name": "Nombre",
             "grid_import_entity": "Energía importada de la red",
@@ -453,6 +453,9 @@
     "candidate_label": "{name} ({entity_id})",
     "candidate_label_false_friend": "{name} ({entity_id}) - puede que no sea un dispositivo",
     "repair_level_left_out": "nivel no incluido: añade su capacidad",
+    "export_price_entity": "La exportación se valora con {entity}, de la configuración de red de tu Panel de energía. Cámbialo allí.",
+    "export_price_fixed": "La exportación se valora a {price} por kWh, de la configuración de red de tu Panel de energía. Cámbialo allí.",
+    "export_price_none": "No hay precio de exportación en tu Panel de energía, así que Podría haber ganado se queda en cero. Pon uno en su configuración de red para verlo.",
     "card_paid": "Pagado",
     "card_would_have_paid": "Habrías pagado",
     "card_saved": "Ahorrado",

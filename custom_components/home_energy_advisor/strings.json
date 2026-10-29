@@ -19,7 +19,7 @@
       },
       "grid_meters": {
         "title": "Your grid meters",
-        "description": "These grid meters are in your Energy Dashboard, each with its price. A meter with a day and a night rate is two of them. Tick the ones to include, or tick none to enter your own. You can add, change or remove grid meters later.",
+        "description": "These grid meters are in your Energy Dashboard, each with its price. A meter with a day and a night rate is two of them. Tick the ones to include, or tick none to enter your own. You can add, change or remove grid meters later.\n\n{export_price}",
         "data": {
           "grid_meters": "Grid meters"
         },
@@ -29,7 +29,7 @@
       },
       "grid_meter": {
         "title": "Your grid meter",
-        "description": "The meter for the energy you import, and its price. A meter with a day and a night rate has a register for each: enter one here and add the other afterwards with Add grid meter.",
+        "description": "The meter for the energy you import, and its price. A meter with a day and a night rate has a register for each: enter one here and add the other afterwards with Add grid meter.\n\n{export_price}",
         "data": {
           "name": "Name",
           "grid_import_entity": "Grid import energy",
@@ -57,7 +57,7 @@
       },
       "reconfigure": {
         "title": "Edit Home Energy Advisor",
-        "description": "Update the household energy inputs. Every input here is optional; grid meters and batteries are edited on their own.",
+        "description": "Update the household energy inputs. Every input here is optional; grid meters and batteries are edited on their own.\n\n{export_price}",
         "data": {
           "currency": "Currency",
           "generation_entity": "Local generation energy (optional)",
@@ -140,7 +140,7 @@
       "step": {
         "user": {
           "title": "Add a grid meter",
-          "description": "The same details your Energy Dashboard holds for a grid source. A meter with a day and a night rate has a register for each: add each as its own grid meter, with its own price. A grid source in your Energy Dashboard that isn't added yet is filled in for you.",
+          "description": "The same details your Energy Dashboard holds for a grid source. A meter with a day and a night rate has a register for each: add each as its own grid meter, with its own price. A grid source in your Energy Dashboard that isn't added yet is filled in for you.\n\n{export_price}",
           "data": {
             "name": "Name",
             "grid_import_entity": "Grid import energy",
@@ -158,7 +158,7 @@
         },
         "reconfigure": {
           "title": "Edit grid meter",
-          "description": "Change the grid meter's name, meters or price.",
+          "description": "Change the grid meter's name, meters or price.\n\n{export_price}",
           "data": {
             "name": "Name",
             "grid_import_entity": "Grid import energy",
@@ -453,6 +453,9 @@
     "candidate_label": "{name} ({entity_id})",
     "candidate_label_false_friend": "{name} ({entity_id}) - may not be a device",
     "repair_level_left_out": "level left out: add its capacity",
+    "export_price_entity": "Exports are priced by {entity}, from your Energy Dashboard's grid settings. Change it there.",
+    "export_price_fixed": "Exports are priced at {price} per kWh, from your Energy Dashboard's grid settings. Change it there.",
+    "export_price_none": "No export price is set in your Energy Dashboard, so Could have earned stays at zero. Set one in its grid settings to see it.",
     "card_paid": "Paid",
     "card_would_have_paid": "Would have paid",
     "card_saved": "Saved",

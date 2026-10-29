@@ -62,7 +62,13 @@ from .discovery import (
     source_state_class,
     source_unit,
 )
-from .energy_dashboard import answered, batteries_in, grid_meters_in, priced
+from .energy_dashboard import (
+    answered,
+    async_export_price_said,
+    batteries_in,
+    grid_meters_in,
+    priced,
+)
 from .engine.energy_source import EnergyUnit, energy_unit
 from .engine.house_balance import ChargeSource
 from .house_inputs import batteries_of, grid_meters, grid_meters_of, house_entities
@@ -203,6 +209,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         ]
         return self.async_show_form(
             step_id="grid_meters",
+            description_placeholders=await _export_price_placeholder(self.hass),
             data_schema=vol.Schema(
                 {
                     vol.Optional(
@@ -236,6 +243,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="grid_meter",
             data_schema=self.add_suggested_values_to_schema(_GRID_SCHEMA, suggested),
             errors=errors,
+            description_placeholders=await _export_price_placeholder(self.hass),
         )
 
     def _refusals(self, grid: Mapping[str, Any]) -> dict[str, str]:
@@ -324,6 +332,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
                 _build_schema({}), user_input or entry.data
             ),
             errors=errors,
+            description_placeholders=await _export_price_placeholder(self.hass),
         )
 
     @classmethod
@@ -430,6 +439,16 @@ async def _energy_dashboard_prefs(hass: HomeAssistant) -> Any:  # noqa: ANN401 -
     return manager.data
 
 
+async def _export_price_placeholder(hass: HomeAssistant) -> dict[str, str]:
+    """The sentence naming the export price, for a form a household looks in.
+
+    The export price is the Energy Dashboard's and has no field here, so the
+    grid forms and Reconfigure say which one is in use instead (HEA-250).
+    """
+    prefs = await _energy_dashboard_prefs(hass)
+    return {"export_price": await async_export_price_said(hass, prefs)}
+
+
 def _subentry(subentry_type: str, answers: dict[str, Any]) -> ConfigSubentryData:
     return ConfigSubentryData(
         data=answers,
@@ -484,6 +503,7 @@ class GridSubentryFlowHandler(ConfigSubentryFlow):
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(_GRID_SCHEMA, suggested),
             errors=errors,
+            description_placeholders=await _export_price_placeholder(self.hass),
         )
 
     async def async_step_reconfigure(
@@ -509,6 +529,7 @@ class GridSubentryFlowHandler(ConfigSubentryFlow):
                 _GRID_SCHEMA, user_input or subentry.data
             ),
             errors=errors,
+            description_placeholders=await _export_price_placeholder(self.hass),
         )
 
     def _metered(self) -> bool:
