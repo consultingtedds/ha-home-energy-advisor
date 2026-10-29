@@ -450,6 +450,33 @@ On the cost-over-time chart the interval still being counted is drawn faded,
 with a note saying so, so a bar that looks short is one that is still filling
 rather than a figure to compare.
 
+## Paid or Could have earned reads low after a restart
+
+Check how your price sensor behaves while whatever feeds it is not running. A
+price is taken as the price for as long as the sensor shows it, and 0 is a real
+price: plenty of tariffs have free hours, and a price of 0 is counted as free.
+
+A common way to end up with 0 by accident is a template that copies a price from
+another sensor with a default, such as `float(0)`. Whenever the source is
+unavailable - while Home Assistant starts up, or while the integration or flow
+behind it reconnects - the template shows 0, and that time is counted as free
+energy, or as exports that would have earned nothing.
+
+Let the template go unavailable instead. While a price sensor is unavailable,
+Home Energy Advisor keeps using the last price it had, so a gap does no harm:
+
+```yaml
+template:
+  - sensor:
+      - name: Export price
+        unit_of_measurement: "EUR/kWh"
+        state: "{{ states('sensor.my_price_source') | float | round(5) }}"
+        availability: "{{ has_value('sensor.my_price_source') }}"
+```
+
+Use your own source sensor and currency. Figures already counted at 0 stay as
+they are; from then on, a gap keeps the last real price.
+
 ## Paid shows in hours I used no grid
 
 Expected if you have a battery. Home Energy Advisor shows what each device cost
