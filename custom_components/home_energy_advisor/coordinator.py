@@ -28,6 +28,7 @@ from homeassistant.helpers.event import (
     async_track_state_report_event,
     async_track_time_interval,
 )
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
@@ -286,7 +287,11 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         these two are read where they live.
 
         The house inputs are not followed, but a change to them there is asked
-        about from here, on the same reads (ADR-0030).
+        about from here, on the same reads (ADR-0030). At startup that question
+        waits until Home Assistant has started: the comparison reads each grid
+        meter's unit, and a meter that has not published yet - a template sensor
+        with no registry entry - would read as gone, so an answer the household
+        gave was asked again after every restart (HEA-252, discussion 51).
 
         Subscribed rather than read once, so re-nesting in the Energy Dashboard
         reaches the engine without a restart. `async_listen_updates` has **no
@@ -304,8 +309,18 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             return
         self._apply_nesting(manager.data)
         self._apply_export_price(manager.data)
-        await async_check_energy_dashboard(self.hass, self._entry, manager.data)
+        self._entry.async_on_unload(
+            async_at_started(self.hass, self._async_check_once_started)
+        )
         manager.async_listen_updates(self._async_energy_prefs_changed)
+
+    async def _async_check_once_started(self, _hass: HomeAssistant) -> None:
+        """Ask about the Energy Dashboard's house, now every meter has reported."""
+        try:
+            manager = await async_get_manager(self.hass)
+        except Exception:  # noqa: BLE001 - as above; never block anything
+            return
+        await async_check_energy_dashboard(self.hass, self._entry, manager.data)
 
     async def _async_energy_prefs_changed(self) -> None:
         """Re-read both after the household edited the Energy Dashboard."""

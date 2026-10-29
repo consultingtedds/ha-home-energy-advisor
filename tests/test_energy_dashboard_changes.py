@@ -18,7 +18,8 @@ import pytest
 from homeassistant.components.energy.data import async_get_manager
 from homeassistant.components.repairs import repairs_flow_manager
 from homeassistant.config_entries import SOURCE_USER, ConfigSubentryData
-from homeassistant.const import CONF_NAME
+from homeassistant.const import CONF_NAME, EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
@@ -284,6 +285,56 @@ async def test_keeping_mine_is_remembered_until_the_energy_dashboard_changes(
     await _energy_dashboard(hass, _ANKER, {**_GROWATT, "capacity": 5.0})
 
     # Then - it is asked about once more
+    assert _issue(hass, entry) is not None
+
+
+async def test_keeping_mine_survives_a_restart_whose_meters_report_late(
+    hass: HomeAssistant,
+) -> None:
+    # Given - batteries that differ from the Energy Dashboard's on purpose, kept,
+    # beside a grid meter the Energy Dashboard holds too (discussion 51)
+    await _energy_dashboard(hass, _ANKER, _GROWATT, _DAY)
+    entry = await _set_up(hass, _SUMMED)
+    await _answer(hass, entry, "keep")
+    assert _issue(hass, entry) is None
+
+    # When - Home Assistant restarts, and the grid's import meter, a template
+    # sensor with no registry entry, has not published anything yet while this
+    # integration sets up
+    hass.set_state(CoreState.starting)
+    hass.states.async_remove("sensor.day_register")
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # ...and has by the time Home Assistant has started
+    hass.states.async_set("sensor.day_register", "100", _ENERGY)
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+
+    # Then - nothing is asked: the Energy Dashboard has not changed, only how
+    # far through starting Home Assistant was when it was read (HEA-252)
+    assert _issue(hass, entry) is None
+
+
+async def test_a_change_made_while_home_assistant_was_down_is_still_asked(
+    hass: HomeAssistant,
+) -> None:
+    # Given - batteries kept, as above
+    await _energy_dashboard(hass, _ANKER, _GROWATT, _DAY)
+    entry = await _set_up(hass, _SUMMED)
+    await _answer(hass, entry, "keep")
+
+    # When - a restart, after the Energy Dashboard gained a capacity
+    hass.set_state(CoreState.starting)
+    await _energy_dashboard(hass, _ANKER, {**_GROWATT, "capacity": 5.0}, _DAY)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+
+    # Then - asked about, once Home Assistant has started
     assert _issue(hass, entry) is not None
 
 
