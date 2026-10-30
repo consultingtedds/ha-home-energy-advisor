@@ -706,7 +706,27 @@ Carried forward rather than closed:
   their step (0.1 kWh on an inverter register), and late house energy never
   reached the plausibility window while late device energy did. Both checks now
   allow one step per house meter, learned from its smallest movement, and the
-  window takes late house energy (ADR-0010's 2026-10-26 update).
+  window takes late house energy (ADR-0010's 2026-10-26 update). **Released as
+  1.0.1 on 2026-10-26.**
+- **1.0.2, released 2026-10-29**, four fixes from households outside the
+  reference one:
+  - **HEA-246** (GitHub 49): a sensor in MWh was refused as though it had no
+    unit. Every unit Home Assistant's energy sensors use is now counted,
+    converted exactly, and held to Home Assistant's own converter by a test;
+    a unit that is not energy is still refused (ADR-0010's 2026-10-27 update).
+  - **HEA-249**: export prices were never pruned, so a tariff reporting every
+    few minutes grew the series, the snapshot and every lookup without end.
+    Pruned as import prices already were.
+  - **HEA-250** (discussion 48): the export price is the Energy Dashboard's and
+    has no field here, so the grid forms and Reconfigure now say which one is in
+    use and where to change it.
+  - **HEA-252** (discussion 51): Keep mine was asked again after every restart,
+    because the check ran before every grid meter had reported. It now waits
+    until Home Assistant has started.
+- **HEA-251** (discussion 48): an export rate stuck at 0 traced to the
+  household's price template, whose `float(0)` turned every outage of its source
+  into a real price of 0. No engine change: 0 is a genuine price on many
+  tariffs. Documented in troubleshooting instead.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
