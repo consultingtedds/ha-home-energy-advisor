@@ -83,3 +83,12 @@ running anything, at the device or the household level.
 The rules above stand for any add-on that is built. The Could have earned
 column, the one add-on HEA-97 did produce (HEA-38, HEA-229), is unaffected. A
 request for either of the two is answered by PLAN.md's Decided against list.
+
+## Update - 2026-10-30: export earnings are built, at the household level only
+
+Export earnings are reconsidered (maintainer, HEA-241): not as a device's
+add-on, which the update above still rules out, but as one part of what the
+installation as a whole earned, on a card of its own (ADR-0034). That card
+answers a question about the installation rather than about what each device's
+use cost, so it does not lead with Paid; it keeps this ADR's other rule, and none
+of its figures is merged into Paid. Standing charges stay decided against.
