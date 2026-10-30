@@ -108,6 +108,17 @@ export const DEFAULTS = Object.freeze({
     "Solar stored in the battery counts as your own. Battery energy charged " +
     "from the grid does not, and is shown on its own.",
   household: "Household",
+  generation_saved: "Generation saved",
+  battery_saved: "Battery saved",
+  exports_earned: "Exports earned",
+  installation_note:
+    "For the whole home: your own generation, your battery and your exports, " +
+    "measured against your current tariff. What the battery lost is taken off " +
+    "what it saved.",
+  no_installation:
+    "There is no generation or battery here, so nothing for an installation to " +
+    "have earned.",
+  title_installation: "What your installation earned",
   title_totals: "Cost summary",
   title_devices: "Cost by device",
   title_device_costs: "What each device cost",

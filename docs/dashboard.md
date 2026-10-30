@@ -136,6 +136,23 @@ Solar your battery stored and gave back later counts as your own, and the
 headline says so beneath it. Battery energy charged from the grid does not, and
 is shown on its own as **From battery (grid)**.
 
+### What your installation earned
+
+What your own generation, your battery and your exports earned over the period,
+and their total:
+
+- **Generation saved**: what the energy you generated and used yourself would
+  have cost from the grid.
+- **Battery saved**: what using stored energy saved over buying it when you used
+  it, less what the battery lost along the way. It can be negative, if the
+  battery lost more than it saved.
+- **Exports earned**: what your Energy Dashboard records your exports as having
+  earned, at the export price set there. Shown only if it has one.
+
+These are for the whole home, measured against your current tariff, so the
+filter does not narrow this card. It appears on the generated dashboard only if
+you have generation or a battery. No options beyond the two every card takes.
+
 ### Filter
 
 ![The filter control, a dropdown offering rooms, floors, labels and individual devices](images/card-filter.png)

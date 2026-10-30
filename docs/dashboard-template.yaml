@@ -60,6 +60,10 @@ views:
             grid_options: { columns: full, rows: auto }
           - type: custom:hea-self-sufficiency-card
             grid_options: { columns: full, rows: auto }
+          # Only worth keeping with generation or a battery; on the grid alone
+          # it says there is nothing for an installation to have earned.
+          - type: custom:hea-installation-card
+            grid_options: { columns: full, rows: auto }
 
 # No card sets a `title`. Left out, each one names itself in the household's own
 # language; a title written here would be English on every install. Set one only

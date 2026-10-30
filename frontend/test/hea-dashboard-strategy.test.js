@@ -106,6 +106,33 @@ describe("the dashboard strategy", () => {
     ]);
   });
 
+  it("adds what the installation earned beside the gauge, for a home with one", async () => {
+    // Given - a home with generation: its whole-home savings figure is enabled
+    hass.states["sensor.whole_home_cost_savings"] = { state: "4.04", attributes: {} };
+
+    // When
+    const { views } = await generateDashboard(hass);
+
+    // Then - after the self-sufficiency gauge, the other whole-home answer
+    const charts = views[0].sections[2].cards.map((card) => card.type);
+    expect(charts).toEqual([
+      "custom:hea-device-costs-card",
+      "custom:hea-distribution-card",
+      "custom:hea-self-sufficiency-card",
+      "custom:hea-installation-card",
+    ]);
+  });
+
+  it("leaves it out for a home on the grid alone", async () => {
+    // Given - the default household: its savings figure was created disabled,
+    // so it has no state (HEA-175)
+    // When
+    const { views } = await generateDashboard(hass);
+
+    // Then - a card that could only say there is nothing to show is not offered
+    expect(cardTypes(views[0])).not.toContain("custom:hea-installation-card");
+  });
+
   it("pins the period picker and the filter in the view footer", async () => {
     // Given / When
     const { views } = await generateDashboard(hass);

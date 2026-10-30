@@ -14,7 +14,8 @@
  * a view by hand.
  */
 
-import { readDevices } from "./hea-devices.js";
+import { readDevices, readWholeHome } from "./hea-devices.js";
+import { hasAnInstallation } from "./hea-installation.js";
 import { labelsFor, loadLabels } from "./hea-labels.js";
 
 /** The `custom:` type a dashboard config names, without the prefix. */
@@ -63,6 +64,16 @@ const CHARTS = [
   { type: "custom:hea-distribution-card" },
   { type: "custom:hea-self-sufficiency-card" },
 ];
+
+/**
+ * What the installation earned, after the gauge: the two whole-home answers sit
+ * together (ADR-0034). Only for a home with generation or a battery, because on
+ * the grid alone it could only say there is nothing to show.
+ */
+const INSTALLATION = { type: "custom:hea-installation-card" };
+
+const chartsFor = (hass) =>
+  hasAnInstallation(hass, readWholeHome(hass)) ? [...CHARTS, INSTALLATION] : CHARTS;
 
 const full = (card) => ({
   ...card,
@@ -131,7 +142,7 @@ const heaView = (hass) =>
         sections: [
           section(HEADLINE, MAX_COLUMNS),
           section(FIGURES, MAX_COLUMNS / 2),
-          section(CHARTS, MAX_COLUMNS / 2),
+          section(chartsFor(hass), MAX_COLUMNS / 2),
         ],
         footer: footer(),
       };

@@ -1213,7 +1213,10 @@ it again. Each has a closed Linear ticket with the detail.
   to be confused with Could have earned, which is what solar the house used
   could have earned had it been exported, and is built. **Reconsidered
   2026-10-25** as one part of a whole-home return on the installation, never a
-  device figure (HEA-241, with payback on top in HEA-242).
+  device figure (HEA-241, with payback on top in HEA-242). Built as **Exports
+  earned** on the What your installation earned card, read from the Energy
+  Dashboard's own compensation statistic (ADR-0034); it is still no device's
+  figure and never part of Actual Cost.
 - **Following an optimiser's grid-charging signal** (HEA-234, closed
   2026-10-23). Measured on the reference home and worth about €0.001 a day; see
   its entry above for what would reopen it.

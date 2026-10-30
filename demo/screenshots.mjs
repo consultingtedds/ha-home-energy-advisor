@@ -316,6 +316,7 @@ const CARDS = [
   ["hea-sources-card", "card-sources"],
   ["hea-distribution-card", "card-distribution"],
   ["hea-self-sufficiency-card", "card-self-sufficiency"],
+  ["hea-installation-card", "card-installation"],
   ["hea-filter-card", "card-filter"],
 ];
 

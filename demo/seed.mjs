@@ -97,11 +97,22 @@ const FORGONE_CONCEPT = "forgone_export";
  */
 const STORED_SOLAR_CONCEPT = "energy_from_battery_solar";
 
+/**
+ * The battery's share of the saving, which only the whole home publishes, and
+ * only where there is a battery. Written, the installation card shows its
+ * battery part (ADR-0034).
+ */
+const BATTERY_SAVINGS_CONCEPT = "battery_savings";
+
+/** The whole home's figures this seed writes, and the only ones. */
+const WHOLE_HOME_CONCEPTS = ["cost_savings", BATTERY_SAVINGS_CONCEPT];
+
 /** Everything written beyond what every row must carry. */
 const WRITTEN_WHERE_PUBLISHED = [
   ...OPTIONAL_CONCEPTS,
   FORGONE_CONCEPT,
   STORED_SOLAR_CONCEPT,
+  BATTERY_SAVINGS_CONCEPT,
 ];
 
 /** Which written concepts are measured in kWh; the rest are money. */
@@ -111,18 +122,26 @@ async function main() {
   const auth = await freshAuth();
   const socket = await HaSocket.connect(auth.access_token);
   try {
-    const rows = await readDeviceRows(socket);
+    const { rows, wholeHome } = await readDeviceRows(socket);
     const hours = hourlyWindow();
+    const compensation = await exportCompensation(socket);
 
     // Clear before writing, always. Home Assistant's import does not replace
     // rows that are already there, so a reseed over an existing week keeps the
     // old figures and reports success: nine of ten devices came back identical
     // to the cent after their profiles had been rewritten.
-    const targets = statisticIds(rows);
+    const targets = [...statisticIds(rows, wholeHome), ...(compensation ? [compensation] : [])];
     await clearAndWait(socket, targets);
 
     // Per-hour totals for the whole house, accumulated as each device is built.
-    const house = { used: zeros(hours), grid: zeros(hours), solar: zeros(hours), battery: zeros(hours) };
+    const house = {
+      used: zeros(hours),
+      grid: zeros(hours),
+      solar: zeros(hours),
+      battery: zeros(hours),
+      savings: zeros(hours),
+      batterySavings: zeros(hours),
+    };
 
     let written = 0;
     const seriesByKey = new Map();
@@ -137,6 +156,9 @@ async function main() {
         addInto(house.grid, series.energy_from_grid);
         addInto(house.solar, series.energy_from_generation);
         addInto(house.battery, series.energy_from_battery);
+        // A loss saves nothing: it is priced at its cost on both sides.
+        addInto(house.savings, series.cost_savings);
+        addInto(house.batterySavings, series.battery_savings);
       }
       written += await importConcepts(socket, row.statistics, series, hours);
       written += await importSource(socket, row.profile, series, hours);
@@ -149,6 +171,8 @@ async function main() {
     }
 
     written += await importHouse(socket, house, hours);
+    written += await importWholeHome(socket, wholeHome, house, hours);
+    written += await importCompensation(socket, compensation, house, hours);
 
     await confirmReadable(socket, targets, hours);
 
@@ -229,7 +253,9 @@ async function readDeviceRows(socket) {
         UNTRACKED,
     }));
     const ready = rows.filter((row) => isReady(row, pool));
-    if (rows.length >= wanted && ready.length === rows.length) return rows;
+    if (rows.length >= wanted && ready.length === rows.length) {
+      return { rows, wholeHome: sensor.attributes.whole_home };
+    }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 
@@ -305,6 +331,13 @@ function hourlyWindow() {
   return hours;
 }
 
+/**
+ * For each kWh of its own generation the house used, how much more it exported.
+ * Shared by the export meter and what the exports earned, so the two describe
+ * the same energy.
+ */
+const EXPORTED_SHARE = 0.35;
+
 /** The house meters the seed derives, in the order `importHouse` writes them. */
 const HOUSE_METERS = [
   HOUSE.gridImportDay,
@@ -320,7 +353,7 @@ const HOUSE_METERS = [
  * Every statistic this seed is responsible for: the integration's own sensors,
  * the demo's source sensors, and the house meters.
  */
-function statisticIds(rows) {
+function statisticIds(rows, wholeHome) {
   // The bounds and forgone export are cleared with everything else where they
   // exist. A reseed that left them behind would restart their running totals in
   // front of the old ones, which Home Assistant reads as a week-sized negative
@@ -330,8 +363,16 @@ function statisticIds(rows) {
       .map((concept) => row.statistics?.[concept])
       .filter(Boolean),
   );
+  // Of the whole home's, only the two `importWholeHome` writes: the rest are
+  // summed from the rows by the cards, and a figure listed here that is never
+  // written is one the readback waits for in vain.
+  const wholeHomeIds = WHOLE_HOME_CONCEPTS.map(
+    (concept) => wholeHome?.statistics?.[concept],
+  ).filter(Boolean);
   const sources = rows.map((row) => row.profile.source).filter(Boolean);
-  return [...new Set([...concepts, ...sources, ...HOUSE_METERS, HOUSE.dayRate])];
+  return [
+    ...new Set([...concepts, ...wholeHomeIds, ...sources, ...HOUSE_METERS, HOUSE.dayRate]),
+  ];
 }
 
 /**
@@ -494,6 +535,10 @@ function profileSeries(profile, hours) {
     series.actual_cost.push(actual);
     series.cost_at_grid_price.push(atGridPrice);
     series.cost_savings.push(atGridPrice - actual);
+    // The battery's part of that saving, the engine's own split: its energy at
+    // the price of the moment, less what the bought part cost to store. No
+    // device publishes it; the whole home's is the sum of these (ADR-0034).
+    series.battery_savings.push(battery * price - bought * stored);
     // The generation this device used, directly and through the battery,
     // valued at the export rate - the engine's own rule (ADR-0027). One rate
     // all week, so the rate it was stored at is the rate now.
@@ -599,7 +644,7 @@ async function importSource(socket, profile, series, hours) {
  */
 async function importHouse(socket, house, hours) {
   // Generation covers what was used from it plus what went to the grid.
-  const generation = house.solar.map((used) => used * 1.35);
+  const generation = house.solar.map((used) => used * (1 + EXPORTED_SHARE));
   const exported = generation.map((made, index) => made - house.solar[index]);
   // Charging a battery costs more than it gives back.
   const charge = house.battery.map((out) => out * 1.12);
@@ -627,6 +672,60 @@ async function importHouse(socket, house, hours) {
   await importOne(socket, HOUSE.dayRate, `${CURRENCY}/kWh`, dayRate, { mean: true });
 
   return HOUSE_METERS.length + 1;
+}
+
+/**
+ * The whole home's savings and the battery's part of them, as the integration
+ * publishes them: the sum of the rows, so the installation card agrees with
+ * every other card (ADR-0034).
+ *
+ * Only these two. Every other whole-home figure the cards read is summed from
+ * the rows themselves, and writing it here would only give it a chance to
+ * disagree.
+ */
+async function importWholeHome(socket, wholeHome, house, hours) {
+  let written = 0;
+  const figures = {
+    cost_savings: house.savings,
+    [BATTERY_SAVINGS_CONCEPT]: house.batterySavings,
+  };
+  for (const [concept, values] of Object.entries(figures)) {
+    const statisticId = wholeHome?.statistics?.[concept];
+    if (!statisticId) continue;
+    await importOne(socket, statisticId, CURRENCY, runningTotal(values, hours));
+    written += 1;
+  }
+  return written;
+}
+
+/**
+ * Where Home Assistant records what the demo's exports earned, if it does.
+ *
+ * Asked of `energy/info`, as the card asks it, never composed: Home Assistant
+ * creates the compensation sensor for an export price itself, named from the
+ * export meter, and only once that meter has reported.
+ */
+async function exportCompensation(socket) {
+  const info = await socket.send({ type: "energy/info" });
+  const statisticId = info?.cost_sensors?.[HOUSE.gridExport];
+  if (!statisticId) {
+    console.log(
+      "  Home Assistant has no compensation sensor for the export meter yet, " +
+        "so the installation card will show no exports.",
+    );
+  }
+  return statisticId;
+}
+
+/**
+ * What the exports earned: the exported energy `importHouse` derives, at the
+ * demo's export rate, written to Home Assistant's own compensation statistic.
+ */
+async function importCompensation(socket, statisticId, house, hours) {
+  if (!statisticId) return 0;
+  const earned = house.solar.map((used) => used * EXPORTED_SHARE * TARIFF.export);
+  await importOne(socket, statisticId, CURRENCY, runningTotal(earned, hours));
+  return 1;
 }
 
 const round = (value) => Math.round(value * 1000) / 1000;

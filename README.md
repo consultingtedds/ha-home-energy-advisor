@@ -660,7 +660,9 @@ your bill. It leaves out:
 
 - **Standing charges.** The daily fee you pay whether you use anything or not.
 - **Payback for exported energy.** Money coming back to you, not a cost of
-  running a device.
+  running a device. It is shown on its own, as **Exports earned** on the **What
+  your installation earned** card, never inside Actual Cost.
+
 Both are correct to leave out, because neither belongs to any particular
 device. It does mean your total will be short of your bill.
 

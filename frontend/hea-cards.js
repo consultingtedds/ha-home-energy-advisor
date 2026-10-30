@@ -12,6 +12,7 @@ import "./hea-device-costs-card.js";
 import "./hea-devices-card.js";
 import "./hea-distribution-card.js";
 import "./hea-filter-card.js";
+import "./hea-installation-card.js";
 import "./hea-self-sufficiency-card.js";
 import "./hea-sources-card.js";
 import "./hea-totals-card.js";

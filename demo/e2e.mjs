@@ -67,6 +67,7 @@ const CARDS = [
   "hea-sources-card",
   "hea-distribution-card",
   "hea-self-sufficiency-card",
+  "hea-installation-card",
   "hea-filter-card",
 ];
 
@@ -447,6 +448,21 @@ async function figureChecks(page) {
       /including stored solar|incluida la solar almacenada/.test(text),
       "the headline does not say it includes stored solar",
     );
+  });
+
+  await check("what the installation earned shows all three parts", async () => {
+    // The seeded house has panels, a battery and an export price, so every part
+    // applies (ADR-0034). A part missing means its statistic never reached the
+    // card: the whole home's savings, the battery's share of them, or the
+    // Energy Dashboard's own compensation for the exports.
+    const text = await cardText(page, "hea-installation-card");
+    for (const [part, pattern] of [
+      ["generation saved", /Generation saved|Ahorrado con generación/],
+      ["battery saved", /Battery saved|Ahorrado con la batería/],
+      ["exports earned", /Exports earned|Ganado exportando/],
+    ]) {
+      assert(pattern.test(text), `the card does not show ${part}`);
+    }
   });
 
   await check("no card renders the empty-period message", async () => {
