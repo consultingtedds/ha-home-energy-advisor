@@ -1400,12 +1400,21 @@ class HeaDevicesSensor(CoordinatorEntity["HeaCoordinator"], SensorEntity):
         cost bounds are opt-in (ADR-0016), so absent is the ordinary case, and a
         caller must be able to tell "no such statistic" from "here is where it
         would be".
+
+        A disabled entity is omitted for the same reason: it records nothing, so
+        naming it sends a card after a statistic that does not exist, which it
+        reads as zero. On a grid-only home, whose supply-only figures are created
+        disabled (HEA-175), that put Would have paid at nothing and Saved at
+        minus Paid on every row (HEA-253). Absent, a row takes Paid as what it
+        would have paid, as Battery Losses already does.
         """
         registry = er.async_get(self.hass)
-        resolved = {
-            description.key: registry.async_get_entity_id(
+        published = {}
+        for description in (*_CONCEPTS, *_BOUND_CONCEPTS, *_HOME_CONCEPTS):
+            entity_id = registry.async_get_entity_id(
                 "sensor", DOMAIN, f"{self._entry_id}_{device_key}_{description.key}"
             )
-            for description in (*_CONCEPTS, *_BOUND_CONCEPTS, *_HOME_CONCEPTS)
-        }
-        return {key: entity for key, entity in resolved.items() if entity is not None}
+            entry = registry.async_get(entity_id) if entity_id else None
+            if entry is not None and entry.disabled_by is None:
+                published[description.key] = entry.entity_id
+        return published

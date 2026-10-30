@@ -18,6 +18,8 @@
  * a fourth statistic would merely tend to agree.
  */
 
+import { readDevices } from "./hea-devices.js";
+
 /**
  * The concepts a device is accounted by, keyed by the field each becomes on a
  * row - the two are named alike deliberately, so a row's `costAtGridPrice` is
@@ -120,10 +122,39 @@ export const hasACounterfactual = (device) =>
  * every card sums a loss into Would have paid at its cost and saves nothing on
  * it, rather than taking it off the household's saving.
  */
-const sourceOf = (device, field, concept) =>
-  field === "costAtGridPrice" && !hasACounterfactual(device)
-    ? statisticIdFor(device, CONCEPTS.actualCost)
-    : statisticIdFor(device, concept);
+const sourceOf = (device, field, concept, gridOnly = false) => {
+  if (field === "costAtGridPrice" && !hasACounterfactual(device)) {
+    return statisticIdFor(device, CONCEPTS.actualCost);
+  }
+  if (field === "energyFromGrid" && gridOnly) {
+    return statisticIdFor(device, CONCEPTS.energyUsed);
+  }
+  return statisticIdFor(device, concept);
+};
+
+/**
+ * Whether a row says where its energy came from.
+ *
+ * A grid-only home publishes no split: its source figures are disabled, since
+ * with one source every kWh came from the grid (HEA-175), and a disabled figure
+ * is not named at all (HEA-253).
+ */
+const hasASourceSplit = (device) =>
+  [CONCEPTS.energyFromGrid, CONCEPTS.energyFromGeneration, CONCEPTS.energyFromBattery].some(
+    (concept) => concept in (device?.statistics ?? {}),
+  );
+
+/**
+ * Whether these rows are a home on the grid alone, so every kWh came from it.
+ *
+ * Asked of the rows together, never of one. Battery Losses publishes no split
+ * either, in a home whose other rows all do: its energy was lost in the
+ * battery, and reading it as bought from the grid would be false. Only where no
+ * row says anything about its sources is the grid the answer for all of them -
+ * and there it is the true one, where reading the absent figure as zero said
+ * the energy came from nowhere.
+ */
+const isGridOnly = (devices) => devices.length > 0 && !devices.some(hasASourceSplit);
 
 /**
  * Every statistic the given devices need, in a stable order.
@@ -307,13 +338,20 @@ export const fetchDeviceStatistics = async (
       })
     : {};
 
-  const rows = nettedOfInside(devices.map((device) => totalsFor(device, buckets, period)));
+  // The household, not the page: narrowed to its Battery Losses, a battery
+  // home's rows would all lack a split. Where the sensor is not there to ask,
+  // the rows given are the best answer there is.
+  const household = readDevices(hass);
+  const gridOnly = isGridOnly(household.length ? household : devices);
+  const rows = nettedOfInside(
+    devices.map((device) => totalsFor(device, buckets, period, gridOnly)),
+  );
   return {
     period,
     devices: rows,
     totals: sumRows(rows),
     wholeHome: boundsFor(wholeHome, buckets, period),
-    series: seriesFrom(devices, buckets, period, settledUntil),
+    series: seriesFrom(devices, buckets, period, settledUntil, gridOnly),
   };
 };
 
@@ -343,13 +381,13 @@ const boundsFor = (device, buckets, period) => {
  * already in hand. Rows are oldest first, and a bucket is present if any device
  * recorded one - devices need not share bucket boundaries.
  */
-const seriesFrom = (devices, buckets, period, settledUntil) => {
+const seriesFrom = (devices, buckets, period, settledUntil, gridOnly) => {
   const byStart = new Map();
   // A row inside a gross one is already in that row's buckets.
   const gross = new Set(devices.filter((device) => device.gross).map((device) => device.key));
   for (const device of devices.filter((row) => !gross.has(row.upstream))) {
     for (const [field, concept] of Object.entries(CONCEPTS)) {
-      const statistic = buckets?.[sourceOf(device, field, concept)];
+      const statistic = buckets?.[sourceOf(device, field, concept, gridOnly)];
       for (const bucket of bucketsWithin(statistic, period)) {
         const row = byStart.get(bucket.start) ?? zeroed();
         row[field] += bucket.change;
@@ -371,11 +409,11 @@ const seriesFrom = (devices, buckets, period, settledUntil) => {
     }));
 };
 
-const totalsFor = (device, buckets, period) => {
+const totalsFor = (device, buckets, period, gridOnly) => {
   const totals = Object.fromEntries(
     Object.entries(CONCEPTS).map(([field, concept]) => [
       field,
-      changeWithin(buckets?.[sourceOf(device, field, concept)], period),
+      changeWithin(buckets?.[sourceOf(device, field, concept, gridOnly)], period),
     ]),
   );
   return {

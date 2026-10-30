@@ -7,6 +7,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+import { DEVICES_SENSOR } from "../hea-devices.js";
 import {
   BOUNDS,
   CONCEPTS,
@@ -402,6 +403,80 @@ describe("fetchDeviceStatistics", () => {
         costSavings: expect.closeTo(2.2, 10),
       }),
     ]);
+  });
+
+  it("saves nothing, rather than minus what was paid, on a grid-only home", async () => {
+    // Given - a grid-only home publishes only what it records: its supply-only
+    // figures are disabled (HEA-175), so it names no Would have paid and no
+    // source split (HEA-253, discussion 55)
+    const gridOnly = {
+      key: "slow_poll_aircon",
+      name: "Slow Poll Aircon",
+      untracked: false,
+      statistics: {
+        energy_used: "sensor.slow_poll_aircon_energy_used",
+        actual_cost: "sensor.slow_poll_aircon_actual_cost",
+      },
+    };
+    const hass = aHass({
+      "sensor.slow_poll_aircon_energy_used": [aBucket(DAY_ONE, 8.2)],
+      "sensor.slow_poll_aircon_actual_cost": [aBucket(DAY_ONE, 1.64)],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [gridOnly], threeDays);
+
+    // Then - with only the grid, what it would have paid is what it paid, and
+    // every kWh came from the grid
+    expect(result.devices).toEqual([
+      expect.objectContaining({
+        energyUsed: 8.2,
+        actualCost: 1.64,
+        costAtGridPrice: 1.64,
+        costSavings: 0,
+        energyFromGrid: 8.2,
+        energyFromGeneration: 0,
+        energyFromBattery: 0,
+      }),
+    ]);
+  });
+
+  it("never reads a battery's losses as energy from the grid", async () => {
+    // Given - a battery home: its devices say where their energy came from, and
+    // its Battery Losses row, like a grid-only row, says nothing of the kind
+    const losses = {
+      key: "battery_losses",
+      name: "Battery Losses",
+      untracked: false,
+      statistics: {
+        energy_used: "sensor.battery_losses_energy_used",
+        actual_cost: "sensor.battery_losses_actual_cost",
+      },
+    };
+    const hass = aHass({
+      ...airconResponse,
+      "sensor.battery_losses_energy_used": [aBucket(DAY_ONE, 0.4)],
+      "sensor.battery_losses_actual_cost": [aBucket(DAY_ONE, 0.06)],
+    });
+
+    // When
+    const result = await fetchDeviceStatistics(hass, [AIRCON, losses], threeDays);
+
+    // Then - lost in the battery, not bought from the grid
+    expect(result.devices[1]).toEqual(
+      expect.objectContaining({ energyUsed: 0.4, energyFromGrid: 0 }),
+    );
+
+    // And - still so when the page is narrowed to the losses alone: whether the
+    // home has a source split is a question about the household, which the
+    // devices sensor answers whatever the page is showing
+    hass.states = {
+      [DEVICES_SENSOR]: { state: "2", attributes: { devices: [AIRCON, losses] } },
+    };
+    const narrowed = await fetchDeviceStatistics(hass, [losses], threeDays);
+    expect(narrowed.devices[0]).toEqual(
+      expect.objectContaining({ energyUsed: 0.4, energyFromGrid: 0 }),
+    );
   });
 
   it("totals the whole house, the Untracked remainder included", async () => {

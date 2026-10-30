@@ -1164,10 +1164,17 @@ async def test_devices_sensor_says_how_far_the_figures_are_complete(
 async def test_devices_sensor_publishes_the_real_statistic_ids(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory
 ) -> None:
-    # Given - a running integration
+    # Given - a running integration, with generation and a battery so that
+    # every concept is enabled and has an entity to name
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _seed_states(hass)
-    entry = _entry()
+    for entity in (
+        "sensor.generation",
+        "sensor.battery_charge",
+        "sensor.battery_discharge",
+    ):
+        hass.states.async_set(entity, "0", _ENERGY)
+    entry = _supply_entry()
     entry.add_to_hass(hass)
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
@@ -1184,6 +1191,37 @@ async def test_devices_sensor_publishes_the_real_statistic_ids(
         assert statistics[concept] == registry.async_get_entity_id(
             "sensor", DOMAIN, f"{entry.entry_id}_{_aircon_subentry_id(entry)}_{concept}"
         )
+
+
+async def test_a_grid_only_home_publishes_no_id_for_a_figure_it_disabled(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a grid meter and nothing else, so the supply-only figures are
+    # created disabled and record nothing (HEA-175)
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    _seed_states(hass)
+    entry = _entry()
+    await _setup(hass, entry)
+
+    # When - the devices-registry sensor is read
+    state = await _devices_state(hass, entry, freezer)
+    aircon = next(
+        row for row in state.attributes["devices"] if row["key"] == "coarse_step_aircon"
+    )
+
+    # Then - only figures that are recorded are named. Naming a disabled one sent
+    # every card asking for a statistic that never existed, which it read as
+    # zero: Would have paid at nothing and Saved at minus Paid on every row
+    # (HEA-253, discussion 55)
+    assert set(aircon["statistics"]) == {"energy_used", "actual_cost"}
+    # The whole home's cost range is published whether or not the per-device
+    # ones are (ADR-0016), and it is recorded, so it stays named
+    assert set(state.attributes["whole_home"]["statistics"]) == {
+        "energy_used",
+        "actual_cost",
+        "lowest_possible_cost",
+        "highest_possible_cost",
+    }
 
 
 async def test_published_statistic_ids_follow_a_renamed_entity(
