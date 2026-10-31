@@ -20,6 +20,7 @@ import {
   JULY,
   MAY,
   aDeviceRow,
+  aGridOnlyRow,
   aHass,
   anEnergyCollection,
   bucketsFor,
@@ -138,6 +139,27 @@ describe("the figures", () => {
     expect(text(card)).toContain(LABELS.saved);
     expect(text(card)).not.toContain("Without Solar");
     expect(text(card)).not.toContain("Actual Cost");
+  });
+
+  it("shows only what was paid, on a home with the grid alone", async () => {
+    // Given - no source but the grid: Would have paid could only repeat Paid and
+    // Saved could only be nought (HEA-253)
+    const hass = aHass({
+      devices: [aGridOnlyRow("slow_poll_aircon", "Slow Poll Aircon")],
+      wholeHome: aGridOnlyRow("whole_home", "Whole Home"),
+    });
+    const card = mount(hass);
+
+    // When
+    await settled(card);
+
+    // Then
+    expect(figure(card, "actualCost").textContent).toBe("€0.11");
+    expect(figure(card, "costAtGridPrice")).toBeNull();
+    expect(figure(card, "costSavings")).toBeNull();
+    const shown = card.shadowRoot.querySelector(".figures").textContent;
+    expect(shown).not.toContain(LABELS.would_have_paid);
+    expect(shown).not.toContain(LABELS.saved);
   });
 
   it("totals the whole house, the Untracked remainder included", async () => {

@@ -94,7 +94,10 @@ class HeaTotalsCard extends HeaCard {
 
   _body(locale) {
     const totals = this._result?.totals;
-    const figures = FIGURES.map(({ key, label }) => {
+    // Paid alone on the grid alone: the other two could only repeat it and say
+    // nought (HEA-253)
+    const shown = this._result?.gridOnly ? FIGURES.slice(0, 1) : FIGURES;
+    const figures = shown.map(({ key, label }) => {
       const value = totals?.[key];
       // The saving is the one figure here with a direction of its own: more is
       // better, and less than none is a battery-arbitrage loss (HEA-39). Both

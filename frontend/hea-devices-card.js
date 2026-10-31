@@ -271,11 +271,20 @@ class HeaDevicesCard extends HeaTableCard {
     if (!asColumn) dropped.add(RANGE);
     if (!this._showsForgone()) dropped.add(FORGONE);
     if (!this._hasComparison()) dropped.add(CHANGE);
+    // On the grid alone Would have paid is Paid again and Saved is nought, and
+    // nought saved is the worst verdict the scale has, so Paid is not judged
+    // either: every device would read red for a saving it could not make
+    const gridOnly = Boolean(this._result?.gridOnly);
+    if (gridOnly) {
+      dropped.add(WOULD_HAVE_PAID);
+      dropped.add(SAVED);
+    }
     return COLUMNS.filter((column) => !dropped.has(column)).map((column) => {
       if (column !== PAID) return column;
       // Shown once or the other way, never both: a rollover repeating the column
       // beside it is noise, and the column is the explicit request.
-      return asColumn ? { ...PAID, reveal: undefined } : PAID;
+      const paid = asColumn ? { ...PAID, reveal: undefined } : PAID;
+      return gridOnly ? { ...paid, carriesVerdict: false } : paid;
     });
   }
 

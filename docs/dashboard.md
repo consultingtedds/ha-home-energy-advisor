@@ -65,6 +65,13 @@ the page's selected period.
 The pictures below come from a demo household, invented for the purpose. None
 of the devices or figures belongs to anybody.
 
+**If your only source is the grid**, with no solar, wind or other generation
+and no battery, the cards show what was paid and leave out what cannot apply:
+Would have paid could only repeat it and Saved could only be nought. The
+generated dashboard also leaves out Energy sources and Self-sufficiency, since
+every kWh came from the grid. Add generation or a battery and all of it comes
+back, with nothing to change.
+
 ### Totals
 
 ![The totals card: what was paid, what it would have cost at grid price, and the saving](images/card-totals.png)

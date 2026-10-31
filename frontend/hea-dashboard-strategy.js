@@ -17,6 +17,7 @@
 import { readDevices, readWholeHome } from "./hea-devices.js";
 import { hasAnInstallation } from "./hea-installation.js";
 import { labelsFor, loadLabels } from "./hea-labels.js";
+import { isAGridOnlyHome } from "./hea-statistics.js";
 
 /** The `custom:` type a dashboard config names, without the prefix. */
 export const STRATEGY_TYPE = "hea";
@@ -71,6 +72,18 @@ const CHARTS = [
  * the grid alone it could only say there is nothing to show.
  */
 const INSTALLATION = { type: "custom:hea-installation-card" };
+
+/**
+ * The cards about where the energy came from, which a home on the grid alone
+ * has no use for: the gauge could only read nought and the breakdown would be
+ * grid in every row, beside a devices table already saying what each used
+ * (HEA-253). They come back once a second source is added, with nothing to
+ * configure, since the strategy is generated on every load.
+ */
+const ABOUT_SOURCES = new Set(["custom:hea-sources-card", "custom:hea-self-sufficiency-card"]);
+
+const forSources = (cards, gridOnly) =>
+  gridOnly ? cards.filter((card) => !ABOUT_SOURCES.has(card.type)) : cards;
 
 const chartsFor = (hass) =>
   hasAnInstallation(hass, readWholeHome(hass)) ? [...CHARTS, INSTALLATION] : CHARTS;
@@ -131,21 +144,22 @@ const nothingTracked = (hass) => ({
   ],
 });
 
-const heaView = (hass) =>
-  readDevices(hass).length === 0
-    ? nothingTracked(hass)
-    : {
-        type: "sections",
-        max_columns: MAX_COLUMNS,
-        // Home Assistant stacks sections on a narrow screen, so on a phone this
-        // is one column in this order, exactly as before.
-        sections: [
-          section(HEADLINE, MAX_COLUMNS),
-          section(FIGURES, MAX_COLUMNS / 2),
-          section(chartsFor(hass), MAX_COLUMNS / 2),
-        ],
-        footer: footer(),
-      };
+const heaView = (hass) => {
+  if (readDevices(hass).length === 0) return nothingTracked(hass);
+  const gridOnly = isAGridOnlyHome(hass);
+  return {
+    type: "sections",
+    max_columns: MAX_COLUMNS,
+    // Home Assistant stacks sections on a narrow screen, so on a phone this
+    // is one column in this order, exactly as before.
+    sections: [
+      section(HEADLINE, MAX_COLUMNS),
+      section(forSources(FIGURES, gridOnly), MAX_COLUMNS / 2),
+      section(forSources(chartsFor(hass), gridOnly), MAX_COLUMNS / 2),
+    ],
+    footer: footer(),
+  };
+};
 
 /**
  * Generate the view, once the household's own words are available.

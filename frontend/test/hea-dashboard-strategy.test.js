@@ -9,7 +9,7 @@ import {
   STRATEGY_TYPE,
   VIEW_TAG,
 } from "../hea-dashboard-strategy.js";
-import { aDeviceRow, aHass } from "./doubles.js";
+import { aDeviceRow, aGridOnlyRow, aHass } from "./doubles.js";
 
 /** Every card in a generated view, however deeply a section nests it. */
 const cardTypes = (view) =>
@@ -131,6 +131,57 @@ describe("the dashboard strategy", () => {
 
     // Then - a card that could only say there is nothing to show is not offered
     expect(cardTypes(views[0])).not.toContain("custom:hea-installation-card");
+  });
+
+  it("leaves out the cards about sources, for a home on the grid alone", async () => {
+    // Given - every row publishes only what it used and what that cost: the
+    // source split is created disabled where the grid is the only source
+    // (HEA-175), so nothing names it (HEA-253)
+    const gridOnly = aHass({
+      devices: [
+        aGridOnlyRow("slow_poll_aircon", "Slow Poll Aircon"),
+        aGridOnlyRow("untracked_energy_devices", "Untracked Energy Devices", true),
+      ],
+      wholeHome: aGridOnlyRow("whole_home", "Whole Home"),
+    });
+
+    // When
+    const { views } = await generateDashboard(gridOnly);
+
+    // Then - a gauge that can only read nought and a breakdown that is all grid
+    // say nothing the devices table does not (HEA-253)
+    expect(views[0].sections.map((section) => section.cards.map((c) => c.type))).toEqual([
+      ["custom:hea-totals-card", "custom:hea-devices-card"],
+      ["custom:hea-cost-over-time-card"],
+      ["custom:hea-device-costs-card", "custom:hea-distribution-card"],
+    ]);
+  });
+
+  it("puts them back once the household has a second source", async () => {
+    // Given - a battery added: its rows publish where their energy came from
+    const withABattery = aHass({
+      devices: [
+        aDeviceRow("slow_poll_aircon", "Slow Poll Aircon", false, {
+          energy_used: "sensor.slow_poll_aircon_energy_used",
+          actual_cost: "sensor.slow_poll_aircon_actual_cost",
+          energy_from_grid: "sensor.slow_poll_aircon_energy_from_grid",
+          energy_from_battery: "sensor.slow_poll_aircon_energy_from_battery",
+        }),
+        aGridOnlyRow("battery_losses", "Battery Losses"),
+      ],
+    });
+
+    // When
+    const { views } = await generateDashboard(withABattery);
+
+    // Then - Battery Losses publishes no split of its own, and is not what
+    // decides this
+    expect(cardTypes(views[0])).toEqual(
+      expect.arrayContaining([
+        "custom:hea-sources-card",
+        "custom:hea-self-sufficiency-card",
+      ]),
+    );
   });
 
   it("pins the period picker and the filter in the view footer", async () => {

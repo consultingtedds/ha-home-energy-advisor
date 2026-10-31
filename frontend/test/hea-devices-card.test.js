@@ -17,6 +17,7 @@ const RANGE_COLUMN_LABEL = LABELS.range_column;
 import { TAG, register } from "../hea-devices-card.js";
 import {
   aDeviceRow,
+  aGridOnlyRow,
   aHass,
   anEnergyCollection,
   boundsFor,
@@ -183,6 +184,54 @@ describe("what each concept wears", () => {
     // Then
     for (const mark of card.shadowRoot.querySelectorAll("thead .swatch")) {
       expect(mark.getAttribute("aria-hidden")).toBe("true");
+    }
+  });
+});
+
+describe("a home on the grid alone", () => {
+  /**
+   * Two devices and the remainder, publishing only what they used and paid: no
+   * source but the grid, so nothing compares one source with another (HEA-175,
+   * HEA-253).
+   */
+  const GRID_ONLY = aHass({
+    devices: [
+      aGridOnlyRow("slow_poll_aircon", "Slow Poll Aircon"),
+      aGridOnlyRow("fine_meter_aircon", "Fine Meter Aircon"),
+      aGridOnlyRow("untracked_energy_devices", "Untracked Energy Devices", true),
+    ],
+    wholeHome: aGridOnlyRow("whole_home", "Whole Home"),
+    response: THREE_RESPONSE,
+  });
+
+  it("has no Would have paid or Saved to show", async () => {
+    // Given / When
+    const card = mount(GRID_ONLY);
+    await ready(card);
+
+    // Then - the one could only repeat Paid and the other could only be nought
+    expect([...card.shadowRoot.querySelectorAll("thead th")].map((th) =>
+      th.textContent.trim(),
+    )).toEqual(["Device", "Energy", "Paid", "Rate c/kWh"]);
+    expect(rows(card).find(([name]) => name === "Fine Meter Aircon")).toEqual([
+      "Fine Meter Aircon",
+      "12 kWh",
+      "€3.00",
+      "25.0",
+    ]);
+  });
+
+  it("judges no device against a saving it had no way to make", async () => {
+    // Given / When - every device saved nought of what it would have paid,
+    // which on the verdict scale is the worst result there is
+    const card = mount(GRID_ONLY);
+    await ready(card);
+
+    // Then - no colour, no band and no rate in words on any row
+    for (const row of card.shadowRoot.querySelectorAll("tbody tr")) {
+      const paid = row.querySelectorAll("td")[1];
+      expect([paid.style.color, paid.title]).toEqual(["", ""]);
+      expect(row.querySelector("th").style.boxShadow).toBe("");
     }
   });
 });

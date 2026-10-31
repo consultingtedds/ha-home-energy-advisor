@@ -22,6 +22,7 @@ import { EARLIER_ID, TAG, register } from "../hea-device-costs-card.js";
 import { DEFAULTS as LABELS } from "../hea-labels.js";
 import {
   aDeviceRow,
+  aGridOnlyRow,
   aHass,
   anEnergyCollection,
   boundsFor,
@@ -299,6 +300,28 @@ describe("how well the device did, on hover", () => {
     [...tooltipFor(card, key).querySelectorAll("div")].find((node) =>
       /%/.test(node.textContent),
     );
+
+  it("says only what was paid, on a home with the grid alone", async () => {
+    // Given - no source but the grid: Saved is nought and Would have paid is
+    // Paid, so the share saved is nought on every device (HEA-253)
+    const card = mount(
+      aHass({
+        devices: [aGridOnlyRow("cloud_polled_pump", "Cloud Polled Pump")],
+        wholeHome: aGridOnlyRow("whole_home", "Whole Home"),
+        response: THREE,
+      }),
+    );
+
+    // When
+    await ready(card);
+
+    // Then - the name and what it cost, with no saving to judge it by
+    const shown = tooltipFor(card, "cloud_polled_pump").textContent;
+    expect(shown).toBe(`Cloud Polled Pump${LABELS.paid}€3.00`);
+    expect(chartOf(card).data.map((series) => series.id)).toEqual([
+      "cloud_polled_pump:paid",
+    ]);
+  });
 
   it("heads the tooltip the way every other card does", async () => {
     // Given / When - this card built its own heading, left-aligned, while the

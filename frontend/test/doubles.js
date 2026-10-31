@@ -101,6 +101,19 @@ const conceptsOf = (untracked) =>
 const BOUND_CONCEPTS = new Set(["lowest_possible_cost", "highest_possible_cost"]);
 
 /**
+ * A row on a home with neither generation nor a battery.
+ *
+ * Every figure that compares sources is created disabled there (HEA-175), and a
+ * disabled figure is not named at all (HEA-253): what is left is what was used
+ * and what it cost, which is what `sensor.py`'s own test publishes.
+ */
+export const aGridOnlyRow = (key, name, untracked = false) =>
+  aDeviceRow(key, name, untracked, {
+    energy_used: `sensor.${key}_energy_used`,
+    actual_cost: `sensor.${key}_actual_cost`,
+  });
+
+/**
  * A device row filed into an area, a floor, both or neither (HEA-58).
  *
  * Ids are deliberately nothing like their names. A double that derived

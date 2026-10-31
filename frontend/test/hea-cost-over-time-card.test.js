@@ -23,6 +23,7 @@ import {
   JULY,
   MAY,
   aDeviceRow,
+  aGridOnlyRow,
   aHass,
   anEnergyCollection,
   mountCard,
@@ -342,6 +343,24 @@ describe("the series handed to the chart", () => {
     // Then
     expect(seriesOf(card, "paid").name).toBe("Paid");
     expect(seriesOf(card, "saved").name).toBe("Saved");
+  });
+
+  it("draws only what was paid, on a home with the grid alone", async () => {
+    // Given - no source but the grid, so every Saved segment is nought and a
+    // legend entry for it would toggle nothing (HEA-253)
+    const hass = aHass({
+      devices: [aGridOnlyRow("slow_poll_aircon", "Slow Poll Aircon")],
+      wholeHome: aGridOnlyRow("whole_home", "Whole Home"),
+      response: twoDays,
+    });
+
+    // When
+    const card = mount(hass);
+    await ready(card);
+
+    // Then - the bars are what was paid, rounded at their top like any other
+    expect(chartOf(card).data.map((series) => series.id)).toEqual(["paid"]);
+    expect(seriesOf(card, "paid").data[0].itemStyle.borderRadius).toEqual([4, 4, 0, 0]);
   });
 });
 

@@ -169,21 +169,22 @@ class HeaCostOverTimeCard extends HeaChartCard {
     // different amount would slide the comparison off the bars it is read
     // against.
     const offset = midpointOffset(rows, this._result?.period);
+    const paid = {
+      ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
+      data: rows.map((row) => accruing(row, pointFor(row, row.actualCost, offset))),
+    };
+    const saved = {
+      ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
+      data: rows.map((row) => {
+        const point = pointFor(row, row.costSavings, offset);
+        const style = row.costSavings < 0 ? barStyle(loss) : undefined;
+        return accruing(row, point, style);
+      }),
+    };
     return [
-      ...withRoundedCaps([
-        {
-          ...seriesShape(SERIES.paid, this._colour(SERIES.paid), labels),
-          data: rows.map((row) => accruing(row, pointFor(row, row.actualCost, offset))),
-        },
-        {
-          ...seriesShape(SERIES.saved, this._colour(SERIES.saved), labels),
-          data: rows.map((row) => {
-            const point = pointFor(row, row.costSavings, offset);
-            const style = row.costSavings < 0 ? barStyle(loss) : undefined;
-            return accruing(row, point, style);
-          }),
-        },
-      ]),
+      // No Saved on the grid alone, where every segment of it is nought and its
+      // legend entry would toggle nothing (HEA-253)
+      ...withRoundedCaps(this._result?.gridOnly ? [paid] : [paid, saved]),
       ...(earlier?.length
         ? [
             {

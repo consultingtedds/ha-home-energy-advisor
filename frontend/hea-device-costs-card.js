@@ -227,8 +227,7 @@ const TONE_COLOUR = {
  * string - and a device name is whatever the household typed into their own
  * registry.
  */
-const tooltipFor = (device, name, locale, labels, toneColour, verdict) => {
-  const savedTone = savingTone(device.costSavings, locale);
+const tooltipFor = (device, name, locale, labels, toneColour, verdict, gridOnly) => {
   const box = document.createElement("div");
   box.append(
     // The shared heading rather than one built here, so this tooltip is centred
@@ -236,18 +235,26 @@ const tooltipFor = (device, name, locale, labels, toneColour, verdict) => {
     // caller, because a device holding others is called something else (HEA-153).
     tooltipHeading(name),
     tooltipRow(labels.paid, formatMoney(device.actualCost, locale)),
-    // A negative saving is a loss, and calling it "Saved" would read as a gain.
-    // Coloured both ways round, like the same figure on the cards behind this
-    // tooltip - it named the loss and then left the figure black (HEA-102).
-    tooltipRow(
-      device.costSavings < 0 ? labels.lost : labels.saved,
-      formatMoney(device.costSavings, locale),
-      savedTone ? toneColour(savedTone) : undefined,
-    ),
-    tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
   );
-  const share = shareNote(verdict, locale, labels);
-  if (share) box.append(share);
+  // On the grid alone there is no saving to state or to judge Paid by: it would
+  // be nought, beside a Would have paid repeating Paid (HEA-253)
+  if (!gridOnly) {
+    const savedTone = savingTone(device.costSavings, locale);
+    box.append(
+      // A negative saving is a loss, and calling it "Saved" would read as a
+      // gain. Coloured both ways round, like the same figure on the cards
+      // behind this tooltip - it named the loss and then left the figure black
+      // (HEA-102).
+      tooltipRow(
+        device.costSavings < 0 ? labels.lost : labels.saved,
+        formatMoney(device.costSavings, locale),
+        savedTone ? toneColour(savedTone) : undefined,
+      ),
+      tooltipRow(labels.would_have_paid, formatMoney(device.costAtGridPrice, locale)),
+    );
+    const share = shareNote(verdict, locale, labels);
+    if (share) box.append(share);
+  }
   const change = changeRow(device, locale, labels, toneColour);
   if (change) box.append(change);
   const range = rangeNote(device, locale, labels);
@@ -457,8 +464,14 @@ class HeaDeviceCostsCard extends HeaChartCard {
    * `stack`, which is what makes this safe on a chart with one stack per device.
    */
   _series() {
+    const series = this._sideways() ? this._sidewaysSeries() : this._standingSeries();
+    // No Saved segments on the grid alone, where every one is nought: left in,
+    // the bar's end would be one of them, and the cap would round nothing
+    // (HEA-253)
     return withRoundedCaps(
-      this._sideways() ? this._sidewaysSeries() : this._standingSeries(),
+      this._result?.gridOnly
+        ? series.filter(({ id }) => id !== SAVED_ID && !id.endsWith(`:${SAVED_ID}`))
+        : series,
     );
   }
 
@@ -604,6 +617,7 @@ class HeaDeviceCostsCard extends HeaChartCard {
           this._labels,
           (tone) => this._colour(TONE_COLOUR[tone]),
           this._verdicts()(device),
+          this._result?.gridOnly,
         )
       : undefined;
   }

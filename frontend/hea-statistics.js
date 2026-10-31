@@ -157,6 +157,24 @@ const hasASourceSplit = (device) =>
 const isGridOnly = (devices) => devices.length > 0 && !devices.some(hasASourceSplit);
 
 /**
+ * Whether the household is on the grid alone, which every card asks alike.
+ *
+ * The household, not the page: narrowed to its Battery Losses, a battery home's
+ * rows would all lack a split. Where the sensor is not there to ask, the rows
+ * given are the best answer there is.
+ *
+ * There Would have paid can only repeat Paid and Saved can only be nought, so a
+ * card leaves both out rather than show a comparison nobody could have made -
+ * and the verdict scale, reading nought saved as the worst result, would colour
+ * every device red (HEA-253). Adding generation or a battery enables the source
+ * figures, and every card puts them back with nothing to configure.
+ */
+export const isAGridOnlyHome = (hass, devices = []) => {
+  const household = readDevices(hass);
+  return isGridOnly(household.length ? household : devices);
+};
+
+/**
  * Every statistic the given devices need, in a stable order.
  *
  * The bounds are requested unconditionally. A card cannot ask whether the
@@ -338,16 +356,13 @@ export const fetchDeviceStatistics = async (
       })
     : {};
 
-  // The household, not the page: narrowed to its Battery Losses, a battery
-  // home's rows would all lack a split. Where the sensor is not there to ask,
-  // the rows given are the best answer there is.
-  const household = readDevices(hass);
-  const gridOnly = isGridOnly(household.length ? household : devices);
+  const gridOnly = isAGridOnlyHome(hass, devices);
   const rows = nettedOfInside(
     devices.map((device) => totalsFor(device, buckets, period, gridOnly)),
   );
   return {
     period,
+    gridOnly,
     devices: rows,
     totals: sumRows(rows),
     wholeHome: boundsFor(wholeHome, buckets, period),
