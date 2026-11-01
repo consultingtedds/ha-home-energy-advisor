@@ -305,11 +305,13 @@ That sensor can be either:
   set that up or maintain it.
 
 There is also a **Discover devices to track** option in the integration's
-settings menu, which lists the energy and power sensors in your system that are
-not tracked yet, so you can add several at once. It marks the ones that look
-like they are not really devices - a phone battery, a generation forecast -
-because plenty of sensors carry an energy or power unit without being an
-appliance.
+settings menu, so you can add several at once. If you have listed devices in
+the Energy Dashboard, those come first, already ticked and under the names you
+gave them there; any it can't track are named with the reason. Below them are
+the other energy and power sensors in your system that are not tracked yet. It
+marks the ones that look like they are not really devices - a phone battery, a
+generation forecast - because plenty of sensors carry an energy or power unit
+without being an appliance.
 
 ![The discovery screen listing untracked energy and power sensors](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/discover-devices.png)
 

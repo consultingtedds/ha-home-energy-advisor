@@ -115,9 +115,10 @@
       },
       "discover_devices": {
         "title": "Discover devices to track",
-        "description": "These energy and power sensors are not tracked yet. Select the ones to add as devices. Suggestions marked “may not be a device” often aren’t - a phone battery, a forecast - so add only what you recognise.",
+        "description": "Devices you have listed in your Energy Dashboard come first, already ticked: untick any you don't want. Below them are other energy and power sensors not tracked yet. Suggestions marked “may not be a device” often aren’t - a phone battery, a forecast - so add only what you recognise.{not_offered}",
         "data": {
-          "discovered_devices": "Devices to add"
+          "energy_dashboard_devices": "From your Energy Dashboard",
+          "discovered_devices": "Other sensors found"
         }
       },
       "reset_totals": {
@@ -126,7 +127,7 @@
       }
     },
     "abort": {
-      "no_candidates": "No untracked energy or power sensors were found to add.",
+      "no_candidates": "No untracked energy or power sensors were found to add.{not_offered}",
       "reset_totals_done": "Every total has been reset to zero. Accounting continues from here."
     }
   },
@@ -452,6 +453,11 @@
   "common": {
     "candidate_label": "{name} ({entity_id})",
     "candidate_label_false_friend": "{name} ({entity_id}) - may not be a device",
+    "not_offered": "Not offered from your Energy Dashboard: {devices}.",
+    "not_offered_not_a_sensor": "{name} (its figures are not a sensor Home Energy Advisor can read)",
+    "not_offered_not_counting": "{name} (its sensor is not a running total of energy used)",
+    "not_offered_not_energy": "{name} (its sensor does not report energy)",
+    "not_offered_house_energy": "{name} (it is house energy, already counted)",
     "repair_level_left_out": "level left out: add its capacity",
     "export_price_entity": "Exports are priced by {entity}, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_fixed": "Exports are priced at {price} per kWh, from your Energy Dashboard's grid settings. Change it there.",

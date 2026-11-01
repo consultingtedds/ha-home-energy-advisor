@@ -115,9 +115,10 @@
       },
       "discover_devices": {
         "title": "Descubrir dispositivos para seguir",
-        "description": "Estos sensores de energía y potencia aún no se siguen. Selecciona los que quieras añadir como dispositivos. Las sugerencias marcadas con «puede que no sea un dispositivo» a menudo no lo son -la batería de un teléfono, una previsión-, así que añade solo lo que reconozcas.",
+        "description": "Los dispositivos que tienes en tu Panel de energía aparecen primero, ya marcados: desmarca los que no quieras. Debajo están otros sensores de energía y potencia que aún no se siguen. Las sugerencias marcadas con «puede que no sea un dispositivo» a menudo no lo son -la batería de un teléfono, una previsión-, así que añade solo lo que reconozcas.{not_offered}",
         "data": {
-          "discovered_devices": "Dispositivos a añadir"
+          "energy_dashboard_devices": "De tu Panel de energía",
+          "discovered_devices": "Otros sensores encontrados"
         }
       },
       "reset_totals": {
@@ -126,7 +127,7 @@
       }
     },
     "abort": {
-      "no_candidates": "No se encontraron sensores de energía o potencia sin seguimiento para añadir.",
+      "no_candidates": "No se encontraron sensores de energía o potencia sin seguimiento para añadir.{not_offered}",
       "reset_totals_done": "Todos los totales se han puesto a cero. La contabilidad continúa desde aquí."
     }
   },
@@ -452,6 +453,11 @@
   "common": {
     "candidate_label": "{name} ({entity_id})",
     "candidate_label_false_friend": "{name} ({entity_id}) - puede que no sea un dispositivo",
+    "not_offered": "No se ofrecen de tu Panel de energía: {devices}.",
+    "not_offered_not_a_sensor": "{name} (sus datos no son un sensor que Home Energy Advisor pueda leer)",
+    "not_offered_not_counting": "{name} (su sensor no es un total acumulado de la energía usada)",
+    "not_offered_not_energy": "{name} (su sensor no informa de energía)",
+    "not_offered_house_energy": "{name} (es energía de la casa, ya contada)",
     "repair_level_left_out": "nivel no incluido: añade su capacidad",
     "export_price_entity": "La exportación se valora con {entity}, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_fixed": "La exportación se valora a {price} por kWh, de la configuración de red de tu Panel de energía. Cámbialo allí.",

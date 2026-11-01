@@ -58,12 +58,14 @@ from .const import (
 )
 from .discovery import (
     async_discover_candidates,
+    energy_dashboard_candidates,
     is_eligible_source,
     source_state_class,
     source_unit,
 )
 from .energy_dashboard import (
     answered,
+    async_energy_prefs,
     async_export_price_said,
     batteries_in,
     grid_meters_in,
@@ -80,11 +82,13 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-    from .discovery import DeviceCandidate
+    from .discovery import DeviceCandidate, NotOffered
 
 _TITLE = "Home Energy Advisor"
 # Options-flow-internal key for the multi-select of discovered devices to add.
 _CONF_DISCOVERED = "discovered_devices"
+# And for the Energy Dashboard's own devices, offered above them (HEA-247).
+_CONF_ENERGY_DASHBOARD = "energy_dashboard_devices"
 
 #: The domains the Energy Dashboard accepts as a price: a tariff sensor, or a
 #: Number helper holding a fixed rate.
@@ -970,17 +974,44 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
     async def async_step_discover_devices(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Offer untracked energy/power sensors; add the ones the user selects."""
-        candidates = async_discover_candidates(self.hass, self.config_entry)
+        """Offer untracked devices; add the ones the user selects.
+
+        The Energy Dashboard's own devices first, ticked, because the household
+        already chose them there (HEA-247); then the search over every other
+        energy and power sensor, unticked, because those are suggestions. A
+        device offered in the first list is not repeated in the second.
+        """
+        listed, not_offered = energy_dashboard_candidates(
+            self.hass,
+            self.config_entry,
+            await async_energy_prefs(self.hass),
+            lambda entity_id: _validate_device_sources(
+                self.hass, {CONF_ENERGY_ENTITY: entity_id}
+            ),
+        )
+        offered = {candidate.entity_id for candidate in listed}
+        searched = [
+            candidate
+            for candidate in async_discover_candidates(self.hass, self.config_entry)
+            if candidate.entity_id not in offered
+        ]
         if user_input is not None:
-            self._add_devices(candidates, user_input.get(_CONF_DISCOVERED, []))
+            self._add_devices(listed, user_input.get(_CONF_ENERGY_DASHBOARD, []))
+            self._add_devices(searched, user_input.get(_CONF_DISCOVERED, []))
             return self.async_create_entry(data=dict(self.config_entry.options))
-        if not candidates:
-            return self.async_abort(reason="no_candidates")
         labels = await _candidate_label_templates(self.hass)
+        # Said whether or not anything is offered: a step ending on "nothing
+        # found" beside a list the household can see in their Energy Dashboard
+        # would leave them asking why
+        placeholders = {"not_offered": _not_offered_note(not_offered, labels)}
+        if not listed and not searched:
+            return self.async_abort(
+                reason="no_candidates", description_placeholders=placeholders
+            )
         return self.async_show_form(
             step_id="discover_devices",
-            data_schema=_discovery_schema(candidates, labels),
+            data_schema=_discovery_schema(listed, searched, labels),
+            description_placeholders=placeholders,
         )
 
     def _add_devices(
@@ -1006,29 +1037,67 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
 
 
 def _discovery_schema(
-    candidates: list[DeviceCandidate], labels: dict[str, str]
+    listed: list[DeviceCandidate],
+    searched: list[DeviceCandidate],
+    labels: dict[str, str],
 ) -> vol.Schema:
+    """The two lists, each only where it has something in it.
+
+    Two fields rather than one, so each is headed by what it is: the household's
+    own list, and suggestions to check.
+    """
+    fields: dict[vol.Optional, selector.SelectSelector] = {}
+    if listed:
+        fields[
+            vol.Optional(
+                _CONF_ENERGY_DASHBOARD,
+                default=[candidate.entity_id for candidate in listed],
+            )
+        ] = _checkbox_list(listed, labels)
+    if searched:
+        fields[vol.Optional(_CONF_DISCOVERED, default=[])] = _checkbox_list(
+            searched, labels
+        )
+    return vol.Schema(fields)
+
+
+def _checkbox_list(
+    candidates: list[DeviceCandidate], labels: dict[str, str]
+) -> selector.SelectSelector:
     options = [
         selector.SelectOptionDict(
             value=candidate.entity_id, label=_candidate_label(candidate, labels)
         )
         for candidate in candidates
     ]
-    return vol.Schema(
-        {
-            vol.Optional(_CONF_DISCOVERED, default=[]): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=options,
-                    multiple=True,
-                    # A checkbox list, deliberately: this step is for *browsing*
-                    # what a household has, and a dropdown shows nothing until
-                    # the user types a name they do not yet know. The ordering
-                    # does the work of making a long list usable (HEA-70).
-                    mode=selector.SelectSelectorMode.LIST,
-                )
-            )
-        }
+    return selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=options,
+            multiple=True,
+            # A checkbox list, deliberately: this step is for *browsing* what a
+            # household has, and a dropdown shows nothing until the user types a
+            # name they do not yet know. The ordering does the work of making a
+            # long list usable (HEA-70).
+            mode=selector.SelectSelectorMode.LIST,
+        )
     )
+
+
+def _not_offered_note(not_offered: list[NotOffered], labels: dict[str, str]) -> str:
+    """The line naming each Energy Dashboard device left out, and why.
+
+    Empty where there is none, so the step's text is unchanged for most
+    households. It opens with its own paragraph break, which an empty note must
+    not leave behind.
+    """
+    if not not_offered:
+        return ""
+    devices = ", ".join(
+        labels.get(device.reason, "{name}").format(name=device.name)
+        for device in not_offered
+    )
+    line = labels.get("not_offered", "{devices}")
+    return "\n\n" + line.format(devices=devices)
 
 
 async def _candidate_label_templates(hass: HomeAssistant) -> dict[str, str]:

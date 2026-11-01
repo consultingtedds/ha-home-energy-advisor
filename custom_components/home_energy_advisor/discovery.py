@@ -27,7 +27,7 @@ instead of being hidden, and the user still sees everything (HEA-70).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.derivative.const import DOMAIN as DERIVATIVE_DOMAIN
 from homeassistant.components.integration.const import (
@@ -62,6 +62,8 @@ from .helper_ownership import helper_entry_id
 from .house_inputs import battery_meters, grid_meters_of, house_entities
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.entity_registry import RegistryEntry
@@ -138,6 +140,28 @@ class DeviceCandidate:
 
 
 @dataclass(frozen=True)
+class NotOffered:
+    """A device the Energy Dashboard lists that cannot be tracked, and why.
+
+    ``reason`` is the ``common`` string that says so in the household's
+    language, so the step can name it rather than leave it missing.
+    """
+
+    name: str
+    reason: str
+
+
+# Why an Energy Dashboard device is left out, as `common` string keys.
+NOT_A_SENSOR = "not_offered_not_a_sensor"
+NOT_COUNTING = "not_offered_not_counting"
+NOT_ENERGY = "not_offered_not_energy"
+HOUSE_ENERGY = "not_offered_house_energy"
+# The add flow's refusals, as the reason a household is given for each. Any
+# other refusal is a counter the engine cannot read, which is the first.
+_REFUSAL_REASONS = {"unit_not_energy": NOT_ENERGY}
+
+
+@dataclass(frozen=True)
 class _Exclusions:
     """What a scan must not offer, resolved once from the config entry.
 
@@ -172,6 +196,80 @@ def async_discover_candidates(
     ]
     kept = _prefer_working_energy(hass, paired, exclusions.tracked_energy_devices)
     return sorted(kept, key=_rank)
+
+
+def energy_dashboard_candidates(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    prefs: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    refusal: Callable[[str], str | None],
+) -> tuple[list[DeviceCandidate], list[NotOffered]]:
+    """The devices the household listed in the Energy Dashboard, to offer first.
+
+    Their own list, in their own names, in their own order (HEA-247). Unlike the
+    search, nothing here is a guess, so a sensor is held to the add flow's rule
+    - ``refusal`` is that rule - rather than discovery's stricter one, and one
+    that fails it is named with its reason instead of quietly missing.
+
+    A device already tracked is skipped and not mentioned: it was added, which
+    is not a device that could not be. The sensor the Energy Dashboard reads is
+    the one tracked, which is also what lets its nesting there be matched to it.
+    """
+    registry = er.async_get(hass)
+    devices = dr.async_get(hass)
+    exclusions = _exclusions(entry, registry)
+    tracked = (
+        _tracked_sources(entry, CONF_ENERGY_ENTITY)
+        | _tracked_sources(entry, CONF_POWER_ENTITY)
+        | _owned_helper_entities(entry, registry)
+    )
+    offered: list[DeviceCandidate] = []
+    not_offered: list[NotOffered] = []
+    for listed in prefs.get("device_consumption", []) if prefs else []:
+        entity_id = listed.get("stat_consumption")
+        if not isinstance(entity_id, str) or entity_id in tracked:
+            continue
+        entity = registry.async_get(entity_id)
+        name = listed.get("name") or (
+            _suggested_name(devices, entity) if entity else entity_id
+        )
+        reason = _why_not_offered(hass, registry, entity_id, exclusions, refusal)
+        if reason is not None:
+            not_offered.append(NotOffered(name=name, reason=reason))
+            continue
+        offered.append(
+            DeviceCandidate(
+                entity_id=entity_id,
+                name=name,
+                source_key=CONF_ENERGY_ENTITY,
+                likely_false_friend=False,
+                belongs_to_a_device=entity is not None and entity.device_id is not None,
+            )
+        )
+    return offered, not_offered
+
+
+def _why_not_offered(
+    hass: HomeAssistant,
+    registry: er.EntityRegistry,
+    entity_id: str,
+    exclusions: _Exclusions,
+    refusal: Callable[[str], str | None],
+) -> str | None:
+    """The reason an Energy Dashboard device cannot be tracked, else ``None``.
+
+    A statistic imported by another integration has a ``:`` in its id and no
+    sensor behind it, so there is no reading to account.
+    """
+    if ":" in entity_id or (
+        registry.async_get(entity_id) is None and hass.states.get(entity_id) is None
+    ):
+        return NOT_A_SENSOR
+    if _is_provably_not_a_device(hass, registry, entity_id, exclusions):
+        return HOUSE_ENERGY
+    if (refused := refusal(entity_id)) is not None:
+        return _REFUSAL_REASONS.get(refused, NOT_COUNTING)
+    return None
 
 
 def _rank(candidate: DeviceCandidate) -> tuple[bool, bool, str]:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import MappingProxyType, SimpleNamespace
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, patch
 
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import selector
@@ -19,9 +22,12 @@ from custom_components.home_energy_advisor.const import (
     CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_DEVICE,
+    SUBENTRY_TYPE_GRID,
 )
 
 if TYPE_CHECKING:
+    from contextlib import AbstractContextManager
+
     from freezegun.api import FrozenDateTimeFactory
     from homeassistant.config_entries import ConfigFlowResult
     from homeassistant.core import HomeAssistant
@@ -266,3 +272,230 @@ async def test_discovery_step_aborts_when_nothing_to_add(
     # Then - it aborts cleanly rather than showing an empty list
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_candidates"
+
+
+_PREFS = "custom_components.home_energy_advisor.energy_dashboard.async_get_manager"
+
+
+def _energy_dashboard(*devices: dict[str, str]) -> AbstractContextManager[object]:
+    """An Energy Dashboard listing these devices, as its manager holds them."""
+    manager = SimpleNamespace(
+        data={"energy_sources": [], "device_consumption": devices}
+    )
+    return patch(_PREFS, AsyncMock(return_value=manager))
+
+
+async def _open_discovery(
+    hass: HomeAssistant, entry: MockConfigEntry
+) -> ConfigFlowResult:
+    menu = await hass.config_entries.options.async_init(entry.entry_id)
+    return await hass.config_entries.options.async_configure(
+        menu["flow_id"], {"next_step_id": "discover_devices"}
+    )
+
+
+def _field(form: ConfigFlowResult, name: str) -> tuple[object, dict[str, str]]:
+    """A field's default, and its options as value to label."""
+    schema = form["data_schema"]
+    assert schema is not None
+    marker, chosen = next(
+        (key, value) for key, value in schema.schema.items() if key.schema == name
+    )
+    labels = {option["value"]: option["label"] for option in chosen.config["options"]}
+    return marker.default(), labels
+
+
+async def test_discovery_offers_the_energy_dashboard_devices_first_and_ticked(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a dishwasher the household listed in their Energy Dashboard under a
+    # name of their own, and a dryer they did not list (HEA-247)
+    dishwasher = _register(hass, "dishwasher_energy", "energy", "Dishwasher Energy")
+    dryer = _register(hass, "tumble_dryer_energy", "energy", "Tumble Dryer Energy")
+    hass.states.async_set(dishwasher, "0", _ENERGY)
+    hass.states.async_set(dryer, "0", _ENERGY)
+    entry = _entry(hass)
+
+    # When
+    with _energy_dashboard(
+        {"stat_consumption": dishwasher, "name": "Kitchen dishwasher"}
+    ):
+        form = await _open_discovery(hass, entry)
+
+    # Then - the household's own choice comes first, in their own words, and
+    # already ticked; the search below offers only what the list does not
+    schema = form["data_schema"]
+    assert schema is not None
+    assert [key.schema for key in schema.schema] == [
+        "energy_dashboard_devices",
+        "discovered_devices",
+    ]
+    assert _field(form, "energy_dashboard_devices") == (
+        [dishwasher],
+        {dishwasher: "Kitchen dishwasher (sensor.dishwasher_energy)"},
+    )
+    assert _field(form, "discovered_devices") == (
+        [],
+        {dryer: "Tumble Dryer (sensor.tumble_dryer_energy)"},
+    )
+
+
+async def test_discovery_adds_an_energy_dashboard_device_by_its_own_name(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    dishwasher = _register(hass, "dishwasher_energy", "energy", "Dishwasher Energy")
+    hass.states.async_set(dishwasher, "0", _ENERGY)
+    entry = _entry(hass)
+
+    # When - the household submits the list as it was offered
+    with _energy_dashboard(
+        {"stat_consumption": dishwasher, "name": "Kitchen dishwasher"}
+    ):
+        form = await _open_discovery(hass, entry)
+        result = await hass.config_entries.options.async_configure(
+            form["flow_id"],
+            {"energy_dashboard_devices": [dishwasher]},
+        )
+
+    # Then - tracked from the sensor the Energy Dashboard reads, which is also
+    # what lets its nesting there be matched to it
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    devices = [
+        (subentry.title, dict(subentry.data))
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_DEVICE
+    ]
+    assert devices == [
+        (
+            "Kitchen dishwasher",
+            {"name": "Kitchen dishwasher", CONF_ENERGY_ENTITY: dishwasher},
+        )
+    ]
+
+
+async def test_discovery_names_an_energy_dashboard_device_listed_without_a_name(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the Energy Dashboard leaves `name` out unless one was typed
+    dishwasher = _register(hass, "dishwasher_energy", "energy", "Dishwasher Energy")
+    hass.states.async_set(dishwasher, "0", _ENERGY)
+    entry = _entry(hass)
+
+    # When
+    with _energy_dashboard({"stat_consumption": dishwasher}):
+        form = await _open_discovery(hass, entry)
+
+    # Then - the name discovery would have suggested
+    assert _field(form, "energy_dashboard_devices")[1] == {
+        dishwasher: "Dishwasher (sensor.dishwasher_energy)"
+    }
+
+
+async def test_discovery_skips_an_energy_dashboard_device_already_tracked(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the dishwasher is tracked; only the dryer is new
+    dishwasher = _register(hass, "dishwasher_energy", "energy", "Dishwasher Energy")
+    dryer = _register(hass, "tumble_dryer_energy", "energy", "Tumble Dryer Energy")
+    hass.states.async_set(dishwasher, "0", _ENERGY)
+    hass.states.async_set(dryer, "0", _ENERGY)
+    entry = _entry(hass)
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {"name": "Dishwasher", CONF_ENERGY_ENTITY: dishwasher}
+            ),
+            subentry_type=SUBENTRY_TYPE_DEVICE,
+            title="Dishwasher",
+            unique_id=None,
+        ),
+    )
+
+    # When
+    with _energy_dashboard(
+        {"stat_consumption": dishwasher, "name": "Kitchen dishwasher"},
+        {"stat_consumption": dryer, "name": "Dryer"},
+    ):
+        form = await _open_discovery(hass, entry)
+
+    # Then - nothing to say about it: it is not a device that could not be added
+    assert _field(form, "energy_dashboard_devices") == (
+        [dryer],
+        {dryer: "Dryer (sensor.tumble_dryer_energy)"},
+    )
+    assert form["description_placeholders"] == {"not_offered": ""}
+
+
+async def test_discovery_says_why_an_energy_dashboard_device_is_not_offered(
+    hass: HomeAssistant,
+) -> None:
+    # Given - three the household listed that cannot be tracked: figures
+    # imported as a statistic with no sensor behind them, a net counter, and
+    # the grid meter itself listed as a device
+    meter = _register(hass, "heat_pump_meter", "energy", "Heat Pump Meter")
+    hass.states.async_set(meter, "0", {**_ENERGY, "state_class": "total"})
+    hass.states.async_set("sensor.grid_import", "0", _ENERGY)
+    entry = _entry(hass)
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {
+                    "name": "Grid",
+                    CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+                    CONF_PRICE_ENTITY: "sensor.electricity_price_import",
+                }
+            ),
+            subentry_type=SUBENTRY_TYPE_GRID,
+            title="Grid",
+            unique_id=None,
+        ),
+    )
+
+    # When
+    with _energy_dashboard(
+        {"stat_consumption": "tibber:energy_consumption", "name": "Heat pump"},
+        {"stat_consumption": meter, "name": "Heat pump meter"},
+        {"stat_consumption": "sensor.grid_import", "name": "Mains"},
+    ):
+        form = await _open_discovery(hass, entry)
+
+    # Then - none of them is offered and nothing else is either, so the step
+    # ends - but says why, rather than "nothing found" over a list the
+    # household can see in their Energy Dashboard
+    assert form["type"] is FlowResultType.ABORT
+    assert form["reason"] == "no_candidates"
+    assert form["description_placeholders"] == {
+        "not_offered": (
+            "\n\nNot offered from your Energy Dashboard: "
+            "Heat pump (its figures are not a sensor Home Energy Advisor can read), "
+            "Heat pump meter (its sensor is not a running total of energy used), "
+            "Mains (it is house energy, already counted)."
+        )
+    }
+
+
+async def test_discovery_aborts_only_when_the_energy_dashboard_offers_nothing_either(
+    hass: HomeAssistant,
+) -> None:
+    # Given - no other sensor to suggest, and one in the Energy Dashboard
+    dishwasher = _register(hass, "dishwasher_energy", "energy", "Dishwasher Energy")
+    hass.states.async_set(dishwasher, "0", _ENERGY)
+    entry = _entry(hass)
+    with (
+        patch(
+            "custom_components.home_energy_advisor.config_flow.async_discover_candidates",
+            return_value=[],
+        ),
+        _energy_dashboard({"stat_consumption": dishwasher, "name": "Dishwasher"}),
+    ):
+        # When
+        form = await _open_discovery(hass, entry)
+
+    # Then - the list is shown, rather than "nothing found"
+    assert form["type"] is FlowResultType.FORM
+    schema = form["data_schema"]
+    assert schema is not None
+    assert [key.schema for key in schema.schema] == ["energy_dashboard_devices"]
