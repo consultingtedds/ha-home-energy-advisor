@@ -727,6 +727,11 @@ Carried forward rather than closed:
   household's price template, whose `float(0)` turned every outage of its source
   into a real price of 0. No engine change: 0 is a genuine price on many
   tariffs. Documented in troubleshooting instead.
+- **HEA-244** (discussion 48, ADR-0035): a battery's usable capacity can come
+  from a sensor its management system publishes, beside the typed figure, read
+  through one reader. A change in capacity revalues what the battery holds
+  rather than being booked as loss, which also stops a Reconfigure edit of the
+  typed figure from doing so.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
