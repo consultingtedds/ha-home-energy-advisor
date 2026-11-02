@@ -1420,7 +1420,8 @@ async def test_an_area_on_the_source_entity_wins_over_its_devices(
 ) -> None:
     # Given - a source whose device is in one room but whose entity the user has
     # deliberately reassigned to another. Home Assistant treats the entity-level
-    # area as the override, and so must we
+    # area as the override, and so must we. Since 2026.10 it allows one only on
+    # an entity with a name of its own, so the user names it too
     freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
     _place_source_in_an_area(hass, entity_id="sensor.coarse_step_energy", area="Studio")
     _seed_states(hass)
@@ -1430,7 +1431,7 @@ async def test_an_area_on_the_source_entity_wins_over_its_devices(
         "sensor", "aircon_integration", "unique_sensor.coarse_step_energy"
     )
     assert source is not None
-    registry.async_update_entity(source, area_id=landing.id)
+    registry.async_update_entity(source, name="Landing aircon", area_id=landing.id)
 
     entry = _entry()
     entry.add_to_hass(hass)

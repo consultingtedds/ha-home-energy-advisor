@@ -120,7 +120,17 @@ jobs:
           frontend=$(python -c "import json, pathlib; from homeassistant.components import frontend; print(json.loads((pathlib.Path(frontend.__file__).parent / 'manifest.json').read_text())['requirements'][0])")
           pip install "$frontend"
       - name: Test
-        run: pytest --cov --cov-fail-under=90
+        run: |
+          if [ "${{ matrix.pre-release }}" = "true" ]; then
+            # Home Assistant 2026.11 swaps httpx for httpx2 when it is first
+            # imported and refuses if httpx is already loaded, which a pytest
+            # plugin does before phacc imports Home Assistant. Importing it
+            # first is the order a real Home Assistant starts in. Drop this
+            # once a phacc pinning that release no longer needs it (HEA-256).
+            python -c "import homeassistant, sys, pytest; sys.exit(pytest.main(['--cov', '--cov-fail-under=90']))"
+          else
+            pytest --cov --cov-fail-under=90
+          fi
 
   hassfest:
     name: hassfest
