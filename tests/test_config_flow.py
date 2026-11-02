@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
-import voluptuous as vol
 from homeassistant.components.integration.const import (
     CONF_SOURCE_SENSOR,
     CONF_UNIT_TIME,
@@ -33,6 +32,7 @@ from custom_components.home_energy_advisor.const import (
 )
 from custom_components.home_energy_advisor.helper_ownership import helper_was_created
 from custom_components.home_energy_advisor.house_inputs import grid_meters_of
+from custom_components.home_energy_advisor.schemas import vol
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

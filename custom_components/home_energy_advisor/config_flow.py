@@ -13,7 +13,6 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-import voluptuous as vol
 from homeassistant.components.energy.data import async_get_manager
 from homeassistant.config_entries import (
     ConfigFlow,
@@ -76,6 +75,7 @@ from .engine.energy_source import EnergyUnit, energy_unit
 from .engine.house_balance import ChargeSource
 from .house_inputs import batteries_of, grid_meters, grid_meters_of, house_entities
 from .reset import async_reset_totals
+from .schemas import vol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping

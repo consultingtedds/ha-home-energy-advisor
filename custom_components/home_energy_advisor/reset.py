@@ -27,7 +27,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import ServiceCall, callback
 from homeassistant.exceptions import ServiceValidationError
@@ -44,6 +43,7 @@ from .const import (
 )
 from .cycle_meter import async_reset_cycle_meters, utility_meter_output_sensor
 from .helper_ownership import helper_entry_id, helper_was_created
+from .schemas import vol
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
