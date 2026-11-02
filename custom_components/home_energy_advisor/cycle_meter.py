@@ -25,7 +25,6 @@ from homeassistant.components.utility_meter.const import (
     CONF_METER_TYPE,
     CONF_SOURCE_SENSOR,
     CONF_TARIFFS,
-    SERVICE_CALIBRATE_METER,
 )
 from homeassistant.components.utility_meter.const import (
     DOMAIN as UTILITY_METER_DOMAIN,
@@ -72,6 +71,10 @@ _OPT_IN_CYCLES = {
     CONF_CYCLE_QUARTERLY: "quarterly",
     CONF_CYCLE_YEARLY: "yearly",
 }
+# utility_meter's calibrate action, by its name. The name is Home Assistant's
+# public interface; the constant it once exported for it was not, and 2026.11
+# moved it into an enum, which stopped this integration loading (HEA-254).
+_CALIBRATE = "calibrate"
 # utility_meter's own translated cycle labels live here (built-in, incl. es).
 _CYCLE_LABEL_PREFIX = f"component.{UTILITY_METER_DOMAIN}.selector.cycle.options."
 
@@ -159,7 +162,7 @@ async def async_reset_cycle_meters(hass: HomeAssistant, entry: ConfigEntry) -> N
             continue
         await hass.services.async_call(
             UTILITY_METER_DOMAIN,
-            SERVICE_CALIBRATE_METER,
+            _CALIBRATE,
             {ATTR_ENTITY_ID: output, "value": "0"},
             blocking=True,
         )
