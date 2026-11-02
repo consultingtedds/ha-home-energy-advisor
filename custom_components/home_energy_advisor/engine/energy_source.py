@@ -156,11 +156,14 @@ class EnergyUnit(Enum):
     KILOCALORIE = "kcal"
     MEGACALORIE = "Mcal"
     GIGACALORIE = "Gcal"
+    THERM = "thm"
     UNKNOWN = "unknown"
 
 
 _JOULES_PER_KWH = Decimal(3_600_000)
 _JOULES_PER_CALORIE = Decimal("4.184")
+# The US therm, as Home Assistant converts it (NIST SP 811), added in 2026.10.
+_JOULES_PER_THERM = Decimal(105_480_400)
 
 # Each unit as a fraction of a kWh, kept as numerator and denominator so the
 # watt-hour family converts exactly and the rest divide only once.
@@ -179,6 +182,7 @@ _KWH_FRACTION: dict[EnergyUnit, tuple[Decimal, Decimal]] = {
     EnergyUnit.KILOCALORIE: (_JOULES_PER_CALORIE * 1000, _JOULES_PER_KWH),
     EnergyUnit.MEGACALORIE: (_JOULES_PER_CALORIE * 1_000_000, _JOULES_PER_KWH),
     EnergyUnit.GIGACALORIE: (_JOULES_PER_CALORIE * 1_000_000_000, _JOULES_PER_KWH),
+    EnergyUnit.THERM: (_JOULES_PER_THERM, _JOULES_PER_KWH),
 }
 
 

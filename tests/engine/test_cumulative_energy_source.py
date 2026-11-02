@@ -181,6 +181,9 @@ def test_cumulative_source_watt_hour_counter_is_normalised_to_kilowatt_hours() -
         (EnergyUnit.CALORIE, "0", "900000", "1.046"),
         (EnergyUnit.MEGACALORIE, "0", "0.9", "1.046"),
         (EnergyUnit.GIGACALORIE, "0", "0.0009", "1.046"),
+        # The US therm, a gas meter's unit, which Home Assistant converts at
+        # 1.054804e8 J from 2026.10 on
+        (EnergyUnit.THERM, "0", "0.009", "0.263701"),
     ],
 )
 def test_every_energy_unit_home_assistant_knows_is_counted_in_kilowatt_hours(
