@@ -46,14 +46,19 @@ from custom_components.home_energy_advisor.const import (
     SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
 )
+from custom_components.home_energy_advisor.plan_comparison import (
+    async_compare_plans,
+)
 
 if TYPE_CHECKING:
+    from freezegun.api import FrozenDateTimeFactory
     from homeassistant.core import HomeAssistant
     from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 LOCAL = ZoneInfo("Europe/Madrid")
-# Wednesday 4 November 2026, a whole local day.
-DAY_START = datetime(2026, 11, 4, tzinfo=LOCAL)
+# Wednesday 14 October 2026, a whole local day, and in the past: a period is
+# charged only up to now.
+DAY_START = datetime(2026, 10, 14, tzinfo=LOCAL)
 DAY_END = DAY_START + timedelta(days=1)
 
 _GRID = {
@@ -326,6 +331,25 @@ async def test_part_of_a_day_carries_that_share_of_the_daily_charge(
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_period_running_past_now_is_charged_only_up_to_now(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - midday on the day, which the picker's Today runs to the end of.
+    # Asked directly: a websocket login refuses a clock moved into the past
+    entry = _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    await _set_up(hass, entry)
+    freezer.move_to(DAY_START + timedelta(hours=12))
+
+    # When - the whole day is asked about
+    result = await async_compare_plans(hass, entry, DAY_START, DAY_END)
+
+    # Then - half a day of charges, as against the half a day of energy there is
+    # so far; a whole day's would make every total read high until midnight
+    assert result["days"] == pytest.approx(0.5)
+    assert _by_name(result)["Flat rate"]["daily_charges"] == pytest.approx(0.225)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
 async def test_every_import_register_is_counted(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
@@ -382,6 +406,32 @@ async def test_a_household_without_plans_has_nothing_to_compare(
 
     # When / Then
     assert (await _compare(hass_ws_client, hass))["plans"] == []
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_the_dashboard_can_ask_which_plans_there_are(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - two plans, one current
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+        ),
+    )
+    client = await hass_ws_client(hass)
+
+    # When - asked without reading any statistics, as the dashboard decides
+    # whether to show the comparison at all
+    await client.send_json_auto_id({"type": "home_energy_advisor/list_plans"})
+    response = await client.receive_json()
+
+    # Then
+    assert response["success"], response
+    plans = {plan["name"]: plan["current"] for plan in response["result"]["plans"]}
+    assert plans == {"Flat rate": True, "Night saver": False}
 
 
 @pytest.mark.usefixtures("recorder_mock")

@@ -342,6 +342,43 @@ than competing with them.
 Until you have labelled something, the label filter has nothing to offer and
 sits empty. That is a house with no labels, not a broken filter.
 
+### Comparing tariff plans
+
+If you are choosing between energy plans, Home Energy Advisor can tell you what
+each would have cost you. Enter the plan you are on and any offers you are
+weighing up, and the dashboard prices every one of them against the electricity
+you actually imported and exported, for whatever period you pick - last month,
+last winter, the last year.
+
+Add each plan with **Add tariff plan** on the Home Energy Advisor card in
+**Settings** > **Devices & services**:
+
+1. **Its details:** a name, whether it is the plan you are on, its daily charge
+   (a standing or contracted-power charge, as a cost per day) and what it pays
+   for export.
+2. **Its time bands, one at a time:** which days (weekdays, weekends and
+   holidays, or every day), from which hour to which, and the import price. A
+   band can carry its own export price where the plan pays more at some times.
+   Hours run on a 24-hour clock, so 22 to 8 runs overnight and 0 to 24 is the
+   whole day.
+
+After each band you see the bands so far and which hours still have no price,
+and the plan can be saved once every hour of a weekday and of a weekend is
+covered. Mark exactly one plan as the one you are on: every other is compared
+with it.
+
+**Holidays.** Many time-of-use plans price public holidays as weekends. If yours
+do, add Home Assistant's **Holiday** integration for your country, and choose its
+calendar for the plan. Check which holidays your plan counts: some count only
+national ones, so choose the calendar that matches.
+
+**What the comparison assumes.** Each plan is priced at the energy your meters
+recorded, hour by hour, so the figures are exact for what happened. They assume
+you would have used energy, and run any battery, the same way on another plan;
+on a plan with different cheap hours you might have shifted some of it. Prices
+are compared as you enter them, so enter them all with tax or all without.
+Daily charges are counted here only: they are never part of any device's cost.
+
 ### Settings you can change later
 
 Everything on the house screen - the meters, how your battery charges - can be
@@ -350,6 +387,8 @@ Advisor** > three-dot menu > **Reconfigure**. Empty a field to remove that input
 altogether. Each grid meter and each battery is changed or removed on its own
 entry under the integration, with **Edit grid meter** or **Edit battery**. Either
 way the change counts from then on; figures already recorded stay as they are.
+A tariff plan is edited the same way, with **Edit tariff plan**; since it only
+re-prices what was recorded, an edit applies to every period at once.
 
 #### When the Energy Dashboard changes
 

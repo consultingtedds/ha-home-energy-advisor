@@ -144,7 +144,29 @@ const nothingTracked = (hass) => ({
   ],
 });
 
-const heaView = (hass) => {
+/**
+ * The tariff plan comparison, in a section of its own after everything else,
+ * where a household has entered a plan to compare (HEA-255). Full width: it is a
+ * whole-home answer of its own, and the section moves to a tab of its own when
+ * the dashboard has tabs (HEA-257).
+ */
+const PLANS = { type: "custom:hea-plans-card" };
+
+/**
+ * Whether the household has entered a plan. Asked of the integration, since a
+ * plan is an entry rather than an entity; an integration from before plans
+ * existed cannot say, and has none.
+ */
+const hasPlans = async (hass) => {
+  try {
+    const listed = await hass.callWS({ type: "home_energy_advisor/list_plans" });
+    return Array.isArray(listed?.plans) && listed.plans.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+const heaView = (hass, withPlans) => {
   if (readDevices(hass).length === 0) return nothingTracked(hass);
   const gridOnly = isAGridOnlyHome(hass);
   return {
@@ -156,6 +178,7 @@ const heaView = (hass) => {
       section(HEADLINE, MAX_COLUMNS),
       section(forSources(FIGURES, gridOnly), MAX_COLUMNS / 2),
       section(forSources(chartsFor(hass), gridOnly), MAX_COLUMNS / 2),
+      ...(withPlans ? [section([PLANS], MAX_COLUMNS)] : []),
     ],
     footer: footer(),
   };
@@ -169,8 +192,8 @@ const heaView = (hass) => {
  * correct itself, and this cannot.
  */
 const generateView = async (hass) => {
-  await loadLabels(hass);
-  return heaView(hass);
+  const [, withPlans] = await Promise.all([loadLabels(hass), hasPlans(hass)]);
+  return heaView(hass, withPlans);
 };
 
 class HeaDashboardStrategy extends HTMLElement {

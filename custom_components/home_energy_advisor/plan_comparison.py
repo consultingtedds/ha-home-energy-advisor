@@ -22,6 +22,7 @@ from homeassistant.components.websocket_api.decorators import (
     async_response,
     websocket_command,
 )
+from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
@@ -40,6 +41,7 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 COMPARE_PLANS = f"{DOMAIN}/compare_plans"
+LIST_PLANS = f"{DOMAIN}/list_plans"
 _REGISTERED = f"{DOMAIN}_compare_plans_registered"
 # Figures go to the card as numbers, to a ten-thousandth: finer than any
 # currency shows, and the card rounds for display.
@@ -51,7 +53,36 @@ def async_register(hass: HomeAssistant) -> None:
     if hass.data.get(_REGISTERED):
         return
     async_register_command(hass, _websocket_compare_plans)
+    async_register_command(hass, _websocket_list_plans)
     hass.data[_REGISTERED] = True
+
+
+@websocket_command({vol.Required("type"): LIST_PLANS})
+@callback
+def _websocket_list_plans(
+    hass: HomeAssistant,
+    connection: ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """The plans entered, without pricing them.
+
+    For the dashboard, which shows the comparison only where there is a plan to
+    compare and must not read a year of statistics to find that out. Plans are
+    entries rather than entities, and reading entries through Home Assistant's
+    own commands needs an administrator, which a household member opening the
+    dashboard need not be.
+    """
+    entries = hass.config_entries.async_loaded_entries(DOMAIN)
+    plans = plans_of(entries[0]) if entries else {}
+    connection.send_result(
+        msg["id"],
+        {
+            "plans": [
+                {"id": plan_id, "name": tariff.plan.name, "current": tariff.current}
+                for plan_id, tariff in plans.items()
+            ]
+        },
+    )
 
 
 @websocket_command(
@@ -96,7 +127,10 @@ async def async_compare_plans(
     imports = {grid.imported for grid in meters}
     exports = {grid.exported for grid in meters if grid.exported}
     hours = await _hourly_flows(hass, imports, exports, start, end)
-    days = days_covered(dt_util.as_local(start), dt_util.as_local(end))
+    # Charged up to now at most: the picker's Today runs to midnight, and a whole
+    # day's charge against half a day's energy would make every total read high.
+    charged_until = max(start, min(end, dt_util.utcnow()))
+    days = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
     plans = []
     for plan_id, tariff in plans_of(entry).items():
         holidays = (

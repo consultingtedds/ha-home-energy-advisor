@@ -160,6 +160,27 @@ These are for the whole home, measured against your current tariff, so the
 filter does not narrow this card. It appears on the generated dashboard only if
 you have generation or a battery. No options beyond the two every card takes.
 
+### Compare tariff plans
+
+What each tariff plan you have entered would have cost over the period, cheapest
+first. For each plan:
+
+- **Its total**: the energy it would have charged, less what it would have paid
+  for your exports, plus its daily charges.
+- **What the total is made of**: energy, export and daily charges.
+- **The difference from your plan**: how much less or more than the plan you are
+  on, in green where it would have cost less.
+
+Every plan, yours included, is priced the same way, at the electricity your
+meters recorded hour by hour. So the figure for your own plan is not Paid, which
+leaves daily charges out and is worked out device by device. The README's
+*Comparing tariff plans* says how to enter a plan and what the comparison
+assumes.
+
+For the whole home, so the filter does not narrow this card. It appears on the
+generated dashboard once you have entered a plan, at the end of the page. No
+options beyond the two every card takes.
+
 ### Filter
 
 ![The filter control, a dropdown offering rooms, floors, labels and individual devices](images/card-filter.png)

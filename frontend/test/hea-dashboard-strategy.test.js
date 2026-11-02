@@ -2,7 +2,7 @@
  * @vitest-environment happy-dom
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   DASHBOARD_TAG,
@@ -155,6 +155,48 @@ describe("the dashboard strategy", () => {
       ["custom:hea-cost-over-time-card"],
       ["custom:hea-device-costs-card", "custom:hea-distribution-card"],
     ]);
+  });
+
+  it("adds the plan comparison at the end, full width, once a plan is entered", async () => {
+    // Given - one tariff plan entered
+    hass.callWS = vi.fn(async ({ type }) => {
+      if (type === "home_energy_advisor/list_plans") {
+        return { plans: [{ id: "flat", name: "Flat rate", current: true }] };
+      }
+      return { resources: {} };
+    });
+
+    // When
+    const { views } = await generateDashboard(hass);
+
+    // Then - a section of its own after everything else (HEA-255)
+    const last = views[0].sections.at(-1);
+    expect(last.cards.map((card) => card.type)).toEqual(["custom:hea-plans-card"]);
+    expect(last.column_span).toBe(views[0].max_columns);
+  });
+
+  it("leaves the plan comparison out where no plan is entered", async () => {
+    // Given - the default household, which has entered none
+    // When
+    const { views } = await generateDashboard(hass);
+
+    // Then
+    expect(cardTypes(views[0])).not.toContain("custom:hea-plans-card");
+  });
+
+  it("leaves it out where the integration cannot say which plans there are", async () => {
+    // Given - an integration from before plans existed
+    hass.callWS = vi.fn(async ({ type }) => {
+      if (type === "home_energy_advisor/list_plans") throw new Error("Unknown command.");
+      return { resources: {} };
+    });
+
+    // When
+    const { views } = await generateDashboard(hass);
+
+    // Then - the rest of the page as before, rather than no page at all
+    expect(cardTypes(views[0])).toContain("custom:hea-totals-card");
+    expect(cardTypes(views[0])).not.toContain("custom:hea-plans-card");
   });
 
   it("puts them back once the household has a second source", async () => {

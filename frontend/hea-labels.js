@@ -119,6 +119,29 @@ export const DEFAULTS = Object.freeze({
     "There is no generation or battery here, so nothing for an installation to " +
     "have earned.",
   title_installation: "What your installation earned",
+  title_plans: "Compare tariff plans",
+  plans_your_plan: "Your plan",
+  plans_cheapest: "Cheapest",
+  plans_energy: "Energy",
+  plans_export: "Export",
+  plans_daily: "Daily charges",
+  plans_less: "{amount} less than your plan",
+  plans_more: "{amount} more than your plan",
+  plans_same: "The same as your plan",
+  plans_incomplete:
+    "Not every hour has a price, so it cannot be compared. Edit the plan to " +
+    "finish its bands.",
+  plans_note:
+    "For the whole home: each plan priced at the electricity you actually " +
+    "imported and exported, as if your battery had run the same way. Prices are " +
+    "compared as you entered them.",
+  plans_no_readings:
+    "Your grid meters recorded nothing in this period, so only the daily " +
+    "charges are shown.",
+  plans_no_current: "Mark one plan as the one you are on to see how the others compare.",
+  no_plans:
+    "No tariff plans yet. Add one from the Home Energy Advisor integration, " +
+    "with Add tariff plan.",
   title_totals: "Cost summary",
   title_devices: "Cost by device",
   title_device_costs: "What each device cost",
