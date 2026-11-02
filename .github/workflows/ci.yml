@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Twice a week, so a Home Assistant beta that breaks the integration is seen
+  # even when nothing has been pushed (HEA-256). Betas land in the last week of
+  # each month, a week before the release households install.
+  schedule:
+    - cron: "17 6 * * 1,4"
+  workflow_dispatch:
 
 # SonarQube is deliberately absent: it is a local pre-commit gate only, so that
 # contributors without access to the server are never blocked. See
@@ -75,11 +81,23 @@ jobs:
         # 2026.7.2 the suite could not see the deprecation that reached a deploy
         # in HEA-113, and was green the whole time because on that release the
         # call was not deprecated.
+        #
+        # And the beta, which no phacc release may pin yet: phacc follows Home
+        # Assistant's betas, but days or weeks behind, and on the day 2026.11
+        # stopped the integration loading the newest phacc still pinned 2026.10.4
+        # (HEA-254). So the beta entry installs the newest Home Assistant
+        # pre-release over the latest phacc. It is a real entry, not one allowed
+        # to fail: a beta that breaks us has to be fixed before it is released.
+        # If phacc itself cannot run against a beta, read why before pinning the
+        # entry back for that cycle (HEA-256).
         include:
           - ha-version: "2026.7.0"
             phacc: "0.13.344"
-          - ha-version: "2026.9.1"
-            phacc: "0.13.364"
+          - ha-version: "2026.10.4"
+            phacc: "0.13.375"
+          - ha-version: "beta"
+            phacc: "0.13.375"
+            pre-release: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -90,6 +108,10 @@ jobs:
         run: |
           pip install -r requirements_test.txt
           pip install "pytest-homeassistant-custom-component==${{ matrix.phacc }}"
+          if [ "${{ matrix.pre-release }}" = "true" ]; then
+            pip install --pre --upgrade homeassistant
+          fi
+          python -c "from homeassistant.const import __version__; print('Home Assistant', __version__)"
           # The frontend belongs to the Home Assistant that ends up installed,
           # not to the requirements file: the pin above replaces Home Assistant
           # and leaves the frontend where it was. The card tests boot the real
@@ -140,6 +162,8 @@ jobs:
 
   commitlint:
     name: commitlint
+    # A scheduled run has no new commits to lint.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
