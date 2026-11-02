@@ -237,6 +237,79 @@
         "capacity_not_kwh": "This is in kWh, and no home battery holds this much, so it is probably in watt-hours. A 1500 Wh battery is 1.5 kWh."
       }
     },
+    "plan": {
+      "initiate_flow": {
+        "user": "Add tariff plan",
+        "reconfigure": "Edit tariff plan"
+      },
+      "entry_type": "Tariff plan",
+      "step": {
+        "user": {
+          "title": "Add a tariff plan",
+          "description": "A plan to compare, or the one you are on. Enter its prices as they are published, then its time bands one at a time. Every plan is priced against the electricity you actually imported and exported, so enter prices consistently: all with tax or all without.",
+          "data": {
+            "name": "Name",
+            "current_plan": "This is the plan I am on",
+            "daily_charge": "Daily charge",
+            "plan_export_price": "Export price",
+            "holiday_calendar": "Holiday calendar (optional)"
+          },
+          "data_description": {
+            "name": "How this plan appears on the comparison card.",
+            "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on.",
+            "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "plan_export_price": "What the plan pays per kWh exported, unless a band says otherwise.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit tariff plan",
+          "description": "Change the plan's details. Its bands come next.",
+          "data": {
+            "name": "Name",
+            "current_plan": "This is the plan I am on",
+            "daily_charge": "Daily charge",
+            "plan_export_price": "Export price",
+            "holiday_calendar": "Holiday calendar (optional)"
+          },
+          "data_description": {
+            "name": "How this plan appears on the comparison card.",
+            "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on.",
+            "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "plan_export_price": "What the plan pays per kWh exported, unless a band says otherwise.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
+          }
+        },
+        "band": {
+          "title": "Add a time band",
+          "description": "One price for some hours of some days. Hours run on a 24-hour clock from the first up to the second, so 22 to 8 runs overnight and 0 to 24 is the whole day.",
+          "data": {
+            "days": "Days",
+            "start_hour": "From hour",
+            "end_hour": "To hour",
+            "import_price": "Import price",
+            "band_export_price": "Export price (optional)"
+          },
+          "data_description": {
+            "import_price": "Per kWh imported in these hours.",
+            "band_export_price": "Per kWh exported in these hours, if it differs from the plan's export price."
+          }
+        },
+        "bands": {
+          "title": "Time bands",
+          "description": "The bands entered so far. Untick any to remove it.\n\n{uncovered}",
+          "data": {
+            "keep": "Bands",
+            "action": "Next"
+          }
+        }
+      },
+      "error": {
+        "band_hours": "A band covers at least one hour: the two hours cannot be the same.",
+        "band_overlaps": "This band covers hours another band already prices on the same days. Each hour has one price, so change the hours or remove the other band.",
+        "plan_incomplete": "Some hours have no price yet. Add bands until every hour of a weekday and of a weekend is covered."
+      }
+    },
     "device": {
       "initiate_flow": {
         "user": "Add device",
@@ -348,6 +421,19 @@
     }
   },
   "selector": {
+    "days": {
+      "options": {
+        "weekdays": "Weekdays",
+        "rest_days": "Weekends and holidays",
+        "every_day": "Every day"
+      }
+    },
+    "plan_action": {
+      "options": {
+        "add_band": "Add another band",
+        "save": "Save the plan"
+      }
+    },
     "battery_charging": {
       "options": {
         "spare_solar": "Mainly from solar the house doesn't need (most batteries)",
@@ -463,6 +549,12 @@
     "not_offered_not_energy": "{name} (its sensor does not report energy)",
     "not_offered_house_energy": "{name} (it is house energy, already counted)",
     "repair_level_left_out": "level left out: add its capacity",
+    "plan_weekdays": "Weekdays",
+    "plan_rest_days": "Weekends and holidays",
+    "plan_every_day": "Every day",
+    "plan_all_covered": "Every hour is covered.",
+    "plan_uncovered": "Not priced yet:\n{hours}",
+    "plan_band_export": "export {price}",
     "export_price_entity": "Exports are priced by {entity}, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_fixed": "Exports are priced at {price} per kWh, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_none": "No export price is set in your Energy Dashboard, so Could have earned stays at zero. Set one in its grid settings to see it.",

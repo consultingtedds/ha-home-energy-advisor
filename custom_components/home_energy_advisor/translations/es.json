@@ -237,6 +237,79 @@
         "capacity_not_kwh": "Este valor va en kWh, y ninguna batería doméstica almacena tanto, así que probablemente está en vatios hora. Una batería de 1500 Wh son 1,5 kWh."
       }
     },
+    "plan": {
+      "initiate_flow": {
+        "user": "Añadir tarifa",
+        "reconfigure": "Editar tarifa"
+      },
+      "entry_type": "Tarifa",
+      "step": {
+        "user": {
+          "title": "Añadir una tarifa",
+          "description": "Una tarifa para comparar, o la que tienes contratada. Introduce sus precios tal como se publican y después sus franjas horarias, una a una. Cada tarifa se calcula con la electricidad que realmente importaste y exportaste, así que introduce los precios de forma coherente: todos con impuestos o todos sin ellos.",
+          "data": {
+            "name": "Nombre",
+            "current_plan": "Es la tarifa que tengo contratada",
+            "daily_charge": "Cargo diario",
+            "plan_export_price": "Precio de exportación",
+            "holiday_calendar": "Calendario de festivos (opcional)"
+          },
+          "data_description": {
+            "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
+            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
+            "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
+            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que una franja diga otra cosa.",
+            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana."
+          }
+        },
+        "reconfigure": {
+          "title": "Editar tarifa",
+          "description": "Cambia los datos de la tarifa. Sus franjas vienen después.",
+          "data": {
+            "name": "Nombre",
+            "current_plan": "Es la tarifa que tengo contratada",
+            "daily_charge": "Cargo diario",
+            "plan_export_price": "Precio de exportación",
+            "holiday_calendar": "Calendario de festivos (opcional)"
+          },
+          "data_description": {
+            "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
+            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
+            "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
+            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que una franja diga otra cosa.",
+            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana."
+          }
+        },
+        "band": {
+          "title": "Añadir una franja horaria",
+          "description": "Un precio para algunas horas de algunos días. Las horas van en formato de 24 horas desde la primera hasta la segunda, así que de 22 a 8 cubre la noche y de 0 a 24 el día entero.",
+          "data": {
+            "days": "Días",
+            "start_hour": "Desde la hora",
+            "end_hour": "Hasta la hora",
+            "import_price": "Precio de importación",
+            "band_export_price": "Precio de exportación (opcional)"
+          },
+          "data_description": {
+            "import_price": "Por kWh importado en estas horas.",
+            "band_export_price": "Por kWh exportado en estas horas, si es distinto del precio de exportación de la tarifa."
+          }
+        },
+        "bands": {
+          "title": "Franjas horarias",
+          "description": "Las franjas introducidas hasta ahora. Desmarca cualquiera para quitarla.\n\n{uncovered}",
+          "data": {
+            "keep": "Franjas",
+            "action": "Siguiente"
+          }
+        }
+      },
+      "error": {
+        "band_hours": "Una franja cubre al menos una hora: las dos horas no pueden ser iguales.",
+        "band_overlaps": "Esta franja cubre horas que otra franja ya cobra en los mismos días. Cada hora tiene un solo precio, así que cambia las horas o quita la otra franja.",
+        "plan_incomplete": "Algunas horas aún no tienen precio. Añade franjas hasta cubrir todas las horas de un día laborable y de un fin de semana."
+      }
+    },
     "device": {
       "initiate_flow": {
         "user": "Añadir dispositivo",
@@ -348,6 +421,19 @@
     }
   },
   "selector": {
+    "days": {
+      "options": {
+        "weekdays": "Días laborables",
+        "rest_days": "Fines de semana y festivos",
+        "every_day": "Todos los días"
+      }
+    },
+    "plan_action": {
+      "options": {
+        "add_band": "Añadir otra franja",
+        "save": "Guardar la tarifa"
+      }
+    },
     "battery_charging": {
       "options": {
         "spare_solar": "Sobre todo con la energía solar que la casa no necesita (la mayoría de baterías)",
@@ -463,6 +549,12 @@
     "not_offered_not_energy": "{name} (su sensor no informa de energía)",
     "not_offered_house_energy": "{name} (es energía de la casa, ya contada)",
     "repair_level_left_out": "nivel no incluido: añade su capacidad",
+    "plan_weekdays": "Días laborables",
+    "plan_rest_days": "Fines de semana y festivos",
+    "plan_every_day": "Todos los días",
+    "plan_all_covered": "Todas las horas tienen precio.",
+    "plan_uncovered": "Sin precio todavía:\n{hours}",
+    "plan_band_export": "exportación {price}",
     "export_price_entity": "La exportación se valora con {entity}, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_fixed": "La exportación se valora a {price} por kWh, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_none": "No hay precio de exportación en tu Panel de energía, así que Podría haber ganado se queda en cero. Pon uno en su configuración de red para verlo.",

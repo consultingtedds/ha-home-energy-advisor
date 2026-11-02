@@ -55,6 +55,7 @@ from .const import (
     SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_DEVICE,
     SUBENTRY_TYPE_GRID,
+    SUBENTRY_TYPE_PLAN,
 )
 from .discovery import (
     async_discover_candidates,
@@ -74,6 +75,7 @@ from .energy_dashboard import (
 from .engine.energy_source import EnergyUnit, energy_unit
 from .engine.house_balance import ChargeSource
 from .house_inputs import batteries_of, grid_meters, grid_meters_of, house_entities
+from .plan_flow import PlanSubentryFlowHandler
 from .reset import async_reset_totals
 from .schemas import vol
 
@@ -353,11 +355,12 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         cls,
         config_entry: ConfigEntry,  # noqa: ARG003 - HA signature; the types are entry-independent
     ) -> dict[str, type[ConfigSubentryFlow]]:
-        """Register the per-device, per-grid-source and per-battery subentry flows."""
+        """Register the device, grid-source, battery and tariff-plan subentry flows."""
         return {
             SUBENTRY_TYPE_DEVICE: DeviceSubentryFlowHandler,
             SUBENTRY_TYPE_GRID: GridSubentryFlowHandler,
             SUBENTRY_TYPE_BATTERY: BatterySubentryFlowHandler,
+            SUBENTRY_TYPE_PLAN: PlanSubentryFlowHandler,
         }
 
     @staticmethod
