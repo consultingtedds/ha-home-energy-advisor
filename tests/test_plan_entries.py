@@ -10,9 +10,15 @@ is covered exactly once.
 from __future__ import annotations
 
 from decimal import Decimal
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.config_entries import SOURCE_USER, ConfigSubentryData
+from homeassistant.config_entries import (
+    SOURCE_USER,
+    ConfigEntryState,
+    ConfigSubentry,
+    ConfigSubentryData,
+)
 from homeassistant.const import CONF_NAME
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -25,11 +31,14 @@ from custom_components.home_energy_advisor.const import (
     CONF_BAND_START,
     CONF_BANDS,
     CONF_CURRENCY,
+    CONF_FIXED_PRICE,
+    CONF_GRID_IMPORT_ENTITY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_HOLIDAYS,
     DOMAIN,
+    SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
 )
 from custom_components.home_energy_advisor.engine.plan_pricing import (
@@ -283,6 +292,78 @@ async def test_a_plan_names_the_calendar_its_holidays_come_from(
     # Then
     (plan,) = plans_of(entry).values()
     assert plan.holidays == "calendar.public_holidays"
+
+
+async def _running(hass: HomeAssistant) -> MockConfigEntry:
+    """A household whose accounting is running, with one grid meter."""
+    hass.states.async_set(
+        "sensor.grid_import",
+        "100",
+        {
+            "device_class": "energy",
+            "state_class": "total_increasing",
+            "unit_of_measurement": "kWh",
+        },
+    )
+    entry = _house(hass)
+    hass.config_entries.async_add_subentry(entry, _grid())
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+def _grid() -> ConfigSubentry:
+    return ConfigSubentry(
+        data=MappingProxyType(
+            {
+                CONF_NAME: "Grid",
+                CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+                CONF_FIXED_PRICE: 0.2,
+            }
+        ),
+        subentry_type=SUBENTRY_TYPE_GRID,
+        title="Grid",
+        unique_id=None,
+    )
+
+
+async def test_adding_a_plan_leaves_the_accounting_running(hass: HomeAssistant) -> None:
+    # Given - a household whose accounting is running
+    entry = await _running(hass)
+    running = entry.runtime_data
+
+    # When - a plan is added
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType({**_FLAT, CONF_BANDS: [_ALL_DAY]}),
+            subentry_type=SUBENTRY_TYPE_PLAN,
+            title="Flat rate",
+            unique_id=None,
+        ),
+    )
+    await hass.async_block_till_done()
+
+    # Then - not reloaded: a plan is read by the comparison and nothing else, and
+    # a reload would make every figure unavailable for nothing (HEA-255)
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data is running
+
+
+async def test_adding_a_grid_meter_still_reloads_the_accounting(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = await _running(hass)
+    running = entry.runtime_data
+
+    # When - something the accounting reads changes
+    hass.config_entries.async_add_subentry(entry, _grid())
+    await hass.async_block_till_done()
+
+    # Then
+    assert entry.state is ConfigEntryState.LOADED
+    assert entry.runtime_data is not running
 
 
 async def test_a_plan_is_edited_by_reconfiguring_it(hass: HomeAssistant) -> None:

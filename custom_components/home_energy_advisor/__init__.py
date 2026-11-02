@@ -16,7 +16,7 @@ per-device figures plus the Untracked remainder.
 from __future__ import annotations
 
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, Platform
@@ -40,6 +40,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_GRID,
+    SUBENTRY_TYPE_PLAN,
 )
 from .coordinator import HeaCoordinator
 from .cycle_meter import async_sync_cycle_meters
@@ -48,6 +49,9 @@ from .house_inputs import house_entities
 from .integral_helper import async_sync_power_device_helpers
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+
+    from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
     from homeassistant.helpers.device_registry import DeviceEntry
 
@@ -91,10 +95,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # After the sensors exist, reconcile the utility_meter cycle totals over them
     # (daily/monthly + opt-in longer cycles), creating and cleaning up as needed.
     await async_sync_cycle_meters(hass, entry)
-    # Reload on any config change so adding, editing or removing a device takes
-    # effect live - and so a removed device's auto-created helpers (Integral and
-    # cycle meters) are reconciled away on the next setup (HEA-34, HEA-23).
-    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
+    # Reload on any change the accounting reads, so adding, editing or removing a
+    # device takes effect live - and so a removed device's auto-created helpers
+    # (Integral and cycle meters) are reconciled away on the next setup (HEA-34,
+    # HEA-23). A tariff plan is read by the comparison alone, so a change to one
+    # reloads nothing (HEA-255).
+    entry.async_on_unload(
+        entry.add_update_listener(_reload_when_the_accounting_changes(entry))
+    )
     return True
 
 
@@ -315,6 +323,32 @@ async def async_remove_config_entry_device(
     return True
 
 
-async def _async_reload_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> None:
-    """Reload the entry when its configuration changes."""
-    await hass.config_entries.async_reload(entry.entry_id)
+def _reload_when_the_accounting_changes(
+    entry: HeaConfigEntry,
+) -> Callable[[HomeAssistant, ConfigEntry], Coroutine[Any, Any, None]]:
+    """An update listener that reloads only for what the accounting reads.
+
+    Remembers what the entry held when it was set up, so a change to a tariff
+    plan, which the accounting never reads, does not restart it: a reload makes
+    every figure unavailable while it runs, and saving a plan is no reason to.
+    """
+    read = _accounting_inputs(entry)
+
+    async def listener(hass: HomeAssistant, changed: ConfigEntry) -> None:
+        if _accounting_inputs(changed) != read:
+            await hass.config_entries.async_reload(changed.entry_id)
+
+    return listener
+
+
+def _accounting_inputs(entry: ConfigEntry) -> tuple[object, ...]:
+    """Everything in an entry but its tariff plans."""
+    return (
+        dict(entry.data),
+        dict(entry.options),
+        {
+            subentry_id: (subentry.subentry_type, dict(subentry.data))
+            for subentry_id, subentry in entry.subentries.items()
+            if subentry.subentry_type != SUBENTRY_TYPE_PLAN
+        },
+    )
