@@ -202,6 +202,9 @@ async def test_diagnostics_expose_the_battery_ledger(
         # The loss measurement's own state, or none where nothing is being
         # measured - as here, with no battery level configured (HEA-212).
         "loss": None,
+        # The capacity each level was read at, and what the last change in one
+        # moved the measurement's anchor by - none, with no level (ADR-0035).
+        "capacity": {"kwh": {}, "last_revaluation": None},
     }
 
 
@@ -285,6 +288,8 @@ async def test_diagnostics_carry_what_the_battery_level_read(
             "discharge": "sensor.battery_discharge",
             "level_entity": "sensor.battery_level",
             "capacity_kwh": "5.0",
+            "capacity_entity": None,
+            "capacity_in_force": {"kwh": "5.0", "source": "typed"},
         }
     ]
     assert result["battery_level"] == [

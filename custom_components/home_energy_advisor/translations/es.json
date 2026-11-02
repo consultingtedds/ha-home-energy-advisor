@@ -197,14 +197,16 @@
             "battery_charge_entity": "Energía de carga de la batería",
             "battery_discharge_entity": "Energía de descarga de la batería",
             "battery_soc_entity": "Nivel de la batería (opcional)",
-            "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
+            "battery_capacity_kwh": "Capacidad útil de la batería (opcional)",
+            "battery_capacity_entity": "Sensor de capacidad útil de la batería (opcional)"
           },
           "data_description": {
             "name": "Cómo aparece esta batería en Home Assistant.",
             "battery_charge_entity": "Energía acumulada cargada en la batería.",
             "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
             "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente. Si tu Panel de energía no lo tiene, es el mejor sitio para añadirlo.",
-            "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Necesaria junto con el nivel de arriba."
+            "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Necesaria junto con el nivel de arriba, salvo que elijas un sensor de capacidad abajo.",
+            "battery_capacity_entity": "Un sensor que publica la capacidad útil que calcula el propio sistema de tu batería, y que la sigue a medida que envejece. Se usa en lugar de la capacidad de arriba siempre que informa."
           }
         },
         "reconfigure": {
@@ -215,21 +217,23 @@
             "battery_charge_entity": "Energía de carga de la batería",
             "battery_discharge_entity": "Energía de descarga de la batería",
             "battery_soc_entity": "Nivel de la batería (opcional)",
-            "battery_capacity_kwh": "Capacidad útil de la batería (opcional)"
+            "battery_capacity_kwh": "Capacidad útil de la batería (opcional)",
+            "battery_capacity_entity": "Sensor de capacidad útil de la batería (opcional)"
           },
           "data_description": {
             "name": "Cómo aparece esta batería en Home Assistant.",
             "battery_charge_entity": "Energía acumulada cargada en la batería.",
             "battery_discharge_entity": "Energía acumulada descargada de la batería: toda, incluida la que fue a la red en lugar de a la casa.",
             "battery_soc_entity": "Cuán llena está la batería, en porcentaje. Junto con la capacidad de abajo, permite corregir el coste almacenado según lo que la batería contiene realmente.",
-            "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Necesaria junto con el nivel de arriba."
+            "battery_capacity_kwh": "Lo que la batería contiene llena, en kWh. Necesaria junto con el nivel de arriba, salvo que elijas un sensor de capacidad abajo.",
+            "battery_capacity_entity": "Un sensor que publica la capacidad útil que calcula el propio sistema de tu batería, y que la sigue a medida que envejece. Se usa en lugar de la capacidad de arriba siempre que informa."
           }
         }
       },
       "error": {
         "house_not_total_increasing": "Debe ser un contador acumulativo (total-increasing). Un sensor neto o de medición se interpretaría mal aquí y, como los costes se reparten de forma proporcional, un solo contador de batería incorrecto hace que la cifra de todos los dispositivos sea incorrecta.",
         "unit_not_energy": "Este sensor informa en una unidad que Home Energy Advisor no puede contabilizar. Funciona en cualquier unidad de energía que use Home Assistant, como kWh, Wh o MWh, y convierte entre ellas, así que cualquiera vale y mezclarlas también. Una unidad que no es de energía, como kW, se deja sin contabilizar en lugar de adivinarla.",
-        "capacity_needed": "El nivel de una batería es un porcentaje, así que necesita la capacidad de la que es porcentaje. Añade la capacidad en kWh o deja el nivel vacío.",
+        "capacity_needed": "El nivel de una batería es un porcentaje, así que necesita la capacidad de la que es porcentaje. Añade la capacidad en kWh o elige un sensor de capacidad, o deja el nivel vacío.",
         "capacity_not_kwh": "Este valor va en kWh, y ninguna batería doméstica almacena tanto, así que probablemente está en vatios hora. Una batería de 1500 Wh son 1,5 kWh."
       }
     },

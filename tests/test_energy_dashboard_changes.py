@@ -26,6 +26,7 @@ from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
@@ -363,6 +364,39 @@ async def test_a_capacity_added_there_is_taken_by_the_battery_already_here(
         "5.0",
     )
     assert _issue(hass, entry) is None
+
+
+async def test_taking_their_level_keeps_the_capacity_sensor_chosen_here(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a battery reading its capacity from its own sensor, and the
+    # Energy Dashboard holding the same meters with a level this one lacks
+    hass.states.async_set(
+        "sensor.growatt_usable_capacity",
+        "4.8",
+        {"device_class": "energy_storage", "unit_of_measurement": "kWh"},
+    )
+    garage = {
+        CONF_NAME: "Garage",
+        CONF_BATTERY_CHARGE_ENTITY: "sensor.growatt_charge",
+        CONF_BATTERY_DISCHARGE_ENTITY: "sensor.growatt_discharge",
+        CONF_BATTERY_CAPACITY_ENTITY: "sensor.growatt_usable_capacity",
+    }
+    await _energy_dashboard(hass, {**_GROWATT, "capacity": 5.0})
+    entry = await _set_up(hass, garage)
+    (battery_id,) = batteries_of(entry)
+
+    # When
+    await _answer(hass, entry, "take")
+
+    # Then - their level and capacity are taken, and the sensor, which the
+    # Energy Dashboard has nowhere to hold, is kept (ADR-0035)
+    battery = batteries_of(entry)[battery_id]
+    assert (battery.level, str(battery.capacity), battery.capacity_entity) == (
+        "sensor.growatt_level",
+        "5.0",
+        "sensor.growatt_usable_capacity",
+    )
 
 
 @pytest.mark.parametrize(

@@ -331,6 +331,25 @@ class _LossAnchor:
     discharged: Decimal
 
 
+@dataclass(frozen=True)
+class _Revaluation:
+    """A battery's capacity changing, and what that moved its anchor by (ADR-0035)."""
+
+    at: datetime
+    battery: str
+    from_kwh: Decimal
+    to_kwh: Decimal
+    kwh: Decimal
+
+
+@dataclass
+class _Capacities:
+    """The capacity each battery's level was last read at, and the last change."""
+
+    used: dict[str, Decimal] = field(default_factory=dict)
+    last_revaluation: _Revaluation | None = None
+
+
 @dataclass
 class _HeldCorrection:
     """Value a late delta earned from a finalised bucket, waiting to be handed over.
@@ -598,6 +617,11 @@ class Accountant:
         # Where the loss is measured from. `None` until the household first tells
         # us how full the battery is.
         self._loss_anchor: _LossAnchor | None = None
+        # The capacity each battery's level was last read at. A different one
+        # next time is a revaluation of what the battery holds, not energy, so
+        # it moves the anchor rather than the loss (ADR-0035). Persisted beside
+        # the anchor it is measured against.
+        self._capacities = _Capacities()
         # How much of the loss measured since the anchor has been published. Not
         # the published figure itself: a reset rebases that and must not make the
         # same loss publishable twice.
@@ -955,6 +979,15 @@ class Accountant:
                 "forgone": str(self._battery_loss_forgone),
                 "metered": [str(self._metered_charge), str(self._metered_discharge)],
                 "refused": str(self._loss_refused_kwh),
+                "capacities": {
+                    battery: str(capacity)
+                    for battery, capacity in self._capacities.used.items()
+                },
+                "last_revaluation": (
+                    None
+                    if self._capacities.last_revaluation is None
+                    else _revaluation_as_data(self._capacities.last_revaluation)
+                ),
             },
             # Each battery's meters, anchor and share, for the same reason: a share
             # is a published figure, and the split's anchor is the measurement's.
@@ -1114,6 +1147,18 @@ class Accountant:
         anchor = loss.get("anchor")
         self._loss_anchor = (
             None if anchor is None else _LossAnchor(*(Decimal(part) for part in anchor))
+        )
+        # Absent from a snapshot written before capacities were kept: the first
+        # capacity after it is recorded, and no change can be known (ADR-0035).
+        revalued = loss.get("last_revaluation")
+        self._capacities = _Capacities(
+            used={
+                battery: Decimal(capacity)
+                for battery, capacity in loss.get("capacities", {}).items()
+            },
+            last_revaluation=(
+                None if revalued is None else _revaluation_from_data(revalued)
+            ),
         )
         # Absent from a snapshot written before batteries were told apart. The
         # pool's measurement above carries on regardless, and the split anchors at
@@ -1326,12 +1371,15 @@ class Accountant:
         available_kwh: Decimal,
         now: datetime,
         levels: Mapping[str, Decimal] | None = None,
+        capacities: Mapping[str, Decimal] | None = None,
     ) -> None:
         """Write the ledger down to what the battery holds.
 
         `available_kwh` is the pool's contents. `levels` is each battery's own,
         which adds up to it, and is what each battery's share of a loss is
         measured against (ADR-0031); a caller with one battery may leave it out.
+        `capacities` is the usable capacity each level was read at, and a change
+        in one is revalued before anything is measured (ADR-0035).
 
         The inventory is inferred from the charge and discharge meters, so
         anything that leaves the battery another way - round-trip losses, a
@@ -1354,8 +1402,39 @@ class Accountant:
         here against what its level actually did (HEA-182).
         """
         self._levels = dict(levels or {})
+        self._revalue_changed_capacities(capacities or {}, now)
         self._battery.reconcile(available_kwh, ceiling=self._loss_ceiling())
         self._measure_the_batterys_loss(available_kwh, now)
+
+    def battery_capacity(self, battery: str) -> Decimal | None:
+        """The capacity a battery's level was last read at, if it ever was."""
+        return self._capacities.used.get(battery)
+
+    def _revalue_changed_capacities(
+        self, capacities: Mapping[str, Decimal], now: datetime
+    ) -> None:
+        """Restate the anchor at each changed capacity, so its gain is energy only.
+
+        A level read at a new capacity holds `(new - old) x level` more than the
+        same level did at the old one, with no energy having moved. Moving the
+        anchor by that much keeps it out of both bounds and out of the battery's
+        share. A capacity first seen, with nothing to compare it with, is only
+        recorded (ADR-0035).
+        """
+        for battery, capacity in capacities.items():
+            before = self._capacities.used.get(battery)
+            self._capacities.used[battery] = capacity
+            if before is None or capacity == before or capacity <= 0:
+                continue
+            kwh = self._levels.get(battery, Decimal(0)) * (capacity - before) / capacity
+            if self._loss_anchor is not None:
+                self._loss_anchor = replace(
+                    self._loss_anchor, available=self._loss_anchor.available + kwh
+                )
+            self._shares.revalue(battery, kwh)
+            self._capacities.last_revaluation = _Revaluation(
+                now, battery, before, capacity, kwh
+            )
 
     def _measure_the_batterys_loss(self, available_kwh: Decimal, now: datetime) -> None:
         """Book what the battery took in and never gave back.
@@ -1586,6 +1665,17 @@ class Accountant:
                 "means": _METER_DISAGREEMENT_MEANS,
             },
             "loss": self._loss_diagnostics(),
+            "capacity": {
+                "kwh": {
+                    battery: str(capacity)
+                    for battery, capacity in self._capacities.used.items()
+                },
+                "last_revaluation": (
+                    None
+                    if self._capacities.last_revaluation is None
+                    else _revaluation_as_data(self._capacities.last_revaluation)
+                ),
+            },
         }
         if self._shares.splits:
             diagnostics["batteries"] = self._shares.diagnostics(self._levels)
@@ -2752,6 +2842,26 @@ def _withhold(
         # know.
         battery_savings=_scaled(remainder.battery_savings, kept, remainder.energy_kwh),
         energy_by_source=split_by_source(kept, sources, _sum(sources.values())),
+    )
+
+
+def _revaluation_as_data(revaluation: _Revaluation) -> dict[str, str]:
+    return {
+        "at": revaluation.at.isoformat(),
+        "battery": revaluation.battery,
+        "from_kwh": str(revaluation.from_kwh),
+        "to_kwh": str(revaluation.to_kwh),
+        "kwh": str(revaluation.kwh),
+    }
+
+
+def _revaluation_from_data(data: Mapping[str, str]) -> _Revaluation:
+    return _Revaluation(
+        at=datetime.fromisoformat(data["at"]),
+        battery=data["battery"],
+        from_kwh=Decimal(data["from_kwh"]),
+        to_kwh=Decimal(data["to_kwh"]),
+        kwh=Decimal(data["kwh"]),
     )
 
 

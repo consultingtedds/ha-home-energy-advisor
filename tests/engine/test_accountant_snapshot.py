@@ -178,6 +178,9 @@ _PERSISTED = frozenset(
         "_battery_loss_forgone",
         "_battery_loss_kwh",
         "_loss_anchor",
+        # The capacity the anchor was last read at: a change across a restart is
+        # still a revaluation, not a loss (ADR-0035).
+        "_capacities",
         "_loss_published",
         "_loss_window",
         # The battery's own metered totals, which the bound is read from. Ones

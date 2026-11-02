@@ -24,6 +24,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.helpers import translation
 
 from .const import (
+    CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
@@ -335,7 +336,8 @@ def differences_from(
     battery. A level and capacity in the Energy Dashboard are compared too,
     since that is where a household is told to add them; where the Energy
     Dashboard holds neither, a level entered here is not a difference, because
-    there is nothing to take.
+    there is nothing to take. A battery reading its capacity from a sensor is
+    compared on its level alone.
 
     A grid meter is matched by its import meter, price and export meter
     together, since a register priced differently is a different answer.
@@ -387,6 +389,11 @@ def _holds(battery: Battery, answers: Mapping[str, Any]) -> bool:
         return False
     if not offered.knows_its_contents:
         return True
+    if battery.capacity_entity is not None:
+        # Its capacity follows the battery's own sensor, and rightly drifts from
+        # the figure typed into the Energy Dashboard as the battery ages; taking
+        # theirs would drop the sensor (ADR-0035).
+        return battery.level == offered.level
     return (battery.level, battery.capacity) == (offered.level, offered.capacity)
 
 
@@ -524,6 +531,7 @@ def _battery_line(battery: Battery) -> str:
         battery.discharge,
         battery.level,
         f"{battery.capacity} kWh" if battery.capacity is not None else None,
+        battery.capacity_entity,
     )
 
 
@@ -557,6 +565,9 @@ def async_take(hass: HomeAssistant, entry: ConfigEntry, prefs: Any) -> None:  # 
         theirs=[taken(answers) for answers in found.theirs],
         left=list(found.ours),
         meters=(CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY),
+        # The Energy Dashboard has no capacity sensor to offer, so taking its
+        # answers is no reason to lose one (ADR-0035).
+        kept=(CONF_BATTERY_CAPACITY_ENTITY,),
     )
     _replace(
         hass,
@@ -577,8 +588,12 @@ def _replace(  # noqa: PLR0913 - each argument is one side of the replacement
     theirs: list[dict[str, Any]],
     left: list[str],
     meters: tuple[str, ...],
+    kept: tuple[str, ...] = (),
 ) -> None:
-    """Put the Energy Dashboard's in place of ours, keeping what matches by meter."""
+    """Put the Energy Dashboard's in place of ours, keeping what matches by meter.
+
+    `kept` are answers only an entry here can hold, carried over from ours.
+    """
     for answers in theirs:
         same = next(
             (
@@ -607,7 +622,11 @@ def _replace(  # noqa: PLR0913 - each argument is one side of the replacement
         hass.config_entries.async_update_subentry(
             entry,
             subentry,
-            data={**answers, CONF_NAME: subentry.data.get(CONF_NAME, subentry.title)},
+            data={
+                **answers,
+                **{key: subentry.data[key] for key in kept if key in subentry.data},
+                CONF_NAME: subentry.data.get(CONF_NAME, subentry.title),
+            },
         )
     for entry_id in left:
         hass.config_entries.async_remove_subentry(entry, entry_id)

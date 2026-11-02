@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.const import CONF_NAME
 
 from .const import (
+    CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_DISCHARGE_ENTITY,
@@ -50,11 +51,14 @@ class Battery:
     discharge: str | None
     level: str | None
     capacity: Decimal | None
+    capacity_entity: str | None = None
 
     @property
     def knows_its_contents(self) -> bool:
         """Whether its level can be turned into kWh: a percentage needs a capacity."""
-        return self.level is not None and self.capacity is not None
+        return self.level is not None and (
+            self.capacity is not None or self.capacity_entity is not None
+        )
 
 
 def batteries_of(entry: ConfigEntry) -> dict[str, Battery]:
@@ -74,6 +78,7 @@ def battery_from(name: str, data: Mapping[str, Any]) -> Battery:
         discharge=data.get(CONF_BATTERY_DISCHARGE_ENTITY) or None,
         level=data.get(CONF_BATTERY_SOC_ENTITY) or None,
         capacity=_decimal(data.get(CONF_BATTERY_CAPACITY_KWH)),
+        capacity_entity=data.get(CONF_BATTERY_CAPACITY_ENTITY) or None,
     )
 
 

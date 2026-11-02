@@ -34,6 +34,7 @@ from homeassistant.util import dt as dt_util
 
 from . import issues
 from .accountant_store import AccountantStore, SnapshotStatus
+from .battery_capacity import Capacity, capacity_of
 from .const import (
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_CHARGING,
@@ -254,6 +255,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # (HEA-212). Optional, and only useful as a pair: a percentage says
         # nothing in kWh without the capacity to scale it by.
         self._level_logs = {battery: LevelLog() for battery in self._batteries}
+        # The capacity each level was last read against, and where it came from,
+        # for the diagnostics (HEA-244). The engine keeps the figure itself.
+        self._capacities: dict[str, Capacity] = {}
         # HEA-233. An entry holding no answer is on the one true of most
         # batteries.
         self._charge_source = ChargeSource(
@@ -956,7 +960,13 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         levels = self._battery_levels(now)
         if levels is not None:
             self._accountant.reconcile_battery(
-                sum(levels.values(), Decimal(0)), now, levels=levels
+                sum(levels.values(), Decimal(0)),
+                now,
+                levels=levels,
+                capacities={
+                    battery_id: capacity.kwh
+                    for battery_id, capacity in self._capacities.items()
+                },
             )
 
     def _battery_levels(self, now: datetime) -> dict[str, Decimal] | None:
@@ -987,8 +997,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
     ) -> Decimal | None:
         """How much energy one battery holds, or ``None`` where it cannot say.
 
-        A percentage of a stated usable capacity, because that is the sensor
-        almost every battery integration publishes. Anything outside 0-100 is
+        A percentage of the usable capacity `capacity_of` says is in force,
+        because a percentage is the sensor almost every battery integration
+        publishes. Anything outside 0-100 is
         refused rather than clamped: a reading that is not a percentage is not a
         percentage read badly, and guessing at it would write the ledger down on
         the strength of a misconfiguration.
@@ -997,8 +1008,12 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         (HEA-212).
         """
         log = self._level_logs[battery_id]
-        if battery.level is None or battery.capacity is None:
+        capacity = capacity_of(
+            self.hass, battery, self._accountant.battery_capacity(battery_id)
+        )
+        if battery.level is None or capacity is None:
             return None
+        self._capacities[battery_id] = capacity
         state = self.hass.states.get(battery.level)
         if state is None or state.state in _UNAVAILABLE:
             read = None if state is None else state.state
@@ -1008,7 +1023,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         if percent is None or not (0 <= percent <= 100):  # noqa: PLR2004 - a percentage
             log.record(now, state.state, None, LevelReason.NOT_A_PERCENTAGE)
             return None
-        available = battery.capacity * percent / 100
+        available = capacity.kwh * percent / 100
         log.record(now, state.state, available, LevelReason.USED)
         return available
 
@@ -1353,8 +1368,17 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                     "capacity_kwh": (
                         None if battery.capacity is None else str(battery.capacity)
                     ),
+                    "capacity_entity": battery.capacity_entity,
+                    # What the level was last read against: the sensor's
+                    # reading, the last one used while it was silent, or the
+                    # typed figure (ADR-0035).
+                    "capacity_in_force": (
+                        None
+                        if (capacity := self._capacities.get(battery_id)) is None
+                        else {"kwh": str(capacity.kwh), "source": capacity.source.value}
+                    ),
                 }
-                for battery in self._batteries.values()
+                for battery_id, battery in self._batteries.items()
             ],
             # Named even where the household never chose, for the same reason.
             "battery_charging": self._charge_source.value,

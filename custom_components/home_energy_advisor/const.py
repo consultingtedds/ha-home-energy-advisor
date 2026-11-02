@@ -20,6 +20,10 @@ CONF_BATTERY_DISCHARGE_ENTITY: Final = "battery_discharge_entity"
 # capacity to mean anything in kWh, so the two are only useful together.
 CONF_BATTERY_SOC_ENTITY: Final = "battery_soc_entity"
 CONF_BATTERY_CAPACITY_KWH: Final = "battery_capacity_kwh"
+# The usable capacity as the battery's own management system publishes it, which
+# follows the battery as it ages. Optional beside the typed figure, and read in
+# its place when it reports (HEA-244, ADR-0035).
+CONF_BATTERY_CAPACITY_ENTITY: Final = "battery_capacity_entity"
 CONF_HOUSE_CONSUMPTION_ENTITY: Final = "house_consumption_entity"
 # How the battery charges, which decides what charged it where the house imports,
 # generates and charges all at once - the meters cannot see it, so the household

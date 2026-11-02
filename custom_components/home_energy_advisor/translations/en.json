@@ -197,14 +197,16 @@
             "battery_charge_entity": "Battery charge energy",
             "battery_discharge_entity": "Battery discharge energy",
             "battery_soc_entity": "Battery level (optional)",
-            "battery_capacity_kwh": "Battery usable capacity (optional)"
+            "battery_capacity_kwh": "Battery usable capacity (optional)",
+            "battery_capacity_entity": "Battery usable capacity sensor (optional)"
           },
           "data_description": {
             "name": "How this battery appears in Home Assistant.",
             "battery_charge_entity": "Cumulative energy charged into the battery.",
             "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
             "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds. If your Energy Dashboard lacks it, that is the best place to add it.",
-            "battery_capacity_kwh": "What the battery holds when full, in kWh. Needed with the battery level above."
+            "battery_capacity_kwh": "What the battery holds when full, in kWh. Needed with the battery level above, unless you choose a capacity sensor below.",
+            "battery_capacity_entity": "A sensor publishing the usable capacity your battery's own system works out, which follows the battery as it ages. Used in place of the capacity above whenever it reports."
           }
         },
         "reconfigure": {
@@ -215,21 +217,23 @@
             "battery_charge_entity": "Battery charge energy",
             "battery_discharge_entity": "Battery discharge energy",
             "battery_soc_entity": "Battery level (optional)",
-            "battery_capacity_kwh": "Battery usable capacity (optional)"
+            "battery_capacity_kwh": "Battery usable capacity (optional)",
+            "battery_capacity_entity": "Battery usable capacity sensor (optional)"
           },
           "data_description": {
             "name": "How this battery appears in Home Assistant.",
             "battery_charge_entity": "Cumulative energy charged into the battery.",
             "battery_discharge_entity": "Cumulative energy discharged from the battery - all of it, including any that went to the grid rather than to the house.",
             "battery_soc_entity": "How full the battery is, as a percentage. With the capacity below, it lets the stored cost be corrected against what the battery really holds.",
-            "battery_capacity_kwh": "What the battery holds when full, in kWh. Needed with the battery level above."
+            "battery_capacity_kwh": "What the battery holds when full, in kWh. Needed with the battery level above, unless you choose a capacity sensor below.",
+            "battery_capacity_entity": "A sensor publishing the usable capacity your battery's own system works out, which follows the battery as it ages. Used in place of the capacity above whenever it reports."
           }
         }
       },
       "error": {
         "house_not_total_increasing": "This must be a total-increasing counter. A net or measurement sensor would be misread here, and because costs are shared out in proportion, one wrong battery meter makes every device's figure wrong.",
         "unit_not_energy": "This sensor reports in a unit Home Energy Advisor cannot count in. It works in every energy unit Home Assistant uses, such as kWh, Wh and MWh, and converts between them, so any of them is fine and a mixture is fine. A unit that is not energy, such as kW, is left uncounted rather than guessed at.",
-        "capacity_needed": "A battery level is a percentage, so it needs the capacity it is a percentage of. Add the capacity in kWh, or leave the level empty.",
+        "capacity_needed": "A battery level is a percentage, so it needs the capacity it is a percentage of. Add the capacity in kWh or choose a capacity sensor, or leave the level empty.",
         "capacity_not_kwh": "This is in kWh, and no home battery holds this much, so it is probably in watt-hours. A 1500 Wh battery is 1.5 kWh."
       }
     },

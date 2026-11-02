@@ -120,6 +120,17 @@ class BatteryShares:
                 level=levels.get(battery, Decimal(0)),
             )
 
+    def revalue(self, battery: str, kwh: Decimal) -> None:
+        """Move one battery's anchor by what a change in its capacity revalued.
+
+        What it held at the anchor is restated at the capacity it has now, so its
+        gain since measures energy only (ADR-0035).
+        """
+        state = self._state.get(battery)
+        if state is None or state.anchor is None:
+            return
+        state.anchor = state.anchor._replace(level=state.anchor.level + kwh)
+
     def apportion(self, loss: BatteryLoss, levels: Mapping[str, Decimal]) -> None:
         """Share a published loss, what it cost and could have earned, across them."""
         weights = {

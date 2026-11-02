@@ -29,6 +29,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector, translation
 
 from .const import (
+    CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
     CONF_BATTERY_CHARGING,
@@ -124,6 +125,13 @@ _CAPACITY_SELECTOR = selector.NumberSelector(
         step=0.1,
         mode=selector.NumberSelectorMode.BOX,
         unit_of_measurement="kWh",
+    )
+)
+# The usable capacity as a battery's management system publishes it, which is
+# stored energy rather than a counter (HEA-244).
+_CAPACITY_ENTITY_SELECTOR = selector.EntitySelector(
+    selector.EntitySelectorConfig(
+        domain="sensor", device_class=["energy_storage", "energy"]
     )
 )
 # How the battery charges, in the engine's own terms, most common first (HEA-233).
@@ -606,6 +614,7 @@ _BATTERY_SCHEMA = vol.Schema(
         vol.Required(CONF_BATTERY_DISCHARGE_ENTITY): _ENERGY_SELECTOR,
         vol.Optional(CONF_BATTERY_SOC_ENTITY): _BATTERY_LEVEL_SELECTOR,
         vol.Optional(CONF_BATTERY_CAPACITY_KWH): _CAPACITY_SELECTOR,
+        vol.Optional(CONF_BATTERY_CAPACITY_ENTITY): _CAPACITY_ENTITY_SELECTOR,
     }
 )
 
@@ -758,18 +767,22 @@ def validate_battery(hass: HomeAssistant, answers: Mapping[str, Any]) -> dict[st
 
     Its meters feed the house balance, so they are held to the house's standard
     (HEA-67): a net or uncountable counter here skews every figure. A level needs
-    the capacity it is a percentage of (HEA-178), and a capacity in watt-hours is
-    refused where it is typed (HEA-227).
+    the capacity it is a percentage of (HEA-178), typed or from a sensor
+    (HEA-244); a capacity in watt-hours is refused where it is typed (HEA-227),
+    and a capacity sensor whose unit is not energy where it is chosen.
     """
     errors: dict[str, str] = {}
     for key in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY):
         if error := _house_input_error(hass, house_entities(answers, key)):
             errors[key] = error
     capacity = answers.get(CONF_BATTERY_CAPACITY_KWH)
-    if answers.get(CONF_BATTERY_SOC_ENTITY) and capacity is None:
+    sensed = answers.get(CONF_BATTERY_CAPACITY_ENTITY)
+    if answers.get(CONF_BATTERY_SOC_ENTITY) and capacity is None and not sensed:
         errors[CONF_BATTERY_CAPACITY_KWH] = _CAPACITY_NEEDED
     elif capacity is not None and capacity > _MAX_HOME_BATTERY_KWH:
         errors[CONF_BATTERY_CAPACITY_KWH] = _CAPACITY_ERROR
+    if sensed and (error := _uncountable_unit_error(hass, sensed)):
+        errors[CONF_BATTERY_CAPACITY_ENTITY] = error
     return errors
 
 

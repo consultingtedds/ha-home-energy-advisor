@@ -253,6 +253,7 @@ holds for a battery system:
 | Battery discharge energy | Yes | Cumulative energy discharged from it - **all** of it, including any that went to the grid rather than to the house |
 | Battery level | No | How full it is, as a percentage |
 | Battery usable capacity | No | What it holds when full, in kWh |
+| Battery usable capacity sensor | No | A sensor publishing the usable capacity your battery's own system works out, where it has one |
 
 ![The batteries step of the setup, listing the two batteries from the Energy Dashboard, both ticked](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/setup-batteries.png)
 
@@ -577,6 +578,13 @@ Filling in **Battery level** and **Battery usable capacity** fixes it. The
 inventory is checked against what the battery really holds every few minutes, so
 the drift is corrected rather than compounding, and your battery energy is priced
 against what is actually in there.
+
+**Some batteries publish their usable capacity**, worked out by their own
+management system as they age. Choose that sensor as **Battery usable capacity
+sensor** and it is used in place of the typed figure whenever it reports; while
+it is unavailable, the last capacity it gave is kept. A change in capacity, from
+the sensor or from editing the typed figure, is never counted as energy the
+battery lost or gained.
 
 **What the battery lost is published too, where it can be measured.** A
 **Battery Losses** device appears carrying how much never came back out and what
