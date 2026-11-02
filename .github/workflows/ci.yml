@@ -81,23 +81,11 @@ jobs:
         # 2026.7.2 the suite could not see the deprecation that reached a deploy
         # in HEA-113, and was green the whole time because on that release the
         # call was not deprecated.
-        #
-        # And the beta, which no phacc release may pin yet: phacc follows Home
-        # Assistant's betas, but days or weeks behind, and on the day 2026.11
-        # stopped the integration loading the newest phacc still pinned 2026.10.4
-        # (HEA-254). So the beta entry installs the newest Home Assistant
-        # pre-release over the latest phacc. It is a real entry, not one allowed
-        # to fail: a beta that breaks us has to be fixed before it is released.
-        # If phacc itself cannot run against a beta, read why before pinning the
-        # entry back for that cycle (HEA-256).
         include:
           - ha-version: "2026.7.0"
             phacc: "0.13.344"
           - ha-version: "2026.10.4"
             phacc: "0.13.375"
-          - ha-version: "beta"
-            phacc: "0.13.375"
-            pre-release: true
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -108,10 +96,6 @@ jobs:
         run: |
           pip install -r requirements_test.txt
           pip install "pytest-homeassistant-custom-component==${{ matrix.phacc }}"
-          if [ "${{ matrix.pre-release }}" = "true" ]; then
-            pip install --pre --upgrade homeassistant
-          fi
-          python -c "from homeassistant.const import __version__; print('Home Assistant', __version__)"
           # The frontend belongs to the Home Assistant that ends up installed,
           # not to the requirements file: the pin above replaces Home Assistant
           # and leaves the frontend where it was. The card tests boot the real
@@ -120,17 +104,50 @@ jobs:
           frontend=$(python -c "import json, pathlib; from homeassistant.components import frontend; print(json.loads((pathlib.Path(frontend.__file__).parent / 'manifest.json').read_text())['requirements'][0])")
           pip install "$frontend"
       - name: Test
+        run: pytest --cov --cov-fail-under=90
+
+  # Whether the integration still loads on the Home Assistant beta, a week or two
+  # before households install that release (HEA-256). The suite cannot run there:
+  # phacc, which the suite runs under, follows a beta days or weeks late and on
+  # 2026.11 could not even start against it. So this does what Home Assistant
+  # does at startup and imports every module - the step that failed for every
+  # household on 2026.11 (HEA-254). Red here means fix before that release ships.
+  beta:
+    name: imports (HA beta)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install the newest Home Assistant pre-release
         run: |
-          if [ "${{ matrix.pre-release }}" = "true" ]; then
-            # Home Assistant 2026.11 swaps httpx for httpx2 when it is first
-            # imported and refuses if httpx is already loaded, which a pytest
-            # plugin does before phacc imports Home Assistant. Importing it
-            # first is the order a real Home Assistant starts in. Drop this
-            # once a phacc pinning that release no longer needs it (HEA-256).
-            python -c "import homeassistant, sys, pytest; sys.exit(pytest.main(['--cov', '--cov-fail-under=90']))"
-          else
-            pytest --cov --cov-fail-under=90
-          fi
+          # The test requirements bring the components' own libraries (the
+          # recorder's, the frontend's); the beta then replaces Home Assistant.
+          pip install -r requirements_test.txt
+          pip install --pre --upgrade homeassistant
+          frontend=$(python -c "import json, pathlib; from homeassistant.components import frontend; print(json.loads((pathlib.Path(frontend.__file__).parent / 'manifest.json').read_text())['requirements'][0])")
+          pip install "$frontend"
+          python -c "from homeassistant.const import __version__; print('Home Assistant', __version__)"
+      - name: Import every module
+        run: |
+          python - <<'EOF'
+          import importlib
+          import pkgutil
+
+          import homeassistant  # first, as at startup: it sets up httpx2
+
+          import custom_components.home_energy_advisor as package
+
+          names = [package.__name__] + [
+              module.name
+              for module in pkgutil.walk_packages(package.__path__, f"{package.__name__}.")
+          ]
+          for name in names:
+              importlib.import_module(name)
+          print(f"imported {len(names)} modules")
+          EOF
 
   hassfest:
     name: hassfest
