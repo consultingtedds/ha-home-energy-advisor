@@ -732,6 +732,12 @@ Carried forward rather than closed:
   through one reader. A change in capacity revalues what the battery holds
   rather than being booked as loss, which also stops a Reconfigure edit of the
   typed figure from doing so.
+- **HEA-255** (discussion 58, ADR-0036): compare tariff plans. A plan is a typed
+  schedule of time bands with a daily charge, priced against Home Assistant's
+  recorded hourly grid statistics, so past months are answered at once. The
+  first version re-prices the household's real imports and exports at every
+  plan, the current one included, on a dashboard card. The no-installation
+  baseline for Saved follows on the same plans.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
