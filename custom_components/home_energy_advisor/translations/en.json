@@ -253,95 +253,52 @@
         },
         "details": {
           "title": "Add a tariff plan",
-          "description": "A plan to compare, or the one you are on. Enter its prices as they are published, then its time bands one at a time. Every plan is priced against the electricity you actually imported and exported, so enter prices consistently: all with tax or all without.",
-          "data": {
-            "name": "Name",
-            "current_plan": "This is the plan I am on",
-            "daily_charge": "Daily charge",
-            "plan_export_price": "Export price",
-            "holiday_calendar": "Holiday calendar (optional)"
-          },
-          "data_description": {
-            "name": "How this plan appears on the comparison card.",
-            "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on.",
-            "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
-            "plan_export_price": "What the plan pays per kWh exported, unless a band says otherwise.",
-            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
-          }
-        },
-        "prices": {
-          "title": "Copy a tariff plan",
-          "description": "The copy keeps the time bands of the plan it came from. Name it and enter its prices: each price is asked for once, wherever it applies. The bands can still be changed on the next screen.\n\n{prices}",
+          "description": "A plan to compare, or the one you are on. Name its prices as the offer does, such as peak and off-peak, then enter its time bands one at a time, each at one of those prices. Every plan is priced against the electricity you actually imported and exported, so enter prices consistently: all with tax or all without.",
           "data": {
             "name": "Name",
             "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
             "holiday_calendar": "Holiday calendar (optional)",
-            "price_1": "Price 1",
-            "price_2": "Price 2",
-            "price_3": "Price 3",
-            "price_4": "Price 4",
-            "price_5": "Price 5",
-            "price_6": "Price 6",
-            "price_7": "Price 7",
-            "price_8": "Price 8",
-            "band_export_1": "Band export price 1",
-            "band_export_2": "Band export price 2",
-            "band_export_3": "Band export price 3",
-            "band_export_4": "Band export price 4"
+            "prices": "Prices"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
             "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
-            "plan_export_price": "What the plan pays per kWh exported, unless a band says otherwise.",
-            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
+            "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days.",
+            "prices": "Each price the plan charges, named as the offer names it. A price can pay its own export price at the hours it applies, if the plan pays more then."
           }
         },
         "reconfigure": {
           "title": "Edit tariff plan",
-          "description": "Change the plan's details and prices: each price is asked for once, wherever it applies. Its bands come next.\n\n{prices}",
+          "description": "Change the plan's details and prices. A price renamed keeps its bands; a price removed takes its bands with it. The bands come next.",
           "data": {
             "name": "Name",
             "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
             "holiday_calendar": "Holiday calendar (optional)",
-            "price_1": "Price 1",
-            "price_2": "Price 2",
-            "price_3": "Price 3",
-            "price_4": "Price 4",
-            "price_5": "Price 5",
-            "price_6": "Price 6",
-            "price_7": "Price 7",
-            "price_8": "Price 8",
-            "band_export_1": "Band export price 1",
-            "band_export_2": "Band export price 2",
-            "band_export_3": "Band export price 3",
-            "band_export_4": "Band export price 4"
+            "prices": "Prices"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
             "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
-            "plan_export_price": "What the plan pays per kWh exported, unless a band says otherwise.",
-            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
+            "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days.",
+            "prices": "Each price the plan charges, named as the offer names it. A price can pay its own export price at the hours it applies, if the plan pays more then."
           }
         },
         "band": {
           "title": "Add a time band",
-          "description": "One price for some hours of some days. Hours run on a 24-hour clock from the first up to the second, so 22 to 8 runs overnight and 0 to 24 is the whole day.",
+          "description": "Some hours of some days, at one of the plan's prices. Hours run on a 24-hour clock from the first up to the second, so 22 to 8 runs overnight and 0 to 24 is the whole day.",
           "data": {
             "days": "Days",
             "start_hour": "From hour",
             "end_hour": "To hour",
-            "import_price": "Import price",
-            "band_export_price": "Export price (optional)"
-          },
-          "data_description": {
-            "import_price": "Per kWh imported in these hours.",
-            "band_export_price": "Per kWh exported in these hours, if it differs from the plan's export price."
+            "price": "Price"
           }
         },
         "bands": {
@@ -356,7 +313,9 @@
       "error": {
         "band_hours": "A band covers at least one hour: the two hours cannot be the same.",
         "band_overlaps": "This band covers hours another band already prices on the same days. Each hour has one price, so change the hours or remove the other band.",
-        "plan_incomplete": "Some hours have no price yet. Add bands until every hour of a weekday and of a weekend is covered."
+        "plan_incomplete": "Some hours have no price yet. Add bands until every hour of a weekday and of a weekend is covered.",
+        "price_names": "Two prices have the same name. Give each its own, so a band can say which it charges.",
+        "no_prices": "Add at least one price: each band charges one of them."
       }
     },
     "device": {
@@ -480,6 +439,7 @@
     "plan_action": {
       "options": {
         "add_band": "Add another band",
+        "prices": "Back to the prices",
         "save": "Save the plan"
       }
     },
@@ -488,6 +448,19 @@
         "spare_solar": "Mainly from solar the house doesn't need (most batteries)",
         "grid_too": "From the grid as well, on a schedule or by an optimiser",
         "solar_only": "Only from solar - grid charging is turned off"
+      }
+    },
+    "plan_price": {
+      "fields": {
+        "name": {
+          "name": "Name"
+        },
+        "import_price": {
+          "name": "Import price"
+        },
+        "band_export_price": {
+          "name": "Export price (optional)"
+        }
       }
     }
   },
@@ -702,7 +675,6 @@
     "card_editor_range_column": "Its own column",
     "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report.",
     "plan_start_nothing": "Nothing: enter its bands one at a time",
-    "plan_price_line": "Price {number} ({price}): {where}",
-    "plan_export_line": "Band export price {number} ({price}): {where}"
+    "plan_price_name": "Price {number}"
   }
 }

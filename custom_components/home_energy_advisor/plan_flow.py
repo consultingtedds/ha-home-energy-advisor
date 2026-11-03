@@ -1,20 +1,26 @@
-"""Entering a tariff plan: its details, then its bands one at a time (ADR-0036).
+"""Entering a tariff plan: its details and named prices, then its bands (ADR-0036).
 
-Home Assistant's forms have no timetable editor, so a plan is built a band at a
-time. After each band a review lists the bands so far, which can be unticked to
+Offers name their prices - peak and off-peak, punta, llano and valle - and a
+household thinks in those names, so a plan's prices are entered first, as a list
+on the details screen, each with its name, its import price and optionally an
+export price of its own (HEA-262). Its bands then pick a price by name.
+
+Home Assistant's forms have no timetable editor, so the bands are entered one at
+a time. After each band a review lists the bands so far, which can be unticked to
 remove them, and says which hours of a weekday and of a rest day are still
 uncovered. A band that overlaps one already entered is refused on its own form,
 and the plan is saved only once every hour is covered: an hour priced twice or
 not at all would be a guess.
 
+Most offers share their bands with a plan already entered and differ only in
+price, so a new plan can start from a copy of another (HEA-259): the details
+screen filled in from it, then straight to the review of its bands. Editing a
+plan is that same screen, so a renewal at new prices is a change to the list.
+A price renamed where it stands in the list keeps its bands; a price removed
+takes its bands with it, and the review says which hours that leaves.
+
 Exactly one plan is the household's current plan, which every other is compared
 with, so saving one as current makes the previous one not.
-
-Most offers share their bands with a plan already entered and differ only in
-price, so a new plan can start from a copy of another (HEA-259). The copy's
-details and prices are then one screen, a field per distinct price rather than
-per band, before the same review. Editing a plan is that same screen, which is
-what a renewal at new prices needs.
 """
 
 from __future__ import annotations
@@ -31,27 +37,28 @@ from .const import (
     CONF_BAND_END,
     CONF_BAND_EXPORT_PRICE,
     CONF_BAND_IMPORT_PRICE,
+    CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
+    CONF_CURRENCY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_HOLIDAYS,
+    CONF_PRICES,
+    DEFAULT_CURRENCY,
     DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import (
-    Band,
-    DayKind,
-    Days,
-    Plan,
-    PriceGroup,
-    export_price_groups,
-    import_price_groups,
-    repriced,
-)
+from .engine.plan_pricing import Band, DayKind, Days, Plan
 from .schemas import vol
-from .tariff_plans import band_as_data, band_from, plans_of, tariff_plan_from
+from .tariff_plans import (
+    band_from,
+    named_prices,
+    plans_of,
+    prices_by_name,
+    tariff_plan_from,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -61,14 +68,10 @@ if TYPE_CHECKING:
 _KEEP = "keep"
 _ACTION = "action"
 _ADD_BAND = "add_band"
+_EDIT_PRICES = "prices"
 _SAVE = "save"
 _START_FROM = "start_from"
 _NOTHING = "none"
-# One field per distinct price, numbered in the order the bands first use them:
-# a field's label is fixed in the translations, so where it applies is said in
-# the step's description instead.
-_IMPORT_FIELD = "price_{}"
-_EXPORT_FIELD = "band_export_{}"
 _DETAIL_KEYS = (
     CONF_NAME,
     CONF_PLAN_CURRENT,
@@ -93,40 +96,6 @@ _HOUR_TO = selector.NumberSelector(
     )
 )
 
-_DETAILS_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_NAME): selector.TextSelector(),
-        vol.Required(CONF_PLAN_CURRENT, default=False): selector.BooleanSelector(),
-        vol.Required(CONF_PLAN_DAILY_CHARGE, default=0): selector.NumberSelector(
-            selector.NumberSelectorConfig(
-                min=0, step="any", mode=selector.NumberSelectorMode.BOX
-            )
-        ),
-        vol.Required(CONF_PLAN_EXPORT_PRICE, default=0): _PRICE,
-        vol.Optional(CONF_PLAN_HOLIDAYS): selector.EntitySelector(
-            selector.EntitySelectorConfig(domain="calendar")
-        ),
-    }
-)
-
-_BAND_SCHEMA = vol.Schema(
-    {
-        vol.Required(CONF_BAND_DAYS, default=Days.EVERY_DAY.value): (
-            selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=[days.value for days in Days],
-                    mode=selector.SelectSelectorMode.LIST,
-                    translation_key=CONF_BAND_DAYS,
-                )
-            )
-        ),
-        vol.Required(CONF_BAND_START): _HOUR_FROM,
-        vol.Required(CONF_BAND_END): _HOUR_TO,
-        vol.Required(CONF_BAND_IMPORT_PRICE): _PRICE,
-        vol.Optional(CONF_BAND_EXPORT_PRICE): _PRICE,
-    }
-)
-
 _DAY_LABELS = {
     DayKind.WEEKDAY: ("plan_weekdays", "Weekdays"),
     DayKind.REST_DAY: ("plan_rest_days", "Weekends and holidays"),
@@ -139,11 +108,12 @@ _DAYS_LABELS = {
 
 
 class PlanSubentryFlowHandler(ConfigSubentryFlow):
-    """Add or edit one tariff plan, a band at a time."""
+    """Add or edit one tariff plan: its prices, then its bands one at a time."""
 
     def __init__(self) -> None:
-        """Start with no details and no bands."""
+        """Start with no details, no prices and no bands."""
         self._details: dict[str, Any] = {}
+        self._prices: list[dict[str, Any]] = []
         self._bands: list[dict[str, Any]] = []
 
     async def async_step_user(
@@ -158,10 +128,12 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
             return await self.async_step_details()
         if user_input is not None:
             source = user_input.get(_START_FROM, _NOTHING)
-            if source not in plans:
-                return await self.async_step_details()
-            self._start_from(self._get_entry().subentries[source].data)
-            return await self.async_step_prices()
+            if source in plans:
+                await self._take(self._get_entry().subentries[source].data)
+                # A copy is most often an offer being weighed up, and marking it
+                # current would unmark the plan the household is on.
+                self._details[CONF_PLAN_CURRENT] = False
+            return await self.async_step_details()
         labels = await _common_strings(self.hass)
         options = [
             selector.SelectOptionDict(
@@ -177,11 +149,11 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
             step_id="user",
             data_schema=vol.Schema(
                 {
-                    vol.Required(
-                        _START_FROM, default=_NOTHING
-                    ): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=options, mode=selector.SelectSelectorMode.LIST
+                    vol.Required(_START_FROM, default=_NOTHING): (
+                        selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=options, mode=selector.SelectSelectorMode.LIST
+                            )
                         )
                     )
                 }
@@ -191,77 +163,57 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
     async def async_step_details(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """The plan's own details, before any band."""
-        if user_input is not None:
-            self._details = user_input
-            return await self.async_step_band()
-        return self.async_show_form(step_id="details", data_schema=_DETAILS_SCHEMA)
-
-    async def async_step_prices(
-        self, user_input: dict[str, Any] | None = None
-    ) -> SubentryFlowResult:
-        """A copy's details and prices on one screen, then the review."""
-        if user_input is not None:
-            return await self._take_prices(user_input)
-        return await self._prices_form("prices")
+        """The plan's own details and its named prices."""
+        return await self._details_step("details", user_input)
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Edit a plan's details and prices on one screen, then review its bands."""
+        """Edit a plan's details and prices, then review its bands."""
+        if user_input is None and not self._details:
+            await self._take(self._get_reconfigure_subentry().data)
+        return await self._details_step("reconfigure", user_input)
+
+    async def _details_step(
+        self, step_id: str, user_input: dict[str, Any] | None
+    ) -> SubentryFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
-            return await self._take_prices(user_input)
-        subentry = self._get_reconfigure_subentry()
-        self._details = {
-            key: subentry.data[key] for key in _DETAIL_KEYS if key in subentry.data
-        }
-        self._bands = [dict(band) for band in subentry.data.get(CONF_BANDS, ())]
-        return await self._prices_form("reconfigure")
-
-    def _start_from(self, source: Mapping[str, Any]) -> None:
-        """Take a plan's details and bands as the copy's starting point.
-
-        Not as the household's current plan: a copy is most often an offer being
-        weighed up, and marking it current would unmark the one they are on.
-        """
-        self._details = {key: source[key] for key in _DETAIL_KEYS if key in source}
-        self._details[CONF_PLAN_CURRENT] = False
-        self._bands = [dict(band) for band in source.get(CONF_BANDS, ())]
-
-    async def _prices_form(self, step_id: str) -> SubentryFlowResult:
-        plan = self._plan()
-        imports, exports = import_price_groups(plan), export_price_groups(plan)
-        fields = dict(_DETAILS_SCHEMA.schema)
-        for template, groups in ((_IMPORT_FIELD, imports), (_EXPORT_FIELD, exports)):
-            for field, group in _numbered(template, groups):
-                fields[vol.Required(field, default=float(group.price))] = _PRICE
-        labels = await _common_strings(self.hass)
+            prices = [dict(price) for price in user_input.get(CONF_PRICES) or ()]
+            error = _prices_error(prices)
+            if error is None:
+                self._details = {
+                    key: user_input[key] for key in _DETAIL_KEYS if key in user_input
+                }
+                self._bands = _renamed(self._prices, prices, self._bands)
+                self._prices = prices
+                if self._bands:
+                    return await self.async_step_bands()
+                return await self.async_step_band()
+            errors[CONF_PRICES] = error
+        suggested = {**self._details}
+        if self._prices:
+            suggested[CONF_PRICES] = self._prices
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(
-                vol.Schema(fields), self._details
+                self._details_schema(), user_input or suggested
             ),
-            description_placeholders={"prices": _price_lines(imports, exports, labels)},
+            errors=errors,
         )
 
-    async def _take_prices(self, user_input: dict[str, Any]) -> SubentryFlowResult:
-        """Re-price the bands from the answers, then review them."""
-        plan = self._plan()
-        copy = repriced(
-            plan,
-            imports=_answered(_IMPORT_FIELD, import_price_groups(plan), user_input),
-            exports=_answered(_EXPORT_FIELD, export_price_groups(plan), user_input),
+    async def _take(self, data: Mapping[str, Any]) -> None:
+        """Start from what a plan's entry holds: its details, prices and bands."""
+        labels = await _common_strings(self.hass)
+        self._details = {key: data[key] for key in _DETAIL_KEYS if key in data}
+        self._prices, self._bands = named_prices(
+            data, labels.get("plan_price_name", "Price {number}")
         )
-        self._details = {
-            key: user_input[key] for key in _DETAIL_KEYS if key in user_input
-        }
-        self._bands = [band_as_data(band) for band in copy.bands]
-        return await self.async_step_bands()
 
     async def async_step_band(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """One band: which days, which hours, and its prices."""
+        """One band: which days, which hours, and which of the plan's prices."""
         errors: dict[str, str] = {}
         if user_input is not None:
             error = self._band_error(user_input)
@@ -269,10 +221,11 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 self._bands.append(user_input)
                 return await self.async_step_bands()
             errors["base"] = error
+        labels = await _common_strings(self.hass)
         return self.async_show_form(
             step_id="band",
             data_schema=self.add_suggested_values_to_schema(
-                _BAND_SCHEMA, user_input or {}
+                self._band_schema(labels), user_input or {}
             ),
             errors=errors,
         )
@@ -289,6 +242,10 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
             ]
             if user_input[_ACTION] == _ADD_BAND:
                 return await self.async_step_band()
+            if user_input[_ACTION] == _EDIT_PRICES:
+                if self.source == "reconfigure":
+                    return await self.async_step_reconfigure()
+                return await self.async_step_details()
             if not self._plan().gaps():
                 return self._save()
             errors["base"] = "plan_incomplete"
@@ -302,11 +259,12 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
 
     def _band_error(self, answers: dict[str, Any]) -> str | None:
         """Why a band cannot join the plan, or ``None`` if it can."""
+        prices = prices_by_name(self._prices)
         try:
-            band = band_from(answers)
+            band = band_from(answers, prices)
         except ValueError:
             return "band_hours"
-        entered = [band_from(existing) for existing in self._bands]
+        entered = [band_from(existing, prices) for existing in self._bands]
         if any(_overlap(band, other) for other in entered):
             return "band_overlaps"
         return None
@@ -315,12 +273,101 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         return tariff_plan_from(self._details.get(CONF_NAME, ""), self._data()).plan
 
     def _data(self) -> dict[str, Any]:
-        return {**self._details, CONF_BANDS: self._bands}
+        return {**self._details, CONF_PRICES: self._prices, CONF_BANDS: self._bands}
 
-    def _review_schema(self, labels: dict[str, str]) -> vol.Schema:
+    def _unit(self) -> str:
+        """What a price is per, in the household's currency."""
+        currency = self._get_entry().data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
+        return f"{currency}/kWh"
+
+    def _details_schema(self) -> vol.Schema:
+        per_kwh = selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                step="any",
+                mode=selector.NumberSelectorMode.BOX,
+                unit_of_measurement=self._unit(),
+            )
+        )
+        return vol.Schema(
+            {
+                vol.Required(CONF_NAME): selector.TextSelector(),
+                vol.Required(CONF_PLAN_CURRENT, default=False): (
+                    selector.BooleanSelector()
+                ),
+                vol.Required(CONF_PLAN_DAILY_CHARGE, default=0): (
+                    selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=0, step="any", mode=selector.NumberSelectorMode.BOX
+                        )
+                    )
+                ),
+                vol.Required(CONF_PLAN_EXPORT_PRICE, default=0): per_kwh,
+                vol.Optional(CONF_PLAN_HOLIDAYS): selector.EntitySelector(
+                    selector.EntitySelectorConfig(domain="calendar")
+                ),
+                vol.Optional(CONF_PRICES): selector.ObjectSelector(
+                    selector.ObjectSelectorConfig(
+                        fields={
+                            CONF_NAME: selector.ObjectSelectorField(
+                                selector=selector.TextSelector().serialize()[
+                                    "selector"
+                                ],
+                                required=True,
+                            ),
+                            CONF_BAND_IMPORT_PRICE: selector.ObjectSelectorField(
+                                selector=per_kwh.serialize()["selector"],
+                                required=True,
+                            ),
+                            CONF_BAND_EXPORT_PRICE: selector.ObjectSelectorField(
+                                selector=per_kwh.serialize()["selector"],
+                            ),
+                        },
+                        multiple=True,
+                        label_field=CONF_NAME,
+                        translation_key="plan_price",
+                    )
+                ),
+            }
+        )
+
+    def _band_schema(self, labels: dict[str, str]) -> vol.Schema:
         options = [
             selector.SelectOptionDict(
-                value=str(index), label=_band_label(band_from(band), labels)
+                value=price[CONF_NAME], label=self._price_label(price, labels)
+            )
+            for price in self._prices
+        ]
+        return vol.Schema(
+            {
+                vol.Required(CONF_BAND_DAYS, default=Days.EVERY_DAY.value): (
+                    selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[days.value for days in Days],
+                            mode=selector.SelectSelectorMode.LIST,
+                            translation_key=CONF_BAND_DAYS,
+                        )
+                    )
+                ),
+                vol.Required(CONF_BAND_START): _HOUR_FROM,
+                vol.Required(CONF_BAND_END): _HOUR_TO,
+                vol.Required(CONF_BAND_PRICE): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=options, mode=selector.SelectSelectorMode.DROPDOWN
+                    )
+                ),
+            }
+        )
+
+    def _review_schema(self, labels: dict[str, str]) -> vol.Schema:
+        prices = prices_by_name(self._prices)
+        options = [
+            selector.SelectOptionDict(
+                value=str(index),
+                label=_band_label(
+                    band_from(band, prices),
+                    self._price_label(prices[band[CONF_BAND_PRICE]], labels),
+                    labels,
+                ),
             )
             for index, band in enumerate(self._bands)
         ]
@@ -337,13 +384,23 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 ),
                 vol.Required(_ACTION, default=_ADD_BAND): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=[_ADD_BAND, _SAVE],
+                        options=[_ADD_BAND, _EDIT_PRICES, _SAVE],
                         mode=selector.SelectSelectorMode.LIST,
                         translation_key="plan_action",
                     )
                 ),
             }
         )
+
+    def _price_label(self, price: Mapping[str, Any], labels: dict[str, str]) -> str:
+        """A price as a band offers it: "Peak (0.31 EUR/kWh, export 0.12 EUR/kWh)"."""
+        unit = self._unit()
+        figures = f"{_figure(price[CONF_BAND_IMPORT_PRICE])} {unit}"
+        export = price.get(CONF_BAND_EXPORT_PRICE)
+        if export is not None:
+            template = labels.get("plan_band_export", "export {price}")
+            figures += f", {template.format(price=f'{_figure(export)} {unit}')}"
+        return f"{price[CONF_NAME]} ({figures})"
 
     def _save(self) -> SubentryFlowResult:
         """Save the plan, making it the only current one if it is current."""
@@ -373,48 +430,49 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_create_entry(title=data[CONF_NAME], data=data)
 
 
-def _numbered(
-    template: str, groups: tuple[PriceGroup, ...]
-) -> list[tuple[str, PriceGroup]]:
-    """Each price group with the field that asks for it."""
-    return [(template.format(n), group) for n, group in enumerate(groups, 1)]
+def _prices_error(prices: list[dict[str, Any]]) -> str | None:
+    """Why a list of prices cannot be a plan's, or ``None`` if it can."""
+    if not prices:
+        return "no_prices"
+    names = [price[CONF_NAME] for price in prices]
+    if len(set(names)) != len(names):
+        return "price_names"
+    return None
 
 
-def _answered(
-    template: str, groups: tuple[PriceGroup, ...], answers: Mapping[str, Any]
-) -> dict[Decimal, Decimal]:
-    """Each group's old price, to the new one typed in its field."""
-    return {
-        group.price: Decimal(str(answers[field]))
-        for field, group in _numbered(template, groups)
-        if field in answers
-    }
+def _renamed(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    bands: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """The bands, each naming its price as the edited list names it.
+
+    A name still in the list is kept. A name gone from it was renamed if the
+    price where it stood now has a name the list did not have before, and the
+    band follows it; otherwise its price was removed, and so is the band.
+    """
+    old: list[str] = [price[CONF_NAME] for price in before]
+    new: list[str] = [price[CONF_NAME] for price in after]
+
+    def renamed(name: str) -> str | None:
+        if name in new:
+            return name
+        index = old.index(name) if name in old else len(new)
+        if index < len(new) and new[index] not in old:
+            return new[index]
+        return None
+
+    kept = []
+    for band in bands:
+        name = renamed(band[CONF_BAND_PRICE])
+        if name is not None:
+            kept.append({**band, CONF_BAND_PRICE: name})
+    return kept
 
 
-def _price_lines(
-    imports: tuple[PriceGroup, ...],
-    exports: tuple[PriceGroup, ...],
-    labels: dict[str, str],
-) -> str:
-    """Which bands each price field covers, a line each, for the step's description."""
-    import_line = labels.get("plan_price_line", "Price {number} ({price}): {where}")
-    export_line = labels.get(
-        "plan_export_line", "Band export price {number} ({price}): {where}"
-    )
-    lines = [
-        template.format(number=n, price=group.price, where=_where(group, labels))
-        for template, groups in ((import_line, imports), (export_line, exports))
-        for n, group in enumerate(groups, 1)
-    ]
-    return "\n".join(lines)
-
-
-def _where(group: PriceGroup, labels: dict[str, str]) -> str:
-    return ", ".join(
-        f"{_label(_DAYS_LABELS[band.days], labels)} "
-        f"{band.start:02d}:00-{band.end:02d}:00"
-        for band in group.bands
-    )
+def _figure(value: object) -> str:
+    """A typed price as the figure typed: 0.31, not its nearest binary float."""
+    return str(Decimal(str(value)))
 
 
 def _overlap(band: Band, other: Band) -> bool:
@@ -437,16 +495,12 @@ def _uncovered(plan: Plan, labels: dict[str, str]) -> str:
     return template.format(hours="\n".join(lines))
 
 
-def _band_label(band: Band, labels: dict[str, str]) -> str:
-    """A band as the review lists it: its days, hours and prices."""
-    label = (
+def _band_label(band: Band, price: str, labels: dict[str, str]) -> str:
+    """A band as the review lists it: its days, hours and price."""
+    return (
         f"{_label(_DAYS_LABELS[band.days], labels)} "
-        f"{band.start:02d}:00-{band.end:02d}:00: {band.import_price}"
+        f"{band.start:02d}:00-{band.end:02d}:00: {price}"
     )
-    if band.export_price is None:
-        return label
-    template = labels.get("plan_band_export", "export {price}")
-    return f"{label}, {template.format(price=band.export_price)}"
 
 
 def _hour_ranges(hours: tuple[int, ...]) -> str:

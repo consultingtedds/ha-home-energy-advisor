@@ -44,17 +44,22 @@ SUBENTRY_TYPE_BATTERY: Final = "battery"
 # meter is two of them, one per register (ADR-0032).
 SUBENTRY_TYPE_GRID: Final = "grid"
 # One config subentry per tariff plan the household compares, the one it is on
-# included: its details, then its time bands, each a mapping of the CONF_BAND_*
-# keys (ADR-0036). Read by the plan comparison only, never by the accounting.
+# included: its details, its named prices, then its time bands, each a mapping of
+# the CONF_BAND_* keys naming the price it charges (ADR-0036, HEA-262). Read by
+# the plan comparison only, never by the accounting.
 SUBENTRY_TYPE_PLAN: Final = "plan"
 CONF_PLAN_CURRENT: Final = "current_plan"
 CONF_PLAN_DAILY_CHARGE: Final = "daily_charge"
 CONF_PLAN_EXPORT_PRICE: Final = "plan_export_price"
 CONF_PLAN_HOLIDAYS: Final = "holiday_calendar"
+# Each a name with an import price and optionally an export price of its own.
+CONF_PRICES: Final = "prices"
 CONF_BANDS: Final = "bands"
 CONF_BAND_DAYS: Final = "days"
 CONF_BAND_START: Final = "start_hour"
 CONF_BAND_END: Final = "end_hour"
+CONF_BAND_PRICE: Final = "price"
+# A price's figures; a band entered before prices were named carries them itself.
 CONF_BAND_IMPORT_PRICE: Final = "import_price"
 CONF_BAND_EXPORT_PRICE: Final = "band_export_price"
 # A price typed as a number rather than read from an entity, as the Energy

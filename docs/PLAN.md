@@ -742,6 +742,11 @@ Carried forward rather than closed:
   and its details and prices are then one screen with a field per distinct price
   rather than per band. Editing a plan is the same screen. Entering a real
   renewal offer band by band, nine bands for three prices, is what prompted it.
+- **HEA-262**: a plan's prices are named, as offers name them, and entered first
+  as a list on the details screen (Home Assistant's object selector); each band
+  picks one by name. Copy and edit change the list, which replaced HEA-259's
+  numbered fields before 1.3.0 went stable. Plans saved by the 1.3.0 betas keep
+  their figures on the bands, read as they are and named when edited.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy

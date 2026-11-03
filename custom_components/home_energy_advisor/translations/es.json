@@ -253,95 +253,52 @@
         },
         "details": {
           "title": "Añadir una tarifa",
-          "description": "Una tarifa para comparar, o la que tienes contratada. Introduce sus precios tal como se publican y después sus franjas horarias, una a una. Cada tarifa se calcula con la electricidad que realmente importaste y exportaste, así que introduce los precios de forma coherente: todos con impuestos o todos sin ellos.",
-          "data": {
-            "name": "Nombre",
-            "current_plan": "Es la tarifa que tengo contratada",
-            "daily_charge": "Cargo diario",
-            "plan_export_price": "Precio de exportación",
-            "holiday_calendar": "Calendario de festivos (opcional)"
-          },
-          "data_description": {
-            "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
-            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
-            "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
-            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que una franja diga otra cosa.",
-            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana."
-          }
-        },
-        "prices": {
-          "title": "Copiar una tarifa",
-          "description": "La copia conserva las franjas horarias de la tarifa de la que viene. Ponle nombre e introduce sus precios: cada precio se pide una sola vez, se aplique donde se aplique. Las franjas aún se pueden cambiar en la pantalla siguiente.\n\n{prices}",
+          "description": "Una tarifa para comparar, o la que tienes contratada. Pon nombre a sus precios como lo hace la oferta, por ejemplo punta, llano y valle, y después introduce sus franjas horarias una a una, cada una con uno de esos precios. Cada tarifa se calcula con la electricidad que realmente importaste y exportaste, así que introduce los precios de forma coherente: todos con impuestos o todos sin ellos.",
           "data": {
             "name": "Nombre",
             "current_plan": "Es la tarifa que tengo contratada",
             "daily_charge": "Cargo diario",
             "plan_export_price": "Precio de exportación",
             "holiday_calendar": "Calendario de festivos (opcional)",
-            "price_1": "Precio 1",
-            "price_2": "Precio 2",
-            "price_3": "Precio 3",
-            "price_4": "Precio 4",
-            "price_5": "Precio 5",
-            "price_6": "Precio 6",
-            "price_7": "Precio 7",
-            "price_8": "Precio 8",
-            "band_export_1": "Precio de exportación de franja 1",
-            "band_export_2": "Precio de exportación de franja 2",
-            "band_export_3": "Precio de exportación de franja 3",
-            "band_export_4": "Precio de exportación de franja 4"
+            "prices": "Precios"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
             "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
-            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que una franja diga otra cosa.",
-            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana."
+            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
+            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana.",
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces."
           }
         },
         "reconfigure": {
           "title": "Editar tarifa",
-          "description": "Cambia los datos y los precios de la tarifa: cada precio se pide una sola vez, se aplique donde se aplique. Sus franjas vienen después.\n\n{prices}",
+          "description": "Cambia los datos y los precios de la tarifa. Un precio al que cambias el nombre conserva sus franjas; un precio que quitas se lleva sus franjas. Las franjas vienen después.",
           "data": {
             "name": "Nombre",
             "current_plan": "Es la tarifa que tengo contratada",
             "daily_charge": "Cargo diario",
             "plan_export_price": "Precio de exportación",
             "holiday_calendar": "Calendario de festivos (opcional)",
-            "price_1": "Precio 1",
-            "price_2": "Precio 2",
-            "price_3": "Precio 3",
-            "price_4": "Precio 4",
-            "price_5": "Precio 5",
-            "price_6": "Precio 6",
-            "price_7": "Precio 7",
-            "price_8": "Precio 8",
-            "band_export_1": "Precio de exportación de franja 1",
-            "band_export_2": "Precio de exportación de franja 2",
-            "band_export_3": "Precio de exportación de franja 3",
-            "band_export_4": "Precio de exportación de franja 4"
+            "prices": "Precios"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
             "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
-            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que una franja diga otra cosa.",
-            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana."
+            "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
+            "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana.",
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces."
           }
         },
         "band": {
           "title": "Añadir una franja horaria",
-          "description": "Un precio para algunas horas de algunos días. Las horas van en formato de 24 horas desde la primera hasta la segunda, así que de 22 a 8 cubre la noche y de 0 a 24 el día entero.",
+          "description": "Algunas horas de algunos días, con uno de los precios de la tarifa. Las horas van en formato de 24 horas desde la primera hasta la segunda, así que de 22 a 8 cubre la noche y de 0 a 24 el día entero.",
           "data": {
             "days": "Días",
             "start_hour": "Desde la hora",
             "end_hour": "Hasta la hora",
-            "import_price": "Precio de importación",
-            "band_export_price": "Precio de exportación (opcional)"
-          },
-          "data_description": {
-            "import_price": "Por kWh importado en estas horas.",
-            "band_export_price": "Por kWh exportado en estas horas, si es distinto del precio de exportación de la tarifa."
+            "price": "Precio"
           }
         },
         "bands": {
@@ -356,7 +313,9 @@
       "error": {
         "band_hours": "Una franja cubre al menos una hora: las dos horas no pueden ser iguales.",
         "band_overlaps": "Esta franja cubre horas que otra franja ya cobra en los mismos días. Cada hora tiene un solo precio, así que cambia las horas o quita la otra franja.",
-        "plan_incomplete": "Algunas horas aún no tienen precio. Añade franjas hasta cubrir todas las horas de un día laborable y de un fin de semana."
+        "plan_incomplete": "Algunas horas aún no tienen precio. Añade franjas hasta cubrir todas las horas de un día laborable y de un fin de semana.",
+        "price_names": "Dos precios tienen el mismo nombre. Dale a cada uno el suyo, para que una franja pueda decir cuál cobra.",
+        "no_prices": "Añade al menos un precio: cada franja cobra uno de ellos."
       }
     },
     "device": {
@@ -480,6 +439,7 @@
     "plan_action": {
       "options": {
         "add_band": "Añadir otra franja",
+        "prices": "Volver a los precios",
         "save": "Guardar la tarifa"
       }
     },
@@ -488,6 +448,19 @@
         "spare_solar": "Sobre todo con la energía solar que la casa no necesita (la mayoría de baterías)",
         "grid_too": "También desde la red, con un horario o mediante un optimizador",
         "solar_only": "Solo con energía solar: la carga desde la red está desactivada"
+      }
+    },
+    "plan_price": {
+      "fields": {
+        "name": {
+          "name": "Nombre"
+        },
+        "import_price": {
+          "name": "Precio de importación"
+        },
+        "band_export_price": {
+          "name": "Precio de exportación (opcional)"
+        }
       }
     }
   },
@@ -702,7 +675,6 @@
     "card_editor_range_column": "Su propia columna",
     "card_still_accruing": "El último intervalo aún se está contando, así que su barra crecerá. Las cifras están completas unos veinte minutos por detrás del reloj, que es el tiempo que se da a los contadores para informar.",
     "plan_start_nothing": "Nada: introducir sus franjas una a una",
-    "plan_price_line": "Precio {number} ({price}): {where}",
-    "plan_export_line": "Precio de exportación de franja {number} ({price}): {where}"
+    "plan_price_name": "Precio {number}"
   }
 }
