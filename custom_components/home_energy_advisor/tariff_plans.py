@@ -82,6 +82,19 @@ def band_from(data: Mapping[str, Any]) -> Band:
     )
 
 
+def band_as_data(band: Band) -> dict[str, Any]:
+    """A band as its entry stores it: the answers one band form would give."""
+    data: dict[str, Any] = {
+        CONF_BAND_DAYS: band.days.value,
+        CONF_BAND_START: band.start,
+        CONF_BAND_END: band.end,
+        CONF_BAND_IMPORT_PRICE: float(band.import_price),
+    }
+    if band.export_price is not None:
+        data[CONF_BAND_EXPORT_PRICE] = float(band.export_price)
+    return data
+
+
 def _decimal(value: object) -> Decimal:
     """A typed price as the figure typed: 0.31, not its nearest binary float."""
     return Decimal(0) if value is None else Decimal(str(value))

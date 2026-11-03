@@ -367,6 +367,15 @@ and the plan can be saved once every hour of a weekday and of a weekend is
 covered. Mark exactly one plan as the one you are on: every other is compared
 with it.
 
+**Copying a plan.** Most offers keep the bands of a plan you have already entered
+and change only the prices. Once you have a plan, **Add tariff plan** asks what to
+start from: choose that plan and the copy keeps its bands, so the next screen is
+just a name and its prices. Each distinct price is asked for once, with the bands
+it applies to listed above the fields, so a three-period plan is three prices
+however many bands it takes. The bands are then shown as usual, and can still be
+changed before saving. The copy is never marked as the plan you are on unless you
+tick it.
+
 **Holidays.** Many time-of-use plans price public holidays as weekends. If yours
 do, add Home Assistant's **Holiday** integration for your country, and choose its
 calendar for the plan. Check which holidays your plan counts: some count only
@@ -387,8 +396,10 @@ Advisor** > three-dot menu > **Reconfigure**. Empty a field to remove that input
 altogether. Each grid meter and each battery is changed or removed on its own
 entry under the integration, with **Edit grid meter** or **Edit battery**. Either
 way the change counts from then on; figures already recorded stay as they are.
-A tariff plan is edited the same way, with **Edit tariff plan**; since it only
-re-prices what was recorded, an edit applies to every period at once.
+A tariff plan is edited the same way, with **Edit tariff plan**: its details and
+prices are one screen, as for a copy, so a renewal at new prices is one edit.
+Since a plan only re-prices what was recorded, an edit applies to every period at
+once.
 
 #### When the Energy Dashboard changes
 

@@ -738,6 +738,10 @@ Carried forward rather than closed:
   first version re-prices the household's real imports and exports at every
   plan, the current one included, on a dashboard card. The no-installation
   baseline for Saved follows on the same plans.
+- **HEA-259**: a tariff plan can start from a copy of another, keeping its bands,
+  and its details and prices are then one screen with a field per distinct price
+  rather than per band. Editing a plan is the same screen. Entering a real
+  renewal offer band by band, nine bands for three prices, is what prompted it.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy

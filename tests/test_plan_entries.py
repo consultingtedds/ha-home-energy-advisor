@@ -122,7 +122,11 @@ async def _enter(
     *bands: dict[str, Any],
 ) -> Any:  # noqa: ANN401 - a flow result
     """Enter a plan's details and these bands, stopping at the review."""
-    result = await _answer(hass, await _start(hass, entry), details)
+    result = await _start(hass, entry)
+    if result["step_id"] == "user":
+        # A household with plans already is asked what to start from first.
+        result = await _answer(hass, result, {"start_from": "none"})
+    result = await _answer(hass, result, details)
     for index, band in enumerate(bands):
         if index:
             result = await _answer(hass, result, _review(result, "add_band"))
@@ -386,3 +390,178 @@ async def test_a_plan_is_edited_by_reconfiguring_it(hass: HomeAssistant) -> None
     plan = plans_of(entry)[plan_id].plan
     assert plan.daily_charge == Decimal("0.52")
     assert plan.bands == (Band(Days.EVERY_DAY, 0, 24, Decimal("0.234")),)
+
+
+# Starting from a copy of another plan (HEA-259)
+
+# The plan the household is on: dear by day on weekdays, with its own export
+# price then, and cheap overnight and all weekend.
+_CURRENT = {
+    **_FLAT,
+    CONF_NAME: "Current plan",
+    CONF_PLAN_HOLIDAYS: "calendar.public_holidays",
+    CONF_BANDS: [_WEEKDAY_PEAK, _WEEKDAY_NIGHT, _REST_DAYS],
+}
+# An offer with the same bands at its own prices.
+_OFFER = {
+    CONF_NAME: "Offer",
+    CONF_PLAN_CURRENT: False,
+    CONF_PLAN_DAILY_CHARGE: 2.87,
+    CONF_PLAN_EXPORT_PRICE: 0.035,
+    CONF_PLAN_HOLIDAYS: "calendar.public_holidays",
+    "price_1": 0.2319,
+    "price_2": 0.1552,
+    "band_export_1": 0.10,
+}
+
+
+async def _copy(hass: HomeAssistant, entry: MockConfigEntry) -> Any:  # noqa: ANN401 - a flow result
+    """Start a plan from a copy of the household's current one."""
+    (source_id,) = plans_of(entry)
+    result = await _start(hass, entry)
+    assert result["step_id"] == "user"
+    return await _answer(hass, result, {"start_from": source_id})
+
+
+async def test_a_plan_can_start_from_a_copy_of_another(hass: HomeAssistant) -> None:
+    # Given - the household's current plan
+    entry = _house(hass, _CURRENT)
+    (source_id,) = plans_of(entry)
+
+    # When - an offer is entered from it: one screen of prices, then the review
+    result = await _copy(hass, entry)
+    assert result["step_id"] == "prices"
+    result = await _answer(hass, result, _OFFER)
+    assert result["step_id"] == "bands"
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - the offer has the current plan's bands at its own prices, and its
+    # holiday calendar
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    offer = next(
+        plan for plan_id, plan in plans_of(entry).items() if plan_id != source_id
+    )
+    assert offer.current is False
+    assert offer.holidays == "calendar.public_holidays"
+    assert offer.plan == Plan(
+        name="Offer",
+        bands=(
+            Band(Days.WEEKDAYS, 8, 22, Decimal("0.2319"), Decimal("0.1")),
+            Band(Days.WEEKDAYS, 22, 8, Decimal("0.1552")),
+            Band(Days.REST_DAYS, 0, 24, Decimal("0.1552")),
+        ),
+        daily_charge=Decimal("2.87"),
+        export_price=Decimal("0.035"),
+    )
+
+
+async def test_the_copy_leaves_the_plan_it_came_from_as_it_was(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _house(hass, _CURRENT)
+    (source_id,) = plans_of(entry)
+    before = plans_of(entry)[source_id]
+
+    # When
+    result = await _answer(hass, await _copy(hass, entry), _OFFER)
+    await _answer(hass, result, _review(result, "save"))
+
+    # Then - still the current plan, at its own prices
+    assert plans_of(entry)[source_id] == before
+
+
+async def test_the_copy_asks_each_price_once_and_says_where_it_applies(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _copy(hass, _house(hass, _CURRENT))
+
+    # Then - one field per price, the overnight and weekend bands sharing one,
+    # each filled in with the price it has now
+    fields = {str(marker): marker for marker in result["data_schema"].schema}
+    assert {"price_1", "price_2", "band_export_1"} <= fields.keys()
+    assert "price_3" not in fields
+    assert [fields[name].default() for name in ("price_1", "price_2")] == [0.31, 0.09]
+    assert result["description_placeholders"]["prices"] == (
+        "Price 1 (0.31): Weekdays 08:00-22:00\n"
+        "Price 2 (0.09): Weekdays 22:00-08:00, Weekends and holidays 00:00-24:00\n"
+        "Band export price 1 (0.12): Weekdays 08:00-22:00"
+    )
+
+
+async def test_the_copy_is_filled_in_from_the_plan_it_came_from(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _copy(hass, _house(hass, _CURRENT))
+
+    # Then - everything but whether it is the plan the household is on, since a
+    # copy is most often an offer being weighed up
+    suggested = {
+        str(marker): marker.description["suggested_value"]
+        for marker in result["data_schema"].schema
+        if marker.description and "suggested_value" in marker.description
+    }
+    assert suggested == {
+        CONF_NAME: "Current plan",
+        CONF_PLAN_CURRENT: False,
+        CONF_PLAN_DAILY_CHARGE: 0.45,
+        CONF_PLAN_EXPORT_PRICE: 0.05,
+        CONF_PLAN_HOLIDAYS: "calendar.public_holidays",
+    }
+
+
+async def test_starting_from_nothing_enters_bands_one_at_a_time(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a household with a plan already, choosing not to copy it
+    result = await _start(hass, _house(hass, _CURRENT))
+
+    # When
+    result = await _answer(hass, result, {"start_from": "none"})
+
+    # Then - the plan's details, and then its first band, as before
+    assert result["step_id"] == "details"
+    result = await _answer(hass, result, {**_FLAT, CONF_NAME: "From scratch"})
+    assert result["step_id"] == "band"
+
+
+async def test_a_first_plan_goes_straight_to_its_details(hass: HomeAssistant) -> None:
+    # Given / When - nothing to copy
+    result = await _start(hass, _house(hass))
+
+    # Then - no question about what to start from
+    assert result["step_id"] == "details"
+
+
+async def test_a_renewal_is_one_screen_of_new_prices(hass: HomeAssistant) -> None:
+    # Given - the current plan, about to be renewed at new prices
+    entry = _house(hass, _CURRENT)
+    (plan_id,) = plans_of(entry)
+
+    # When - edited: its details and prices on one screen, then the review
+    result = await hass.config_entries.subentries.async_init(
+        (entry.entry_id, SUBENTRY_TYPE_PLAN),
+        context={"source": "reconfigure", "subentry_id": plan_id},
+    )
+    placeholders = result["description_placeholders"]
+    assert placeholders is not None
+    assert placeholders["prices"].startswith("Price 1 (0.31)")
+    details = {key: value for key, value in _CURRENT.items() if key != CONF_BANDS}
+    result = await _answer(
+        hass, result, {**details, CONF_PLAN_DAILY_CHARGE: 2.87, "price_1": 0.35}
+    )
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - the same plan, with the new peak price and charge, the overnight
+    # price it kept, and still the one the household is on
+    assert result["reason"] == "reconfigure_successful"
+    plan = plans_of(entry)[plan_id]
+    assert plan.current is True
+    assert plan.plan.daily_charge == Decimal("2.87")
+    assert [band.import_price for band in plan.plan.bands] == [
+        Decimal("0.35"),
+        Decimal("0.09"),
+        Decimal("0.09"),
+    ]

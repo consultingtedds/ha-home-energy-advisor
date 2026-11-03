@@ -246,6 +246,13 @@
       "step": {
         "user": {
           "title": "Add a tariff plan",
+          "description": "Start from a copy of a plan you have already entered, when the new one shares its time bands and differs only in price. Or start from nothing and enter its bands one at a time.",
+          "data": {
+            "start_from": "Start from"
+          }
+        },
+        "details": {
+          "title": "Add a tariff plan",
           "description": "A plan to compare, or the one you are on. Enter its prices as they are published, then its time bands one at a time. Every plan is priced against the electricity you actually imported and exported, so enter prices consistently: all with tax or all without.",
           "data": {
             "name": "Name",
@@ -262,15 +269,57 @@
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
           }
         },
-        "reconfigure": {
-          "title": "Edit tariff plan",
-          "description": "Change the plan's details. Its bands come next.",
+        "prices": {
+          "title": "Copy a tariff plan",
+          "description": "The copy keeps the time bands of the plan it came from. Name it and enter its prices: each price is asked for once, wherever it applies. The bands can still be changed on the next screen.\n\n{prices}",
           "data": {
             "name": "Name",
             "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
-            "holiday_calendar": "Holiday calendar (optional)"
+            "holiday_calendar": "Holiday calendar (optional)",
+            "price_1": "Price 1",
+            "price_2": "Price 2",
+            "price_3": "Price 3",
+            "price_4": "Price 4",
+            "price_5": "Price 5",
+            "price_6": "Price 6",
+            "price_7": "Price 7",
+            "price_8": "Price 8",
+            "band_export_1": "Band export price 1",
+            "band_export_2": "Band export price 2",
+            "band_export_3": "Band export price 3",
+            "band_export_4": "Band export price 4"
+          },
+          "data_description": {
+            "name": "How this plan appears on the comparison card.",
+            "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on.",
+            "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "plan_export_price": "What the plan pays per kWh exported, unless a band says otherwise.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days."
+          }
+        },
+        "reconfigure": {
+          "title": "Edit tariff plan",
+          "description": "Change the plan's details and prices: each price is asked for once, wherever it applies. Its bands come next.\n\n{prices}",
+          "data": {
+            "name": "Name",
+            "current_plan": "This is the plan I am on",
+            "daily_charge": "Daily charge",
+            "plan_export_price": "Export price",
+            "holiday_calendar": "Holiday calendar (optional)",
+            "price_1": "Price 1",
+            "price_2": "Price 2",
+            "price_3": "Price 3",
+            "price_4": "Price 4",
+            "price_5": "Price 5",
+            "price_6": "Price 6",
+            "price_7": "Price 7",
+            "price_8": "Price 8",
+            "band_export_1": "Band export price 1",
+            "band_export_2": "Band export price 2",
+            "band_export_3": "Band export price 3",
+            "band_export_4": "Band export price 4"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
@@ -651,6 +700,9 @@
     "card_editor_range_auto": "Automatic: a column where there is room",
     "card_editor_range_rollover": "A rollover on Paid",
     "card_editor_range_column": "Its own column",
-    "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report."
+    "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report.",
+    "plan_start_nothing": "Nothing: enter its bands one at a time",
+    "plan_price_line": "Price {number} ({price}): {where}",
+    "plan_export_line": "Band export price {number} ({price}): {where}"
   }
 }
