@@ -26,8 +26,12 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Plan,
     PlanCost,
     PlanGap,
+    PriceGroup,
     days_covered,
+    export_price_groups,
+    import_price_groups,
     price_plan,
+    repriced,
 )
 
 LOCAL = ZoneInfo("Europe/Madrid")
@@ -307,3 +311,106 @@ def test_a_band_must_cover_whole_hours_of_one_day(start: int, end: int) -> None:
     # When / Then - hours run 0 to 24, and a band covers at least one
     with pytest.raises(ValueError, match="hours"):
         Band(Days.EVERY_DAY, start, end, PEAK)
+
+
+# Copying a plan: its prices, grouped, and re-priced (HEA-259)
+
+
+def test_bands_sharing_an_import_price_are_one_group_in_the_order_first_met() -> None:
+    # Given / When - the three-band plan: off-peak overnight and all weekend,
+    # shoulder either side of the peaks, peak twice a day
+    groups = import_price_groups(TIME_OF_USE)
+
+    # Then - one group per price a household would type, each naming its bands
+    weekday = Days.WEEKDAYS
+    assert groups == (
+        PriceGroup(
+            OFF_PEAK,
+            (Band(weekday, 0, 8, OFF_PEAK), Band(Days.REST_DAYS, 0, 24, OFF_PEAK)),
+        ),
+        PriceGroup(
+            SHOULDER,
+            (
+                Band(weekday, 8, 10, SHOULDER),
+                Band(weekday, 14, 18, SHOULDER),
+                Band(weekday, 22, 24, SHOULDER),
+            ),
+        ),
+        PriceGroup(PEAK, (Band(weekday, 10, 14, PEAK), Band(weekday, 18, 22, PEAK))),
+    )
+
+
+def test_only_a_band_with_its_own_export_price_has_an_export_group() -> None:
+    # Given - export pays 0.12 around midday on its own band, the plan's price
+    # otherwise
+    midday = Band(Days.EVERY_DAY, 11, 15, OFF_PEAK, export_price=Decimal("0.12"))
+    paying = Plan(
+        name="Midday export",
+        bands=(
+            Band(Days.EVERY_DAY, 0, 11, OFF_PEAK),
+            midday,
+            Band(Days.EVERY_DAY, 15, 24, OFF_PEAK),
+        ),
+        export_price=Decimal("0.04"),
+    )
+
+    # When / Then - the plan's own export price is a field of its own already
+    assert export_price_groups(paying) == (PriceGroup(Decimal("0.12"), (midday,)),)
+    assert export_price_groups(TIME_OF_USE) == ()
+
+
+def test_a_copy_is_repriced_group_by_group_and_keeps_its_bands() -> None:
+    # Given - the offer's three new prices
+    new_prices = {
+        OFF_PEAK: Decimal("0.1552"),
+        SHOULDER: Decimal("0.1672"),
+        PEAK: Decimal("0.2319"),
+    }
+
+    # When
+    copy = repriced(TIME_OF_USE, imports=new_prices, exports={})
+
+    # Then - every band at its group's new price, hours and days untouched
+    assert [(band.days, band.start, band.end) for band in copy.bands] == [
+        (band.days, band.start, band.end) for band in TIME_OF_USE.bands
+    ]
+    assert [band.import_price for band in copy.bands] == [
+        new_prices[band.import_price] for band in TIME_OF_USE.bands
+    ]
+    assert copy.gaps() == ()
+
+
+def test_a_price_left_out_of_the_new_prices_stays_as_it_was() -> None:
+    # Given / When - only the peak price changes
+    copy = repriced(TIME_OF_USE, imports={PEAK: Decimal("0.35")}, exports={})
+
+    # Then
+    assert import_price_groups(copy) == (
+        import_price_groups(TIME_OF_USE)[0],
+        import_price_groups(TIME_OF_USE)[1],
+        PriceGroup(
+            Decimal("0.35"),
+            (
+                Band(Days.WEEKDAYS, 10, 14, Decimal("0.35")),
+                Band(Days.WEEKDAYS, 18, 22, Decimal("0.35")),
+            ),
+        ),
+    )
+
+
+def test_a_bands_own_export_price_is_repriced_too() -> None:
+    # Given
+    paying = Plan(
+        name="Midday export",
+        bands=(
+            Band(Days.EVERY_DAY, 0, 11, OFF_PEAK),
+            Band(Days.EVERY_DAY, 11, 15, OFF_PEAK, export_price=Decimal("0.12")),
+            Band(Days.EVERY_DAY, 15, 24, OFF_PEAK),
+        ),
+    )
+
+    # When
+    copy = repriced(paying, imports={}, exports={Decimal("0.12"): Decimal("0.10")})
+
+    # Then - and the bands without one still have none
+    assert [band.export_price for band in copy.bands] == [None, Decimal("0.10"), None]

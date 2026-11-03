@@ -16,14 +16,14 @@ would be a guess.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Collection, Iterable
+    from collections.abc import Callable, Collection, Iterable, Mapping
 
 _HOURS_IN_A_DAY = 24
 _SATURDAY = 5
@@ -136,6 +136,78 @@ class Plan:
         return next(
             band for band in self.bands if band.applies_to(kind) and hour in band.hours
         )
+
+
+@dataclass(frozen=True)
+class PriceGroup:
+    """One price a plan charges, and every band that charges it (HEA-259).
+
+    What a household types when copying a plan: an offer that shares a plan's
+    bands differs from it in a handful of prices, not in its bands, so each
+    distinct price is asked for once however many bands carry it.
+    """
+
+    price: Decimal
+    bands: tuple[Band, ...]
+
+
+def import_price_groups(plan: Plan) -> tuple[PriceGroup, ...]:
+    """The plan's distinct import prices, in the order its bands first use them."""
+    return _grouped(plan.bands, lambda band: band.import_price)
+
+
+def export_price_groups(plan: Plan) -> tuple[PriceGroup, ...]:
+    """The distinct export prices bands carry of their own.
+
+    A band without one pays the plan's export price, which is a figure of the
+    plan's already, so it forms no group.
+    """
+    return _grouped(
+        tuple(band for band in plan.bands if band.export_price is not None),
+        lambda band: band.export_price,
+    )
+
+
+def repriced(
+    plan: Plan,
+    *,
+    imports: Mapping[Decimal, Decimal],
+    exports: Mapping[Decimal, Decimal],
+) -> Plan:
+    """The plan with each old price replaced by its new one, bands unchanged.
+
+    A price not in the maps is kept, so a copy changes only what was given.
+    """
+    return Plan(
+        name=plan.name,
+        daily_charge=plan.daily_charge,
+        export_price=plan.export_price,
+        bands=tuple(
+            replace(
+                band,
+                import_price=imports.get(band.import_price, band.import_price),
+                export_price=(
+                    None
+                    if band.export_price is None
+                    else exports.get(band.export_price, band.export_price)
+                ),
+            )
+            for band in plan.bands
+        ),
+    )
+
+
+def _grouped(
+    bands: tuple[Band, ...], price_of: Callable[[Band], Decimal | None]
+) -> tuple[PriceGroup, ...]:
+    grouped: dict[Decimal, list[Band]] = {}
+    for band in bands:
+        price = price_of(band)
+        if price is not None:
+            grouped.setdefault(price, []).append(band)
+    return tuple(
+        PriceGroup(price, tuple(members)) for price, members in grouped.items()
+    )
 
 
 @dataclass(frozen=True)
