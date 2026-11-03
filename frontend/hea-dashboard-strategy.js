@@ -145,10 +145,9 @@ const nothingTracked = (hass) => ({
 });
 
 /**
- * The tariff plan comparison, in a section of its own after everything else,
- * where a household has entered a plan to compare (HEA-255). Full width: it is a
- * whole-home answer of its own, and the section moves to a tab of its own when
- * the dashboard has tabs (HEA-257).
+ * The tariff plan comparison, where a household has entered a plan to compare
+ * (HEA-255): a tab of its own on the dashboard, and a full-width section after
+ * everything else on the single page (HEA-257).
  */
 const PLANS = { type: "custom:hea-plans-card" };
 
@@ -166,39 +165,97 @@ const hasPlans = async (hass) => {
   }
 };
 
-const heaView = (hass, withPlans) => {
+/**
+ * A page of sections with the pinned controls. A section left with no card,
+ * because none of its cards applies to this home, is dropped rather than drawn.
+ * Home Assistant stacks sections on a narrow screen, so on a phone a page is
+ * one column in this order.
+ */
+const page = (sections) => ({
+  type: "sections",
+  max_columns: MAX_COLUMNS,
+  sections: sections.filter((built) => built.cards.length > 0),
+  footer: footer(),
+});
+
+/**
+ * Every card on one page: the view a household adds to a dashboard of their
+ * own, which cannot hold tabs (HEA-257). Unchanged from before the dashboard
+ * had them, so nothing on such a page goes missing on upgrade.
+ */
+const onePage = (hass, withPlans) => {
   if (readDevices(hass).length === 0) return nothingTracked(hass);
   const gridOnly = isAGridOnlyHome(hass);
-  return {
-    type: "sections",
-    max_columns: MAX_COLUMNS,
-    // Home Assistant stacks sections on a narrow screen, so on a phone this
-    // is one column in this order, exactly as before.
-    sections: [
-      section(HEADLINE, MAX_COLUMNS),
-      section(forSources(FIGURES, gridOnly), MAX_COLUMNS / 2),
-      section(forSources(chartsFor(hass), gridOnly), MAX_COLUMNS / 2),
-      ...(withPlans ? [section([PLANS], MAX_COLUMNS)] : []),
-    ],
-    footer: footer(),
-  };
+  return page([
+    section(HEADLINE, MAX_COLUMNS),
+    section(forSources(FIGURES, gridOnly), MAX_COLUMNS / 2),
+    section(forSources(chartsFor(hass), gridOnly), MAX_COLUMNS / 2),
+    ...(withPlans ? [section([PLANS], MAX_COLUMNS)] : []),
+  ]);
+};
+
+const [TOTALS, DEVICES_TABLE] = HEADLINE;
+const [COST_OVER_TIME, SOURCES] = FIGURES;
+const [DEVICE_COSTS, DISTRIBUTION, SELF_SUFFICIENCY] = CHARTS;
+
+/** One tab: a page with the path it is linked by and a translated name. */
+const tab = (hass, { path, titleKey, icon }, sections) => ({
+  ...page(sections),
+  path,
+  title: labelsFor(hass)[titleKey],
+  icon,
+});
+
+/**
+ * The dashboard's tabs (HEA-257, GitHub discussion 58): the whole-home answers
+ * first, the per-device detail behind them, and the plan comparison on a tab of
+ * its own once there is a plan. The summary is first, so the dashboard's old
+ * `/0` address still opens it. Each tab pins the same controls, and the picker
+ * keys its period to the dashboard rather than the tab, so a period picked on
+ * one is still picked on the next.
+ */
+const tabs = (hass, withPlans) => {
+  if (readDevices(hass).length === 0) return [nothingTracked(hass)];
+  const gridOnly = isAGridOnlyHome(hass);
+  const installation = hasAnInstallation(hass, readWholeHome(hass)) ? [INSTALLATION] : [];
+  const views = [
+    tab(hass, { path: "summary", titleKey: "tab_summary", icon: "mdi:view-dashboard" }, [
+      section([TOTALS], MAX_COLUMNS),
+      section([COST_OVER_TIME, ...installation], MAX_COLUMNS / 2),
+      section(forSources([DISTRIBUTION, SELF_SUFFICIENCY], gridOnly), MAX_COLUMNS / 2),
+    ]),
+    tab(hass, { path: "devices", titleKey: "tab_devices", icon: "mdi:format-list-bulleted" }, [
+      section([DEVICES_TABLE], MAX_COLUMNS),
+      section([DEVICE_COSTS], MAX_COLUMNS / 2),
+      section(forSources([SOURCES], gridOnly), MAX_COLUMNS / 2),
+    ]),
+  ];
+  if (withPlans) {
+    views.push(
+      tab(hass, { path: "tariffs", titleKey: "tab_tariffs", icon: "mdi:cash-multiple" }, [
+        section([PLANS], MAX_COLUMNS),
+      ]),
+    );
+  }
+  return views;
 };
 
 /**
- * Generate the view, once the household's own words are available.
+ * What every generation needs first: the household's own words, and whether it
+ * has a plan to compare.
  *
  * The labels are awaited rather than read synchronously because a strategy runs
  * once per load and has nowhere to re-render from: a card can paint English and
  * correct itself, and this cannot.
  */
-const generateView = async (hass) => {
+const prepare = async (hass) => {
   const [, withPlans] = await Promise.all([loadLabels(hass), hasPlans(hass)]);
-  return heaView(hass, withPlans);
+  return withPlans;
 };
 
 class HeaDashboardStrategy extends HTMLElement {
   static async generate(_config, hass) {
-    return { views: [await generateView(hass)] };
+    return { views: tabs(hass, await prepare(hass)) };
   }
 
   /** There is nothing to configure, so offer no editor for it. */
@@ -223,7 +280,7 @@ class HeaDashboardStrategy extends HTMLElement {
 
 class HeaViewStrategy extends HTMLElement {
   static async generate(_config, hass) {
-    return generateView(hass);
+    return onePage(hass, await prepare(hass));
   }
 }
 

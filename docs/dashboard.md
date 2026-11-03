@@ -14,9 +14,18 @@ Three routes, depending on how much of your dashboard you want it to be.
 **Settings → Dashboards → Add dashboard → Home Energy Advisor**, under
 *Community dashboards*. The title, icon and url are filled in; press **Create**.
 
-That gives you every card, laid out, over your own devices. It is generated each
-time the page loads rather than saved, so a device you add next month appears
-without you touching it, and an upgrade brings the current layout with it.
+That gives you every card, laid out over your own devices on three tabs:
+
+- **Summary**: the totals, cost over time, where the cost went, and, where they
+  apply, self-sufficiency and what your installation earned.
+- **Devices**: the table of what each device cost, the chart of it, and where
+  each device's energy came from.
+- **Tariffs**: the plan comparison, once you have entered a tariff plan.
+
+The period you pick stays picked as you move between tabs. The dashboard is
+generated each time the page loads rather than saved, so a device you add next
+month appears without you touching it, and an upgrade brings the current layout
+with it.
 
 If you later want to change something, use Home Assistant's own **Take control**
 (⋮ → Edit dashboard → ⋮ → Take control). That converts the generated layout into
@@ -32,9 +41,10 @@ strategy:
   type: custom:hea
 ```
 
-Same page, same generated layout, living inside your dashboard. Home Assistant
-has no picker for view strategies yet, which is the only reason this one needs
-YAML at all.
+The same cards as the dashboard's three tabs, generated in the same way, on one
+page inside your dashboard, since a single page cannot hold tabs of its own.
+Home Assistant has no picker for view strategies yet, which is the only reason
+this one needs YAML at all.
 
 ### Individual cards, anywhere
 
@@ -178,7 +188,7 @@ leaves daily charges out and is worked out device by device. The README's
 assumes.
 
 For the whole home, so the filter does not narrow this card. It appears on the
-generated dashboard once you have entered a plan, at the end of the page. No
+generated dashboard once you have entered a plan, on a Tariffs tab of its own. No
 options beyond the two every card takes.
 
 ### Filter

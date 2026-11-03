@@ -56,6 +56,68 @@ export async function strandedCards(page, { attempts = 30 } = {}) {
 }
 
 /**
+ * Which of the dashboard's tabs carries each card (HEA-257). The filter sits in
+ * the pinned footer of every tab, so it is on whichever is open.
+ */
+const TAB_OF = {
+  "hea-totals-card": "summary",
+  "hea-cost-over-time-card": "summary",
+  "hea-distribution-card": "summary",
+  "hea-self-sufficiency-card": "summary",
+  "hea-installation-card": "summary",
+  "hea-devices-card": "devices",
+  "hea-device-costs-card": "devices",
+  "hea-sources-card": "devices",
+  "hea-plans-card": "tariffs",
+};
+
+/** Long enough for a tab's cards to be built and fetch their figures. */
+const CARD_PATIENCE_MS = 30000;
+
+/**
+ * Open the tab a card is on, and wait for that card to finish loading.
+ *
+ * Switched the way Home Assistant's own tabs switch, by pushing the path and
+ * announcing it, never by loading the url: a load would rebuild the page and
+ * throw away the period the picker was stepped to, which is exactly what a
+ * household moving between tabs keeps.
+ */
+export async function showCard(page, dashboardPath, card) {
+  const tab = TAB_OF[card];
+  if (tab) {
+    const wanted = `/${dashboardPath}/${tab}`;
+    if (new URL(page.url()).pathname !== wanted) {
+      await page.evaluate((path) => {
+        history.pushState(null, "", path);
+        window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+      }, wanted);
+    }
+  }
+  const host = page.locator(card).first();
+  await host.waitFor({ state: "attached", timeout: CARD_PATIENCE_MS });
+  // Only a card with figures loads anything; the filter is drawn at once and
+  // carries no loading state to wait on.
+  if (!tab) return;
+  const deadline = Date.now() + CARD_PATIENCE_MS;
+  while (Date.now() < deadline) {
+    const state = await host.evaluate(
+      (element) => element.shadowRoot?.querySelector("[data-state]")?.dataset.state,
+    );
+    if (state && state !== "loading") return;
+    await page.waitForTimeout(500);
+  }
+  throw new Error(`<${card}> was still loading after ${CARD_PATIENCE_MS / 1000}s`);
+}
+
+/** The period a card says it is showing, as its caption words it. */
+export async function periodShown(page, card) {
+  return page
+    .locator(card)
+    .first()
+    .evaluate((element) => element.shadowRoot?.querySelector(".period")?.textContent?.trim());
+}
+
+/**
  * All the text one card renders, shadow roots included.
  *
  * A card is a custom element, so everything it draws lives in a shadow root and

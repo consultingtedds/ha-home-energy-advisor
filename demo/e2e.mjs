@@ -38,8 +38,10 @@ import {
 } from "./ha-client.mjs";
 import { BATTERIES, DEVICES } from "./house.mjs";
 import {
-  cardText,
-  chartSeriesNames,
+  cardText as textOnPage,
+  chartSeriesNames as seriesOnPage,
+  periodShown,
+  showCard,
   stepBackOneDay,
   strandedCards,
 } from "./browser.mjs";
@@ -51,6 +53,21 @@ import {
 
 const DASHBOARD_PATH = "home-energy-advisor";
 const VIEWPORT = { width: 1600, height: 1200 };
+
+/**
+ * A card's text and chart series, read on the tab it lives on (HEA-257). Every
+ * check reads through these, so none can conclude a card is empty because it
+ * looked on the wrong tab.
+ */
+const cardText = async (page, card) => {
+  await showCard(page, DASHBOARD_PATH, card);
+  return textOnPage(page, card);
+};
+
+const chartSeriesNames = async (page, card) => {
+  await showCard(page, DASHBOARD_PATH, card);
+  return seriesOnPage(page, card);
+};
 
 /** A phone in portrait, below the width at which the cards turn narrow. */
 const PHONE = { width: 390, height: 844 };
@@ -295,10 +312,13 @@ async function dashboardChecks(page) {
 
   for (const card of CARDS) {
     await check(`${card} is laid out by the strategy`, async () => {
+      await showCard(page, DASHBOARD_PATH, card);
       const count = await page.locator(card).count();
-      assert(count > 0, `no <${card}> on the dashboard`);
+      assert(count > 0, `no <${card}> on its tab of the dashboard`);
     });
   }
+  // Back to the summary, where the period checks start, as a household lands.
+  await showCard(page, DASHBOARD_PATH, "hea-totals-card");
   console.log("");
 }
 
@@ -339,6 +359,30 @@ async function periodChecks(page) {
     await stepBackOneDay(page);
     console.log("  ok    stepped back to the last complete day");
   }
+
+  // The picker keys its period to the dashboard, not the tab (HEA-257). A tab
+  // that started again on today would show a household figures for a day other
+  // than the one it picked, every one of them real.
+  await check("the period picked on the summary carries to the devices tab", async () => {
+    const onSummary = await periodShown(page, "hea-totals-card");
+    await showCard(page, DASHBOARD_PATH, "hea-devices-card");
+    // The devices tab was opened once already, before the step back, so its
+    // card says "ready" for the period it had then and catches up a moment after
+    // it is shown again. Waited for, with a deadline: a card that never catches
+    // up is the failure this check exists for.
+    let onDevices = await periodShown(page, "hea-devices-card");
+    for (let waited = 0; onDevices !== onSummary && waited < 10000; waited += 500) {
+      await page.waitForTimeout(500);
+      onDevices = await periodShown(page, "hea-devices-card");
+    }
+    assert(
+      onSummary && onSummary === onDevices,
+      `the summary shows ${JSON.stringify(onSummary)}, the devices tab ` +
+        `${JSON.stringify(onDevices)}`,
+    );
+    const stranded = await strandedCards(page);
+    assert(stranded === 0, `${stranded} cards on the devices tab never found the picker`);
+  });
   console.log("");
 }
 
@@ -465,9 +509,12 @@ async function figureChecks(page) {
     }
   });
 
-  await check("no card renders the empty-period message", async () => {
-    const empty = await page.getByText("No cost recorded in this period").count();
-    assert(empty === 0, "a card reported an empty period against a seeded week");
+  await check("no card on either tab renders the empty-period message", async () => {
+    for (const card of ["hea-totals-card", "hea-devices-card"]) {
+      await showCard(page, DASHBOARD_PATH, card);
+      const empty = await page.getByText("No cost recorded in this period").count();
+      assert(empty === 0, `a card beside ${card} reported an empty period against a seeded week`);
+    }
   });
   console.log("");
 
@@ -491,6 +538,7 @@ async function figureChecks(page) {
  */
 async function costRangeChecks(page) {
   console.log("The cost range:");
+  await showCard(page, DASHBOARD_PATH, "hea-devices-card");
 
   // Where the table has room the range is a column of its own, and where it has
   // not it moves behind Paid (HEA-224). The heading is matched by its shape -

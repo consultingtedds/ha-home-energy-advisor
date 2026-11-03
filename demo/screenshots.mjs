@@ -22,7 +22,7 @@ import { chromium } from "playwright";
 
 import { DEVICES, HOUSE } from "./house.mjs";
 import { BASE_URL, HaSocket, browserTokens, freshAuth } from "./ha-client.mjs";
-import { clickIconButton, stepBackOneDay, strandedCards } from "./browser.mjs";
+import { clickIconButton, showCard, stepBackOneDay, strandedCards } from "./browser.mjs";
 
 /** Where the generated dashboard lives, as the strategy names it. */
 const DASHBOARD_PATH = "home-energy-advisor";
@@ -383,6 +383,8 @@ async function captureCards(browser, tokens) {
   await shot(page, "dashboard");
 
   for (const [tag, name] of CARDS) {
+    // On the tab it lives on, which keeps the period stepped to above (HEA-257).
+    await showCard(page, DASHBOARD_PATH, tag).catch(() => {});
     const card = page.locator(tag).first();
     if ((await card.count()) === 0) {
       console.log(`  ${tag} is not on the page`);

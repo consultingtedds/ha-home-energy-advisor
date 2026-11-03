@@ -439,9 +439,12 @@ Go to **Settings** > **Dashboards** > **Add dashboard**, and choose **Home
 Energy Advisor** under *Community dashboards*. The title, icon and url are
 filled in. Select **Create**.
 
-That gives you every card, laid out, over your own devices. It is built each
-time the page loads rather than saved, so a device you add next month appears on
-its own and an upgrade brings the current layout with it.
+That gives you every card, laid out over your own devices on three tabs:
+**Summary** for the whole home, **Devices** for what each device cost, and
+**Tariffs** for the plan comparison once you have entered a plan. The period you
+pick stays picked as you move between them. It is built each time the page loads
+rather than saved, so a device you add next month appears on its own and an
+upgrade brings the current layout with it.
 
 **It is not locked.** If you want to change it, Home Assistant's own **Take
 control** (three-dot menu > **Edit dashboard** > three-dot menu > **Take
@@ -458,8 +461,9 @@ Two other ways in, if a dashboard of its own is not what you want:
     type: custom:hea
   ```
 
-  This is the one route that needs YAML, only because Home Assistant has no
-  picker for view strategies yet.
+  It carries every card on one page, since a page cannot hold tabs. This is
+  the one route that needs YAML, only because Home Assistant has no picker for
+  view strategies yet.
 
 - **Individual cards.** They are all in the card picker under **Home Energy
   Advisor**, and can go in any view you like. A card with no options set shows
