@@ -747,6 +747,12 @@ Carried forward rather than closed:
   picks one by name. Copy and edit change the list, which replaced HEA-259's
   numbered fields before 1.3.0 went stable. Plans saved by the 1.3.0 betas keep
   their figures on the bands, read as they are and named when edited.
+- **HEA-260** (discussion 58, ADR-0037): a plan's import, and separately its
+  export, can follow a market price entity (Amber, Localvolts, Flow Power).
+  Priced five minutes at a time where the recorder keeps 5-minute statistics,
+  hourly means before; a gap carries the last price, and a plan is priced from
+  the market's first recorded price. Released as a beta first; pricing the
+  accounting itself from the current plan follows as HEA-267.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy

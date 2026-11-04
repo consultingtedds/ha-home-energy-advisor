@@ -38,7 +38,9 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PRICES,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -781,3 +783,100 @@ async def test_a_plan_without_named_prices_is_given_names_when_edited(
     result = await _answer(hass, result, _review(result, "save"))
     assert entry.subentries[plan_id].data[CONF_BANDS] == _CURRENT[CONF_BANDS]
     assert plans_of(entry)[plan_id].plan == _CURRENT_PLAN
+
+
+# Plans priced from a market price entity (HEA-260, ADR-0037)
+
+# A wholesale plan: import at the market, a flat feed-in, and a daily charge.
+_WHOLESALE = {
+    CONF_NAME: "Wholesale",
+    CONF_PLAN_CURRENT: False,
+    CONF_PLAN_DAILY_CHARGE: 1.10,
+    CONF_PLAN_EXPORT_PRICE: 0.05,
+    CONF_PLAN_IMPORT_PRICE_ENTITY: "sensor.market_import",
+}
+
+
+async def test_a_plan_importing_at_the_market_is_saved_from_its_details_alone(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - the market's price instead of prices and bands
+    entry = _house(hass)
+    result = await _answer(hass, await _start(hass, entry), _WHOLESALE)
+
+    # Then - nothing to price by the hour, so nothing more to ask
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (plan,) = plans_of(entry).values()
+    assert plan.import_entity == "sensor.market_import"
+    assert plan.plan == Plan(
+        name="Wholesale",
+        bands=(),
+        daily_charge=Decimal("1.1"),
+        export_price=Decimal("0.05"),
+        import_per_interval=True,
+    )
+
+
+async def test_prices_given_beside_a_market_import_are_not_kept(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a copy of a banded plan switched to the market
+    entry = _house(hass)
+    await _answer(hass, await _start(hass, entry), {**_WHOLESALE, CONF_PRICES: [_PEAK]})
+
+    # Then - a plan importing at the market has no prices of its own to keep
+    (subentry,) = entry.subentries.values()
+    assert subentry.data.get(CONF_PRICES, []) == []
+    assert subentry.data.get(CONF_BANDS, []) == []
+
+
+async def test_a_banded_plan_can_export_at_the_market(hass: HomeAssistant) -> None:
+    # Given - the current plan's prices and bands, with its feed-in following
+    # the market
+    entry = _house(hass)
+    result = await _enter(
+        hass,
+        entry,
+        {**_DETAILS, CONF_PLAN_EXPORT_PRICE_ENTITY: "sensor.market_export"},
+        _WEEKDAY_PEAK,
+        _WEEKDAY_NIGHT,
+        _REST_DAYS,
+    )
+
+    # When
+    await _answer(hass, result, _review(result, "save"))
+
+    # Then - its bands price import, the market its export
+    (plan,) = plans_of(entry).values()
+    assert plan.export_entity == "sensor.market_export"
+    assert plan.plan.bands == _CURRENT_PLAN.bands
+    assert plan.plan.export_per_interval is True
+
+
+async def test_a_market_plan_is_edited_from_its_details_alone(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _house(hass, _WHOLESALE)
+    (plan_id,) = plans_of(entry)
+
+    # When - its daily charge changed
+    result = await _edit(hass, entry, plan_id)
+    assert _suggested(result)[CONF_PLAN_IMPORT_PRICE_ENTITY] == "sensor.market_import"
+    result = await _answer(hass, result, {**_WHOLESALE, CONF_PLAN_DAILY_CHARGE: 1.25})
+
+    # Then - saved, still at the market
+    assert result["reason"] == "reconfigure_successful"
+    plan = plans_of(entry)[plan_id]
+    assert plan.plan.daily_charge == Decimal("1.25")
+    assert plan.import_entity == "sensor.market_import"
+
+
+async def test_a_copy_of_a_market_plan_follows_the_same_market(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _copy(hass, _house(hass, _WHOLESALE))
+
+    # Then
+    assert _suggested(result)[CONF_PLAN_IMPORT_PRICE_ENTITY] == "sensor.market_import"

@@ -259,16 +259,20 @@
             "current_plan": "Es la tarifa que tengo contratada",
             "daily_charge": "Cargo diario",
             "plan_export_price": "Precio de exportación",
+            "export_price_entity": "Precio de exportación de mercado (opcional)",
             "holiday_calendar": "Calendario de festivos (opcional)",
+            "import_price_entity": "Precio de importación de mercado (opcional)",
             "prices": "Precios"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
-            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
+            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada. No cambia cómo se calculan tus costes: esos siguen usando los precios de tus contadores de red.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
             "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
+            "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana.",
-            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces."
+            "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces. Deja la lista vacía para una tarifa que importa a precio de mercado."
           }
         },
         "reconfigure": {
@@ -279,16 +283,20 @@
             "current_plan": "Es la tarifa que tengo contratada",
             "daily_charge": "Cargo diario",
             "plan_export_price": "Precio de exportación",
+            "export_price_entity": "Precio de exportación de mercado (opcional)",
             "holiday_calendar": "Calendario de festivos (opcional)",
+            "import_price_entity": "Precio de importación de mercado (opcional)",
             "prices": "Precios"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
-            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada.",
+            "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada. No cambia cómo se calculan tus costes: esos siguen usando los precios de tus contadores de red.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
             "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
+            "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran como fin de semana.",
-            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces."
+            "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces. Deja la lista vacía para una tarifa que importa a precio de mercado."
           }
         },
         "band": {

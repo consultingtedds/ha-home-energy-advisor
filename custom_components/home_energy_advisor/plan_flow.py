@@ -19,6 +19,10 @@ plan is that same screen, so a renewal at new prices is a change to the list.
 A price renamed where it stands in the list keeps its bands; a price removed
 takes its bands with it, and the review says which hours that leaves.
 
+A plan can instead import, and separately export, at a market price entity
+(ADR-0037). A plan importing at one has no prices or bands, so its details are
+all there is to enter.
+
 Exactly one plan is the household's current plan, which every other is compared
 with, so saving one as current makes the previous one not.
 """
@@ -44,7 +48,9 @@ from .const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PRICES,
     DEFAULT_CURRENCY,
     DOMAIN,
@@ -77,7 +83,13 @@ _DETAIL_KEYS = (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ENTITY,
+)
+# A market price, as the accounting takes one (ADR-0037).
+_MARKET_PRICE = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain=["sensor", "input_number"])
 )
 
 # A price per kWh, or per day, as it is printed on an offer. Any sign: a
@@ -180,11 +192,17 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             prices = [dict(price) for price in user_input.get(CONF_PRICES) or ()]
-            error = _prices_error(prices)
+            at_market = bool(user_input.get(CONF_PLAN_IMPORT_PRICE_ENTITY))
+            error = None if at_market else _prices_error(prices)
             if error is None:
                 self._details = {
                     key: user_input[key] for key in _DETAIL_KEYS if key in user_input
                 }
+                if at_market:
+                    # Every interval is charged at the market, so the plan has
+                    # no prices or bands of its own and nothing more to ask.
+                    self._prices, self._bands = [], []
+                    return self._save()
                 self._bands = _renamed(self._prices, prices, self._bands)
                 self._prices = prices
                 if self._bands:
@@ -302,9 +320,11 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                     )
                 ),
                 vol.Required(CONF_PLAN_EXPORT_PRICE, default=0): per_kwh,
+                vol.Optional(CONF_PLAN_EXPORT_PRICE_ENTITY): _MARKET_PRICE,
                 vol.Optional(CONF_PLAN_HOLIDAYS): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="calendar")
                 ),
+                vol.Optional(CONF_PLAN_IMPORT_PRICE_ENTITY): _MARKET_PRICE,
                 vol.Optional(CONF_PRICES): selector.ObjectSelector(
                     selector.ObjectSelectorConfig(
                         fields={

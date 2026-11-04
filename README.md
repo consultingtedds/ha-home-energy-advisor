@@ -377,6 +377,17 @@ three prices however many bands it takes. The bands are then shown as usual, and
 can still be changed before saving. The copy is never marked as the plan you are
 on unless you tick it.
 
+**Market prices.** A wholesale plan, such as Amber, Localvolts or Flow Power, has
+no schedule to type: its price changes every few minutes. Choose its integration's
+price sensor as the plan's **market import price**, and the plan needs no prices
+or bands at all. A plan can also take only its feed-in from the market, with
+**market export price**, and keep its bands for import. The daily charge is still
+typed, as the feeds leave it out. Recent days are priced five minutes at a time,
+while Home Assistant still keeps 5-minute statistics (ten days by default), and
+older periods at each hour's average price, so a recent figure can move a little
+once it is older. The card says which applied, from when the market's prices were
+first recorded, and how many hours carried the last price over a gap in them.
+
 **Holidays.** Many time-of-use plans price public holidays as weekends. If yours
 do, add Home Assistant's **Holiday** integration for your country, and choose its
 calendar for the plan. Check which holidays your plan counts: some count only
