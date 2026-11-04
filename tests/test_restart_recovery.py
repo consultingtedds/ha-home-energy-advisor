@@ -25,13 +25,21 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.home_energy_advisor.const import (
+    CONF_BATTERY_CAPACITY_KWH,
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_CHARGING,
+    CONF_BATTERY_DISCHARGE_ENTITY,
+    CONF_BATTERY_SOC_ENTITY,
     CONF_CURRENCY,
     CONF_ENERGY_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PRICE_ENTITY,
     DOMAIN,
+    SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_DEVICE,
 )
+from custom_components.home_energy_advisor.engine.house_balance import ChargeSource
 
 if TYPE_CHECKING:
     from freezegun.api import FrozenDateTimeFactory
@@ -287,3 +295,193 @@ async def test_a_cold_start_still_takes_the_sensors_restored_baseline(
     # Then - the total is still carried, by the baseline alone
     assert entry.runtime_data.restored is None
     assert _published(hass, _AIRCON_ENERGY) == before
+
+
+# A house whose own meters reset every midnight (HEA-269, discussion 58): an
+# inverter's daily counters for the grid, the battery and the house, beside a
+# device on a lifetime meter, with the battery charging from the grid too.
+
+_DAILY_GRID = "sensor.inverter_daily_grid_import"
+_DAILY_CHARGE = "sensor.inverter_daily_battery_charge"
+_DAILY_DISCHARGE = "sensor.inverter_daily_battery_discharge"
+_DAILY_LOAD = "sensor.inverter_daily_load"
+_LEVEL = "sensor.inverter_battery_level"
+_WHOLE_HOME = ("sensor.whole_home_actual_cost", "sensor.whole_home_energy_from_grid")
+_FIGURES = (
+    *_WHOLE_HOME,
+    _AIRCON_COST,
+    _AIRCON_ENERGY,
+    "sensor.untracked_energy_devices_actual_cost",
+    "sensor.untracked_energy_devices_energy_used",
+)
+
+
+def _daily_house() -> MockConfigEntry:
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_PRICE_ENTITY: "sensor.price",
+            CONF_CURRENCY: "AUD",
+            CONF_GRID_IMPORT_ENTITY: _DAILY_GRID,
+            CONF_HOUSE_CONSUMPTION_ENTITY: _DAILY_LOAD,
+            CONF_BATTERY_CHARGING: ChargeSource.GRID_TOO.value,
+        },
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_BATTERY,
+                title="Inverter battery",
+                data={
+                    CONF_NAME: "Inverter battery",
+                    CONF_BATTERY_CHARGE_ENTITY: _DAILY_CHARGE,
+                    CONF_BATTERY_DISCHARGE_ENTITY: _DAILY_DISCHARGE,
+                    CONF_BATTERY_SOC_ENTITY: _LEVEL,
+                    CONF_BATTERY_CAPACITY_KWH: 10.0,
+                },
+                unique_id=None,
+            ),
+            ConfigSubentryData(
+                subentry_type=SUBENTRY_TYPE_DEVICE,
+                title="Coarse Step Aircon",
+                data={
+                    CONF_NAME: "Coarse Step Aircon",
+                    CONF_ENERGY_ENTITY: "sensor.coarse_step_energy",
+                },
+                unique_id=None,
+            ),
+        ],
+    )
+
+
+async def _interval(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    at: datetime,
+    readings: dict[str, str],
+) -> None:
+    """Meters reporting at `at`, then the interval closed and published."""
+    freezer.move_to(at)
+    for entity_id, value in readings.items():
+        attributes = {"device_class": "battery"} if entity_id == _LEVEL else _ENERGY
+        hass.states.async_set(entity_id, value, attributes)
+    await hass.async_block_till_done()
+    freezer.move_to(at + timedelta(minutes=30))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+
+def _figures(hass: HomeAssistant) -> dict[str, Decimal]:
+    return {entity_id: _published(hass, entity_id) for entity_id in _FIGURES}
+
+
+async def _a_day_reset_at_midnight(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> MockConfigEntry:
+    """An evening, the counters' midnight reset, and the morning after it."""
+    freezer.move_to(START)
+    await restore_state.async_load(hass)
+    hass.states.async_set("sensor.price", "0.45")
+    for meter in (_DAILY_GRID, _DAILY_CHARGE, _DAILY_DISCHARGE, _DAILY_LOAD):
+        hass.states.async_set(meter, "5.0", _ENERGY)
+    hass.states.async_set("sensor.coarse_step_energy", "100.0", _ENERGY)
+    hass.states.async_set(_LEVEL, "50", {"device_class": "battery"})
+    entry = _daily_house()
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # The evening: 1 kWh in, half of it into the battery, the aircon running
+    await _interval(
+        hass,
+        freezer,
+        START + timedelta(minutes=5),
+        {
+            _DAILY_GRID: "6.0",
+            _DAILY_CHARGE: "5.5",
+            _DAILY_LOAD: "5.5",
+            "sensor.coarse_step_energy": "100.3",
+            _LEVEL: "55",
+        },
+    )
+    # Midnight: every daily counter starts again from nothing
+    await _interval(
+        hass,
+        freezer,
+        START + timedelta(hours=1),
+        {_DAILY_GRID: "0", _DAILY_CHARGE: "0", _DAILY_DISCHARGE: "0", _DAILY_LOAD: "0"},
+    )
+    # The morning: a little more from the grid, and the battery giving back
+    await _interval(
+        hass,
+        freezer,
+        START + timedelta(hours=2),
+        {
+            _DAILY_GRID: "0.4",
+            _DAILY_DISCHARGE: "0.3",
+            _DAILY_LOAD: "0.7",
+            "sensor.coarse_step_energy": "100.5",
+            _LEVEL: "52",
+        },
+    )
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_a_restart_on_daily_counters_keeps_every_figure(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a day on daily counters, published
+    entry = await _a_day_reset_at_midnight(hass, freezer)
+    before = _figures(hass)
+    # Asserted rather than assumed, so a day that published nothing cannot pass
+    # by comparing nothing with nothing: 1.2 kWh used at 0.45, half a kWh of it
+    # the aircon's
+    assert before["sensor.whole_home_actual_cost"] == Decimal("0.5400")
+    assert before[_AIRCON_ENERGY] == Decimal("0.500000")
+    assert before["sensor.untracked_energy_devices_energy_used"] == Decimal("0.700000")
+
+    # When - Home Assistant restarts, as an update does, mid-morning
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    freezer.move_to(START + timedelta(hours=3))
+    async_fire_time_changed(hass, fire_all=True)
+    await hass.async_block_till_done()
+
+    # Then - every figure is what it was: none restarted from nothing, and none
+    # came back holding more than it had
+    assert _figures(hass) == before
+
+
+async def test_after_a_restart_on_daily_counters_an_interval_adds_only_itself(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - the same day, and a restart
+    entry = await _a_day_reset_at_midnight(hass, freezer)
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    before = _figures(hass)
+
+    # When - 0.2 kWh more from the grid, all of it the aircon's
+    await _interval(
+        hass,
+        freezer,
+        START + timedelta(hours=3),
+        {
+            _DAILY_GRID: "0.6",
+            _DAILY_LOAD: "0.9",
+            "sensor.coarse_step_energy": "100.7",
+        },
+    )
+
+    # Then - the whole home paid for 0.2 kWh at 0.45, and nothing else moved
+    after = _figures(hass)
+    assert after["sensor.whole_home_energy_from_grid"] - before[
+        "sensor.whole_home_energy_from_grid"
+    ] == Decimal("0.2")
+    assert after["sensor.whole_home_actual_cost"] - before[
+        "sensor.whole_home_actual_cost"
+    ] == Decimal("0.09")
