@@ -12,6 +12,9 @@ that overlaps one already entered is refused on its own form,
 and the plan is saved only once every hour is covered: an hour priced twice or
 not at all would be a guess.
 
+A band's days are weekdays, weekends and holidays, or every day, as most offers
+name them, or days ticked one by one on a step of their own (ADR-0038).
+
 Most offers share their bands with a plan already entered and differ only in
 price, so a new plan can start from a copy of another (HEA-259): the details
 screen filled in from it, then straight to the review of its bands. Editing a
@@ -73,6 +76,7 @@ if TYPE_CHECKING:
 
 _KEEP = "keep"
 _ACTION = "action"
+_CHOOSE_DAYS = "chosen"
 _ADD_BAND = "add_band"
 _EDIT_PRICES = "prices"
 _SAVE = "save"
@@ -139,6 +143,9 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         self._details: dict[str, Any] = {}
         self._prices: list[dict[str, Any]] = []
         self._bands: list[dict[str, Any]] = []
+        # The band whose days are being ticked, and the days last ticked for it.
+        self._band: dict[str, Any] = {}
+        self._chosen: list[str] = []
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -244,21 +251,71 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """One band: which days, which hours, and which of the plan's prices."""
+        if user_input is None:
+            return await self._band_form({}, {})
+        if user_input[CONF_BAND_DAYS] != _CHOOSE_DAYS:
+            error = self._band_error(user_input)
+        elif (error := _hours_error(user_input)) is None:
+            # Its days are ticked next, and only then can it overlap another.
+            self._band = user_input
+            return await self.async_step_band_days()
+        if error is None:
+            return await self._add(user_input)
+        return await self._band_form(user_input, {"base": error})
+
+    async def async_step_band_days(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """The days a band applies to, ticked one by one."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            error = self._band_error(user_input)
-            if error is None:
-                self._bands.append(user_input)
-                return await self.async_step_bands()
-            errors["base"] = error
+            ticked = set(user_input.get(CONF_BAND_DAYS, ()))
+            self._chosen = [day.value for day in Day if day.value in ticked]
+            band = {**self._band, CONF_BAND_DAYS: self._chosen}
+            if not self._chosen:
+                errors["base"] = "band_no_days"
+            elif (error := self._band_error(band)) is None:
+                return await self._add(band)
+            else:
+                # Back to the band's own form, where its hours can change too.
+                return await self._band_form(self._band, {"base": error})
+        return self.async_show_form(
+            step_id="band_days",
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(
+                    {
+                        vol.Optional(CONF_BAND_DAYS): selector.SelectSelector(
+                            selector.SelectSelectorConfig(
+                                options=[day.value for day in Day],
+                                multiple=True,
+                                mode=selector.SelectSelectorMode.LIST,
+                                translation_key="band_day",
+                            )
+                        )
+                    }
+                ),
+                {CONF_BAND_DAYS: self._chosen} if self._chosen else {},
+            ),
+            errors=errors,
+        )
+
+    async def _band_form(
+        self, suggested: dict[str, Any], errors: dict[str, str]
+    ) -> SubentryFlowResult:
         labels = await _common_strings(self.hass)
         return self.async_show_form(
             step_id="band",
             data_schema=self.add_suggested_values_to_schema(
-                self._band_schema(labels), user_input or {}
+                self._band_schema(labels), suggested
             ),
             errors=errors,
         )
+
+    async def _add(self, band: dict[str, Any]) -> SubentryFlowResult:
+        """Add a band to the plan, and review the bands so far."""
+        self._bands.append(band)
+        self._chosen = []
+        return await self.async_step_bands()
 
     async def async_step_bands(
         self, user_input: dict[str, Any] | None = None
@@ -374,7 +431,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Required(CONF_BAND_DAYS, default=Days.EVERY_DAY.value): (
                     selector.SelectSelector(
                         selector.SelectSelectorConfig(
-                            options=[days.value for days in Days],
+                            options=[*(days.value for days in Days), _CHOOSE_DAYS],
                             mode=selector.SelectSelectorMode.LIST,
                             translation_key=CONF_BAND_DAYS,
                         )
@@ -500,6 +557,20 @@ def _renamed(
         if name is not None:
             kept.append({**band, CONF_BAND_PRICE: name})
     return kept
+
+
+def _hours_error(answers: Mapping[str, Any]) -> str | None:
+    """Why a band's hours cannot be a band's, or ``None`` if they can."""
+    try:
+        Band(
+            Days.EVERY_DAY,
+            int(answers[CONF_BAND_START]),
+            int(answers[CONF_BAND_END]),
+            Decimal(0),
+        )
+    except ValueError:
+        return "band_hours"
+    return None
 
 
 def _figure(value: object) -> str:

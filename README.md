@@ -359,13 +359,14 @@ Add each plan with **Add tariff plan** on the Home Energy Advisor card in
    off-peak; punta, llano and valle) with its import price. A price can carry its
    own export price where the plan pays more at the hours it applies.
 2. **Its time bands, one at a time:** which days (weekdays, weekends and
-   holidays, or every day), from which hour to which, and which of the plan's
-   prices it charges. Hours run on a 24-hour clock, so 22 to 8 runs overnight and
-   0 to 24 is the whole day.
+   holidays, every day, or **Choose days** to tick any of Monday to Sunday and
+   public holidays), from which hour to which, and which of the plan's prices it
+   charges. Hours run on a 24-hour clock, so 22 to 8 runs overnight and 0 to 24
+   is the whole day. A weekend that starts at 22:00 on Friday is a band for
+   Friday alone from 22 to 24, at the weekend price.
 
 After each band you see the bands so far and which hours still have no price,
-and the plan can be saved once every hour of a weekday and of a weekend is
-covered. A price forgotten until then can still be added: choose **Back to the
+and the plan can be saved once every hour of every day is covered. A price forgotten until then can still be added: choose **Back to the
 prices**. Mark exactly one plan as the one you are on: every other is compared
 with it.
 
@@ -388,10 +389,13 @@ older periods at each hour's average price, so a recent figure can move a little
 once it is older. The card says which applied, from when the market's prices were
 first recorded, and how many hours carried the last price over a gap in them.
 
-**Holidays.** Many time-of-use plans price public holidays as weekends. If yours
-do, add Home Assistant's **Holiday** integration for your country, and choose its
-calendar for the plan. Check which holidays your plan counts: some count only
-national ones, so choose the calendar that matches.
+**Holidays.** Many time-of-use plans price public holidays as weekends, and some
+at prices of their own. Add Home Assistant's **Holiday** integration for your
+country, and choose its calendar for the plan. A holiday is then priced at the
+plan's bands for holidays: weekends and holidays, every day, or bands with public
+holidays ticked. A plan none of whose bands includes holidays prices a holiday as
+the day of the week it falls on. Check which holidays your plan counts: some
+count only national ones, so choose the calendar that matches.
 
 **What the comparison assumes.** Each plan is priced at the energy your meters
 recorded, hour by hour, so the figures are exact for what happened. They assume

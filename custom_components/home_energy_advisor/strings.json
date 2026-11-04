@@ -270,7 +270,7 @@
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
-            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
             "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then. Leave the list empty for a plan importing at a market price."
           }
@@ -294,19 +294,26 @@
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
-            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced as weekend days.",
+            "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
             "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then. Leave the list empty for a plan importing at a market price."
           }
         },
         "band": {
           "title": "Add a time band",
-          "description": "Some hours of some days, at one of the plan's prices. Hours run on a 24-hour clock from the first up to the second, so 22 to 8 runs overnight and 0 to 24 is the whole day.",
+          "description": "Some hours of some days, at one of the plan's prices. Hours run on a 24-hour clock from the first up to the second, so 22 to 8 runs overnight and 0 to 24 is the whole day. Choose days to tick them one by one, such as Friday alone for a weekend that starts on Friday evening.",
           "data": {
             "days": "Days",
             "start_hour": "From hour",
             "end_hour": "To hour",
             "price": "Price"
+          }
+        },
+        "band_days": {
+          "title": "Choose the days",
+          "description": "The days this band applies to. Tick public holidays to price them on their own: if no band in the plan includes them, a holiday is priced as the day of the week it falls on.",
+          "data": {
+            "days": "Days"
           }
         },
         "bands": {
@@ -321,7 +328,8 @@
       "error": {
         "band_hours": "A band covers at least one hour: the two hours cannot be the same.",
         "band_overlaps": "This band covers hours another band already prices on the same days. Each hour has one price, so change the hours or remove the other band.",
-        "plan_incomplete": "Some hours have no price yet. Add bands until every hour of a weekday and of a weekend is covered.",
+        "band_no_days": "Tick at least one day.",
+        "plan_incomplete": "Some hours have no price yet. Add bands until every hour of every day is covered.",
         "price_names": "Two prices have the same name. Give each its own, so a band can say which it charges.",
         "no_prices": "Add at least one price: each band charges one of them."
       }
@@ -441,7 +449,20 @@
       "options": {
         "weekdays": "Weekdays",
         "rest_days": "Weekends and holidays",
-        "every_day": "Every day"
+        "every_day": "Every day",
+        "chosen": "Choose days"
+      }
+    },
+    "band_day": {
+      "options": {
+        "monday": "Monday",
+        "tuesday": "Tuesday",
+        "wednesday": "Wednesday",
+        "thursday": "Thursday",
+        "friday": "Friday",
+        "saturday": "Saturday",
+        "sunday": "Sunday",
+        "holiday": "Public holidays"
       }
     },
     "plan_action": {

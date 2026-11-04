@@ -165,9 +165,19 @@ async def _enter(
         if index:
             result = await _answer(hass, result, _review(result, "add_band"))
         assert result["step_id"] == "band"
-        result = await _answer(hass, result, band)
+        result = await _enter_band(hass, result, band)
     assert result["step_id"] == "bands"
     return result
+
+
+async def _enter_band(hass: HomeAssistant, result: Any, band: dict[str, Any]) -> Any:  # noqa: ANN401 - flow results
+    """Answer the band form, ticking the band's days on a step of their own."""
+    days = band[CONF_BAND_DAYS]
+    if isinstance(days, str):
+        return await _answer(hass, result, band)
+    result = await _answer(hass, result, {**band, CONF_BAND_DAYS: "chosen"})
+    assert result["step_id"] == "band_days"
+    return await _answer(hass, result, {CONF_BAND_DAYS: days})
 
 
 def _review(result: Any, action: str, keep: list[str] | None = None) -> dict[str, Any]:  # noqa: ANN401 - a flow result
@@ -886,37 +896,35 @@ async def test_a_copy_of_a_market_plan_follows_the_same_market(
 
 # Bands on days of their own choosing (HEA-268, ADR-0038)
 
-# A weekend that starts at 22:00 on Friday, and holidays at a price of their own.
-_FRIDAY_NIGHT = {
-    **_DETAILS,
-    CONF_BANDS: [
-        {**_WEEKDAY_PEAK, CONF_BAND_START: 0, CONF_BAND_END: 22},
-        {
-            CONF_BAND_DAYS: ["monday", "tuesday", "wednesday", "thursday"],
-            CONF_BAND_START: 22,
-            CONF_BAND_END: 24,
-            CONF_BAND_PRICE: "Peak",
-        },
-        {
-            CONF_BAND_DAYS: ["friday", "saturday", "sunday"],
-            CONF_BAND_START: 22,
-            CONF_BAND_END: 24,
-            CONF_BAND_PRICE: "Off-peak",
-        },
-        {
-            CONF_BAND_DAYS: ["saturday", "sunday", "holiday"],
-            CONF_BAND_START: 0,
-            CONF_BAND_END: 22,
-            CONF_BAND_PRICE: "Off-peak",
-        },
-        {
-            CONF_BAND_DAYS: ["holiday"],
-            CONF_BAND_START: 22,
-            CONF_BAND_END: 24,
-            CONF_BAND_PRICE: "Off-peak",
-        },
-    ],
-}
+# A weekend that starts at 22:00 on Friday, with holidays a day of their own.
+_FRIDAY_NIGHT_BANDS: list[dict[str, Any]] = [
+    {**_WEEKDAY_PEAK, CONF_BAND_START: 0, CONF_BAND_END: 22},
+    {
+        CONF_BAND_DAYS: ["monday", "tuesday", "wednesday", "thursday"],
+        CONF_BAND_START: 22,
+        CONF_BAND_END: 24,
+        CONF_BAND_PRICE: "Peak",
+    },
+    {
+        CONF_BAND_DAYS: ["friday", "saturday", "sunday"],
+        CONF_BAND_START: 22,
+        CONF_BAND_END: 24,
+        CONF_BAND_PRICE: "Off-peak",
+    },
+    {
+        CONF_BAND_DAYS: ["saturday", "sunday", "holiday"],
+        CONF_BAND_START: 0,
+        CONF_BAND_END: 22,
+        CONF_BAND_PRICE: "Off-peak",
+    },
+    {
+        CONF_BAND_DAYS: ["holiday"],
+        CONF_BAND_START: 22,
+        CONF_BAND_END: 24,
+        CONF_BAND_PRICE: "Off-peak",
+    },
+]
+_FRIDAY_NIGHT = {**_DETAILS, CONF_BANDS: _FRIDAY_NIGHT_BANDS}
 
 
 async def test_a_band_on_chosen_days_is_read_as_those_days(
@@ -934,3 +942,117 @@ async def test_a_band_on_chosen_days_is_read_as_those_days(
         frozenset({Day.HOLIDAY}),
     ]
     assert plan.plan.gaps() == ()
+
+
+async def test_a_plan_on_days_of_its_own_choosing_is_entered_and_saved(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the Friday-night weekend, band by band
+    entry = _house(hass)
+    result = await _enter(hass, entry, _DETAILS, *_FRIDAY_NIGHT_BANDS)
+
+    # When
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - saved with each band's days as they were ticked
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (plan_id,) = plans_of(entry)
+    assert entry.subentries[plan_id].data[CONF_BANDS] == _FRIDAY_NIGHT_BANDS
+
+
+async def test_choosing_days_ticks_them_on_a_step_of_their_own(
+    hass: HomeAssistant,
+) -> None:
+    # Given - at the first band
+    result = await _answer(hass, await _start(hass, _house(hass)), _DETAILS)
+
+    # When - the weekend's first two hours, from Friday night
+    result = await _answer(
+        hass,
+        result,
+        {**_FRIDAY_NIGHT_BANDS[2], CONF_BAND_DAYS: "chosen"},
+    )
+
+    # Then - the days, each to tick, holidays among them
+    assert result["step_id"] == "band_days"
+    assert _field(result, CONF_BAND_DAYS).config["options"] == [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+        "holiday",
+    ]
+
+
+async def test_the_review_names_the_days_a_band_was_given(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _enter(hass, _house(hass), _DETAILS, _FRIDAY_NIGHT_BANDS[2])
+
+    # Then - the band by its days, and what is left, by the days missing it
+    assert [option["label"] for option in _options(result, "keep")] == [
+        "Friday, Saturday, Sunday 22:00-24:00: Off-peak (0.09 EUR/kWh)",
+    ]
+    assert result["description_placeholders"]["uncovered"] == (
+        "Not priced yet:\n"
+        "Monday, Tuesday, Wednesday, Thursday: 00:00-24:00\n"
+        "Friday, Saturday, Sunday: 00:00-22:00"
+    )
+
+
+async def test_a_band_is_given_at_least_one_day(hass: HomeAssistant) -> None:
+    # Given
+    result = await _answer(hass, await _start(hass, _house(hass)), _DETAILS)
+    result = await _answer(hass, result, {**_ALL_DAY, CONF_BAND_DAYS: "chosen"})
+
+    # When - none ticked
+    result = await _answer(hass, result, {CONF_BAND_DAYS: []})
+
+    # Then
+    assert result["step_id"] == "band_days"
+    assert result["errors"] == {"base": "band_no_days"}
+
+
+async def test_a_bands_hours_are_checked_before_its_days_are_chosen(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    result = await _answer(hass, await _start(hass, _house(hass)), _DETAILS)
+
+    # When - from 08:00 to 08:00
+    result = await _answer(
+        hass,
+        result,
+        {**_ALL_DAY, CONF_BAND_DAYS: "chosen", CONF_BAND_START: 8, CONF_BAND_END: 8},
+    )
+
+    # Then - on the form where the hours can be put right
+    assert result["step_id"] == "band"
+    assert result["errors"] == {"base": "band_hours"}
+
+
+async def test_a_band_on_chosen_days_that_overlaps_goes_back_to_its_form(
+    hass: HomeAssistant,
+) -> None:
+    # Given - weekdays from 08:00 to 22:00 already entered
+    result = await _enter(hass, _house(hass), _DETAILS, _WEEKDAY_PEAK)
+    result = await _answer(hass, result, _review(result, "add_band"))
+    overlapping = {**_WEEKDAY_PEAK, CONF_BAND_DAYS: "chosen", CONF_BAND_START: 20}
+    result = await _answer(hass, result, {**overlapping, CONF_BAND_END: 23})
+
+    # When - Monday, which the weekday band already prices at 20:00
+    result = await _answer(hass, result, {CONF_BAND_DAYS: ["monday"]})
+
+    # Then - refused on the band's form, where its hours can change, and the
+    # days ticked are still ticked when they are chosen again
+    assert result["step_id"] == "band"
+    assert result["errors"] == {"base": "band_overlaps"}
+    assert _suggested(result)[CONF_BAND_DAYS] == "chosen"
+    result = await _answer(
+        hass, result, {**overlapping, CONF_BAND_START: 22, CONF_BAND_END: 24}
+    )
+    assert _suggested(result) == {CONF_BAND_DAYS: ["monday"]}
