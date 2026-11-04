@@ -4,10 +4,12 @@ A plan is a typed schedule: time bands with an import price, an optional export
 price of their own, and a daily charge (ADR-0036). It is priced against the
 household's recorded hourly import and export, so the figure re-prices what
 really happened rather than modelling anything. Bands are in local time, as
-offers are published; weekends and holidays share the rest-day bands.
+offers are published. A band applies to any days of the week, and to public
+holidays as a day of their own; a plan with no band for holidays prices each as
+the day of the week it falls on (HEA-268, ADR-0038).
 
-Every hour of every kind of day falls in exactly one band, and a plan that
-leaves one uncovered or covers one twice is refused rather than priced.
+Every hour of every day falls in exactly one band, and a plan that leaves one
+uncovered or covers one twice is refused rather than priced.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import pytest
 
 from custom_components.home_energy_advisor.engine.plan_pricing import (
     Band,
-    DayKind,
+    Day,
     Days,
     IntervalOfEnergy,
     Plan,
@@ -61,9 +63,14 @@ TIME_OF_USE = Plan(
     export_price=Decimal("0.04"),
 )
 
-# Wednesday 2026-11-04 and Saturday 2026-11-07.
+# Wednesday 2026-11-04 to Saturday 2026-11-07.
 WEDNESDAY = date(2026, 11, 4)
+THURSDAY = date(2026, 11, 5)
+FRIDAY = date(2026, 11, 6)
 SATURDAY = date(2026, 11, 7)
+
+MONDAY_TO_FRIDAY = (Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY)
+WEEKEND = (Day.SATURDAY, Day.SUNDAY)
 
 
 def hour(day: date, at: int, imported: str, exported: str = "0") -> IntervalOfEnergy:
@@ -130,6 +137,78 @@ def test_a_holiday_is_priced_as_a_rest_day() -> None:
 
     # Then
     assert cost.energy == OFF_PEAK
+
+
+def test_a_band_can_apply_to_days_of_its_own_choosing() -> None:
+    # Given - a weekend that starts at 22:00 on Friday: peak until then, Monday
+    # to Thursday evenings included, and off-peak from then until Monday
+    friday_night = Plan(
+        name="Friday night weekend",
+        bands=(
+            Band(frozenset(MONDAY_TO_FRIDAY), 0, 22, PEAK),
+            Band(frozenset(MONDAY_TO_FRIDAY[:4]), 22, 24, PEAK),
+            Band(frozenset({Day.FRIDAY}), 22, 24, OFF_PEAK),
+            Band(frozenset(WEEKEND), 0, 24, OFF_PEAK),
+        ),
+    )
+    hours = [
+        hour(THURSDAY, 23, "1"),
+        hour(FRIDAY, 21, "1"),
+        hour(FRIDAY, 23, "1"),
+        hour(SATURDAY, 12, "1"),
+    ]
+
+    # When
+    cost = price_plan(friday_night, hours, days=Decimal(0), holidays=frozenset())
+
+    # Then - Friday is peak until 22:00 and off-peak after, Thursday is not
+    assert friday_night.gaps() == ()
+    assert cost.energy == PEAK + PEAK + OFF_PEAK + OFF_PEAK
+
+
+def test_a_holiday_band_gives_holidays_prices_of_their_own() -> None:
+    # Given - weekdays at peak, weekends at shoulder, and holidays off-peak
+    three_kinds = Plan(
+        name="Three kinds of day",
+        bands=(
+            Band(Days.WEEKDAYS, 0, 24, PEAK),
+            Band(frozenset(WEEKEND), 0, 24, SHOULDER),
+            Band(frozenset({Day.HOLIDAY}), 0, 24, OFF_PEAK),
+        ),
+    )
+    hours = [hour(WEDNESDAY, 12, "1"), hour(SATURDAY, 12, "1")]
+
+    # When - the Wednesday is a public holiday
+    cost = price_plan(
+        three_kinds, hours, days=Decimal(0), holidays=frozenset({WEDNESDAY})
+    )
+
+    # Then - neither a weekday's price nor a weekend's
+    assert three_kinds.gaps() == ()
+    assert cost.energy == OFF_PEAK + SHOULDER
+
+
+def test_without_a_holiday_band_a_holiday_is_priced_as_its_day_of_the_week() -> None:
+    # Given - bands chosen day by day, none of them for holidays
+    by_day = Plan(
+        name="By day",
+        bands=(
+            Band(frozenset(MONDAY_TO_FRIDAY), 0, 24, PEAK),
+            Band(frozenset(WEEKEND), 0, 24, OFF_PEAK),
+        ),
+    )
+
+    # When - the Wednesday is a public holiday
+    cost = price_plan(
+        by_day,
+        [hour(WEDNESDAY, 12, "1")],
+        days=Decimal(0),
+        holidays=frozenset({WEDNESDAY}),
+    )
+
+    # Then - priced as the Wednesday it is, and nothing is missing
+    assert by_day.gaps() == ()
+    assert cost.energy == PEAK
 
 
 def test_a_band_can_run_across_midnight() -> None:
@@ -264,10 +343,11 @@ def test_an_hour_no_band_covers_is_a_gap() -> None:
     # When
     gaps = incomplete.gaps()
 
-    # Then - each kind of day, the hours left out, and that none covers them
+    # Then - the days sharing the same hours left out, and that none covers them;
+    # no band prices holidays, so a holiday is one of the days of the week
     assert gaps == (
-        PlanGap(DayKind.WEEKDAY, (22, 23), covered_by=0),
-        PlanGap(DayKind.REST_DAY, tuple(range(24)), covered_by=0),
+        PlanGap(MONDAY_TO_FRIDAY, (22, 23), covered_by=0),
+        PlanGap(WEEKEND, tuple(range(24)), covered_by=0),
     )
 
 
@@ -282,7 +362,32 @@ def test_an_hour_two_bands_cover_is_a_gap_too() -> None:
     )
 
     # When / Then - which price applies would be a guess
-    assert overlapping.gaps() == (PlanGap(DayKind.REST_DAY, (10, 11), covered_by=2),)
+    assert overlapping.gaps() == (
+        PlanGap((*WEEKEND, Day.HOLIDAY), (10, 11), covered_by=2),
+    )
+
+
+def test_a_holiday_band_must_price_the_whole_of_a_holiday() -> None:
+    # Given - holidays have a band of their own, but only until midday
+    half_holiday = Plan(
+        name="Half a holiday",
+        bands=(
+            Band(Days.WEEKDAYS, 0, 24, PEAK),
+            Band(frozenset(WEEKEND), 0, 24, OFF_PEAK),
+            Band(frozenset({Day.HOLIDAY}), 0, 12, OFF_PEAK),
+        ),
+    )
+
+    # When / Then - a holiday afternoon would otherwise be a guess
+    assert half_holiday.gaps() == (
+        PlanGap((Day.HOLIDAY,), tuple(range(12, 24)), covered_by=0),
+    )
+
+
+def test_a_band_applies_to_at_least_one_day() -> None:
+    # When / Then
+    with pytest.raises(ValueError, match="day"):
+        Band(frozenset(), 0, 24, PEAK)
 
 
 def test_a_plan_with_a_gap_is_not_priced() -> None:

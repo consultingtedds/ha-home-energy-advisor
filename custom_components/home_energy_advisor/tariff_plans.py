@@ -7,7 +7,8 @@ integration knows about - whether it is the plan the household is on, and which
 calendar its holidays come from.
 
 A band entered before prices were named carries its figures itself, and is read
-as it is.
+as it is. A band's days are either the name of the days an offer names, such as
+weekdays, or the list of days it applies to (ADR-0038).
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from .const import (
     CONF_PRICES,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, Days, Plan
+from .engine.plan_pricing import Band, Day, Days, Plan
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -107,14 +108,17 @@ def prices_by_name(
 def band_from(data: Mapping[str, Any], prices: Mapping[str, Mapping[str, Any]]) -> Band:
     """A band from the answers to one band form, at the price it names.
 
-    Raises ``ValueError`` for hours that are not whole hours of one day, and
-    ``KeyError`` for a price the plan does not have.
+    Raises ``ValueError`` for no days, or hours that are not whole hours of one
+    day, and ``KeyError`` for a price the plan does not have.
     """
     named = data.get(CONF_BAND_PRICE)
     figures = data if named is None else prices[named]
     export = figures.get(CONF_BAND_EXPORT_PRICE)
+    days = data[CONF_BAND_DAYS]
     return Band(
-        days=Days(data[CONF_BAND_DAYS]),
+        days=Days(days)
+        if isinstance(days, str)
+        else frozenset(Day(day) for day in days),
         start=int(data[CONF_BAND_START]),
         end=int(data[CONF_BAND_END]),
         import_price=_decimal(figures[CONF_BAND_IMPORT_PRICE]),

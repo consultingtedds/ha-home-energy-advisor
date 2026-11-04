@@ -5,7 +5,9 @@ on, its daily charge, its export price, an optional holiday calendar, and the
 prices it charges, each named as the offer names it (HEA-262). Then one band at a
 time, each picking one of those prices by name and followed by a review of the
 bands so far and the hours they leave uncovered. A plan is saved only once every
-hour of both kinds of day is covered exactly once (HEA-255, ADR-0036).
+hour of every day is covered exactly once (HEA-255, ADR-0036). A band applies to
+the days an offer names, such as weekdays, or to days of its own choosing
+(HEA-268, ADR-0038).
 """
 
 from __future__ import annotations
@@ -48,6 +50,7 @@ from custom_components.home_energy_advisor.const import (
 )
 from custom_components.home_energy_advisor.engine.plan_pricing import (
     Band,
+    Day,
     Days,
     Plan,
 )
@@ -278,11 +281,10 @@ async def test_the_review_says_which_hours_are_not_covered_yet(
     # Given / When - weekdays from 08:00 to 22:00 only
     result = await _enter(hass, _house(hass), _DETAILS, _WEEKDAY_PEAK)
 
-    # Then - what is left, for each kind of day
+    # Then - what is left, for each set of days missing the same hours; no band
+    # prices holidays yet, so they are not a day of their own (ADR-0038)
     assert result["description_placeholders"]["uncovered"] == (
-        "Not priced yet:\n"
-        "Weekdays: 00:00-08:00, 22:00-24:00\n"
-        "Weekends and holidays: 00:00-24:00"
+        "Not priced yet:\nWeekdays: 00:00-08:00, 22:00-24:00\nWeekends: 00:00-24:00"
     )
 
 
@@ -880,3 +882,55 @@ async def test_a_copy_of_a_market_plan_follows_the_same_market(
 
     # Then
     assert _suggested(result)[CONF_PLAN_IMPORT_PRICE_ENTITY] == "sensor.market_import"
+
+
+# Bands on days of their own choosing (HEA-268, ADR-0038)
+
+# A weekend that starts at 22:00 on Friday, and holidays at a price of their own.
+_FRIDAY_NIGHT = {
+    **_DETAILS,
+    CONF_BANDS: [
+        {**_WEEKDAY_PEAK, CONF_BAND_START: 0, CONF_BAND_END: 22},
+        {
+            CONF_BAND_DAYS: ["monday", "tuesday", "wednesday", "thursday"],
+            CONF_BAND_START: 22,
+            CONF_BAND_END: 24,
+            CONF_BAND_PRICE: "Peak",
+        },
+        {
+            CONF_BAND_DAYS: ["friday", "saturday", "sunday"],
+            CONF_BAND_START: 22,
+            CONF_BAND_END: 24,
+            CONF_BAND_PRICE: "Off-peak",
+        },
+        {
+            CONF_BAND_DAYS: ["saturday", "sunday", "holiday"],
+            CONF_BAND_START: 0,
+            CONF_BAND_END: 22,
+            CONF_BAND_PRICE: "Off-peak",
+        },
+        {
+            CONF_BAND_DAYS: ["holiday"],
+            CONF_BAND_START: 22,
+            CONF_BAND_END: 24,
+            CONF_BAND_PRICE: "Off-peak",
+        },
+    ],
+}
+
+
+async def test_a_band_on_chosen_days_is_read_as_those_days(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    (plan,) = plans_of(_house(hass, _FRIDAY_NIGHT)).values()
+
+    # Then - each band on the days its entry lists, and every hour covered once
+    assert [band.covers for band in plan.plan.bands] == [
+        Days.WEEKDAYS.days,
+        frozenset({Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY}),
+        frozenset({Day.FRIDAY, Day.SATURDAY, Day.SUNDAY}),
+        frozenset({Day.SATURDAY, Day.SUNDAY, Day.HOLIDAY}),
+        frozenset({Day.HOLIDAY}),
+    ]
+    assert plan.plan.gaps() == ()

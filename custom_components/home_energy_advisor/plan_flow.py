@@ -7,8 +7,8 @@ export price of its own (HEA-262). Its bands then pick a price by name.
 
 Home Assistant's forms have no timetable editor, so the bands are entered one at
 a time. After each band a review lists the bands so far, which can be unticked to
-remove them, and says which hours of a weekday and of a rest day are still
-uncovered. A band that overlaps one already entered is refused on its own form,
+remove them, and says which hours of which days are still uncovered. A band
+that overlaps one already entered is refused on its own form,
 and the plan is saved only once every hour is covered: an hour priced twice or
 not at all would be a guess.
 
@@ -56,7 +56,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, DayKind, Days, Plan
+from .engine.plan_pricing import Band, Day, Days, Plan
 from .schemas import vol
 from .tariff_plans import (
     band_from,
@@ -67,7 +67,7 @@ from .tariff_plans import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterable, Mapping
 
     from homeassistant.core import HomeAssistant
 
@@ -109,13 +109,25 @@ _HOUR_TO = selector.NumberSelector(
 )
 
 _DAY_LABELS = {
-    DayKind.WEEKDAY: ("plan_weekdays", "Weekdays"),
-    DayKind.REST_DAY: ("plan_rest_days", "Weekends and holidays"),
+    Day.MONDAY: ("plan_monday", "Monday"),
+    Day.TUESDAY: ("plan_tuesday", "Tuesday"),
+    Day.WEDNESDAY: ("plan_wednesday", "Wednesday"),
+    Day.THURSDAY: ("plan_thursday", "Thursday"),
+    Day.FRIDAY: ("plan_friday", "Friday"),
+    Day.SATURDAY: ("plan_saturday", "Saturday"),
+    Day.SUNDAY: ("plan_sunday", "Sunday"),
+    Day.HOLIDAY: ("plan_holidays", "Public holidays"),
 }
 _DAYS_LABELS = {
     Days.WEEKDAYS: ("plan_weekdays", "Weekdays"),
     Days.REST_DAYS: ("plan_rest_days", "Weekends and holidays"),
     Days.EVERY_DAY: ("plan_every_day", "Every day"),
+}
+# Days said in a word rather than one by one, wherever a band or gap has them.
+_NAMED_DAYS = {
+    **{days.days: label for days, label in _DAYS_LABELS.items()},
+    frozenset({Day.SATURDAY, Day.SUNDAY}): ("plan_weekends", "Weekends"),
+    Days.EVERY_DAY.days - {Day.HOLIDAY}: _DAYS_LABELS[Days.EVERY_DAY],
 }
 
 
@@ -496,16 +508,14 @@ def _figure(value: object) -> str:
 
 
 def _overlap(band: Band, other: Band) -> bool:
-    """Whether two bands price some hour of some kind of day both at once."""
-    return any(
-        band.applies_to(kind) and other.applies_to(kind) for kind in DayKind
-    ) and bool(band.hours & other.hours)
+    """Whether two bands price some hour of some day both at once."""
+    return bool(band.covers & other.covers) and bool(band.hours & other.hours)
 
 
 def _uncovered(plan: Plan, labels: dict[str, str]) -> str:
-    """Each kind of day's hours no band covers yet, as a line each."""
+    """The hours no band covers yet, a line for each set of days missing them."""
     lines = [
-        f"{_label(_DAY_LABELS[gap.kind], labels)}: {_hour_ranges(gap.hours)}"
+        f"{_days_label(gap.days, labels)}: {_hour_ranges(gap.hours)}"
         for gap in plan.gaps()
         if gap.covered_by == 0
     ]
@@ -517,10 +527,20 @@ def _uncovered(plan: Plan, labels: dict[str, str]) -> str:
 
 def _band_label(band: Band, price: str, labels: dict[str, str]) -> str:
     """A band as the review lists it: its days, hours and price."""
-    return (
-        f"{_label(_DAYS_LABELS[band.days], labels)} "
-        f"{band.start:02d}:00-{band.end:02d}:00: {price}"
+    days = (
+        _label(_DAYS_LABELS[band.days], labels)
+        if isinstance(band.days, Days)
+        else _days_label(band.days, labels)
     )
+    return f"{days} {band.start:02d}:00-{band.end:02d}:00: {price}"
+
+
+def _days_label(days: Iterable[Day], labels: dict[str, str]) -> str:
+    """Days in a word where they have one, "Weekends", else one by one."""
+    chosen = frozenset(days)
+    if chosen in _NAMED_DAYS:
+        return _label(_NAMED_DAYS[chosen], labels)
+    return ", ".join(_label(_DAY_LABELS[day], labels) for day in Day if day in chosen)
 
 
 def _hour_ranges(hours: tuple[int, ...]) -> str:

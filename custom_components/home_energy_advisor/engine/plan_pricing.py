@@ -7,11 +7,14 @@ recorded hourly import and export, so the figure re-prices what really happened.
 Nothing is modelled; the one assumption, said wherever the figure is shown, is
 that the household would have run its battery the same way.
 
-Bands are in local time. Weekends and holidays share the rest-day bands, which
-is how time-of-use offers treat a public holiday. Every hour of both kinds of day
-falls in exactly one band: a plan that leaves an hour uncovered, or covers one
-twice, is refused rather than priced, because either way the price of that hour
-would be a guess.
+Bands are in local time. A band applies to any days of the week, and to public
+holidays as a day of their own, so a weekend that starts on Friday evening, or a
+holiday priced unlike either a weekday or a weekend, is a band like any other
+(ADR-0038). Most time-of-use offers price a holiday as a weekend, which the
+weekends-and-holidays band says; a plan with no band for holidays at all prices
+each as the day of the week it falls on. Every hour of every day falls in exactly
+one band: a plan that leaves an hour uncovered, or covers one twice, is refused
+rather than priced, because either way the price of that hour would be a guess.
 
 A plan's import, and separately its export, can instead follow a market price
 that changes through the day (ADR-0037). Each recorded interval then carries the
@@ -31,28 +34,42 @@ if TYPE_CHECKING:
     from collections.abc import Collection, Iterable
 
 _HOURS_IN_A_DAY = 24
-_SATURDAY = 5
+
+
+class Day(StrEnum):
+    """A day a band can price: one of the week's, or a public holiday."""
+
+    MONDAY = "monday"
+    TUESDAY = "tuesday"
+    WEDNESDAY = "wednesday"
+    THURSDAY = "thursday"
+    FRIDAY = "friday"
+    SATURDAY = "saturday"
+    SUNDAY = "sunday"
+    HOLIDAY = "holiday"
+
+
+# The days of the week, by `date.weekday()`.
+_WEEK = tuple(day for day in Day if day is not Day.HOLIDAY)
 
 
 class Days(StrEnum):
-    """Which days a band applies to."""
+    """The days most bands apply to, as offers name them."""
 
     WEEKDAYS = "weekdays"
     REST_DAYS = "rest_days"
     EVERY_DAY = "every_day"
 
-
-class DayKind(StrEnum):
-    """The two kinds of day a plan prices differently: working and rest days."""
-
-    WEEKDAY = "weekday"
-    REST_DAY = "rest_day"
+    @property
+    def days(self) -> frozenset[Day]:
+        """The days it names."""
+        return _DAYS_OF[self]
 
 
-_KINDS_OF = {
-    Days.WEEKDAYS: (DayKind.WEEKDAY,),
-    Days.REST_DAYS: (DayKind.REST_DAY,),
-    Days.EVERY_DAY: (DayKind.WEEKDAY, DayKind.REST_DAY),
+_DAYS_OF = {
+    Days.WEEKDAYS: frozenset(_WEEK[:5]),
+    Days.REST_DAYS: frozenset({*_WEEK[5:], Day.HOLIDAY}),
+    Days.EVERY_DAY: frozenset(Day),
 }
 
 
@@ -60,19 +77,23 @@ _KINDS_OF = {
 class Band:
     """One price, for some hours of some days.
 
-    Hours run from `start` up to but not including `end`, on a 0-24 clock, so a
-    band from 22 to 8 runs across midnight. Whole hours only: the statistics a
-    plan is priced against are hourly (ADR-0036).
+    Its days are the ones an offer names, or any it chooses (ADR-0038). Hours run
+    from `start` up to but not including `end`, on a 0-24 clock, so a band from
+    22 to 8 runs across midnight. Whole hours only: the statistics a plan is
+    priced against are hourly (ADR-0036).
     """
 
-    days: Days
+    days: Days | frozenset[Day]
     start: int
     end: int
     import_price: Decimal
     export_price: Decimal | None = None
 
     def __post_init__(self) -> None:
-        """Refuse hours that are not whole hours of one day, or that cover none."""
+        """Refuse a band of no days, or hours that are not whole hours of one."""
+        if not self.covers:
+            msg = "A band applies to at least one day"
+            raise ValueError(msg)
         if not 0 <= self.start < _HOURS_IN_A_DAY:
             msg = f"A band's hours start between 0 and 23, not {self.start}"
             raise ValueError(msg)
@@ -92,16 +113,21 @@ class Band:
             range(self.end)
         )
 
-    def applies_to(self, kind: DayKind) -> bool:
-        """Whether it prices that kind of day."""
-        return kind in _KINDS_OF[self.days]
+    @property
+    def covers(self) -> frozenset[Day]:
+        """The days it prices."""
+        return self.days.days if isinstance(self.days, Days) else self.days
+
+    def applies_to(self, day: Day) -> bool:
+        """Whether it prices that day."""
+        return day in self.covers
 
 
 @dataclass(frozen=True)
 class PlanGap:
-    """Hours of one kind of day that a plan prices not exactly once."""
+    """Hours that a plan prices not exactly once, on each of some days."""
 
-    kind: DayKind
+    days: tuple[Day, ...]
     hours: tuple[int, ...]
     covered_by: int
 
@@ -121,34 +147,53 @@ class Plan:
     import_per_interval: bool = False
     export_per_interval: bool = False
 
-    def gaps(self) -> tuple[PlanGap, ...]:
-        """Every hour of either kind of day that no band, or more than one, covers.
+    @property
+    def prices_holidays(self) -> bool:
+        """Whether a holiday is a day of its own, rather than its day of the week."""
+        return any(band.applies_to(Day.HOLIDAY) for band in self.bands)
 
-        Grouped by kind of day and by how many bands cover the hours, uncovered
-        hours first, so a form can say exactly what is missing or doubled. A plan
-        importing at the market prices every hour from it, so has none.
+    def gaps(self) -> tuple[PlanGap, ...]:
+        """Every hour of every day that no band, or more than one, covers.
+
+        Days missing the same hours are grouped, and uncovered hours come first,
+        so a form can say exactly what is missing or doubled: "weekdays from
+        22:00", not five lines. Holidays are a day to cover only when a band
+        prices them. A plan importing at the market prices every hour from it,
+        so has none.
         """
         if self.import_per_interval:
             return ()
-        gaps: list[PlanGap] = []
-        for kind in DayKind:
+        priced = (*_WEEK, Day.HOLIDAY) if self.prices_holidays else _WEEK
+        grouped: dict[tuple[int, tuple[int, ...]], list[Day]] = {}
+        for day in priced:
             covering = {
                 hour: sum(
                     1
                     for band in self.bands
-                    if band.applies_to(kind) and hour in band.hours
+                    if band.applies_to(day) and hour in band.hours
                 )
                 for hour in range(_HOURS_IN_A_DAY)
             }
             for count in sorted({count for count in covering.values() if count != 1}):
                 hours = tuple(hour for hour, n in covering.items() if n == count)
-                gaps.append(PlanGap(kind, hours, covered_by=count))
-        return tuple(gaps)
+                grouped.setdefault((count, hours), []).append(day)
+        return tuple(
+            PlanGap(tuple(days), hours, covered_by=count)
+            for (count, hours), days in sorted(
+                grouped.items(), key=lambda group: group[0][0]
+            )
+        )
 
-    def band_at(self, kind: DayKind, hour: int) -> Band:
-        """The one band pricing that hour of that kind of day."""
+    def day_of(self, day: date, holidays: Collection[date]) -> Day:
+        """Which of its days the plan prices `day` as."""
+        if day in holidays and self.prices_holidays:
+            return Day.HOLIDAY
+        return _WEEK[day.weekday()]
+
+    def band_at(self, day: Day, hour: int) -> Band:
+        """The one band pricing that hour of that day."""
         return next(
-            band for band in self.bands if band.applies_to(kind) and hour in band.hours
+            band for band in self.bands if band.applies_to(day) and hour in band.hours
         )
 
 
@@ -191,7 +236,8 @@ def price_plan(
     """What `plan` would have charged for these intervals, over `days` of charges.
 
     `days` is how many days of daily charge the period carries, which
-    `days_covered` measures. `holidays` are dates priced as rest days. An
+    `days_covered` measures. `holidays` are the public holidays, priced at the
+    plan's holiday bands where it has them. An
     interval a market-priced plan needs a price for and that has none is
     refused: what to charge it is the caller's to decide, not a guess here.
     """
@@ -205,7 +251,7 @@ def price_plan(
             None
             if plan.import_per_interval
             else plan.band_at(
-                _kind_of(recorded.start.date(), holidays), recorded.start.hour
+                plan.day_of(recorded.start.date(), holidays), recorded.start.hour
             )
         )
         energy += recorded.imported_kwh * (
@@ -257,9 +303,3 @@ def _market(price: Decimal | None, recorded: IntervalOfEnergy, plan: Plan) -> De
         msg = f"Plan {plan.name!r} has no market price for {recorded.start}"
         raise ValueError(msg)
     return price
-
-
-def _kind_of(day: date, holidays: Collection[date]) -> DayKind:
-    if day.weekday() >= _SATURDAY or day in holidays:
-        return DayKind.REST_DAY
-    return DayKind.WEEKDAY
