@@ -142,6 +142,15 @@ export const DEFAULTS = Object.freeze({
     "Your grid meters recorded nothing in this period, so only the daily " +
     "charges are shown.",
   plans_no_current: "Mark one plan as the one you are on to see how the others compare.",
+  plans_no_price:
+    "No market price was recorded in this period, so it cannot be compared.",
+  plans_priced_from: "Priced from {date}, when its market price was first recorded.",
+  plans_carried: "{hours} h priced at the last market price, where none was recorded.",
+  plans_market_hourly: "Market prices are applied hour by hour, at each hour's average.",
+  plans_market_five_minutes: "Market prices are applied five minutes at a time.",
+  plans_market_from:
+    "Market prices are applied five minutes at a time from {date}, and hour by " +
+    "hour, at each hour's average, before that.",
   no_plans:
     "No tariff plans yet. Add one from the Home Energy Advisor integration, " +
     "with Add tariff plan.",

@@ -15,7 +15,7 @@
 
 import { HeaCard, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { formatMoney, savingTone } from "./hea-format.js";
+import { formatDateTime, formatMoney, savingTone } from "./hea-format.js";
 import { fill, loadLabels } from "./hea-labels.js";
 
 export const TAG = "hea-plans-card";
@@ -29,9 +29,15 @@ const PARTS = [
   { key: "daily", label: "plans_daily", figure: "daily_charges", sign: 1 },
 ];
 
+/** A plan with no figure: bands that leave hours unpriced, or no market price. */
+const unpriced = (plan) => Boolean(plan.incomplete || plan.no_price);
+
+/** A plan priced from a market price entity, which says what it rests on. */
+const followsTheMarket = (plan) => "carried_hours" in plan;
+
 /** Cheapest first, and a plan that cannot be priced after every one that can. */
 const byTotal = (a, b) => {
-  if (a.incomplete || b.incomplete) return (a.incomplete ? 1 : 0) - (b.incomplete ? 1 : 0);
+  if (unpriced(a) || unpriced(b)) return (unpriced(a) ? 1 : 0) - (unpriced(b) ? 1 : 0);
   return a.total - b.total;
 };
 
@@ -111,7 +117,7 @@ class HeaPlansCard extends HeaCard {
     // Drawn while loading too, before there is anything to list.
     if (!this._compared?.plans) return "";
     const plans = [...this._compared.plans].sort(byTotal);
-    const priced = plans.filter((plan) => !plan.incomplete);
+    const priced = plans.filter((plan) => !unpriced(plan));
     const current = priced.find((plan) => plan.current);
     // Only worth saying where there is something it is cheaper than.
     const cheapest = priced.length > 1 ? priced[0] : undefined;
@@ -119,6 +125,7 @@ class HeaPlansCard extends HeaCard {
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       current ? "" : this._labels.plans_no_current,
       this._labels.plans_note,
+      priced.some(followsTheMarket) ? this._resolution(locale) : "",
     ].filter(Boolean);
     return `
       <div class="plans">
@@ -136,20 +143,50 @@ class HeaPlansCard extends HeaCard {
       .filter(Boolean)
       .map((tag) => `<span class="tag">${tag}</span>`)
       .join("");
-    const total = plan.incomplete ? "" : this._total(plan, locale);
+    const total = unpriced(plan) ? "" : this._total(plan, locale);
     const head = `
       <div class="head">
         <span class="name">${escape(plan.name)}${tags}</span>
         ${total}
       </div>`;
-    if (plan.incomplete) {
+    if (unpriced(plan)) {
+      const why = plan.no_price ? this._labels.plans_no_price : this._labels.plans_incomplete;
       return `<div class="plan" data-plan="${plan.id}">${head}
-        <div class="incomplete">${this._labels.plans_incomplete}</div></div>`;
+        <div class="incomplete">${why}</div></div>`;
     }
     return `<div class="plan" data-plan="${plan.id}">${head}
       <div class="parts">${PARTS.map((part) => this._part(plan, part, locale)).join("")}</div>
       ${current && plan !== current ? this._difference(plan, current, locale) : ""}
+      ${this._marketNotes(plan, locale)}
     </div>`;
+  }
+
+  /** What a market-priced plan's figures rest on, where there is anything to say. */
+  _marketNotes(plan, locale) {
+    const notes = [];
+    if (plan.priced_from) {
+      const date = formatDateTime(new Date(plan.priced_from), locale);
+      notes.push(fill(this._labels.plans_priced_from, { date }));
+    }
+    if (plan.carried_hours > 0) {
+      const hours = new Intl.NumberFormat(locale.language, {
+        maximumFractionDigits: 1,
+      }).format(plan.carried_hours);
+      notes.push(fill(this._labels.plans_carried, { hours }));
+    }
+    return notes.map((note) => `<div class="difference">${note}</div>`).join("");
+  }
+
+  /**
+   * How finely market prices were applied over the period (ADR-0037): five
+   * minutes at a time where the recorder still keeps them, hourly before.
+   */
+  _resolution(locale) {
+    const from = this._compared.five_minute_from;
+    if (!from) return this._labels.plans_market_hourly;
+    const fine = new Date(from);
+    if (fine <= this._period.start) return this._labels.plans_market_five_minutes;
+    return fill(this._labels.plans_market_from, { date: formatDateTime(fine, locale) });
   }
 
   _total(plan, locale) {

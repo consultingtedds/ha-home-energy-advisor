@@ -59,6 +59,13 @@ export const formatClockTime = (date, locale) =>
     timeZone: locale.timeZone,
   }).format(date);
 
+/** A moment as a date and the household's clock - "3 Jun 2026, 14:00". */
+export const formatDateTime = (date, locale) =>
+  `${new Intl.DateTimeFormat(locale.language, {
+    ...DATE_FORMAT,
+    timeZone: locale.timeZone,
+  }).format(date)}, ${formatClockTime(date, locale)}`;
+
 /** A day named the way a chart axis names one - "Thu, 17 Sep". */
 const formatBucketDay = (date, locale) =>
   new Intl.DateTimeFormat(locale.language, {

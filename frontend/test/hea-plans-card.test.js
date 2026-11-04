@@ -10,6 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { formatDateTime, localeFrom } from "../hea-format.js";
 import { DEFAULTS as LABELS, fill, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-plans-card.js";
 import { JULY, MAY, aHass, mountCard, settled, text } from "./doubles.js";
@@ -201,6 +202,19 @@ describe("what it cannot compare", () => {
     expect(text(card)).toContain(LABELS.plans_no_current);
   });
 
+  it("names a market plan with no price in the period, without a figure", async () => {
+    // Given - a wholesale plan whose price entity recorded nothing then
+    const unpriced = { id: "spot", name: "Wholesale", current: false, no_price: true };
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [unpriced, FLAT] }));
+    await settled(expect, card);
+
+    // Then - listed last, said why, and never ranked
+    expect(order(card)).toEqual(["flat", "spot"]);
+    const row = card.shadowRoot.querySelector('[data-plan="spot"]');
+    expect(row.textContent).toContain(LABELS.plans_no_price);
+    expect(figure(card, "total:spot")).toBeUndefined();
+  });
+
   it("says so when the comparison cannot be loaded", async () => {
     // Given - an integration too old to have the comparison
     const hass = aHass({
@@ -215,5 +229,104 @@ describe("what it cannot compare", () => {
 
     // Then
     await settled(expect, card, "error");
+  });
+});
+
+describe("plans priced from the market (HEA-260)", () => {
+  // A wholesale plan: import at whatever the market charged.
+  const SPOT = {
+    id: "spot",
+    name: "Wholesale",
+    current: false,
+    energy: 21.5,
+    export_credit: 4.1,
+    daily_charges: 33,
+    total: 50.4,
+    priced_from: null,
+    carried_hours: 0,
+  };
+  const JUNE = new Date(2026, 5, 3, 14);
+  const locale = (card) => localeFrom(card._hass);
+
+  it("says when its market prices started, if after the period did", async () => {
+    // Given - the price entity's history starts partway through
+    const late = { ...SPOT, priced_from: JUNE.toISOString() };
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, late] }));
+    await settled(expect, card);
+
+    // Then
+    const row = card.shadowRoot.querySelector('[data-plan="spot"]');
+    expect(row.textContent).toContain(
+      fill(LABELS.plans_priced_from, { date: formatDateTime(JUNE, locale(card)) }),
+    );
+  });
+
+  it("says how long was priced at a price carried over a gap", async () => {
+    // Given
+    const gappy = { ...SPOT, carried_hours: 2.5 };
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, gappy] }));
+    await settled(expect, card);
+
+    // Then
+    const row = card.shadowRoot.querySelector('[data-plan="spot"]');
+    expect(row.textContent).toContain(fill(LABELS.plans_carried, { hours: "2.5" }));
+  });
+
+  it("says nothing of carried prices or a start where there are none", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, SPOT] }));
+    await settled(expect, card);
+
+    // Then
+    const row = card.shadowRoot.querySelector('[data-plan="spot"]').textContent;
+    expect(row).not.toContain(fill(LABELS.plans_carried, { hours: "0" }));
+    expect(row).not.toContain(LABELS.plans_priced_from.split("{")[0]);
+  });
+
+  it("says from when market prices were applied five minutes at a time", async () => {
+    // Given - 5-minute statistics kept from partway through the period
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, five_minute_from: JUNE.toISOString(), plans: [FLAT, SPOT] }),
+    );
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(
+      fill(LABELS.plans_market_from, { date: formatDateTime(JUNE, locale(card)) }),
+    );
+  });
+
+  it("says market prices were applied hour by hour where nothing finer was kept", async () => {
+    // Given / When
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, five_minute_from: null, plans: [FLAT, SPOT] }),
+    );
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(LABELS.plans_market_hourly);
+  });
+
+  it("says market prices were applied five minutes at a time throughout", async () => {
+    // Given - 5-minute statistics kept from before the period began
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, five_minute_from: MAY.toISOString(), plans: [FLAT, SPOT] }),
+    );
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(LABELS.plans_market_five_minutes);
+  });
+
+  it("says nothing of resolution where no plan follows the market", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).not.toContain(LABELS.plans_market_hourly);
   });
 });
