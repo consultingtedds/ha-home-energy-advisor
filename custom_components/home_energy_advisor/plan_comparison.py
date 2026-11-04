@@ -6,14 +6,21 @@ Assistant's long-term statistics and summed across registers; each plan's
 holidays are read from the calendar it names; and the engine prices each plan
 at the same hours. Nothing read here is a figure of this integration's own, so
 any period the statistics reach can be compared, past months included.
+
+A plan importing or exporting at a market price is priced from that price
+entity's own statistics (ADR-0037). Every plan is then priced five minutes at a
+time from the first whole hour the recorder still keeps 5-minute statistics
+for, and hour by hour before it; an interval with no price carries the last one,
+and a plan is priced only from the market's first recorded price.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from homeassistant.components.recorder.const import DOMAIN as RECORDER_DOMAIN
 from homeassistant.components.recorder.statistics import statistics_during_period
@@ -22,16 +29,18 @@ from homeassistant.components.websocket_api.decorators import (
     async_response,
     websocket_command,
 )
+from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, UnitOfEnergy
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import EnergyConverter
 
 from .const import DOMAIN
-from .engine.plan_pricing import HourOfEnergy, PlanCost, days_covered, price_plan
+from .engine.plan_pricing import IntervalOfEnergy, PlanCost, days_covered, price_plan
 from .house_inputs import grid_meters_of
 from .schemas import vol
-from .tariff_plans import plans_of
+from .tariff_plans import TariffPlan, plans_of
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -46,6 +55,43 @@ _REGISTERED = f"{DOMAIN}_compare_plans_registered"
 # Figures go to the card as numbers, to a ten-thousandth: finer than any
 # currency shows, and the card rounds for display.
 _SHOWN = Decimal("0.0001")
+_HOUR = timedelta(hours=1)
+_FIVE_MINUTES = timedelta(minutes=5)
+# How far before the period a market price is looked for, so a gap at its very
+# start carries the price before it rather than leaving the plan unpriced.
+_LOOKBACK = timedelta(days=1)
+_ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
+# The two resolutions the recorder keeps that a comparison reads.
+_Period = Literal["5minute", "hour"]
+
+
+@dataclass(frozen=True)
+class _Recorded:
+    """The grid flows of a period, and from when they are five minutes apart."""
+
+    intervals: list[IntervalOfEnergy]
+    five_minute_from: datetime | None = None
+
+    def length_of(self, interval: IntervalOfEnergy) -> timedelta:
+        fine = self.five_minute_from is not None and interval.start >= (
+            self.five_minute_from
+        )
+        return _FIVE_MINUTES if fine else _HOUR
+
+
+@dataclass(frozen=True)
+class _AtMarket:
+    """A plan's intervals with the market prices it is charged at.
+
+    `priced_from` is where the market's prices began, when that was after the
+    first interval; `carried` is how long was priced at a price carried over a
+    gap. `unpriced` is a plan needing a market price no interval had.
+    """
+
+    intervals: list[IntervalOfEnergy]
+    priced_from: datetime | None = None
+    carried: timedelta = timedelta(0)
+    unpriced: bool = False
 
 
 def async_register(hass: HomeAssistant) -> None:
@@ -126,47 +172,74 @@ async def async_compare_plans(
     meters = grid_meters_of(entry).values()
     imports = {grid.imported for grid in meters}
     exports = {grid.exported for grid in meters if grid.exported}
-    hours = await _hourly_flows(hass, imports, exports, start, end)
+    tariffs = plans_of(entry)
+    markets = {
+        entity
+        for tariff in tariffs.values()
+        for entity in (tariff.import_entity, tariff.export_entity)
+        if entity
+    }
+    # Five minutes at a time only where a market price changes within the hour:
+    # a band prices five minutes exactly as it prices their hour.
+    recorded = await _recorded_flows(
+        hass, imports, exports, start, end, five_minutes=bool(markets)
+    )
+    prices = await _market_prices(hass, markets, start, end, recorded.five_minute_from)
     # Charged up to now at most: the picker's Today runs to midnight, and a whole
     # day's charge against half a day's energy would make every total read high.
     charged_until = max(start, min(end, dt_util.utcnow()))
     days = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
     plans = []
-    for plan_id, tariff in plans_of(entry).items():
+    for plan_id, tariff in tariffs.items():
+        named = {"id": plan_id, "name": tariff.plan.name, "current": tariff.current}
         holidays = (
             await _holidays(hass, tariff.holidays, start, end)
             if tariff.holidays
             else frozenset()
         )
+        market = _at_market_prices(recorded, tariff, prices)
+        if market.unpriced:
+            plans.append({**named, "no_price": True})
+            continue
+        plan_days = days
+        if market.priced_from is not None:
+            plan_days = days_covered(
+                dt_util.as_local(market.priced_from),
+                dt_util.as_local(max(market.priced_from, charged_until)),
+            )
         try:
-            cost = price_plan(tariff.plan, hours, days=days, holidays=holidays)
+            cost = price_plan(
+                tariff.plan, market.intervals, days=plan_days, holidays=holidays
+            )
         except ValueError:
             # Only a plan edited outside its form can leave hours unpriced; it is
             # listed, not guessed at.
-            plans.append(
-                {
-                    "id": plan_id,
-                    "name": tariff.plan.name,
-                    "current": tariff.current,
-                    "incomplete": True,
-                }
-            )
+            plans.append({**named, "incomplete": True})
             continue
-        plans.append(
-            {
-                "id": plan_id,
-                "name": tariff.plan.name,
-                "current": tariff.current,
-                **_figures(cost),
-            }
-        )
+        plans.append({**named, **_figures(cost), **_market_notes(tariff, market)})
+    intervals = recorded.intervals
     return {
-        "hours": len(hours),
+        "hours": len(intervals),
         "days": float(days),
-        "imported_kwh": _number(sum((hour.imported_kwh for hour in hours), Decimal(0))),
-        "exported_kwh": _number(sum((hour.exported_kwh for hour in hours), Decimal(0))),
+        "imported_kwh": _number(sum((i.imported_kwh for i in intervals), Decimal(0))),
+        "exported_kwh": _number(sum((i.exported_kwh for i in intervals), Decimal(0))),
+        "five_minute_from": _when(recorded.five_minute_from),
         "plans": plans,
     }
+
+
+def _market_notes(tariff: TariffPlan, market: _AtMarket) -> dict[str, Any]:
+    """What a market-priced plan's figures rest on, for the card to say."""
+    if not (tariff.import_entity or tariff.export_entity):
+        return {}
+    return {
+        "priced_from": _when(market.priced_from),
+        "carried_hours": round(market.carried / _HOUR, 2),
+    }
+
+
+def _when(moment: datetime | None) -> str | None:
+    return None if moment is None else moment.astimezone(UTC).isoformat()
 
 
 def _figures(cost: PlanCost) -> dict[str, float]:
@@ -182,56 +255,240 @@ def _number(value: Decimal) -> float:
     return float(value.quantize(_SHOWN))
 
 
-async def _hourly_flows(
+async def _recorded_flows(  # noqa: PLR0913 - the meters and period and how finely to read them
     hass: HomeAssistant,
     imports: set[str],
     exports: set[str],
     start: datetime,
     end: datetime,
-) -> list[HourOfEnergy]:
-    """Each recorded hour's grid import and export, summed across meters.
+    *,
+    five_minutes: bool,
+) -> _Recorded:
+    """Each recorded interval's grid import and export, summed across meters.
 
-    An hour none of the meters recorded is left out rather than priced as
-    nothing; the caller says how many hours there were.
+    Hourly, unless `five_minutes`: then five minutes at a time from the first
+    whole hour the recorder still holds 5-minute statistics for. An interval
+    none of the meters recorded is left out rather than priced as nothing; the
+    caller says how many there were.
     """
     if RECORDER_DOMAIN not in hass.config.components or not imports | exports:
-        return []
-    changes = await get_instance(hass).async_add_executor_job(
-        _hourly_changes, hass, imports | exports, start, end
+        return _Recorded([])
+    meters = imports | exports
+    recorder = get_instance(hass)
+    hourly = await recorder.async_add_executor_job(
+        _changes, hass, meters, start, end, "hour"
     )
-    imported = _summed(changes, imports)
-    exported = _summed(changes, exports)
-    return [
-        HourOfEnergy(
-            start=dt_util.as_local(moment),
-            imported_kwh=imported.get(moment, Decimal(0)),
-            exported_kwh=exported.get(moment, Decimal(0)),
+    fine = (
+        await recorder.async_add_executor_job(
+            _changes, hass, meters, start, end, "5minute"
         )
-        for moment in sorted(imported.keys() | exported.keys())
-    ]
-
-
-def _hourly_changes(
-    hass: HomeAssistant, statistic_ids: set[str], start: datetime, end: datetime
-) -> Mapping[str, list[Any]]:
-    """The recorder's hourly change for each meter, in kWh. A database read."""
-    return statistics_during_period(
-        hass, start, end, statistic_ids, "hour", {"energy": "kWh"}, {"change"}
+        if five_minutes
+        else {}
     )
+    five_minute_from = _first_whole_hour(fine)
+
+    def kept(moment: datetime, *, is_fine: bool) -> bool:
+        if five_minute_from is None:
+            return not is_fine
+        return (moment >= five_minute_from) is is_fine
+
+    imported = _summed(hourly, imports, kept, is_fine=False) | _summed(
+        fine, imports, kept, is_fine=True
+    )
+    exported = _summed(hourly, exports, kept, is_fine=False) | _summed(
+        fine, exports, kept, is_fine=True
+    )
+    return _Recorded(
+        [
+            IntervalOfEnergy(
+                start=dt_util.as_local(moment),
+                imported_kwh=imported.get(moment, Decimal(0)),
+                exported_kwh=exported.get(moment, Decimal(0)),
+            )
+            for moment in sorted(imported.keys() | exported.keys())
+        ],
+        five_minute_from,
+    )
+
+
+def _changes(
+    hass: HomeAssistant,
+    statistic_ids: set[str],
+    start: datetime,
+    end: datetime,
+    period: _Period,
+) -> Mapping[str, list[Any]]:
+    """The recorder's change per `period` for each meter, in kWh. A database read."""
+    return statistics_during_period(
+        hass,
+        start,
+        end,
+        statistic_ids,
+        period,
+        {"energy": "kWh"},
+        {"change"},
+    )
+
+
+def _first_whole_hour(
+    changes: Mapping[str, Iterable[Mapping[str, Any]]],
+) -> datetime | None:
+    """The first whole hour these 5-minute statistics cover, if any."""
+    starts = [_moment(row["start"]) for rows in changes.values() for row in rows]
+    if not starts:
+        return None
+    earliest = min(starts)
+    hour = earliest.replace(minute=0, second=0, microsecond=0)
+    return hour if hour == earliest else hour + _HOUR
 
 
 def _summed(
-    changes: Mapping[str, Iterable[Mapping[str, Any]]], meters: set[str]
+    changes: Mapping[str, Iterable[Mapping[str, Any]]],
+    meters: set[str],
+    kept: Any,  # noqa: ANN401 - the caller's choice of interval
+    *,
+    is_fine: bool,
 ) -> dict[datetime, Decimal]:
-    """Each hour's change, added up across these meters."""
+    """Each interval's change, added up across these meters, where `kept`."""
     total: dict[datetime, Decimal] = defaultdict(Decimal)
     for meter in meters:
         for row in changes.get(meter, ()):
             change = row.get("change")
-            if change is None:
+            moment = _moment(row["start"])
+            if change is None or not kept(moment, is_fine=is_fine):
                 continue
-            total[_moment(row["start"])] += Decimal(str(change))
+            total[moment] += Decimal(str(change))
     return dict(total)
+
+
+async def _market_prices(
+    hass: HomeAssistant,
+    entities: set[str],
+    start: datetime,
+    end: datetime,
+    five_minute_from: datetime | None,
+) -> dict[str, dict[datetime, Decimal]]:
+    """Each market price entity's mean price per interval, per kWh.
+
+    Hourly means before `five_minute_from` (from a day before the period, so a
+    gap at its start carries the price before it) and 5-minute means from it.
+    """
+    if RECORDER_DOMAIN not in hass.config.components or not entities:
+        return {}
+    recorder = get_instance(hass)
+    hourly = await recorder.async_add_executor_job(
+        _means, hass, entities, start - _LOOKBACK, five_minute_from or end, "hour"
+    )
+    fine = (
+        await recorder.async_add_executor_job(
+            _means, hass, entities, five_minute_from, end, "5minute"
+        )
+        if five_minute_from is not None
+        else {}
+    )
+    prices: dict[str, dict[datetime, Decimal]] = {}
+    for entity in entities:
+        per_kwh = _per_kwh(hass, entity)
+        prices[entity] = {
+            _moment(row["start"]): Decimal(str(row["mean"])) * per_kwh
+            for rows in (hourly.get(entity, ()), fine.get(entity, ()))
+            for row in rows
+            if row.get("mean") is not None
+        }
+    return prices
+
+
+def _means(
+    hass: HomeAssistant,
+    statistic_ids: set[str],
+    start: datetime,
+    end: datetime,
+    period: _Period,
+) -> Mapping[str, list[Any]]:
+    """The recorder's mean per `period` for each price entity. A database read."""
+    return statistics_during_period(
+        hass,
+        start,
+        end,
+        statistic_ids,
+        period,
+        None,
+        {"mean"},
+    )
+
+
+def _per_kwh(hass: HomeAssistant, entity: str) -> Decimal:
+    """What a price entity's figure is multiplied by to be per kWh.
+
+    As the Energy Dashboard reads a price: the unit after the `/` is the energy
+    it is per, and anything else (no unit, or one that is not energy) is taken
+    as per kWh.
+    """
+    state = hass.states.get(entity)
+    unit = str(state.attributes.get(ATTR_UNIT_OF_MEASUREMENT, "")) if state else ""
+    energy = unit.partition("/")[2]
+    if energy not in _ENERGY_UNITS:
+        return Decimal(1)
+    return Decimal(
+        str(EnergyConverter.convert(1.0, UnitOfEnergy.KILO_WATT_HOUR, energy))
+    )
+
+
+def _at_market_prices(
+    recorded: _Recorded,
+    tariff: TariffPlan,
+    prices: Mapping[str, Mapping[datetime, Decimal]],
+) -> _AtMarket:
+    """The plan's intervals, each with the market prices the plan follows.
+
+    An interval with no price of its own carries the last one before it. Until
+    every price the plan follows has been recorded once there is nothing to
+    carry, so those intervals are left out and the plan priced from then.
+    """
+    entities = [e for e in (tariff.import_entity, tariff.export_entity) if e]
+    if not entities:
+        return _AtMarket(recorded.intervals)
+    first = recorded.intervals[0].start if recorded.intervals else None
+    last = {e: _last_before(prices.get(e, {}), first) for e in entities}
+    priced: list[IntervalOfEnergy] = []
+    carried = timedelta(0)
+    left_out = False
+    for interval in recorded.intervals:
+        moment = interval.start.astimezone(UTC)
+        own = {e: prices.get(e, {}).get(moment) for e in entities}
+        last |= {entity: price for entity, price in own.items() if price is not None}
+        if any(last[entity] is None for entity in entities):
+            left_out = True
+            continue
+        if any(price is None for price in own.values()):
+            carried += recorded.length_of(interval)
+        priced.append(
+            replace(
+                interval,
+                import_price=last[tariff.import_entity]
+                if tariff.import_entity
+                else None,
+                export_price=last[tariff.export_entity]
+                if tariff.export_entity
+                else None,
+            )
+        )
+    return _AtMarket(
+        priced,
+        priced_from=priced[0].start if priced and left_out else None,
+        carried=carried,
+        unpriced=left_out and not priced,
+    )
+
+
+def _last_before(
+    prices: Mapping[datetime, Decimal], moment: datetime | None
+) -> Decimal | None:
+    """The latest price recorded before `moment`, if any."""
+    if moment is None:
+        return None
+    earlier = [at for at in prices if at < moment.astimezone(UTC)]
+    return prices[max(earlier)] if earlier else None
 
 
 def _moment(start: float | datetime) -> datetime:

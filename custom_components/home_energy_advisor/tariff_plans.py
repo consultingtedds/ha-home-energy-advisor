@@ -29,7 +29,9 @@ from .const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PRICES,
     SUBENTRY_TYPE_PLAN,
 )
@@ -43,11 +45,17 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TariffPlan:
-    """A plan as the household entered it."""
+    """A plan as the household entered it.
+
+    `import_entity` and `export_entity` are the market prices it imports or
+    exports at instead of its schedule, where it has them (ADR-0037).
+    """
 
     plan: Plan
     current: bool
     holidays: str | None
+    import_entity: str | None = None
+    export_entity: str | None = None
 
 
 def plans_of(entry: ConfigEntry) -> dict[str, TariffPlan]:
@@ -60,17 +68,32 @@ def plans_of(entry: ConfigEntry) -> dict[str, TariffPlan]:
 
 
 def tariff_plan_from(name: str, data: Mapping[str, Any]) -> TariffPlan:
-    """A plan from what its entry holds."""
+    """A plan from what its entry holds.
+
+    A plan importing at a market price has no bands: whatever bands its entry
+    still holds are not its prices.
+    """
     prices = prices_by_name(data.get(CONF_PRICES, ()))
+    import_entity = data.get(CONF_PLAN_IMPORT_PRICE_ENTITY) or None
+    export_entity = data.get(CONF_PLAN_EXPORT_PRICE_ENTITY) or None
+    bands = (
+        ()
+        if import_entity
+        else tuple(band_from(band, prices) for band in data.get(CONF_BANDS, ()))
+    )
     return TariffPlan(
         plan=Plan(
             name=data.get(CONF_NAME) or name,
-            bands=tuple(band_from(band, prices) for band in data.get(CONF_BANDS, ())),
+            bands=bands,
             daily_charge=_decimal(data.get(CONF_PLAN_DAILY_CHARGE)),
             export_price=_decimal(data.get(CONF_PLAN_EXPORT_PRICE)),
+            import_per_interval=import_entity is not None,
+            export_per_interval=export_entity is not None,
         ),
         current=bool(data.get(CONF_PLAN_CURRENT)),
         holidays=data.get(CONF_PLAN_HOLIDAYS) or None,
+        import_entity=import_entity,
+        export_entity=export_entity,
     )
 
 

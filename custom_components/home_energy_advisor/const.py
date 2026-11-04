@@ -52,6 +52,10 @@ CONF_PLAN_CURRENT: Final = "current_plan"
 CONF_PLAN_DAILY_CHARGE: Final = "daily_charge"
 CONF_PLAN_EXPORT_PRICE: Final = "plan_export_price"
 CONF_PLAN_HOLIDAYS: Final = "holiday_calendar"
+# A market price the plan imports or exports at instead of a schedule (ADR-0037):
+# a plan importing at one has no prices or bands.
+CONF_PLAN_IMPORT_PRICE_ENTITY: Final = "import_price_entity"
+CONF_PLAN_EXPORT_PRICE_ENTITY: Final = "export_price_entity"
 # Each a name with an import price and optionally an export price of its own.
 CONF_PRICES: Final = "prices"
 CONF_BANDS: Final = "bands"

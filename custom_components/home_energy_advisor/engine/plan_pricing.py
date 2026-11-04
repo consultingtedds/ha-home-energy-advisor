@@ -12,6 +12,11 @@ is how time-of-use offers treat a public holiday. Every hour of both kinds of da
 falls in exactly one band: a plan that leaves an hour uncovered, or covers one
 twice, is refused rather than priced, because either way the price of that hour
 would be a guess.
+
+A plan's import, and separately its export, can instead follow a market price
+that changes through the day (ADR-0037). Each recorded interval then carries the
+price the market set for it, at whatever resolution the recorder kept, and a
+plan importing at the market has no bands at all.
 """
 
 from __future__ import annotations
@@ -103,19 +108,28 @@ class PlanGap:
 
 @dataclass(frozen=True)
 class Plan:
-    """A tariff plan as it is published: its bands, daily charge and export price."""
+    """A tariff plan as it is published: its bands, daily charge and export price.
+
+    `import_per_interval` and `export_per_interval` say that the plan charges for
+    import, or pays for export, at each interval's market price instead (ADR-0037).
+    """
 
     name: str
     bands: tuple[Band, ...]
     daily_charge: Decimal = Decimal(0)
     export_price: Decimal = Decimal(0)
+    import_per_interval: bool = False
+    export_per_interval: bool = False
 
     def gaps(self) -> tuple[PlanGap, ...]:
         """Every hour of either kind of day that no band, or more than one, covers.
 
         Grouped by kind of day and by how many bands cover the hours, uncovered
-        hours first, so a form can say exactly what is missing or doubled.
+        hours first, so a form can say exactly what is missing or doubled. A plan
+        importing at the market prices every hour from it, so has none.
         """
+        if self.import_per_interval:
+            return ()
         gaps: list[PlanGap] = []
         for kind in DayKind:
             covering = {
@@ -139,12 +153,18 @@ class Plan:
 
 
 @dataclass(frozen=True)
-class HourOfEnergy:
-    """One recorded hour of grid flow, by the local time it started."""
+class IntervalOfEnergy:
+    """One recorded interval of grid flow, by the local time it started.
+
+    An hour, or five minutes where the recorder still keeps them, with the market
+    prices of the interval where a plan follows the market (ADR-0037).
+    """
 
     start: datetime
     imported_kwh: Decimal
     exported_kwh: Decimal
+    import_price: Decimal | None = None
+    export_price: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -163,29 +183,42 @@ class PlanCost:
 
 def price_plan(
     plan: Plan,
-    hours: Iterable[HourOfEnergy],
+    intervals: Iterable[IntervalOfEnergy],
     *,
     days: Decimal,
     holidays: Collection[date],
 ) -> PlanCost:
-    """What `plan` would have charged for these hours, over `days` of charges.
+    """What `plan` would have charged for these intervals, over `days` of charges.
 
     `days` is how many days of daily charge the period carries, which
-    `days_covered` measures. `holidays` are dates priced as rest days.
+    `days_covered` measures. `holidays` are dates priced as rest days. An
+    interval a market-priced plan needs a price for and that has none is
+    refused: what to charge it is the caller's to decide, not a guess here.
     """
     if plan.gaps():
         msg = f"Plan {plan.name!r} does not cover every hour exactly once"
         raise ValueError(msg)
     energy = Decimal(0)
     export_credit = Decimal(0)
-    for recorded in hours:
-        band = plan.band_at(
-            _kind_of(recorded.start.date(), holidays), recorded.start.hour
+    for recorded in intervals:
+        band = (
+            None
+            if plan.import_per_interval
+            else plan.band_at(
+                _kind_of(recorded.start.date(), holidays), recorded.start.hour
+            )
         )
-        energy += recorded.imported_kwh * band.import_price
-        export_price = (
-            plan.export_price if band.export_price is None else band.export_price
+        energy += recorded.imported_kwh * (
+            _market(recorded.import_price, recorded, plan)
+            if band is None
+            else band.import_price
         )
+        if plan.export_per_interval:
+            export_price = _market(recorded.export_price, recorded, plan)
+        elif band is None or band.export_price is None:
+            export_price = plan.export_price
+        else:
+            export_price = band.export_price
         export_credit += recorded.exported_kwh * export_price
     return PlanCost(
         energy=energy,
@@ -217,6 +250,13 @@ def days_covered(start: datetime, end: datetime) -> Decimal:
 def _midnight(day: date, zoned: datetime) -> datetime:
     """The start of `day` in the time zone `zoned` carries."""
     return datetime(day.year, day.month, day.day, tzinfo=zoned.tzinfo)
+
+
+def _market(price: Decimal | None, recorded: IntervalOfEnergy, plan: Plan) -> Decimal:
+    if price is None:
+        msg = f"Plan {plan.name!r} has no market price for {recorded.start}"
+        raise ValueError(msg)
+    return price
 
 
 def _kind_of(day: date, holidays: Collection[date]) -> DayKind:

@@ -22,7 +22,7 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Band,
     DayKind,
     Days,
-    HourOfEnergy,
+    IntervalOfEnergy,
     Plan,
     PlanCost,
     PlanGap,
@@ -66,9 +66,9 @@ WEDNESDAY = date(2026, 11, 4)
 SATURDAY = date(2026, 11, 7)
 
 
-def hour(day: date, at: int, imported: str, exported: str = "0") -> HourOfEnergy:
+def hour(day: date, at: int, imported: str, exported: str = "0") -> IntervalOfEnergy:
     """One recorded hour of grid flow, starting at `at` o'clock local time."""
-    return HourOfEnergy(
+    return IntervalOfEnergy(
         start=datetime(day.year, day.month, day.day, at, tzinfo=LOCAL),
         imported_kwh=Decimal(imported),
         exported_kwh=Decimal(exported),
@@ -194,8 +194,8 @@ def test_the_hour_daylight_saving_repeats_is_priced_once_for_each_record() -> No
     second = datetime(2026, 10, 25, 1, 0, tzinfo=utc).astimezone(LOCAL)
     assert (first.hour, second.hour) == (2, 2)
     hours = [
-        HourOfEnergy(first, Decimal(1), Decimal(0)),
-        HourOfEnergy(second, Decimal(1), Decimal(0)),
+        IntervalOfEnergy(first, Decimal(1), Decimal(0)),
+        IntervalOfEnergy(second, Decimal(1), Decimal(0)),
     ]
 
     # When - a Sunday, so the rest-day band
@@ -307,3 +307,101 @@ def test_a_band_must_cover_whole_hours_of_one_day(start: int, end: int) -> None:
     # When / Then - hours run 0 to 24, and a band covers at least one
     with pytest.raises(ValueError, match="hours"):
         Band(Days.EVERY_DAY, start, end, PEAK)
+
+
+# Prices from an entity, interval by interval (HEA-260, ADR-0037)
+
+# A wholesale plan: no bands, its import at whatever the market charged in each
+# interval, its export at a flat feed-in price.
+WHOLESALE = Plan(
+    name="Wholesale",
+    bands=(),
+    daily_charge=Decimal("1.10"),
+    export_price=Decimal("0.05"),
+    import_per_interval=True,
+)
+
+
+def interval(  # noqa: PLR0913 - one recorded interval field by field
+    day: date,
+    at: int,
+    minute: int,
+    imported: str,
+    exported: str = "0",
+    *,
+    import_price: str | None = None,
+    export_price: str | None = None,
+) -> IntervalOfEnergy:
+    """Five recorded minutes of grid flow, at the prices the market set for them."""
+    return IntervalOfEnergy(
+        start=datetime(day.year, day.month, day.day, at, minute, tzinfo=LOCAL),
+        imported_kwh=Decimal(imported),
+        exported_kwh=Decimal(exported),
+        import_price=None if import_price is None else Decimal(import_price),
+        export_price=None if export_price is None else Decimal(export_price),
+    )
+
+
+def test_a_plan_importing_at_the_market_charges_each_interval_its_own_price() -> None:
+    # Given - the same hour, cheap for five minutes and below nothing for the
+    # next five, as a wholesale price can be
+    intervals = [
+        interval(WEDNESDAY, 12, 0, "0.4", import_price="0.12"),
+        interval(WEDNESDAY, 12, 5, "1.5", import_price="-0.02"),
+    ]
+
+    # When
+    cost = price_plan(WHOLESALE, intervals, days=Decimal(1), holidays=frozenset())
+
+    # Then - each at its own price, not the hour's average
+    assert cost == PlanCost(
+        energy=Decimal("0.018"),  # 0.4 at 0.12, less 1.5 at 0.02
+        export_credit=Decimal(0),
+        daily_charges=Decimal("1.10"),
+    )
+
+
+def test_a_plan_exporting_at_the_market_credits_each_interval_its_own_price() -> None:
+    # Given - a time-of-use plan whose feed-in follows the market instead of its
+    # flat price, at the weekday peak
+    plan = Plan(
+        name="Banded, market feed-in",
+        bands=TIME_OF_USE.bands,
+        export_price=Decimal("0.04"),
+        export_per_interval=True,
+    )
+    intervals = [interval(WEDNESDAY, 18, 30, "0", "2.0", export_price="0.21")]
+
+    # When
+    cost = price_plan(plan, intervals, days=Decimal(0), holidays=frozenset())
+
+    # Then - the band still prices import, the market prices export
+    assert cost.export_credit == Decimal("0.420")
+
+
+def test_a_plan_importing_at_the_market_needs_no_bands() -> None:
+    # When / Then - no hour is left unpriced, since every interval has a price
+    assert WHOLESALE.gaps() == ()
+
+
+def test_an_interval_without_a_price_of_its_own_is_not_guessed_at() -> None:
+    # Given - an interval the comparison found no price for
+    intervals = [interval(WEDNESDAY, 12, 0, "0.4")]
+
+    # When / Then
+    with pytest.raises(ValueError, match="price"):
+        price_plan(WHOLESALE, intervals, days=Decimal(0), holidays=frozenset())
+
+
+def test_a_five_minute_interval_is_priced_at_the_band_its_start_falls_in() -> None:
+    # Given - five minutes before the weekday peak, and the first five of it
+    intervals = [
+        interval(WEDNESDAY, 9, 55, "1"),
+        interval(WEDNESDAY, 10, 0, "1"),
+    ]
+
+    # When
+    cost = price_plan(TIME_OF_USE, intervals, days=Decimal(0), holidays=frozenset())
+
+    # Then
+    assert cost.energy == SHOULDER + PEAK
