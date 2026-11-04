@@ -66,6 +66,9 @@ def _accountant() -> Accountant:
 # ring and the held corrections it feeds), and the devices briefly out-draw the
 # house meters (the debt ledger).
 _PRICES = ((0, OFF_PEAK), (30, PEAK))
+# Paid for export, so the sunshine the house used gave something up and every
+# running total carries a forgone figure a restart could lose (HEA-270).
+_EXPORT_PRICE = Decimal("0.05")
 _READINGS = (
     (GRID, 0, "0"),
     (GENERATION, 0, "0"),
@@ -119,6 +122,8 @@ def _run(restart_at: int | None) -> Totals:
         for when, price in _PRICES:
             if when == minute:
                 acc.record_price(at(minute), price)
+        if minute == 0:
+            acc.record_export_price(at(minute), _EXPORT_PRICE)
         for entity, when, value in _READINGS:
             if when == minute:
                 acc.observe(entity, at(minute), Decimal(value))

@@ -2952,6 +2952,7 @@ def _dump_running(running: _Running) -> dict[str, Any]:
         "cost_floor": str(running.cost_floor),
         "cost_ceiling": str(running.cost_ceiling),
         "energy_from_battery_solar": str(running.battery_solar),
+        "forgone_export": str(running.forgone_export),
         "by_source": _dump_by_source(running.by_source),
     }
 
@@ -2975,6 +2976,10 @@ def _load_running(data: Mapping[str, Any]) -> _Running:
         # Absent before stored sunshine was counted, and read as nothing for the
         # same reason (ADR-0033).
         battery_solar=Decimal(data.get("energy_from_battery_solar", 0)),
+        # Absent from every snapshot before it was carried (HEA-270), and read as
+        # nothing: the sensors' restored baseline already holds what was
+        # published, so a figure the engine never carried was never counted twice.
+        forgone_export=Decimal(data.get("forgone_export", 0)),
         by_source=_load_by_source(data["by_source"]),
     )
 
