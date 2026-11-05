@@ -20,11 +20,19 @@ A plan's import, and separately its export, can instead follow a market price
 that changes through the day (ADR-0037). Each recorded interval then carries the
 price the market set for it, at whatever resolution the recorder kept, and a
 plan importing at the market has no bands at all.
+
+An export price can pay only on the first kWh exported in a day, as some
+feed-in offers do (ADR-0039). The plan's own export price can carry an
+allowance, with a lower price for the rest; a band's export price can too, and
+what it does not pay falls to the plan's. A band's allowance belongs to the
+named price it charges, so it counts across every band charging that price, and
+everything credited at the plan's price counts against the plan's. Each
+allowance starts again at local midnight.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -81,6 +89,9 @@ class Band:
     from `start` up to but not including `end`, on a 0-24 clock, so a band from
     22 to 8 runs across midnight. Whole hours only: the statistics a plan is
     priced against are hourly (ADR-0036).
+
+    `export_allowance` is how many kWh a day its export price pays on, shared
+    with every band charging the same named price, `name` (ADR-0039).
     """
 
     days: Days | frozenset[Day]
@@ -88,6 +99,10 @@ class Band:
     end: int
     import_price: Decimal
     export_price: Decimal | None = None
+    export_allowance: Decimal | None = None
+    # Whose allowance it shares, not what it charges, so two bands at the same
+    # prices are the same band whatever their price is called.
+    name: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         """Refuse a band of no days, or hours that are not whole hours of one."""
@@ -138,6 +153,8 @@ class Plan:
 
     `import_per_interval` and `export_per_interval` say that the plan charges for
     import, or pays for export, at each interval's market price instead (ADR-0037).
+    `export_allowance` is how many kWh a day its export price pays on, with
+    `export_price_after` paid on the rest (ADR-0039).
     """
 
     name: str
@@ -146,6 +163,8 @@ class Plan:
     export_price: Decimal = Decimal(0)
     import_per_interval: bool = False
     export_per_interval: bool = False
+    export_allowance: Decimal | None = None
+    export_price_after: Decimal = Decimal(0)
 
     @property
     def prices_holidays(self) -> bool:
@@ -237,15 +256,16 @@ def price_plan(
 
     `days` is how many days of daily charge the period carries, which
     `days_covered` measures. `holidays` are the public holidays, priced at the
-    plan's holiday bands where it has them. An
-    interval a market-priced plan needs a price for and that has none is
-    refused: what to charge it is the caller's to decide, not a guess here.
+    plan's holiday bands where it has them. An interval a market-priced plan
+    needs a price for and that has none is refused: what to charge it is the
+    caller's to decide, not a guess here.
     """
     if plan.gaps():
         msg = f"Plan {plan.name!r} does not cover every hour exactly once"
         raise ValueError(msg)
     energy = Decimal(0)
     export_credit = Decimal(0)
+    allowances = _Allowances()
     for recorded in intervals:
         band = (
             None
@@ -260,12 +280,11 @@ def price_plan(
             else band.import_price
         )
         if plan.export_per_interval:
-            export_price = _market(recorded.export_price, recorded, plan)
-        elif band is None or band.export_price is None:
-            export_price = plan.export_price
+            export_credit += recorded.exported_kwh * _market(
+                recorded.export_price, recorded, plan
+            )
         else:
-            export_price = band.export_price
-        export_credit += recorded.exported_kwh * export_price
+            export_credit += allowances.credit(plan, band, recorded)
     return PlanCost(
         energy=energy,
         export_credit=export_credit,
@@ -296,6 +315,47 @@ def days_covered(start: datetime, end: datetime) -> Decimal:
 def _midnight(day: date, zoned: datetime) -> datetime:
     """The start of `day` in the time zone `zoned` carries."""
     return datetime(day.year, day.month, day.day, tzinfo=zoned.tzinfo)
+
+
+class _Allowances:
+    """What export earns at a plan's and its bands' prices, allowances counted.
+
+    Each allowance is counted by the day and by whose it is: a named price's, or
+    the plan's own (`None`). Every kWh at a price meets the same allowance
+    whatever order the intervals come in, so the total does not depend on it.
+    """
+
+    def __init__(self) -> None:
+        self._used: dict[tuple[date, str | None], Decimal] = {}
+
+    def credit(
+        self, plan: Plan, band: Band | None, recorded: IntervalOfEnergy
+    ) -> Decimal:
+        """What `recorded`'s export earns, at its band's price, then the plan's."""
+        day = recorded.start.date()
+        exported = recorded.exported_kwh
+        credit = Decimal(0)
+        if band is not None and band.export_price is not None:
+            paid = self._within(day, band.name, band.export_allowance, exported)
+            credit += paid * band.export_price
+            exported -= paid
+        paid = self._within(day, None, plan.export_allowance, exported)
+        return (
+            credit
+            + paid * plan.export_price
+            + (exported - paid) * plan.export_price_after
+        )
+
+    def _within(
+        self, day: date, whose: str | None, allowance: Decimal | None, kwh: Decimal
+    ) -> Decimal:
+        """How much of `kwh` the day's allowance still has room for, now used."""
+        if allowance is None:
+            return kwh
+        used = self._used.get((day, whose), Decimal(0))
+        within = min(kwh, max(allowance - used, Decimal(0)))
+        self._used[(day, whose)] = used + within
+        return within
 
 
 def _market(price: Decimal | None, recorded: IntervalOfEnergy, plan: Plan) -> Decimal:

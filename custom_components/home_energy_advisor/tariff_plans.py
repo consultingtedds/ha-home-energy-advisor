@@ -8,7 +8,8 @@ calendar its holidays come from.
 
 A band entered before prices were named carries its figures itself, and is read
 as it is. A band's days are either the name of the days an offer names, such as
-weekdays, or the list of days it applies to (ADR-0038).
+weekdays, or the list of days it applies to (ADR-0038). A price's export price,
+and the plan's, can pay only on the first kWh exported in a day (ADR-0039).
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from homeassistant.const import CONF_NAME
 from .const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
+    CONF_BAND_EXPORT_ALLOWANCE,
     CONF_BAND_EXPORT_PRICE,
     CONF_BAND_IMPORT_PRICE,
     CONF_BAND_PRICE,
@@ -29,7 +31,9 @@ from .const import (
     CONF_BANDS,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -90,6 +94,8 @@ def tariff_plan_from(name: str, data: Mapping[str, Any]) -> TariffPlan:
             export_price=_decimal(data.get(CONF_PLAN_EXPORT_PRICE)),
             import_per_interval=import_entity is not None,
             export_per_interval=export_entity is not None,
+            export_allowance=_optional_decimal(data.get(CONF_PLAN_EXPORT_ALLOWANCE)),
+            export_price_after=_decimal(data.get(CONF_PLAN_EXPORT_PRICE_AFTER)),
         ),
         current=bool(data.get(CONF_PLAN_CURRENT)),
         holidays=data.get(CONF_PLAN_HOLIDAYS) or None,
@@ -123,6 +129,8 @@ def band_from(data: Mapping[str, Any], prices: Mapping[str, Mapping[str, Any]]) 
         end=int(data[CONF_BAND_END]),
         import_price=_decimal(figures[CONF_BAND_IMPORT_PRICE]),
         export_price=None if export is None else _decimal(export),
+        export_allowance=_optional_decimal(figures.get(CONF_BAND_EXPORT_ALLOWANCE)),
+        name=named or "",
     )
 
 

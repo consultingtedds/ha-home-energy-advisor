@@ -414,6 +414,121 @@ def test_a_band_must_cover_whole_hours_of_one_day(start: int, end: int) -> None:
         Band(Days.EVERY_DAY, start, end, PEAK)
 
 
+# Export allowances: the first kWh of a day at one price (HEA-265, ADR-0039)
+
+# A whole-day allowance, as GloBird's 11c Solar publishes it: 0.11 for the first
+# 8 kWh exported each day, then 0.04.
+TIERED = Plan(
+    name="Tiered feed-in",
+    bands=(Band(Days.EVERY_DAY, 0, 24, OFF_PEAK),),
+    export_price=Decimal("0.11"),
+    export_allowance=Decimal(8),
+    export_price_after=Decimal("0.04"),
+)
+
+
+def evening_plan(*, export_allowance: Decimal | None = None) -> Plan:
+    """An allowance in a window, as ZEROHERO publishes it.
+
+    0.10 for the first 15 kWh a day exported between 18:00 and 21:00, and the
+    plan's 0.04 otherwise. The evening price is charged by two bands, as a
+    household entering the window an hour at a time might; it is one price, so
+    one allowance.
+    """
+    return Plan(
+        name="Evening feed-in",
+        bands=(
+            Band(Days.EVERY_DAY, 21, 18, OFF_PEAK),
+            *(
+                Band(
+                    Days.EVERY_DAY,
+                    start,
+                    end,
+                    PEAK,
+                    export_price=Decimal("0.10"),
+                    export_allowance=Decimal(15),
+                    name="Evening",
+                )
+                for start, end in ((18, 19), (19, 21))
+            ),
+        ),
+        export_price=Decimal("0.04"),
+        export_allowance=export_allowance,
+        export_price_after=Decimal("0.02"),
+    )
+
+
+def test_a_plans_export_allowance_pays_its_price_on_the_first_kwh_of_a_day() -> None:
+    # Given - 5 kWh out in the morning and 5 more in the afternoon
+    hours = [hour(WEDNESDAY, 10, "0", "5"), hour(WEDNESDAY, 14, "0", "5")]
+
+    # When
+    cost = price_plan(TIERED, hours, days=Decimal(0), holidays=frozenset())
+
+    # Then - 8 kWh at 0.11, the last 2 at 0.04
+    assert cost.export_credit == Decimal("0.96")
+
+
+def test_the_export_allowance_starts_again_each_day() -> None:
+    # Given - 10 kWh out on Wednesday, 3 on Thursday
+    hours = [hour(WEDNESDAY, 12, "0", "10"), hour(THURSDAY, 12, "0", "3")]
+
+    # When
+    cost = price_plan(TIERED, hours, days=Decimal(0), holidays=frozenset())
+
+    # Then - Wednesday 8 at 0.11 and 2 at 0.04, Thursday's 3 all at 0.11
+    assert cost.export_credit == Decimal("0.88") + Decimal("0.08") + Decimal("0.33")
+
+
+def test_a_prices_export_allowance_counts_across_every_band_charging_it() -> None:
+    # Given - 10 kWh out at 18:00 and 10 at 19:00, two bands of one price, and
+    # 2 kWh at midday at the plan's own export price
+    hours = [
+        hour(WEDNESDAY, 18, "0", "10"),
+        hour(WEDNESDAY, 19, "0", "10"),
+        hour(WEDNESDAY, 12, "0", "2"),
+    ]
+
+    # When
+    cost = price_plan(evening_plan(), hours, days=Decimal(0), holidays=frozenset())
+
+    # Then - 15 kWh at 0.10, and the evening's last 5 with midday's 2 at 0.04
+    assert cost.export_credit == Decimal("1.50") + Decimal("0.28")
+
+
+def test_export_beyond_a_prices_allowance_counts_against_the_plans() -> None:
+    # Given - the plan's own price has an allowance too: 0.04 for 3 kWh a day,
+    # then 0.02
+    plan = evening_plan(export_allowance=Decimal(3))
+
+    # When - 20 kWh out in the evening
+    cost = price_plan(
+        plan, [hour(WEDNESDAY, 19, "0", "20")], days=Decimal(0), holidays=frozenset()
+    )
+
+    # Then - 15 at the evening's 0.10, 3 at the plan's 0.04, 2 at 0.02
+    assert cost.export_credit == Decimal("1.50") + Decimal("0.12") + Decimal("0.04")
+
+
+def test_a_plan_exporting_at_the_market_has_no_allowance() -> None:
+    # Given - a market feed-in, though the plan still holds an allowance
+    plan = Plan(
+        name="Market feed-in",
+        bands=TIERED.bands,
+        export_price=TIERED.export_price,
+        export_allowance=TIERED.export_allowance,
+        export_price_after=TIERED.export_price_after,
+        export_per_interval=True,
+    )
+    intervals = [interval(WEDNESDAY, 12, 0, "0", "10", export_price="0.07")]
+
+    # When
+    cost = price_plan(plan, intervals, days=Decimal(0), holidays=frozenset())
+
+    # Then - every kWh at the market's price
+    assert cost.export_credit == Decimal("0.70")
+
+
 # Prices from an entity, interval by interval (HEA-260, ADR-0037)
 
 # A wholesale plan: no bands, its import at whatever the market charged in each

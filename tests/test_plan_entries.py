@@ -29,6 +29,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.home_energy_advisor.const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
+    CONF_BAND_EXPORT_ALLOWANCE,
     CONF_BAND_EXPORT_PRICE,
     CONF_BAND_IMPORT_PRICE,
     CONF_BAND_PRICE,
@@ -39,7 +40,9 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -1056,3 +1059,32 @@ async def test_a_band_on_chosen_days_that_overlaps_goes_back_to_its_form(
         hass, result, {**overlapping, CONF_BAND_START: 22, CONF_BAND_END: 24}
     )
     assert _suggested(result) == {CONF_BAND_DAYS: ["monday"]}
+
+
+# Export allowances (HEA-265, ADR-0039)
+
+# Peak's export price pays on the first 15 kWh a day, and the plan's own on the
+# first 8, with 0.02 for the rest.
+_ALLOWANCES = {
+    **_CURRENT,
+    CONF_PLAN_EXPORT_ALLOWANCE: 8,
+    CONF_PLAN_EXPORT_PRICE_AFTER: 0.02,
+    CONF_PRICES: [{**_PEAK, CONF_BAND_EXPORT_ALLOWANCE: 15}, _OFF_PEAK],
+}
+
+
+async def test_a_plans_export_allowances_are_read_from_its_entry(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    (plan,) = plans_of(_house(hass, _ALLOWANCES)).values()
+
+    # Then - the plan's, and the peak price's on each band charging it, which
+    # shares it by the price's name
+    assert plan.plan.export_allowance == Decimal(8)
+    assert plan.plan.export_price_after == Decimal("0.02")
+    assert [(band.name, band.export_allowance) for band in plan.plan.bands] == [
+        ("Peak", Decimal(15)),
+        ("Off-peak", None),
+        ("Off-peak", None),
+    ]
