@@ -15,6 +15,10 @@ not at all would be a guess.
 A band's days are weekdays, weekends and holidays, or every day, as most offers
 name them, or days ticked one by one on a step of their own (ADR-0038).
 
+An export price, the plan's or a price's own, can pay only on the first kWh
+exported in a day (ADR-0039). The plan's allowance is entered with the price
+paid beyond it, since export beyond it would otherwise go unpaid unasked.
+
 Most offers share their bands with a plan already entered and differ only in
 price, so a new plan can start from a copy of another (HEA-259): the details
 screen filled in from it, then straight to the review of its bands. Editing a
@@ -42,6 +46,7 @@ from homeassistant.helpers import selector, translation
 from .const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
+    CONF_BAND_EXPORT_ALLOWANCE,
     CONF_BAND_EXPORT_PRICE,
     CONF_BAND_IMPORT_PRICE,
     CONF_BAND_PRICE,
@@ -50,7 +55,9 @@ from .const import (
     CONF_CURRENCY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -86,7 +93,9 @@ _DETAIL_KEYS = (
     CONF_NAME,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -100,6 +109,15 @@ _MARKET_PRICE = selector.EntitySelector(
 # wholesale-linked plan can charge less than nothing for an hour (HEA-165).
 _PRICE = selector.NumberSelector(
     selector.NumberSelectorConfig(step="any", mode=selector.NumberSelectorMode.BOX)
+)
+# The kWh a day an export price pays on (ADR-0039).
+_ALLOWANCE = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=0,
+        step="any",
+        mode=selector.NumberSelectorMode.BOX,
+        unit_of_measurement="kWh",
+    )
 )
 _HOUR_FROM = selector.NumberSelector(
     selector.NumberSelectorConfig(
@@ -212,8 +230,8 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             prices = [dict(price) for price in user_input.get(CONF_PRICES) or ()]
             at_market = bool(user_input.get(CONF_PLAN_IMPORT_PRICE_ENTITY))
-            error = None if at_market else _prices_error(prices)
-            if error is None:
+            errors = _details_errors(user_input, prices, at_market=at_market)
+            if not errors:
                 self._details = {
                     key: user_input[key] for key in _DETAIL_KEYS if key in user_input
                 }
@@ -227,7 +245,6 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 if self._bands:
                     return await self.async_step_bands()
                 return await self.async_step_band()
-            errors[CONF_PRICES] = error
         suggested = {**self._details}
         if self._prices:
             suggested[CONF_PRICES] = self._prices
@@ -389,6 +406,8 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                     )
                 ),
                 vol.Required(CONF_PLAN_EXPORT_PRICE, default=0): per_kwh,
+                vol.Optional(CONF_PLAN_EXPORT_ALLOWANCE): _ALLOWANCE,
+                vol.Optional(CONF_PLAN_EXPORT_PRICE_AFTER): per_kwh,
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_ENTITY): _MARKET_PRICE,
                 vol.Optional(CONF_PLAN_HOLIDAYS): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="calendar")
@@ -409,6 +428,9 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                             ),
                             CONF_BAND_EXPORT_PRICE: selector.ObjectSelectorField(
                                 selector=per_kwh.serialize()["selector"],
+                            ),
+                            CONF_BAND_EXPORT_ALLOWANCE: selector.ObjectSelectorField(
+                                selector=_ALLOWANCE.serialize()["selector"],
                             ),
                         },
                         multiple=True,
@@ -486,7 +508,16 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         unit = self._unit()
         figures = f"{_figure(price[CONF_BAND_IMPORT_PRICE])} {unit}"
         export = price.get(CONF_BAND_EXPORT_PRICE)
-        if export is not None:
+        allowance = price.get(CONF_BAND_EXPORT_ALLOWANCE)
+        if export is not None and allowance is not None:
+            template = labels.get(
+                "plan_band_export_allowance",
+                "export {price} on the first {allowance} kWh a day",
+            )
+            figures += ", " + template.format(
+                price=f"{_figure(export)} {unit}", allowance=_figure(allowance)
+            )
+        elif export is not None:
             template = labels.get("plan_band_export", "export {price}")
             figures += f", {template.format(price=f'{_figure(export)} {unit}')}"
         return f"{price[CONF_NAME]} ({figures})"
@@ -519,6 +550,21 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_create_entry(title=data[CONF_NAME], data=data)
 
 
+def _details_errors(
+    answers: Mapping[str, Any], prices: list[dict[str, Any]], *, at_market: bool
+) -> dict[str, str]:
+    """Why a plan's details cannot be saved, by field; empty if they can."""
+    errors: dict[str, str] = {}
+    if (answers.get(CONF_PLAN_EXPORT_ALLOWANCE) is None) != (
+        answers.get(CONF_PLAN_EXPORT_PRICE_AFTER) is None
+    ):
+        # Export beyond an allowance would otherwise go unpaid unasked.
+        errors[CONF_PLAN_EXPORT_ALLOWANCE] = "export_allowance"
+    if not at_market and (error := _prices_error(prices)) is not None:
+        errors[CONF_PRICES] = error
+    return errors
+
+
 def _prices_error(prices: list[dict[str, Any]]) -> str | None:
     """Why a list of prices cannot be a plan's, or ``None`` if it can."""
     if not prices:
@@ -526,6 +572,13 @@ def _prices_error(prices: list[dict[str, Any]]) -> str | None:
     names = [price[CONF_NAME] for price in prices]
     if len(set(names)) != len(names):
         return "price_names"
+    if any(
+        price.get(CONF_BAND_EXPORT_ALLOWANCE) is not None
+        and price.get(CONF_BAND_EXPORT_PRICE) is None
+        for price in prices
+    ):
+        # An allowance limits the price's own export price, so needs one.
+        return "price_allowance"
     return None
 
 

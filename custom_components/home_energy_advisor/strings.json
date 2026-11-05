@@ -259,6 +259,8 @@
             "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
+            "plan_export_allowance": "Export allowance (optional)",
+            "plan_export_price_after": "Export price beyond the allowance (optional)",
             "export_price_entity": "Market export price (optional)",
             "holiday_calendar": "Holiday calendar (optional)",
             "import_price_entity": "Market import price (optional)",
@@ -269,10 +271,12 @@
             "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on. It does not change how your costs are worked out: those still use the prices set on your grid meters.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
+            "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
+            "plan_export_price_after": "What the plan pays per kWh exported beyond the allowance in a day. Enter it with the allowance.",
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
-            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then. Leave the list empty for a plan importing at a market price."
+            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price."
           }
         },
         "reconfigure": {
@@ -283,6 +287,8 @@
             "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
+            "plan_export_allowance": "Export allowance (optional)",
+            "plan_export_price_after": "Export price beyond the allowance (optional)",
             "export_price_entity": "Market export price (optional)",
             "holiday_calendar": "Holiday calendar (optional)",
             "import_price_entity": "Market import price (optional)",
@@ -293,10 +299,12 @@
             "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on. It does not change how your costs are worked out: those still use the prices set on your grid meters.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
+            "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
+            "plan_export_price_after": "What the plan pays per kWh exported beyond the allowance in a day. Enter it with the allowance.",
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
-            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then. Leave the list empty for a plan importing at a market price."
+            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price."
           }
         },
         "band": {
@@ -331,7 +339,9 @@
         "band_no_days": "Tick at least one day.",
         "plan_incomplete": "Some hours have no price yet. Add bands until every hour of every day is covered.",
         "price_names": "Two prices have the same name. Give each its own, so a band can say which it charges.",
-        "no_prices": "Add at least one price: each band charges one of them."
+        "no_prices": "Add at least one price: each band charges one of them.",
+        "export_allowance": "An export allowance and the price beyond it go together: enter both, or neither.",
+        "price_allowance": "A price's export allowance limits its own export price, so give that price an export price too, or leave its allowance empty."
       }
     },
     "device": {
@@ -489,6 +499,9 @@
         },
         "band_export_price": {
           "name": "Export price (optional)"
+        },
+        "band_export_allowance": {
+          "name": "Export allowance, kWh a day (optional)"
         }
       }
     }
@@ -615,6 +628,7 @@
     "plan_all_covered": "Every hour is covered.",
     "plan_uncovered": "Not priced yet:\n{hours}",
     "plan_band_export": "export {price}",
+    "plan_band_export_allowance": "export {price} on the first {allowance} kWh a day",
     "export_price_entity": "Exports are priced by {entity}, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_fixed": "Exports are priced at {price} per kWh, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_none": "No export price is set in your Energy Dashboard, so Could have earned stays at zero. Set one in its grid settings to see it.",

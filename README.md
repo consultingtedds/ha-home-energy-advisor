@@ -366,9 +366,17 @@ Add each plan with **Add tariff plan** on the Home Energy Advisor card in
    Friday alone from 22 to 24, at the weekend price.
 
 After each band you see the bands so far and which hours still have no price,
-and the plan can be saved once every hour of every day is covered. A price forgotten until then can still be added: choose **Back to the
-prices**. Mark exactly one plan as the one you are on: every other is compared
-with it.
+and the plan can be saved once every hour of every day is covered. A price
+forgotten until then can still be added: choose **Back to the prices**. Mark
+exactly one plan as the one you are on: every other is compared with it.
+
+**Export allowances.** Some feed-in offers pay their rate only on the first kWh
+exported each day. If the plan's export price works that way, enter how many kWh
+as its **export allowance**, and what it pays beyond them (11c Solar: 0.11 on the
+first 8 kWh, then 0.04). If a higher evening rate works that way, give that
+price its own export allowance (0.10 on the first 15 kWh between 18:00 and
+21:00): beyond it, export earns the plan's export price. Allowances start again
+each midnight.
 
 **Copying a plan.** Most offers keep the bands of a plan you have already entered
 and change only the prices. Once you have a plan, **Add tariff plan** asks what to

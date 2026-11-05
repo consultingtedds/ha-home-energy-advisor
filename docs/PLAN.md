@@ -758,6 +758,11 @@ Carried forward rather than closed:
   day kept as shortcuts. A holiday is a day of its own only in a plan with a
   band for holidays, and otherwise priced as its day of the week. It gives
   holidays prices of their own, and a weekend that starts on Friday evening.
+- **HEA-265** (discussion 58, ADR-0039): an export price can pay only on the
+  first kWh exported in a day: the plan's, with a price beyond it, and a named
+  price's, within its hours. Every published allowance found is per day; the
+  Energy Manager files' `_kwh` fields are its battery control defaults, not an
+  offer's terms, so HEA-266 does not read them as allowances.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy

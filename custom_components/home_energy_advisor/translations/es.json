@@ -259,6 +259,8 @@
             "current_plan": "Es la tarifa que tengo contratada",
             "daily_charge": "Cargo diario",
             "plan_export_price": "Precio de exportación",
+            "plan_export_allowance": "Cupo de exportación (opcional)",
+            "plan_export_price_after": "Precio de exportación más allá del cupo (opcional)",
             "export_price_entity": "Precio de exportación de mercado (opcional)",
             "holiday_calendar": "Calendario de festivos (opcional)",
             "import_price_entity": "Precio de importación de mercado (opcional)",
@@ -269,10 +271,12 @@
             "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada. No cambia cómo se calculan tus costes: esos siguen usando los precios de tus contadores de red.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
             "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
+            "plan_export_allowance": "Si la tarifa paga su precio de exportación solo por los primeros kWh exportados cada día, cuántos kWh. Déjalo vacío si lo paga por toda la exportación.",
+            "plan_export_price_after": "Lo que la tarifa paga por kWh exportado más allá del cupo en un día. Indícalo junto con el cupo.",
             "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran con las franjas de festivos de la tarifa, como fines de semana y festivos.",
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
-            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces. Deja la lista vacía para una tarifa que importa a precio de mercado."
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado."
           }
         },
         "reconfigure": {
@@ -283,6 +287,8 @@
             "current_plan": "Es la tarifa que tengo contratada",
             "daily_charge": "Cargo diario",
             "plan_export_price": "Precio de exportación",
+            "plan_export_allowance": "Cupo de exportación (opcional)",
+            "plan_export_price_after": "Precio de exportación más allá del cupo (opcional)",
             "export_price_entity": "Precio de exportación de mercado (opcional)",
             "holiday_calendar": "Calendario de festivos (opcional)",
             "import_price_entity": "Precio de importación de mercado (opcional)",
@@ -293,10 +299,12 @@
             "current_plan": "Todas las demás tarifas se comparan con esta. Solo una puede ser la contratada. No cambia cómo se calculan tus costes: esos siguen usando los precios de tus contadores de red.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
             "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
+            "plan_export_allowance": "Si la tarifa paga su precio de exportación solo por los primeros kWh exportados cada día, cuántos kWh. Déjalo vacío si lo paga por toda la exportación.",
+            "plan_export_price_after": "Lo que la tarifa paga por kWh exportado más allá del cupo en un día. Indícalo junto con el cupo.",
             "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran con las franjas de festivos de la tarifa, como fines de semana y festivos.",
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
-            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces. Deja la lista vacía para una tarifa que importa a precio de mercado."
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado."
           }
         },
         "band": {
@@ -331,7 +339,9 @@
         "band_no_days": "Marca al menos un día.",
         "plan_incomplete": "Algunas horas aún no tienen precio. Añade franjas hasta cubrir todas las horas de todos los días.",
         "price_names": "Dos precios tienen el mismo nombre. Dale a cada uno el suyo, para que una franja pueda decir cuál cobra.",
-        "no_prices": "Añade al menos un precio: cada franja cobra uno de ellos."
+        "no_prices": "Añade al menos un precio: cada franja cobra uno de ellos.",
+        "export_allowance": "Un cupo de exportación y el precio más allá de él van juntos: indica los dos o ninguno.",
+        "price_allowance": "El cupo de exportación de un precio limita su propio precio de exportación, así que dale también un precio de exportación a ese precio, o deja su cupo vacío."
       }
     },
     "device": {
@@ -489,6 +499,9 @@
         },
         "band_export_price": {
           "name": "Precio de exportación (opcional)"
+        },
+        "band_export_allowance": {
+          "name": "Cupo de exportación, kWh al día (opcional)"
         }
       }
     }
@@ -615,6 +628,7 @@
     "plan_all_covered": "Todas las horas tienen precio.",
     "plan_uncovered": "Sin precio todavía:\n{hours}",
     "plan_band_export": "exportación {price}",
+    "plan_band_export_allowance": "exportación {price} por los primeros {allowance} kWh al día",
     "export_price_entity": "La exportación se valora con {entity}, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_fixed": "La exportación se valora a {price} por kWh, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_none": "No hay precio de exportación en tu Panel de energía, así que Podría haber ganado se queda en cero. Pon uno en su configuración de red para verlo.",

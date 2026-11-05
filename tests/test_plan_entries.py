@@ -734,6 +734,7 @@ async def test_the_prices_are_entered_in_the_plans_currency(
     assert units == {
         CONF_BAND_IMPORT_PRICE: "EUR/kWh",
         CONF_BAND_EXPORT_PRICE: "EUR/kWh",
+        CONF_BAND_EXPORT_ALLOWANCE: "kWh",
     }
 
 
@@ -1088,3 +1089,86 @@ async def test_a_plans_export_allowances_are_read_from_its_entry(
         ("Off-peak", None),
         ("Off-peak", None),
     ]
+
+
+async def test_a_plan_is_entered_with_its_export_allowances(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _house(hass)
+    result = await _enter(
+        hass,
+        entry,
+        _details_of(_ALLOWANCES),
+        _WEEKDAY_PEAK,
+        _WEEKDAY_NIGHT,
+        _REST_DAYS,
+    )
+
+    # When
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - saved as typed, and read back as the plan's and the price's
+    (plan_id,) = plans_of(entry)
+    data = entry.subentries[plan_id].data
+    assert data[CONF_PLAN_EXPORT_ALLOWANCE] == 8
+    assert data[CONF_PLAN_EXPORT_PRICE_AFTER] == 0.02
+    assert data[CONF_PRICES] == _ALLOWANCES[CONF_PRICES]
+
+
+async def test_a_band_is_offered_a_price_with_its_export_allowance(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _answer(
+        hass, await _start(hass, _house(hass)), _details_of(_ALLOWANCES)
+    )
+
+    # Then
+    assert _options(result, CONF_BAND_PRICE)[0] == {
+        "value": "Peak",
+        "label": "Peak (0.31 EUR/kWh, export 0.12 EUR/kWh on the first 15 kWh a day)",
+    }
+
+
+async def test_the_plans_export_allowance_comes_with_a_price_for_the_rest(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _house(hass)
+
+    # When - an allowance with nothing said about beyond it, and a price for
+    # beyond an allowance that is not there
+    allowance_only = await _answer(
+        hass,
+        await _start(hass, entry),
+        {**_DETAILS, CONF_PLAN_EXPORT_ALLOWANCE: 8},
+    )
+    after_only = await _answer(
+        hass,
+        await _start(hass, entry),
+        {**_DETAILS, CONF_PLAN_EXPORT_PRICE_AFTER: 0.02},
+    )
+
+    # Then - each asked for the other, rather than export beyond going unpaid
+    for result in (allowance_only, after_only):
+        assert result["step_id"] == "details"
+        assert result["errors"] == {CONF_PLAN_EXPORT_ALLOWANCE: "export_allowance"}
+
+
+async def test_a_prices_export_allowance_needs_its_export_price(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - an allowance on a price that pays no export of its own
+    result = await _answer(
+        hass,
+        await _start(hass, _house(hass)),
+        {
+            **_DETAILS,
+            CONF_PRICES: [_PEAK, {**_OFF_PEAK, CONF_BAND_EXPORT_ALLOWANCE: 5}],
+        },
+    )
+
+    # Then
+    assert result["step_id"] == "details"
+    assert result["errors"] == {CONF_PRICES: "price_allowance"}
