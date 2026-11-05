@@ -262,8 +262,12 @@
             "plan_export_allowance": "Export allowance (optional)",
             "plan_export_price_after": "Export price beyond the allowance (optional)",
             "export_price_entity": "Market export price (optional)",
+            "export_price_add": "Added to the market export price (optional)",
+            "export_price_multiply": "Market export price multiplied by (optional)",
             "holiday_calendar": "Holiday calendar (optional)",
             "import_price_entity": "Market import price (optional)",
+            "import_price_add": "Added to the market import price (optional)",
+            "import_price_multiply": "Market import price multiplied by (optional)",
             "prices": "Prices"
           },
           "data_description": {
@@ -274,8 +278,12 @@
             "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
             "plan_export_price_after": "What the plan pays per kWh exported beyond the allowance in a day. Enter it with the allowance.",
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
+            "export_price_add": "For a wholesale feed-in price, such as Nord Pool's: what the plan adds per kWh, usually a negative fee. Leave it empty if the sensor already gives what you are paid.",
+            "export_price_multiply": "For a wholesale feed-in price: what the price and the amount added are multiplied by, if anything, such as 1.21 for 21% VAT.",
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
+            "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
+            "import_price_multiply": "For a wholesale price: what the price and the amount added are multiplied by, such as 1.21 for 21% VAT.",
             "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price."
           }
         },
@@ -290,8 +298,12 @@
             "plan_export_allowance": "Export allowance (optional)",
             "plan_export_price_after": "Export price beyond the allowance (optional)",
             "export_price_entity": "Market export price (optional)",
+            "export_price_add": "Added to the market export price (optional)",
+            "export_price_multiply": "Market export price multiplied by (optional)",
             "holiday_calendar": "Holiday calendar (optional)",
             "import_price_entity": "Market import price (optional)",
+            "import_price_add": "Added to the market import price (optional)",
+            "import_price_multiply": "Market import price multiplied by (optional)",
             "prices": "Prices"
           },
           "data_description": {
@@ -302,8 +314,12 @@
             "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
             "plan_export_price_after": "What the plan pays per kWh exported beyond the allowance in a day. Enter it with the allowance.",
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
+            "export_price_add": "For a wholesale feed-in price, such as Nord Pool's: what the plan adds per kWh, usually a negative fee. Leave it empty if the sensor already gives what you are paid.",
+            "export_price_multiply": "For a wholesale feed-in price: what the price and the amount added are multiplied by, if anything, such as 1.21 for 21% VAT.",
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
+            "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
+            "import_price_multiply": "For a wholesale price: what the price and the amount added are multiplied by, such as 1.21 for 21% VAT.",
             "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price."
           }
         },
@@ -341,7 +357,8 @@
         "price_names": "Two prices have the same name. Give each its own, so a band can say which it charges.",
         "no_prices": "Add at least one price: each band charges one of them.",
         "export_allowance": "An export allowance and the price beyond it go together: enter both, or neither.",
-        "price_allowance": "A price's export allowance limits its own export price, so give that price an export price too, or leave its allowance empty."
+        "price_allowance": "A price's export allowance limits its own export price, so give that price an export price too, or leave its allowance empty.",
+        "market_adjustment": "This adjusts a market price, so it needs the market price entity it adjusts. Choose one, or leave the adjustment empty."
       }
     },
     "device": {

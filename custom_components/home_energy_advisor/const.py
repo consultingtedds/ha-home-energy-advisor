@@ -59,6 +59,11 @@ CONF_PLAN_HOLIDAYS: Final = "holiday_calendar"
 # a plan importing at one has no prices or bands.
 CONF_PLAN_IMPORT_PRICE_ENTITY: Final = "import_price_entity"
 CONF_PLAN_EXPORT_PRICE_ENTITY: Final = "export_price_entity"
+# What the plan adds per kWh to a market price, then multiplies it by (HEA-273).
+CONF_PLAN_IMPORT_PRICE_ADD: Final = "import_price_add"
+CONF_PLAN_IMPORT_PRICE_MULTIPLY: Final = "import_price_multiply"
+CONF_PLAN_EXPORT_PRICE_ADD: Final = "export_price_add"
+CONF_PLAN_EXPORT_PRICE_MULTIPLY: Final = "export_price_multiply"
 # Each a name with an import price and optionally an export price of its own.
 CONF_PRICES: Final = "prices"
 CONF_BANDS: Final = "bands"

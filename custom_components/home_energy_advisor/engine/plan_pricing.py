@@ -19,7 +19,11 @@ rather than priced, because either way the price of that hour would be a guess.
 A plan's import, and separately its export, can instead follow a market price
 that changes through the day (ADR-0037). Each recorded interval then carries the
 price the market set for it, at whatever resolution the recorder kept, and a
-plan importing at the market has no bands at all.
+plan importing at the market has no bands at all. A market price published
+wholesale, as Nord Pool's is, is adjusted by each plan to what its supplier
+charges: its charges added per kWh, then multiplied, as VAT is (HEA-273). The
+adjustment belongs to the plan, so two suppliers on one wholesale price are two
+plans reading the same entity.
 
 An export price can pay only on the first kWh exported in a day, as some
 feed-in offers do (ADR-0039). The plan's own export price can carry an
@@ -148,11 +152,29 @@ class PlanGap:
 
 
 @dataclass(frozen=True)
+class MarketAdjustment:
+    """What a plan makes of a market price: `(price + add) x multiply`.
+
+    The supplier's charges and any energy tax per kWh are added first and VAT
+    is a multiplier on all of it, as a dynamic contract's bill reads. Left as
+    it is, it leaves the market's price unchanged.
+    """
+
+    add: Decimal = Decimal(0)
+    multiply: Decimal = Decimal(1)
+
+    def apply(self, price: Decimal) -> Decimal:
+        """The price the plan charges or pays, for the market's `price`."""
+        return (price + self.add) * self.multiply
+
+
+@dataclass(frozen=True)
 class Plan:
     """A tariff plan as it is published: its bands, daily charge and export price.
 
     `import_per_interval` and `export_per_interval` say that the plan charges for
-    import, or pays for export, at each interval's market price instead (ADR-0037).
+    import, or pays for export, at each interval's market price instead (ADR-0037),
+    adjusted by `import_adjustment` and `export_adjustment` (HEA-273).
     `export_allowance` is how many kWh a day its export price pays on, with
     `export_price_after` paid on the rest (ADR-0039).
     """
@@ -165,6 +187,8 @@ class Plan:
     export_per_interval: bool = False
     export_allowance: Decimal | None = None
     export_price_after: Decimal = Decimal(0)
+    import_adjustment: MarketAdjustment = field(default_factory=MarketAdjustment)
+    export_adjustment: MarketAdjustment = field(default_factory=MarketAdjustment)
 
     @property
     def prices_holidays(self) -> bool:
@@ -275,13 +299,13 @@ def price_plan(
             )
         )
         energy += recorded.imported_kwh * (
-            _market(recorded.import_price, recorded, plan)
+            plan.import_adjustment.apply(_market(recorded.import_price, recorded, plan))
             if band is None
             else band.import_price
         )
         if plan.export_per_interval:
-            export_credit += recorded.exported_kwh * _market(
-                recorded.export_price, recorded, plan
+            export_credit += recorded.exported_kwh * plan.export_adjustment.apply(
+                _market(recorded.export_price, recorded, plan)
             )
         else:
             export_credit += allowances.credit(plan, band, recorded)

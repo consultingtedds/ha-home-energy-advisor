@@ -357,7 +357,10 @@ Add each plan with **Add tariff plan** on the Home Energy Advisor card in
    (a standing or contracted-power charge, as a cost per day), what it pays for
    export, and its **prices**: each one named as the offer names it (peak and
    off-peak; punta, llano and valle) with its import price. A price can carry its
-   own export price where the plan pays more at the hours it applies.
+   own export price where the plan pays more at the hours it applies. A fixed
+   charge for your connection's capacity or contracted power (potencia
+   contratada, abonnement, capaciteitstarief) is part of the daily charge: add it
+   up per day. Charges on a measured peak in kW are not modelled.
 2. **Its time bands, one at a time:** which days (weekdays, weekends and
    holidays, every day, or **Choose days** to tick any of Monday to Sunday and
    public holidays), from which hour to which, and which of the plan's prices it
@@ -396,6 +399,16 @@ while Home Assistant still keeps 5-minute statistics (ten days by default), and
 older periods at each hour's average price, so a recent figure can move a little
 once it is older. The card says which applied, from when the market's prices were
 first recorded, and how many hours carried the last price over a gap in them.
+
+**Wholesale prices.** Some price sensors give the wholesale price rather than what
+you pay: Nord Pool, EnergyZero and easyEnergy do. A dynamic contract on one adds
+energy tax and the supplier's markup, then VAT on all of it. Enter what the plan
+adds per kWh before VAT as **added to the market import price**, and the VAT as
+**market import price multiplied by** (1.21 for 21%): each interval is then
+charged at (market price + added) x multiplier. Feed-in has its own pair, often a
+negative fee and no VAT. Two suppliers on the same wholesale price are two plans
+choosing the same sensor with their own markups. Amber, PVPC, Tibber and Octopus
+give the price you pay already, so need neither.
 
 **Holidays.** Many time-of-use plans price public holidays as weekends, and some
 at prices of their own. Add Home Assistant's **Holiday** integration for your

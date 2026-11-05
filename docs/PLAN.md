@@ -763,6 +763,16 @@ Carried forward rather than closed:
   price's, within its hours. Every published allowance found is per day; the
   Energy Manager files' `_kwh` fields are its battery control defaults, not an
   offer's terms, so HEA-266 does not read them as allowances.
+- **HEA-273**: a plan's market price can be adjusted from wholesale to what the
+  supplier charges, `(market + add) x multiply`, for import and export each.
+  Nord Pool, EnergyZero and easyEnergy publish wholesale prices; a template
+  sensor would have no history. Found checking HEA-260 against European
+  households, before 1.4.0b1.
+- **HEA-263** (demand charges) parked: of Spain, the UK, France, Germany and the
+  Netherlands none bills households on a measured peak; their capacity charges
+  are fixed, so belong in the daily charge. Only some Australian networks and
+  Flanders do, each differently, and both need sub-hourly data HEA keeps for
+  about ten days.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy

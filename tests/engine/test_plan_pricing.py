@@ -25,6 +25,7 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Day,
     Days,
     IntervalOfEnergy,
+    MarketAdjustment,
     Plan,
     PlanCost,
     PlanGap,
@@ -611,6 +612,68 @@ def test_an_interval_without_a_price_of_its_own_is_not_guessed_at() -> None:
     # When / Then
     with pytest.raises(ValueError, match="price"):
         price_plan(WHOLESALE, intervals, days=Decimal(0), holidays=frozenset())
+
+
+def test_a_wholesale_import_price_carries_the_plans_charges_and_vat() -> None:
+    # Given - a Dutch dynamic contract on the wholesale price: 0.13 of energy
+    # tax and markup added, then 21% VAT on all of it
+    dynamic = Plan(
+        name="Dynamic",
+        bands=(),
+        import_per_interval=True,
+        import_adjustment=MarketAdjustment(
+            add=Decimal("0.13"), multiply=Decimal("1.21")
+        ),
+    )
+    intervals = [
+        interval(WEDNESDAY, 12, 0, "1", import_price="0.07"),
+        interval(WEDNESDAY, 12, 5, "1", import_price="-0.02"),
+    ]
+
+    # When
+    cost = price_plan(dynamic, intervals, days=Decimal(0), holidays=frozenset())
+
+    # Then - (0.07 + 0.13) x 1.21 and (-0.02 + 0.13) x 1.21
+    assert cost.energy == Decimal("0.2420") + Decimal("0.1331")
+
+
+def test_a_wholesale_export_price_carries_the_plans_own_adjustment() -> None:
+    # Given - feed-in at the wholesale price less the supplier's 0.02, no VAT
+    plan = Plan(
+        name="Dynamic feed-in",
+        bands=TIME_OF_USE.bands,
+        export_per_interval=True,
+        export_adjustment=MarketAdjustment(add=Decimal("-0.02")),
+    )
+    intervals = [interval(WEDNESDAY, 12, 0, "0", "2", export_price="0.09")]
+
+    # When
+    cost = price_plan(plan, intervals, days=Decimal(0), holidays=frozenset())
+
+    # Then
+    assert cost.export_credit == Decimal("0.14")
+
+
+def test_two_plans_on_one_wholesale_price_differ_by_their_markups() -> None:
+    # Given - the same recorded prices, under two suppliers' markups
+    intervals = [interval(WEDNESDAY, 12, 0, "1", import_price="0.10")]
+
+    def supplier(markup: str) -> Plan:
+        return Plan(
+            name=f"Markup {markup}",
+            bands=(),
+            import_per_interval=True,
+            import_adjustment=MarketAdjustment(add=Decimal(markup)),
+        )
+
+    # When
+    costs = [
+        price_plan(supplier(markup), intervals, days=Decimal(0), holidays=())
+        for markup in ("0.01", "0.03")
+    ]
+
+    # Then
+    assert [cost.energy for cost in costs] == [Decimal("0.11"), Decimal("0.13")]
 
 
 def test_a_five_minute_interval_is_priced_at_the_band_its_start_falls_in() -> None:

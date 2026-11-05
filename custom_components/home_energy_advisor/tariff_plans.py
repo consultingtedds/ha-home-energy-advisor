@@ -9,7 +9,9 @@ calendar its holidays come from.
 A band entered before prices were named carries its figures itself, and is read
 as it is. A band's days are either the name of the days an offer names, such as
 weekdays, or the list of days it applies to (ADR-0038). A price's export price,
-and the plan's, can pay only on the first kWh exported in a day (ADR-0039).
+and the plan's, can pay only on the first kWh exported in a day (ADR-0039). A
+plan at a market price can adjust it, from wholesale to what its supplier
+charges (HEA-273).
 """
 
 from __future__ import annotations
@@ -33,14 +35,18 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
+    CONF_PLAN_EXPORT_PRICE_MULTIPLY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PLAN_IMPORT_PRICE_MULTIPLY,
     CONF_PRICES,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, Day, Days, Plan
+from .engine.plan_pricing import Band, Day, Days, MarketAdjustment, Plan
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -96,6 +102,12 @@ def tariff_plan_from(name: str, data: Mapping[str, Any]) -> TariffPlan:
             export_per_interval=export_entity is not None,
             export_allowance=_optional_decimal(data.get(CONF_PLAN_EXPORT_ALLOWANCE)),
             export_price_after=_decimal(data.get(CONF_PLAN_EXPORT_PRICE_AFTER)),
+            import_adjustment=_adjustment(
+                data, CONF_PLAN_IMPORT_PRICE_ADD, CONF_PLAN_IMPORT_PRICE_MULTIPLY
+            ),
+            export_adjustment=_adjustment(
+                data, CONF_PLAN_EXPORT_PRICE_ADD, CONF_PLAN_EXPORT_PRICE_MULTIPLY
+            ),
         ),
         current=bool(data.get(CONF_PLAN_CURRENT)),
         holidays=data.get(CONF_PLAN_HOLIDAYS) or None,
@@ -169,6 +181,15 @@ def named_prices(
             }
         )
     return prices, bands
+
+
+def _adjustment(data: Mapping[str, Any], add: str, multiply: str) -> MarketAdjustment:
+    """What a plan makes of its market price, nothing where it says nothing."""
+    factor = data.get(multiply)
+    return MarketAdjustment(
+        add=_decimal(data.get(add)),
+        multiply=Decimal(1) if factor is None else _decimal(factor),
+    )
 
 
 def _same_figures(price: Mapping[str, Any], figures: Mapping[str, Any]) -> bool:

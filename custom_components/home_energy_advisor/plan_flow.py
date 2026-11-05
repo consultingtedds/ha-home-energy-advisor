@@ -28,7 +28,8 @@ takes its bands with it, and the review says which hours that leaves.
 
 A plan can instead import, and separately export, at a market price entity
 (ADR-0037). A plan importing at one has no prices or bands, so its details are
-all there is to enter.
+all there is to enter. A wholesale price is adjusted to what the supplier
+charges, with an amount added per kWh and a multiplier for VAT (HEA-273).
 
 Exactly one plan is the household's current plan, which every other is compared
 with, so saving one as current makes the previous one not.
@@ -57,10 +58,14 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
+    CONF_PLAN_EXPORT_PRICE_MULTIPLY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PLAN_IMPORT_PRICE_MULTIPLY,
     CONF_PRICES,
     DEFAULT_CURRENCY,
     DOMAIN,
@@ -95,10 +100,32 @@ _DETAIL_KEYS = (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
+    CONF_PLAN_EXPORT_PRICE_MULTIPLY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PLAN_IMPORT_PRICE_MULTIPLY,
+)
+# What a plan does to each market price it takes, with the entity it adjusts.
+_ADJUSTMENTS = (
+    (
+        CONF_PLAN_IMPORT_PRICE_ENTITY,
+        CONF_PLAN_IMPORT_PRICE_ADD,
+        CONF_PLAN_IMPORT_PRICE_MULTIPLY,
+    ),
+    (
+        CONF_PLAN_EXPORT_PRICE_ENTITY,
+        CONF_PLAN_EXPORT_PRICE_ADD,
+        CONF_PLAN_EXPORT_PRICE_MULTIPLY,
+    ),
+)
+_MULTIPLIER = selector.NumberSelector(
+    selector.NumberSelectorConfig(
+        min=0, step="any", mode=selector.NumberSelectorMode.BOX
+    )
 )
 # A market price, as the accounting takes one (ADR-0037).
 _MARKET_PRICE = selector.EntitySelector(
@@ -409,10 +436,14 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Optional(CONF_PLAN_EXPORT_ALLOWANCE): _ALLOWANCE,
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_AFTER): per_kwh,
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_ENTITY): _MARKET_PRICE,
+                vol.Optional(CONF_PLAN_EXPORT_PRICE_ADD): per_kwh,
+                vol.Optional(CONF_PLAN_EXPORT_PRICE_MULTIPLY): _MULTIPLIER,
                 vol.Optional(CONF_PLAN_HOLIDAYS): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="calendar")
                 ),
                 vol.Optional(CONF_PLAN_IMPORT_PRICE_ENTITY): _MARKET_PRICE,
+                vol.Optional(CONF_PLAN_IMPORT_PRICE_ADD): per_kwh,
+                vol.Optional(CONF_PLAN_IMPORT_PRICE_MULTIPLY): _MULTIPLIER,
                 vol.Optional(CONF_PRICES): selector.ObjectSelector(
                     selector.ObjectSelectorConfig(
                         fields={
@@ -560,6 +591,13 @@ def _details_errors(
     ):
         # Export beyond an allowance would otherwise go unpaid unasked.
         errors[CONF_PLAN_EXPORT_ALLOWANCE] = "export_allowance"
+    for entity, add, multiply in _ADJUSTMENTS:
+        if not answers.get(entity) and (
+            answers.get(add) is not None or answers.get(multiply) is not None
+        ):
+            # A plan's own prices are typed as charged, so there is nothing to
+            # adjust, and an adjustment kept silently would wait for an entity.
+            errors[add] = "market_adjustment"
     if not at_market and (error := _prices_error(prices)) is not None:
         errors[CONF_PRICES] = error
     return errors

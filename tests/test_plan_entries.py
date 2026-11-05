@@ -42,10 +42,14 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
+    CONF_PLAN_EXPORT_PRICE_MULTIPLY,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PLAN_IMPORT_PRICE_MULTIPLY,
     CONF_PRICES,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -55,6 +59,7 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Band,
     Day,
     Days,
+    MarketAdjustment,
     Plan,
 )
 from custom_components.home_energy_advisor.tariff_plans import plans_of
@@ -811,6 +816,66 @@ _WHOLESALE = {
     CONF_PLAN_EXPORT_PRICE: 0.05,
     CONF_PLAN_IMPORT_PRICE_ENTITY: "sensor.market_import",
 }
+
+# A Dutch dynamic contract on Nord Pool's wholesale price: energy tax and markup
+# added, then VAT on import; feed-in at the wholesale price less a fee.
+_DYNAMIC = {
+    **_WHOLESALE,
+    CONF_NAME: "Dynamic",
+    CONF_PLAN_IMPORT_PRICE_ADD: 0.13,
+    CONF_PLAN_IMPORT_PRICE_MULTIPLY: 1.21,
+    CONF_PLAN_EXPORT_PRICE_ENTITY: "sensor.market_export",
+    CONF_PLAN_EXPORT_PRICE_ADD: -0.02,
+}
+
+
+async def test_a_wholesale_plan_is_saved_with_what_its_supplier_adds(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    entry = _house(hass)
+    result = await _answer(hass, await _start(hass, entry), _DYNAMIC)
+
+    # Then - import adjusted both ways, export by its fee alone
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (plan,) = plans_of(entry).values()
+    assert plan.plan.import_adjustment == MarketAdjustment(
+        add=Decimal("0.13"), multiply=Decimal("1.21")
+    )
+    assert plan.plan.export_adjustment == MarketAdjustment(add=Decimal("-0.02"))
+
+
+async def test_a_market_price_left_unadjusted_is_charged_as_it_is(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    (plan,) = plans_of(_house(hass, _WHOLESALE)).values()
+
+    # Then
+    assert plan.plan.import_adjustment == MarketAdjustment()
+
+
+async def test_an_adjustment_needs_a_market_price_to_adjust(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a banded plan, with an amount to add to a market import
+    # price and a multiplier for a market export price it does not have
+    result = await _answer(
+        hass,
+        await _start(hass, _house(hass)),
+        {
+            **_DETAILS,
+            CONF_PLAN_IMPORT_PRICE_ADD: 0.13,
+            CONF_PLAN_EXPORT_PRICE_MULTIPLY: 1.21,
+        },
+    )
+
+    # Then
+    assert result["step_id"] == "details"
+    assert result["errors"] == {
+        CONF_PLAN_IMPORT_PRICE_ADD: "market_adjustment",
+        CONF_PLAN_EXPORT_PRICE_ADD: "market_adjustment",
+    }
 
 
 async def test_a_plan_importing_at_the_market_is_saved_from_its_details_alone(

@@ -262,8 +262,12 @@
             "plan_export_allowance": "Cupo de exportación (opcional)",
             "plan_export_price_after": "Precio de exportación más allá del cupo (opcional)",
             "export_price_entity": "Precio de exportación de mercado (opcional)",
+            "export_price_add": "Sumado al precio de exportación de mercado (opcional)",
+            "export_price_multiply": "Precio de exportación de mercado multiplicado por (opcional)",
             "holiday_calendar": "Calendario de festivos (opcional)",
             "import_price_entity": "Precio de importación de mercado (opcional)",
+            "import_price_add": "Sumado al precio de importación de mercado (opcional)",
+            "import_price_multiply": "Precio de importación de mercado multiplicado por (opcional)",
             "prices": "Precios"
           },
           "data_description": {
@@ -274,8 +278,12 @@
             "plan_export_allowance": "Si la tarifa paga su precio de exportación solo por los primeros kWh exportados cada día, cuántos kWh. Déjalo vacío si lo paga por toda la exportación.",
             "plan_export_price_after": "Lo que la tarifa paga por kWh exportado más allá del cupo en un día. Indícalo junto con el cupo.",
             "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
+            "export_price_add": "Para un precio de exportación mayorista, como el de Nord Pool: lo que la tarifa suma por kWh, normalmente una comisión negativa. Déjalo vacío si el sensor ya da lo que te pagan.",
+            "export_price_multiply": "Para un precio de exportación mayorista: por cuánto se multiplican el precio y lo sumado, si procede, como 1,21 para un IVA del 21 %.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran con las franjas de festivos de la tarifa, como fines de semana y festivos.",
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
+            "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
+            "import_price_multiply": "Para un precio mayorista: por cuánto se multiplican el precio y lo sumado, como 1,21 para un IVA del 21 %.",
             "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado."
           }
         },
@@ -290,8 +298,12 @@
             "plan_export_allowance": "Cupo de exportación (opcional)",
             "plan_export_price_after": "Precio de exportación más allá del cupo (opcional)",
             "export_price_entity": "Precio de exportación de mercado (opcional)",
+            "export_price_add": "Sumado al precio de exportación de mercado (opcional)",
+            "export_price_multiply": "Precio de exportación de mercado multiplicado por (opcional)",
             "holiday_calendar": "Calendario de festivos (opcional)",
             "import_price_entity": "Precio de importación de mercado (opcional)",
+            "import_price_add": "Sumado al precio de importación de mercado (opcional)",
+            "import_price_multiply": "Precio de importación de mercado multiplicado por (opcional)",
             "prices": "Precios"
           },
           "data_description": {
@@ -302,8 +314,12 @@
             "plan_export_allowance": "Si la tarifa paga su precio de exportación solo por los primeros kWh exportados cada día, cuántos kWh. Déjalo vacío si lo paga por toda la exportación.",
             "plan_export_price_after": "Lo que la tarifa paga por kWh exportado más allá del cupo en un día. Indícalo junto con el cupo.",
             "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
+            "export_price_add": "Para un precio de exportación mayorista, como el de Nord Pool: lo que la tarifa suma por kWh, normalmente una comisión negativa. Déjalo vacío si el sensor ya da lo que te pagan.",
+            "export_price_multiply": "Para un precio de exportación mayorista: por cuánto se multiplican el precio y lo sumado, si procede, como 1,21 para un IVA del 21 %.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran con las franjas de festivos de la tarifa, como fines de semana y festivos.",
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
+            "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
+            "import_price_multiply": "Para un precio mayorista: por cuánto se multiplican el precio y lo sumado, como 1,21 para un IVA del 21 %.",
             "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado."
           }
         },
@@ -341,7 +357,8 @@
         "price_names": "Dos precios tienen el mismo nombre. Dale a cada uno el suyo, para que una franja pueda decir cuál cobra.",
         "no_prices": "Añade al menos un precio: cada franja cobra uno de ellos.",
         "export_allowance": "Un cupo de exportación y el precio más allá de él van juntos: indica los dos o ninguno.",
-        "price_allowance": "El cupo de exportación de un precio limita su propio precio de exportación, así que dale también un precio de exportación a ese precio, o deja su cupo vacío."
+        "price_allowance": "El cupo de exportación de un precio limita su propio precio de exportación, así que dale también un precio de exportación a ese precio, o deja su cupo vacío.",
+        "market_adjustment": "Esto ajusta un precio de mercado, así que necesita la entidad de precio de mercado que ajusta. Elige una, o deja el ajuste vacío."
       }
     },
     "device": {
