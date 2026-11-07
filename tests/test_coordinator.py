@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.config_entries import ConfigEntryState, ConfigSubentryData
 from homeassistant.const import CONF_NAME, UnitOfEnergy
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
@@ -35,6 +36,9 @@ from custom_components.home_energy_advisor.const import (
     DOMAIN,
     SERVICE_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
+)
+from custom_components.home_energy_advisor.diagnostics import (
+    async_get_config_entry_diagnostics,
 )
 from custom_components.home_energy_advisor.engine.energy_source import (
     EnergyUnit,
@@ -1586,6 +1590,142 @@ async def test_the_nesting_listener_is_harmless_once_its_entry_is_gone(
     # hierarchy nobody asked it about.
     read_again.assert_not_called()
     assert entry.state is ConfigEntryState.NOT_LOADED
+
+
+def _aircon_with_a_yearly_counter(hass: HomeAssistant) -> str:
+    """Register the aircon's meter and a yearly counter on one HA device.
+
+    Returns the yearly counter's entity id, which is what a household picks in
+    the Energy Dashboard when the device offers both.
+    """
+    owner = MockConfigEntry(domain="shelly")
+    owner.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=owner.entry_id, identifiers={("shelly", "aircon")}
+    )
+    registry = er.async_get(hass)
+    lifetime = registry.async_get_or_create(
+        "sensor",
+        "shelly",
+        "aircon_energy",
+        device_id=device.id,
+        suggested_object_id="coarse_step_energy",
+    )
+    assert lifetime.entity_id == "sensor.coarse_step_energy"
+    return registry.async_get_or_create(
+        "sensor",
+        "shelly",
+        "aircon_energy_year",
+        device_id=device.id,
+        suggested_object_id="coarse_step_energy_year",
+    ).entity_id
+
+
+async def test_nesting_by_another_sensor_of_a_tracked_device_is_put_to_the_household(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    """The double count nothing else would show (HEA-271, discussion 58).
+
+    A device offering a lifetime and a yearly counter is tracked from one and
+    nested in the Energy Dashboard by the other. Netting needs the two counters
+    the household declared contain each other, so the pair is not applied - and
+    then the aircon is counted twice, alone and inside the circuit, while every
+    figure still looks plausible.
+    """
+    # Given / When - the Energy Dashboard nests the aircon by its yearly counter
+    manager = _energy_prefs(CIRCUIT_ENTITY)
+    manager.data["device_consumption"][1]["stat_consumption"] = (
+        _aircon_with_a_yearly_counter(hass)
+    )
+    entry = await _run_nested(hass, freezer, manager)
+    _circuit_key, aircon_key = _device_ids(entry)
+
+    # Then - the household is told which sensor to choose, in either place
+    issue = ir.async_get(hass).async_get_issue(
+        DOMAIN, issues.nesting_misread_issue_id(aircon_key)
+    )
+    assert issue is not None
+    assert issue.translation_placeholders == {
+        "name": "Coarse Step Aircon",
+        "named": "sensor.coarse_step_energy_year",
+        "read": "sensor.coarse_step_energy",
+    }
+
+    # ...and the diagnostics say the pair was skipped, and why
+    nesting = (await async_get_config_entry_diagnostics(hass, entry))["nesting"]
+    assert nesting == {
+        "applied": [],
+        "skipped": [
+            {
+                "entity": "sensor.coarse_step_energy_year",
+                "inside": CIRCUIT_ENTITY,
+                "reason": "another_sensor",
+                "device": "Coarse Step Aircon",
+                "parent": "Kitchen Circuit",
+            }
+        ],
+    }
+
+    # When - the household picks the sensor we read in the Energy Dashboard
+    manager.data["device_consumption"][1]["stat_consumption"] = (
+        "sensor.coarse_step_energy"
+    )
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(return_value=manager),
+    ):
+        await _nesting_listener(manager)()
+
+    # Then - the Repair clears itself and the nesting is in force
+    assert not _has_issue(hass, issues.nesting_misread_issue_id(aircon_key))
+    nesting = (await async_get_config_entry_diagnostics(hass, entry))["nesting"]
+    assert nesting == {
+        "applied": [{"device": "Coarse Step Aircon", "inside": "Kitchen Circuit"}],
+        "skipped": [],
+    }
+
+
+async def test_a_repair_left_by_a_removed_device_is_withdrawn(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - a nesting Repair standing from an earlier run, for a device that
+    # is no longer tracked
+    stale = issues.nesting_misread_issue_id("gone")
+    issues.async_raise(
+        hass,
+        stale,
+        issues.ISSUE_NESTING_MISREAD,
+        {"name": "Gone", "named": "sensor.a", "read": "sensor.b"},
+    )
+
+    # When - the integration starts and reads the Energy Dashboard
+    await _run_nested(hass, freezer, _energy_prefs(CIRCUIT_ENTITY))
+
+    # Then - nothing the Energy Dashboard says now names it, so it is cleared
+    assert not _has_issue(hass, stale)
+
+
+async def test_diagnostics_say_when_the_energy_dashboard_could_not_be_read(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - an Energy Dashboard whose data cannot be read
+    freezer.move_to(datetime(2026, 7, 8, 22, 0, tzinfo=UTC))
+    hass.states.async_set("sensor.price", "0.30")
+    entry = _nested_entry()
+    entry.add_to_hass(hass)
+    with patch(
+        "custom_components.home_energy_advisor.coordinator.async_get_manager",
+        AsyncMock(side_effect=RuntimeError("no energy data")),
+    ):
+        await hass.config_entries.async_setup(entry.entry_id)
+        await hass.async_block_till_done()
+
+    # When - the diagnostics are downloaded
+    result = await async_get_config_entry_diagnostics(hass, entry)
+
+    # Then - the nesting is None, not an empty list a reader would take for
+    # "no nesting declared"
+    assert result["nesting"] is None
 
 
 def _battery_entry(*, soc: bool = True) -> MockConfigEntry:

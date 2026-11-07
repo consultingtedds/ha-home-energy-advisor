@@ -768,6 +768,11 @@ Carried forward rather than closed:
   Nord Pool, EnergyZero and easyEnergy publish wholesale prices; a template
   sensor would have no history. Found checking HEA-260 against European
   households, before 1.4.0b1.
+- **HEA-271** (discussion 58): the diagnostics list the nesting in force and
+  every Energy Dashboard pair skipped, with why. A pair naming another sensor
+  of a Home Assistant device HEA tracks exactly one device of raises a Repair
+  per device; it is matched, never netted, since one device can carry several
+  meters.
 - **HEA-263** (demand charges) parked: of Spain, the UK, France, Germany and the
   Netherlands none bills households on a measured peak; their capacity charges
   are fixed, so belong in the daily charge. Only some Australian networks and

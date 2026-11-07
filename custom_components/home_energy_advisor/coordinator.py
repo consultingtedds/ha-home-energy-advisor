@@ -49,6 +49,7 @@ from .const import (
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_POWER_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
     SIGNAL_RESET_TOTALS,
@@ -69,6 +70,7 @@ from .house_inputs import (
     grid_meters_of,
     house_entities,
 )
+from .nesting import Nesting, nesting_of
 from .source_history import async_has_ever_reported
 
 if TYPE_CHECKING:
@@ -273,6 +275,9 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         # repoint it while we are running and the meter tracker is a fixed list.
         self._export_price_entity: str | None = None
         self._unfollow_export_price: CALLBACK_TYPE | None = None
+        # The Energy Dashboard's nesting as last read, for the diagnostics
+        # (HEA-271). None until it has been read at all.
+        self._nesting: Nesting | None = None
 
     async def _async_follow_energy_prefs(self) -> None:
         """Take the hierarchy and the export price from the Energy Dashboard.
@@ -341,7 +346,58 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         await async_check_energy_dashboard(self.hass, self._entry, manager.data)
 
     def _apply_nesting(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
-        self._accountant.set_nesting(_nesting_of(prefs, self._device_of_entity))
+        """Hand the engine the nesting, and name any it could not take (HEA-271).
+
+        A Repair stands for each device the Energy Dashboard nests by a sensor
+        other than the one we read. Cleared against the registry rather than
+        against what this run raised, so one left by an earlier run, or by a
+        device since removed, is withdrawn too (HEA-146).
+        """
+        self._nesting = nesting_of(
+            prefs, self._device_of_entity, self._owner_by_ha_device().get
+        )
+        self._accountant.set_nesting(self._nesting.applied)
+        misread = self._nesting.misread
+        standing = issues.async_raised_subjects(self.hass, issues.ISSUE_NESTING_MISREAD)
+        for subentry_id in standing - misread.keys():
+            issues.async_clear(self.hass, issues.nesting_misread_issue_id(subentry_id))
+        for subentry_id, named in misread.items():
+            issues.async_raise(
+                self.hass,
+                issues.nesting_misread_issue_id(subentry_id),
+                issues.ISSUE_NESTING_MISREAD,
+                {
+                    "name": self._device_name(subentry_id),
+                    "named": named,
+                    "read": self._devices[subentry_id],
+                },
+            )
+
+    def _owner_by_ha_device(self) -> dict[str, str]:
+        """Each entity on a Home Assistant device we track exactly one device of.
+
+        Matched from the sensor the household chose, power or energy, so a device
+        tracked by its power is found by its own energy sensor too. A Home
+        Assistant device carrying two of ours is left out: which one the Energy
+        Dashboard meant is a guess.
+        """
+        registry = er.async_get(self.hass)
+        tracked: dict[str, set[str]] = {}
+        for subentry_id, subentry in self._entry.subentries.items():
+            if subentry_id not in self._devices:
+                continue
+            source = subentry.data.get(CONF_ENERGY_ENTITY) or subentry.data.get(
+                CONF_POWER_ENTITY
+            )
+            entity = registry.async_get(source) if source else None
+            if entity is not None and entity.device_id is not None:
+                tracked.setdefault(entity.device_id, set()).add(subentry_id)
+        return {
+            entity.entity_id: next(iter(owners))
+            for device_id, owners in tracked.items()
+            if len(owners) == 1
+            for entity in er.async_entries_for_device(registry, device_id)
+        }
 
     def _apply_export_price(self, prefs: Any) -> None:  # noqa: ANN401 - untyped HA prefs
         """Point the engine at what exporting earns, however it is declared.
@@ -1255,6 +1311,7 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
                 for battery_id, log in self._level_logs.items()
             ],
             "balance": self._accountant.balance_diagnostics(),
+            "nesting": self._nesting_diagnostics(),
             "snapshot": self._snapshot_diagnostics(),
             "totals": self._totals_diagnostics(),
         }
@@ -1403,6 +1460,36 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
             ],
         }
 
+    def _nesting_diagnostics(self) -> dict[str, Any] | None:
+        """The nesting in force, and every pair skipped with why (HEA-271).
+
+        A skipped pair counts its device twice, once on its own and again inside
+        its parent, so a household asking whether their nesting is honoured
+        needs both lists. None where the Energy Dashboard could not be read.
+        """
+        if self._nesting is None:
+            return None
+
+        def name(sub_id: str | None) -> str | None:
+            return self._device_name(sub_id) if sub_id is not None else None
+
+        return {
+            "applied": [
+                {"device": name(child), "inside": name(parent)}
+                for child, parent in self._nesting.applied.items()
+            ],
+            "skipped": [
+                {
+                    "entity": pair.entity,
+                    "inside": pair.inside,
+                    "reason": pair.reason.value,
+                    "device": name(pair.device),
+                    "parent": name(pair.parent),
+                }
+                for pair in self._nesting.skipped
+            ],
+        }
+
     def _source_diagnostics(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for entity, snap in self._accountant.source_diagnostics().items():
@@ -1454,33 +1541,6 @@ def _meters_for(entry: HeaConfigEntry, conf: str) -> tuple[str, ...]:
     if conf in _GRID_CONF:
         return grid_meters(entry, conf)
     return house_entities(entry.data, conf)
-
-
-def _nesting_of(prefs: Any, device_of_entity: Mapping[str, str]) -> dict[str, str]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
-    """Which tracked device sits inside which, per the Energy Dashboard.
-
-    A `device_consumption` entry carries `included_in_stat`: the statistic id of
-    the device whose total already contains this one. For an entity-backed
-    sensor a statistic id *is* the entity id, which is what lets it be matched
-    to our own devices at all.
-
-    Both ends have to be tracked by us. A child whose parent we do not track has
-    no double count to remove - its energy is inside a counter nobody is
-    reading - and a link to a device we have never heard of is simply not ours
-    to act on. Either way the pair is skipped, which leaves today's behaviour
-    rather than a guess.
-
-    A device declared inside itself is dropped too: nothing in Home Assistant
-    forbids it through the websocket API, and netting a device against itself
-    would erase it.
-    """
-    nesting: dict[str, str] = {}
-    for entry in prefs.get("device_consumption", []) if prefs else []:
-        parent = device_of_entity.get(entry.get("included_in_stat"))
-        child = device_of_entity.get(entry.get("stat_consumption"))
-        if parent is not None and child is not None and parent != child:
-            nesting[child] = parent
-    return nesting
 
 
 def _to_decimal(raw: str) -> Decimal | None:

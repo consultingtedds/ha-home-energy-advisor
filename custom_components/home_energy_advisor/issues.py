@@ -63,6 +63,10 @@ ISSUE_DEVICE_WITHOUT_FIGURES = "device_without_figures"
 # household is asked about rather than having it applied (ADR-0030). Fixable: the
 # answer is a choice this integration acts on.
 ISSUE_ENERGY_DASHBOARD_CHANGED = "energy_dashboard_changed"
+# The Energy Dashboard nests a tracked device by a sensor other than the one
+# read here, so the nesting cannot be applied and the device is counted twice
+# (HEA-271). Keyed per device: each is its own sensor to repoint.
+ISSUE_NESTING_MISREAD = "nesting_misread"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -145,6 +149,11 @@ def energy_dashboard_changed_issue_id(entry_id: str) -> str:
     it.
     """
     return f"{ISSUE_ENERGY_DASHBOARD_CHANGED}_{entry_id}"
+
+
+def nesting_misread_issue_id(subentry_id: str) -> str:
+    """Stable issue id for a device the Energy Dashboard nests by another sensor."""
+    return f"{ISSUE_NESTING_MISREAD}_{subentry_id}"
 
 
 def async_raised_subjects(hass: HomeAssistant, translation_key: str) -> set[str]:

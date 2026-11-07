@@ -249,6 +249,13 @@ Depth does not matter. A breaker containing a sub-circuit containing a plug
 containing an appliance works the same way - each one names the device directly
 above it.
 
+**Both devices have to be the sensors Home Energy Advisor reads.** If the Energy
+Dashboard names a device by another of its sensors - a yearly counter beside a
+lifetime one, or an energy sensor where you track the device by its power - the
+nesting is not applied, and a notification names the sensor to choose. Your
+diagnostics download lists every nesting in force under `nesting`, and every
+one the Energy Dashboard declares that was not applied, with the reason.
+
 ### What we cannot see
 
 **If you do not record it, nothing detects it.** The notification above only
