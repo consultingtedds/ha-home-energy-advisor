@@ -15,7 +15,9 @@
 #
 set -euo pipefail
 
-SONAR_HOST_URL="${SONAR_HOST_URL:-http://localhost:9000}"
+# Exported for the npm scanner, which reads it from the environment and otherwise
+# defaults to SonarCloud (HEA-275).
+export SONAR_HOST_URL="${SONAR_HOST_URL:-http://localhost:9000}"
 PROJECT_KEY="$(sed -n 's/^sonar\.projectKey=//p' sonar-project.properties)"
 REPORT_TASK=".scannerwork/report-task.txt"
 
