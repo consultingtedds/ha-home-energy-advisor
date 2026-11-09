@@ -248,6 +248,10 @@ def _figures(cost: PlanCost) -> dict[str, float]:
         "export_credit": _number(cost.export_credit),
         "daily_charges": _number(cost.daily_charges),
         "total": _number(cost.total),
+        # What a capped plan did not pay for export, or carried and left unused,
+        # so the card can say why a high export price helped less (HEA-258).
+        "export_unpaid": _number(cost.export_unpaid),
+        "export_carried": _number(cost.export_carried),
     }
 
 

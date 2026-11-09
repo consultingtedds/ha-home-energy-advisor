@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatDateTime, localeFrom } from "../hea-format.js";
+import { formatDateTime, formatMoney, localeFrom } from "../hea-format.js";
 import { DEFAULTS as LABELS, fill, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-plans-card.js";
 import { JULY, MAY, aHass, mountCard, settled, text } from "./doubles.js";
@@ -328,5 +328,47 @@ describe("plans priced from the market (HEA-260)", () => {
 
     // Then
     expect(text(card)).not.toContain(LABELS.plans_market_hourly);
+  });
+});
+
+describe("export a capped plan did not pay (HEA-258)", () => {
+  const row = (card, id) => card.shadowRoot.querySelector(`[data-plan="${id}"]`);
+  const money = (card, amount) => formatMoney(amount, localeFrom(card._hass));
+
+  it("says how much export the cap left unpaid", async () => {
+    // Given - a generous feed-in price capped at the month's energy cost
+    const capped = { ...NIGHT, export_unpaid: 6.4, export_carried: 0 };
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, capped] }));
+    await settled(expect, card);
+
+    // Then
+    expect(figure(card, "export-unpaid:night")).toBe(
+      fill(LABELS.plans_export_unpaid, { amount: money(card, 6.4) }),
+    );
+  });
+
+  it("says how much was carried forward and is not yet used", async () => {
+    // Given
+    const carried = { ...NIGHT, export_unpaid: 0, export_carried: 2.15 };
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, carried] }));
+    await settled(expect, card);
+
+    // Then
+    expect(figure(card, "export-carried:night")).toBe(
+      fill(LABELS.plans_export_carried, { amount: money(card, 2.15) }),
+    );
+  });
+
+  it("says nothing where the cap never bit, or the plan has none", async () => {
+    // Given - one plan capped but within its cap, and one from an older
+    // integration that sends neither figure
+    const within = { ...NIGHT, export_unpaid: 0, export_carried: 0 };
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, within] }));
+    await settled(expect, card);
+
+    // Then
+    for (const id of ["flat", "night"]) {
+      expect(row(card, id).querySelector('[data-figure^="export-"]')).toBe(null);
+    }
   });
 });

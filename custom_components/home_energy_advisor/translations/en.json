@@ -264,6 +264,7 @@
             "export_price_entity": "Market export price (optional)",
             "export_price_add": "Added to the market export price (optional)",
             "export_price_multiply": "Market export price multiplied by (optional)",
+            "plan_export_cap": "Export compensation",
             "holiday_calendar": "Holiday calendar (optional)",
             "import_price_entity": "Market import price (optional)",
             "import_price_add": "Added to the market import price (optional)",
@@ -280,6 +281,7 @@
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
             "export_price_add": "For a wholesale feed-in price, such as Nord Pool's: what the plan adds per kWh, usually a negative fee. Leave it empty if the sensor already gives what you are paid.",
             "export_price_multiply": "For a wholesale feed-in price: what the price and the amount added are multiplied by, if anything, such as 1.21 for 21% VAT.",
+            "plan_export_cap": "Whether the plan pays for all export, or only up to what each month's energy cost, as many plans do. Daily charges are never offset. With the excess carried, what is not paid offsets the next month's energy instead.",
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
             "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
@@ -300,6 +302,7 @@
             "export_price_entity": "Market export price (optional)",
             "export_price_add": "Added to the market export price (optional)",
             "export_price_multiply": "Market export price multiplied by (optional)",
+            "plan_export_cap": "Export compensation",
             "holiday_calendar": "Holiday calendar (optional)",
             "import_price_entity": "Market import price (optional)",
             "import_price_add": "Added to the market import price (optional)",
@@ -316,6 +319,7 @@
             "export_price_entity": "A sensor giving the market's feed-in price per kWh. With one, export is credited at it rather than at the plan's export price.",
             "export_price_add": "For a wholesale feed-in price, such as Nord Pool's: what the plan adds per kWh, usually a negative fee. Leave it empty if the sensor already gives what you are paid.",
             "export_price_multiply": "For a wholesale feed-in price: what the price and the amount added are multiplied by, if anything, such as 1.21 for 21% VAT.",
+            "plan_export_cap": "Whether the plan pays for all export, or only up to what each month's energy cost, as many plans do. Daily charges are never offset. With the excess carried, what is not paid offsets the next month's energy instead.",
             "holiday_calendar": "A calendar whose all-day events are public holidays, such as one from the Holiday integration. Those days are priced at the plan's bands for holidays, such as weekends and holidays.",
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
             "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
@@ -490,6 +494,13 @@
         "saturday": "Saturday",
         "sunday": "Sunday",
         "holiday": "Public holidays"
+      }
+    },
+    "plan_export_cap": {
+      "options": {
+        "none": "Paid in full",
+        "monthly": "Capped at each month's energy cost",
+        "carried": "Capped, the excess carried to the next month"
       }
     },
     "plan_action": {
@@ -710,6 +721,8 @@
     "card_plans_no_readings": "Your grid meters recorded nothing in this period, so only the daily charges are shown.",
     "card_plans_no_current": "Mark one plan as the one you are on to see how the others compare.",
     "card_plans_no_price": "No market price was recorded in this period, so it cannot be compared.",
+    "card_plans_export_unpaid": "{amount} of export not paid: capped at each month's energy cost.",
+    "card_plans_export_carried": "{amount} of export carried forward and not yet used.",
     "card_plans_priced_from": "Priced from {date}, when its market price was first recorded.",
     "card_plans_carried": "{hours} h priced at the last market price, where none was recorded.",
     "card_plans_market_hourly": "Market prices are applied hour by hour, at each hour's average.",

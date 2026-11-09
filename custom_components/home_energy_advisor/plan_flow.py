@@ -57,6 +57,7 @@ from .const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
+    CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
@@ -71,7 +72,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, Day, Days, Plan
+from .engine.plan_pricing import Band, Day, Days, ExportCap, Plan
 from .schemas import vol
 from .tariff_plans import (
     band_from,
@@ -99,6 +100,7 @@ _DETAIL_KEYS = (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
+    CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
@@ -287,6 +289,9 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         """Start from what a plan's entry holds: its details, prices and bands."""
         labels = await _common_strings(self.hass)
         self._details = {key: data[key] for key in _DETAIL_KEYS if key in data}
+        # Entered before export could be capped, so paid in full, which the
+        # form's default for a new plan must not quietly change (HEA-258).
+        self._details.setdefault(CONF_PLAN_EXPORT_CAP, ExportCap.NONE.value)
         self._prices, self._bands = named_prices(
             data, labels.get("plan_price_name", "Price {number}")
         )
@@ -438,6 +443,17 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_ENTITY): _MARKET_PRICE,
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_ADD): per_kwh,
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_MULTIPLY): _MULTIPLIER,
+                # Capped for a new plan, the way most offers that pay for export
+                # pay: what was entered before stays as it was entered (HEA-258).
+                vol.Required(
+                    CONF_PLAN_EXPORT_CAP, default=ExportCap.MONTHLY.value
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[cap.value for cap in ExportCap],
+                        mode=selector.SelectSelectorMode.LIST,
+                        translation_key=CONF_PLAN_EXPORT_CAP,
+                    )
+                ),
                 vol.Optional(CONF_PLAN_HOLIDAYS): selector.EntitySelector(
                     selector.EntitySelectorConfig(domain="calendar")
                 ),

@@ -264,6 +264,7 @@
             "export_price_entity": "Precio de exportación de mercado (opcional)",
             "export_price_add": "Sumado al precio de exportación de mercado (opcional)",
             "export_price_multiply": "Precio de exportación de mercado multiplicado por (opcional)",
+            "plan_export_cap": "Compensación de la exportación",
             "holiday_calendar": "Calendario de festivos (opcional)",
             "import_price_entity": "Precio de importación de mercado (opcional)",
             "import_price_add": "Sumado al precio de importación de mercado (opcional)",
@@ -280,6 +281,7 @@
             "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
             "export_price_add": "Para un precio de exportación mayorista, como el de Nord Pool: lo que la tarifa suma por kWh, normalmente una comisión negativa. Déjalo vacío si el sensor ya da lo que te pagan.",
             "export_price_multiply": "Para un precio de exportación mayorista: por cuánto se multiplican el precio y lo sumado, si procede, como 1,21 para un IVA del 21 %.",
+            "plan_export_cap": "Si el plan paga toda la exportación, o solo hasta lo que costó la energía de cada mes, como hacen muchos planes. Los cargos diarios nunca se compensan. Con el excedente acumulado, lo que no se paga compensa la energía del mes siguiente.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran con las franjas de festivos de la tarifa, como fines de semana y festivos.",
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
             "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
@@ -300,6 +302,7 @@
             "export_price_entity": "Precio de exportación de mercado (opcional)",
             "export_price_add": "Sumado al precio de exportación de mercado (opcional)",
             "export_price_multiply": "Precio de exportación de mercado multiplicado por (opcional)",
+            "plan_export_cap": "Compensación de la exportación",
             "holiday_calendar": "Calendario de festivos (opcional)",
             "import_price_entity": "Precio de importación de mercado (opcional)",
             "import_price_add": "Sumado al precio de importación de mercado (opcional)",
@@ -316,6 +319,7 @@
             "export_price_entity": "Un sensor con el precio de mercado por kWh exportado. Con uno, la exportación se abona a ese precio en lugar del precio de exportación de la tarifa.",
             "export_price_add": "Para un precio de exportación mayorista, como el de Nord Pool: lo que la tarifa suma por kWh, normalmente una comisión negativa. Déjalo vacío si el sensor ya da lo que te pagan.",
             "export_price_multiply": "Para un precio de exportación mayorista: por cuánto se multiplican el precio y lo sumado, si procede, como 1,21 para un IVA del 21 %.",
+            "plan_export_cap": "Si el plan paga toda la exportación, o solo hasta lo que costó la energía de cada mes, como hacen muchos planes. Los cargos diarios nunca se compensan. Con el excedente acumulado, lo que no se paga compensa la energía del mes siguiente.",
             "holiday_calendar": "Un calendario cuyos eventos de día completo son festivos, como el de la integración Holiday. Esos días se cobran con las franjas de festivos de la tarifa, como fines de semana y festivos.",
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
             "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
@@ -490,6 +494,13 @@
         "saturday": "Sábado",
         "sunday": "Domingo",
         "holiday": "Festivos"
+      }
+    },
+    "plan_export_cap": {
+      "options": {
+        "none": "Pagada entera",
+        "monthly": "Limitada al coste de la energía de cada mes",
+        "carried": "Limitada, con el excedente acumulado para el mes siguiente"
       }
     },
     "plan_action": {
@@ -710,6 +721,8 @@
     "card_plans_no_readings": "Tus contadores de red no registraron nada en este periodo, así que solo se muestran los cargos diarios.",
     "card_plans_no_current": "Marca una tarifa como la que tienes contratada para ver cómo se comparan las demás.",
     "card_plans_no_price": "No se registró ningún precio de mercado en este periodo, así que no se puede comparar.",
+    "card_plans_export_unpaid": "{amount} de exportación sin pagar: limitada al coste de la energía de cada mes.",
+    "card_plans_export_carried": "{amount} de exportación acumulada y aún sin usar.",
     "card_plans_priced_from": "Calculada desde el {date}, cuando se registró por primera vez su precio de mercado.",
     "card_plans_carried": "{hours} h calculadas con el último precio de mercado, donde no se registró ninguno.",
     "card_plans_market_hourly": "Los precios de mercado se aplican hora a hora, con la media de cada hora.",

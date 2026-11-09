@@ -768,6 +768,13 @@ Carried forward rather than closed:
   Nord Pool, EnergyZero and easyEnergy publish wholesale prices; a template
   sensor would have no history. Found checking HEA-260 against European
   households, before 1.4.0b1.
+- **HEA-258** (ADR-0040): a plan's export can be capped at each calendar month's
+  energy cost, with the excess lost or carried to the next month. New plans
+  default to capped; plans entered before stay paid in full. The card says what
+  export went unpaid or is carried and unused.
+- **HEA-261**: cards say they are loading rather than drawing their empty
+  state, and cards asking the recorder the same question share one request
+  (three months on the reference home: ~10.5 s to ~1 s).
 - **HEA-271** (discussion 58): the diagnostics list the nesting in force and
   every Energy Dashboard pair skipped, with why. A pair naming another sensor
   of a Home Assistant device HEA tracks exactly one device of raises a Repair

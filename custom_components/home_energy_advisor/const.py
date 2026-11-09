@@ -54,6 +54,8 @@ CONF_PLAN_EXPORT_PRICE: Final = "plan_export_price"
 # The kWh a day the export price pays on, and the price for the rest (ADR-0039).
 CONF_PLAN_EXPORT_ALLOWANCE: Final = "plan_export_allowance"
 CONF_PLAN_EXPORT_PRICE_AFTER: Final = "plan_export_price_after"
+# Whether what export earns a month is capped at its energy cost (HEA-258).
+CONF_PLAN_EXPORT_CAP: Final = "plan_export_cap"
 CONF_PLAN_HOLIDAYS: Final = "holiday_calendar"
 # A market price the plan imports or exports at instead of a schedule (ADR-0037):
 # a plan importing at one has no prices or bands.

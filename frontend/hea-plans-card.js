@@ -156,9 +156,32 @@ class HeaPlansCard extends HeaCard {
     }
     return `<div class="plan" data-plan="${plan.id}">${head}
       <div class="parts">${PARTS.map((part) => this._part(plan, part, locale)).join("")}</div>
+      ${this._exportNotes(plan, locale)}
       ${current && plan !== current ? this._difference(plan, current, locale) : ""}
       ${this._marketNotes(plan, locale)}
     </div>`;
+  }
+
+  /**
+   * Export a capped plan did not pay, where its cap bit (HEA-258).
+   *
+   * Without it, a plan with a high export price would simply total less than
+   * the price suggests, and a household could not see why.
+   */
+  _exportNotes(plan, locale) {
+    return [
+      ["unpaid", plan.export_unpaid, this._labels.plans_export_unpaid],
+      ["carried", plan.export_carried, this._labels.plans_export_carried],
+    ]
+      .filter(([, amount]) => amount > 0)
+      .map(
+        ([kind, amount, wording]) =>
+          `<div class="difference" data-figure="export-${kind}:${plan.id}">${fill(
+            wording,
+            { amount: formatMoney(amount, locale) },
+          )}</div>`,
+      )
+      .join("");
   }
 
   /** What a market-priced plan's figures rest on, where there is anything to say. */

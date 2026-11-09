@@ -43,6 +43,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
@@ -256,6 +257,33 @@ async def test_each_plan_is_priced_from_the_hours_the_meters_recorded(
     # 07:00 at night price, 12:00 and 20:00 at the day price
     assert offer["energy"] == pytest.approx(0.09 + 0.5 * 0.31 + 0.31)
     assert offer["total"] == pytest.approx(0.555 - 0.08 + 0.30)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_capped_plan_says_what_export_it_did_not_pay(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the flat plan paying 0.50 for export, capped at the month's
+    # energy cost (HEA-258)
+    capped = {
+        **_FLAT,
+        CONF_NAME: "Generous feed-in",
+        CONF_PLAN_EXPORT_PRICE: 0.50,
+        CONF_PLAN_EXPORT_CAP: "monthly",
+    }
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, capped))
+    )
+
+    # When
+    plan = _by_name(await _compare(hass_ws_client, hass))["Generous feed-in"]
+
+    # Then - 2 kWh out earns 1.00, but only the month's 0.585 of energy is paid,
+    # and the card is told what was not
+    assert plan["export_credit"] == pytest.approx(0.585)
+    assert plan["export_unpaid"] == pytest.approx(0.415)
+    assert plan["export_carried"] == 0
+    assert plan["total"] == pytest.approx(0.45)
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")

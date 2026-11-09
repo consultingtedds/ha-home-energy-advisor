@@ -11,7 +11,8 @@ as it is. A band's days are either the name of the days an offer names, such as
 weekdays, or the list of days it applies to (ADR-0038). A price's export price,
 and the plan's, can pay only on the first kWh exported in a day (ADR-0039). A
 plan at a market price can adjust it, from wholesale to what its supplier
-charges (HEA-273).
+charges (HEA-273). What its export earns a month can be capped at what the
+month's energy cost (HEA-258); a plan saying nothing about it pays in full.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from .const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
+    CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
@@ -46,7 +48,7 @@ from .const import (
     CONF_PRICES,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, Day, Days, MarketAdjustment, Plan
+from .engine.plan_pricing import Band, Day, Days, ExportCap, MarketAdjustment, Plan
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -108,6 +110,8 @@ def tariff_plan_from(name: str, data: Mapping[str, Any]) -> TariffPlan:
             export_adjustment=_adjustment(
                 data, CONF_PLAN_EXPORT_PRICE_ADD, CONF_PLAN_EXPORT_PRICE_MULTIPLY
             ),
+            # A plan entered before export could be capped was paid in full.
+            export_cap=ExportCap(data.get(CONF_PLAN_EXPORT_CAP, ExportCap.NONE)),
         ),
         current=bool(data.get(CONF_PLAN_CURRENT)),
         holidays=data.get(CONF_PLAN_HOLIDAYS) or None,

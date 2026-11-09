@@ -34,7 +34,7 @@ everything credited at the plan's price counts against the plan's. Each
 allowance starts again at local midnight.
 
 What export earns in a month can be capped at what the month's energy cost, as
-Spain's simplified compensation caps it (HEA-258). The cap is on the energy
+many plans cap it (HEA-258). The cap is on the energy
 alone: daily charges are payable however much is exported. Whatever the cap
 does not pay is lost, or, on a plan that carries it forward, offsets the next
 month's energy, and whatever is still carried at the end of the period is said

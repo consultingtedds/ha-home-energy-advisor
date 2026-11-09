@@ -381,6 +381,14 @@ price its own export allowance (0.10 on the first 15 kWh between 18:00 and
 21:00): beyond it, export earns the plan's export price. Allowances start again
 each midnight.
 
+**Export compensation.** Many plans pay for export only up to what the month's
+energy cost, and lose the rest. Others carry the rest to the next month. Choose
+which under **Export compensation**: a new plan starts as capped at each month's
+energy cost, and a plan entered before this was offered stays paid in full.
+Daily charges are never offset. Where the cap cut what a plan was paid, the
+comparison card says how much export went unpaid, or how much was carried
+forward and not yet used.
+
 **Copying a plan.** Most offers keep the bands of a plan you have already entered
 and change only the prices. Once you have a plan, **Add tariff plan** asks what to
 start from: choose that plan and the copy keeps its prices and bands, so you only

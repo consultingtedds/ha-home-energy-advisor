@@ -12,6 +12,7 @@ the days an offer names, such as weekdays, or to days of its own choosing
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
@@ -41,6 +42,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
+    CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ADD,
     CONF_PLAN_EXPORT_PRICE_AFTER,
@@ -59,6 +61,7 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Band,
     Day,
     Days,
+    ExportCap,
     MarketAdjustment,
     Plan,
 )
@@ -219,6 +222,16 @@ def _details_of(plan: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in plan.items() if key != CONF_BANDS}
 
 
+def _as_edited(plan: dict[str, Any]) -> dict[str, Any]:
+    """What the form sends back for a plan entered before export could be capped.
+
+    The form holds it as paid in full, and the frontend sends what the form
+    holds; answering without it would take the default a new plan gets
+    (HEA-258).
+    """
+    return {**_details_of(plan), CONF_PLAN_EXPORT_CAP: "none"}
+
+
 async def test_a_plan_is_entered_band_by_band_and_saved_once_every_hour_is_covered(
     hass: HomeAssistant,
 ) -> None:
@@ -238,7 +251,8 @@ async def test_a_plan_is_entered_band_by_band_and_saved_once_every_hour_is_cover
     assert entry.subentries[plan_id].title == "Current plan"
     assert plan.current is True
     assert plan.holidays is None
-    assert plan.plan == _CURRENT_PLAN
+    # A new plan's export is capped unless the household says otherwise (HEA-258)
+    assert plan.plan == replace(_CURRENT_PLAN, export_cap=ExportCap.MONTHLY)
 
 
 async def test_a_band_picks_one_of_the_plans_prices_by_name(
@@ -520,6 +534,8 @@ _OFFER = {
     CONF_PLAN_CURRENT: False,
     CONF_PLAN_DAILY_CHARGE: 2.87,
     CONF_PLAN_EXPORT_PRICE: 0.035,
+    # As the copy was offered it: the plan it came from was paid in full.
+    CONF_PLAN_EXPORT_CAP: "none",
     CONF_PLAN_HOLIDAYS: "calendar.public_holidays",
     CONF_PRICES: [
         {**_PEAK, CONF_BAND_IMPORT_PRICE: 0.2319, CONF_BAND_EXPORT_PRICE: 0.10},
@@ -597,7 +613,7 @@ async def test_renaming_a_price_keeps_the_bands_that_charge_it(
         hass,
         await _edit(hass, entry, plan_id),
         {
-            **_details_of(_CURRENT),
+            **_as_edited(_CURRENT),
             CONF_PRICES: [_PEAK, {**_OFF_PEAK, CONF_NAME: "Valle"}],
         },
     )
@@ -694,6 +710,7 @@ async def test_the_copy_is_filled_in_from_the_plan_it_came_from(
         CONF_PLAN_CURRENT: False,
         CONF_PLAN_DAILY_CHARGE: 0.45,
         CONF_PLAN_EXPORT_PRICE: 0.05,
+        CONF_PLAN_EXPORT_CAP: "none",
         CONF_PLAN_HOLIDAYS: "calendar.public_holidays",
         CONF_PRICES: [_PEAK, _OFF_PEAK],
     }
@@ -799,7 +816,7 @@ async def test_a_plan_without_named_prices_is_given_names_when_edited(
         {**_OFF_PEAK, CONF_NAME: "Price 2"},
     ]
     result = await _answer(
-        hass, result, {**_details_of(_CURRENT), CONF_PRICES: [_PEAK, _OFF_PEAK]}
+        hass, result, {**_as_edited(_CURRENT), CONF_PRICES: [_PEAK, _OFF_PEAK]}
     )
     result = await _answer(hass, result, _review(result, "save"))
     assert entry.subentries[plan_id].data[CONF_BANDS] == _CURRENT[CONF_BANDS]
@@ -895,6 +912,7 @@ async def test_a_plan_importing_at_the_market_is_saved_from_its_details_alone(
         daily_charge=Decimal("1.1"),
         export_price=Decimal("0.05"),
         import_per_interval=True,
+        export_cap=ExportCap.MONTHLY,
     )
 
 
@@ -1237,3 +1255,61 @@ async def test_a_prices_export_allowance_needs_its_export_price(
     # Then
     assert result["step_id"] == "details"
     assert result["errors"] == {CONF_PRICES: "price_allowance"}
+
+
+# Export capped at the month's energy cost (HEA-258)
+
+
+async def test_a_new_plan_caps_export_at_each_months_energy_cost(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a plan entered without touching the cap, as most will be
+    entry = _house(hass)
+    result = await _enter(
+        hass, entry, _DETAILS, _WEEKDAY_PEAK, _WEEKDAY_NIGHT, _REST_DAYS
+    )
+
+    # When
+    await _answer(hass, result, _review(result, "save"))
+
+    # Then - capped, the way most plans that pay for export pay
+    ((plan_id, plan),) = plans_of(entry).items()
+    assert entry.subentries[plan_id].data[CONF_PLAN_EXPORT_CAP] == "monthly"
+    assert plan.plan.export_cap is ExportCap.MONTHLY
+
+
+async def test_a_plan_entered_before_export_could_be_capped_is_paid_in_full(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - an entry saying nothing about a cap
+    (plan,) = plans_of(_house(hass, _CURRENT)).values()
+
+    # Then - its figures are what they were before the upgrade
+    assert plan.plan.export_cap is ExportCap.NONE
+
+
+async def test_editing_a_plan_entered_before_the_cap_offers_it_as_it_was(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a plan entered before the cap existed
+    entry = _house(hass, _CURRENT)
+    (plan_id,) = plans_of(entry)
+
+    # When - it is opened to change something else
+    result = await _edit(hass, entry, plan_id)
+
+    # Then - the form holds paid in full, not the default a new plan gets, so
+    # saving an unrelated change cannot quietly cap it
+    assert _suggested(result)[CONF_PLAN_EXPORT_CAP] == "none"
+
+
+async def test_a_plan_carrying_its_excess_forward_is_read_as_carried(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    (plan,) = plans_of(
+        _house(hass, {**_CURRENT, CONF_PLAN_EXPORT_CAP: "carried"})
+    ).values()
+
+    # Then
+    assert plan.plan.export_cap is ExportCap.CARRIED

@@ -144,6 +144,8 @@ export const DEFAULTS = Object.freeze({
   plans_no_current: "Mark one plan as the one you are on to see how the others compare.",
   plans_no_price:
     "No market price was recorded in this period, so it cannot be compared.",
+  plans_export_unpaid: "{amount} of export not paid: capped at each month's energy cost.",
+  plans_export_carried: "{amount} of export carried forward and not yet used.",
   plans_priced_from: "Priced from {date}, when its market price was first recorded.",
   plans_carried: "{hours} h priced at the last market price, where none was recorded.",
   plans_market_hourly: "Market prices are applied hour by hour, at each hour's average.",
