@@ -381,6 +381,13 @@ price its own export allowance (0.10 on the first 15 kWh between 18:00 and
 21:00): beyond it, export earns the plan's export price. Allowances start again
 each midnight.
 
+**Free hours, up to a limit.** Free or cheap hours with no limit are a price of
+0 and a band for those hours, on whichever days the plan gives them. Where they
+are free only for the first kWh, give that price an **import allowance**: how
+many kWh, whether each day, week (from Monday) or month, and which of the plan's
+other prices is charged beyond it, usually the one you would otherwise pay
+then (free from 11:00 to 15:00 on the first 24 kWh a day, then Ordinary).
+
 **Export compensation.** Many plans pay for export only up to what the month's
 energy cost, and lose the rest. Others carry the rest to the next month. Choose
 which under **Export compensation**: a new plan starts as capped at each month's

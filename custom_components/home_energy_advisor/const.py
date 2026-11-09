@@ -78,6 +78,11 @@ CONF_BAND_IMPORT_PRICE: Final = "import_price"
 CONF_BAND_EXPORT_PRICE: Final = "band_export_price"
 # The kWh a day a price's own export price pays on (ADR-0039).
 CONF_BAND_EXPORT_ALLOWANCE: Final = "band_export_allowance"
+# The kWh a price's import price charges on each day, week or month, and the
+# other named price its hours are charged beyond it (HEA-264).
+CONF_BAND_IMPORT_ALLOWANCE: Final = "band_import_allowance"
+CONF_BAND_IMPORT_ALLOWANCE_PERIOD: Final = "band_import_allowance_period"
+CONF_BAND_IMPORT_PRICE_AFTER: Final = "band_import_price_after"
 # A price typed as a number rather than read from an entity, as the Energy
 # Dashboard allows, per kWh in the household's currency.
 CONF_FIXED_PRICE: Final = "fixed_price"

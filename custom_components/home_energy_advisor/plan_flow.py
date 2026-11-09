@@ -49,7 +49,10 @@ from .const import (
     CONF_BAND_END,
     CONF_BAND_EXPORT_ALLOWANCE,
     CONF_BAND_EXPORT_PRICE,
+    CONF_BAND_IMPORT_ALLOWANCE,
+    CONF_BAND_IMPORT_ALLOWANCE_PERIOD,
     CONF_BAND_IMPORT_PRICE,
+    CONF_BAND_IMPORT_PRICE_AFTER,
     CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
@@ -72,7 +75,7 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, Day, Days, ExportCap, Plan
+from .engine.plan_pricing import AllowancePeriod, Band, Day, Days, ExportCap, Plan
 from .schemas import vol
 from .tariff_plans import (
     band_from,
@@ -168,6 +171,27 @@ _DAY_LABELS = {
     Day.SATURDAY: ("plan_saturday", "Saturday"),
     Day.SUNDAY: ("plan_sunday", "Sunday"),
     Day.HOLIDAY: ("plan_holidays", "Public holidays"),
+}
+# How long an import allowance lasts, offered inside the list of prices, and
+# how a band names a price carrying one (HEA-264).
+_PERIOD_LABELS = {
+    AllowancePeriod.DAY: ("plan_allowance_day", "Each day"),
+    AllowancePeriod.WEEK: ("plan_allowance_week", "Each week, from Monday"),
+    AllowancePeriod.MONTH: ("plan_allowance_month", "Each month"),
+}
+_IMPORT_ALLOWANCE_LABELS = {
+    AllowancePeriod.DAY: (
+        "plan_band_import_allowance_day",
+        "{price} on the first {allowance} kWh a day, then {after}",
+    ),
+    AllowancePeriod.WEEK: (
+        "plan_band_import_allowance_week",
+        "{price} on the first {allowance} kWh a week, then {after}",
+    ),
+    AllowancePeriod.MONTH: (
+        "plan_band_import_allowance_month",
+        "{price} on the first {allowance} kWh a month, then {after}",
+    ),
 }
 _DAYS_LABELS = {
     Days.WEEKDAYS: ("plan_weekdays", "Weekdays"),
@@ -277,10 +301,11 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         suggested = {**self._details}
         if self._prices:
             suggested[CONF_PRICES] = self._prices
+        labels = await _common_strings(self.hass)
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(
-                self._details_schema(), user_input or suggested
+                self._details_schema(labels), user_input or suggested
             ),
             errors=errors,
         )
@@ -416,7 +441,20 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         currency = self._get_entry().data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
         return f"{currency}/kWh"
 
-    def _details_schema(self) -> vol.Schema:
+    def _details_schema(self, labels: dict[str, str]) -> vol.Schema:
+        # Labelled here rather than by translation key: a select inside the list
+        # of prices is drawn by the list, not by the form (HEA-264).
+        period = selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(
+                        value=value.value, label=labels.get(key, default)
+                    )
+                    for value, (key, default) in _PERIOD_LABELS.items()
+                ],
+                mode=selector.SelectSelectorMode.DROPDOWN,
+            )
+        )
         per_kwh = selector.NumberSelector(
             selector.NumberSelectorConfig(
                 step="any",
@@ -478,6 +516,19 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                             ),
                             CONF_BAND_EXPORT_ALLOWANCE: selector.ObjectSelectorField(
                                 selector=_ALLOWANCE.serialize()["selector"],
+                            ),
+                            CONF_BAND_IMPORT_ALLOWANCE: selector.ObjectSelectorField(
+                                selector=_ALLOWANCE.serialize()["selector"],
+                            ),
+                            CONF_BAND_IMPORT_ALLOWANCE_PERIOD: (
+                                selector.ObjectSelectorField(
+                                    selector=period.serialize()["selector"],
+                                )
+                            ),
+                            CONF_BAND_IMPORT_PRICE_AFTER: selector.ObjectSelectorField(
+                                selector=selector.TextSelector().serialize()[
+                                    "selector"
+                                ],
                             ),
                         },
                         multiple=True,
@@ -554,6 +605,16 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         """A price as a band offers it: "Peak (0.31 EUR/kWh, export 0.12 EUR/kWh)"."""
         unit = self._unit()
         figures = f"{_figure(price[CONF_BAND_IMPORT_PRICE])} {unit}"
+        if (allowance := price.get(CONF_BAND_IMPORT_ALLOWANCE)) is not None:
+            period = AllowancePeriod(
+                price.get(CONF_BAND_IMPORT_ALLOWANCE_PERIOD, AllowancePeriod.DAY)
+            )
+            key, default = _IMPORT_ALLOWANCE_LABELS[period]
+            figures = labels.get(key, default).format(
+                price=figures,
+                allowance=_figure(allowance),
+                after=price.get(CONF_BAND_IMPORT_PRICE_AFTER, ""),
+            )
         export = price.get(CONF_BAND_EXPORT_PRICE)
         allowance = price.get(CONF_BAND_EXPORT_ALLOWANCE)
         if export is not None and allowance is not None:
@@ -633,6 +694,15 @@ def _prices_error(prices: list[dict[str, Any]]) -> str | None:
     ):
         # An allowance limits the price's own export price, so needs one.
         return "price_allowance"
+    for price in prices:
+        after = price.get(CONF_BAND_IMPORT_PRICE_AFTER) or None
+        if (price.get(CONF_BAND_IMPORT_ALLOWANCE) is None) != (after is None):
+            # Import beyond an allowance would otherwise be charged nothing.
+            return "import_allowance"
+        if after is not None and (after not in names or after == price[CONF_NAME]):
+            # It names one of the plan's other prices, which a renamed or
+            # removed price no longer is (HEA-264).
+            return "import_price_after"
     return None
 
 

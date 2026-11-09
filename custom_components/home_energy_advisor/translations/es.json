@@ -362,6 +362,8 @@
         "no_prices": "Añade al menos un precio: cada franja cobra uno de ellos.",
         "export_allowance": "Un cupo de exportación y el precio más allá de él van juntos: indica los dos o ninguno.",
         "price_allowance": "El cupo de exportación de un precio limita su propio precio de exportación, así que dale también un precio de exportación a ese precio, o deja su cupo vacío.",
+        "import_allowance": "Un cupo de importación y el precio que se cobra pasado el cupo van juntos: indica los dos, o ninguno.",
+        "import_price_after": "Pasado un cupo de importación, indica otro de los precios de este plan tal como aparece en la lista.",
         "market_adjustment": "Esto ajusta un precio de mercado, así que necesita la entidad de precio de mercado que ajusta. Elige una, o deja el ajuste vacío."
       }
     },
@@ -530,6 +532,15 @@
         },
         "band_export_allowance": {
           "name": "Cupo de exportación, kWh al día (opcional)"
+        },
+        "band_import_allowance": {
+          "name": "Cupo de importación, kWh (opcional)"
+        },
+        "band_import_allowance_period": {
+          "name": "El cupo de importación dura"
+        },
+        "band_import_price_after": {
+          "name": "Pasado el cupo de importación, cobrar el precio con este nombre (opcional)"
         }
       }
     }
@@ -661,6 +672,12 @@
     "plan_uncovered": "Sin precio todavía:\n{hours}",
     "plan_band_export": "exportación {price}",
     "plan_band_export_allowance": "exportación {price} por los primeros {allowance} kWh al día",
+    "plan_band_import_allowance_day": "{price} por los primeros {allowance} kWh al día, después {after}",
+    "plan_band_import_allowance_week": "{price} por los primeros {allowance} kWh a la semana, después {after}",
+    "plan_band_import_allowance_month": "{price} por los primeros {allowance} kWh al mes, después {after}",
+    "plan_allowance_day": "Cada día",
+    "plan_allowance_week": "Cada semana, desde el lunes",
+    "plan_allowance_month": "Cada mes",
     "export_price_entity": "La exportación se valora con {entity}, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_fixed": "La exportación se valora a {price} por kWh, de la configuración de red de tu Panel de energía. Cámbialo allí.",
     "export_price_none": "No hay precio de exportación en tu Panel de energía, así que Podría haber ganado se queda en cero. Pon uno en su configuración de red para verlo.",

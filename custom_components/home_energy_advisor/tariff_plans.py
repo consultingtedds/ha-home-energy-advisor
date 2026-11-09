@@ -12,7 +12,9 @@ weekdays, or the list of days it applies to (ADR-0038). A price's export price,
 and the plan's, can pay only on the first kWh exported in a day (ADR-0039). A
 plan at a market price can adjust it, from wholesale to what its supplier
 charges (HEA-273). What its export earns a month can be capped at what the
-month's energy cost (HEA-258); a plan saying nothing about it pays in full.
+month's energy cost (HEA-258); a plan saying nothing about it pays in full. A
+price's import price can charge only up to an allowance, its hours charged
+another of the plan's prices beyond it (HEA-264).
 """
 
 from __future__ import annotations
@@ -28,7 +30,10 @@ from .const import (
     CONF_BAND_END,
     CONF_BAND_EXPORT_ALLOWANCE,
     CONF_BAND_EXPORT_PRICE,
+    CONF_BAND_IMPORT_ALLOWANCE,
+    CONF_BAND_IMPORT_ALLOWANCE_PERIOD,
     CONF_BAND_IMPORT_PRICE,
+    CONF_BAND_IMPORT_PRICE_AFTER,
     CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
@@ -48,7 +53,15 @@ from .const import (
     CONF_PRICES,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import Band, Day, Days, ExportCap, MarketAdjustment, Plan
+from .engine.plan_pricing import (
+    AllowancePeriod,
+    Band,
+    Day,
+    Days,
+    ExportCap,
+    MarketAdjustment,
+    Plan,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -131,12 +144,14 @@ def band_from(data: Mapping[str, Any], prices: Mapping[str, Mapping[str, Any]]) 
     """A band from the answers to one band form, at the price it names.
 
     Raises ``ValueError`` for no days, or hours that are not whole hours of one
-    day, and ``KeyError`` for a price the plan does not have.
+    day, and ``KeyError`` for a price the plan does not have, the one it names
+    for beyond its import allowance included (HEA-264).
     """
     named = data.get(CONF_BAND_PRICE)
     figures = data if named is None else prices[named]
     export = figures.get(CONF_BAND_EXPORT_PRICE)
     days = data[CONF_BAND_DAYS]
+    after = figures.get(CONF_BAND_IMPORT_PRICE_AFTER)
     return Band(
         days=Days(days)
         if isinstance(days, str)
@@ -146,6 +161,13 @@ def band_from(data: Mapping[str, Any], prices: Mapping[str, Mapping[str, Any]]) 
         import_price=_decimal(figures[CONF_BAND_IMPORT_PRICE]),
         export_price=None if export is None else _decimal(export),
         export_allowance=_optional_decimal(figures.get(CONF_BAND_EXPORT_ALLOWANCE)),
+        import_allowance=_optional_decimal(figures.get(CONF_BAND_IMPORT_ALLOWANCE)),
+        import_allowance_period=AllowancePeriod(
+            figures.get(CONF_BAND_IMPORT_ALLOWANCE_PERIOD, AllowancePeriod.DAY)
+        ),
+        import_price_after=Decimal(0)
+        if after is None
+        else _decimal(prices[after][CONF_BAND_IMPORT_PRICE]),
         name=named or "",
     )
 

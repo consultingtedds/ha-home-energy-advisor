@@ -32,7 +32,10 @@ from custom_components.home_energy_advisor.const import (
     CONF_BAND_END,
     CONF_BAND_EXPORT_ALLOWANCE,
     CONF_BAND_EXPORT_PRICE,
+    CONF_BAND_IMPORT_ALLOWANCE,
+    CONF_BAND_IMPORT_ALLOWANCE_PERIOD,
     CONF_BAND_IMPORT_PRICE,
+    CONF_BAND_IMPORT_PRICE_AFTER,
     CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
@@ -58,6 +61,7 @@ from custom_components.home_energy_advisor.const import (
     SUBENTRY_TYPE_PLAN,
 )
 from custom_components.home_energy_advisor.engine.plan_pricing import (
+    AllowancePeriod,
     Band,
     Day,
     Days,
@@ -757,6 +761,7 @@ async def test_the_prices_are_entered_in_the_plans_currency(
         CONF_BAND_IMPORT_PRICE: "EUR/kWh",
         CONF_BAND_EXPORT_PRICE: "EUR/kWh",
         CONF_BAND_EXPORT_ALLOWANCE: "kWh",
+        CONF_BAND_IMPORT_ALLOWANCE: "kWh",
     }
 
 
@@ -1313,3 +1318,141 @@ async def test_a_plan_carrying_its_excess_forward_is_read_as_carried(
 
     # Then
     assert plan.plan.export_cap is ExportCap.CARRIED
+
+
+# Import free up to an allowance (HEA-264)
+
+_ORDINARY = {CONF_NAME: "Ordinary", CONF_BAND_IMPORT_PRICE: 0.25}
+_FREE = {
+    CONF_NAME: "Free",
+    CONF_BAND_IMPORT_PRICE: 0,
+    CONF_BAND_IMPORT_ALLOWANCE: 24,
+    CONF_BAND_IMPORT_ALLOWANCE_PERIOD: "day",
+    CONF_BAND_IMPORT_PRICE_AFTER: "Ordinary",
+}
+_FREE_HOURS_DETAILS = {
+    CONF_NAME: "Free hours",
+    CONF_PLAN_CURRENT: False,
+    CONF_PLAN_DAILY_CHARGE: 0.9,
+    CONF_PLAN_EXPORT_PRICE: 0.05,
+    CONF_PRICES: [_ORDINARY, _FREE],
+}
+_MORNING = {
+    CONF_BAND_DAYS: "every_day",
+    CONF_BAND_START: 0,
+    CONF_BAND_END: 11,
+    CONF_BAND_PRICE: "Ordinary",
+}
+_FREE_WINDOW = {
+    CONF_BAND_DAYS: "every_day",
+    CONF_BAND_START: 11,
+    CONF_BAND_END: 15,
+    CONF_BAND_PRICE: "Free",
+}
+_EVENING = {
+    CONF_BAND_DAYS: "every_day",
+    CONF_BAND_START: 15,
+    CONF_BAND_END: 24,
+    CONF_BAND_PRICE: "Ordinary",
+}
+_FREE_HOURS = {**_FREE_HOURS_DETAILS, CONF_BANDS: [_MORNING, _FREE_WINDOW, _EVENING]}
+
+
+async def test_a_free_window_is_read_with_its_allowance_and_the_price_after_it(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    (plan,) = plans_of(_house(hass, _FREE_HOURS)).values()
+
+    # Then - the free band carries the allowance, and the ordinary price beyond
+    # it, looked up from the price it names
+    free = plan.plan.bands[1]
+    assert free.import_price == Decimal(0)
+    assert free.import_allowance == Decimal(24)
+    assert free.import_allowance_period is AllowancePeriod.DAY
+    assert free.import_price_after == Decimal("0.25")
+    assert plan.plan.bands[0].import_allowance is None
+
+
+async def test_a_weekly_allowance_is_read_as_weekly(hass: HomeAssistant) -> None:
+    # Given / When
+    weekly = {**_FREE, CONF_BAND_IMPORT_ALLOWANCE_PERIOD: "week"}
+    (plan,) = plans_of(
+        _house(hass, {**_FREE_HOURS, CONF_PRICES: [_ORDINARY, weekly]})
+    ).values()
+
+    # Then
+    assert plan.plan.bands[1].import_allowance_period is AllowancePeriod.WEEK
+
+
+async def test_a_plan_with_free_hours_is_entered_and_saved(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _house(hass)
+    result = await _enter(
+        hass, entry, _FREE_HOURS_DETAILS, _MORNING, _FREE_WINDOW, _EVENING
+    )
+
+    # When
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - saved with its prices as typed
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    (plan_id,) = plans_of(entry)
+    assert entry.subentries[plan_id].data[CONF_PRICES] == [_ORDINARY, _FREE]
+
+
+async def test_a_band_is_offered_a_price_with_its_import_allowance(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When
+    result = await _answer(hass, await _start(hass, _house(hass)), _FREE_HOURS_DETAILS)
+
+    # Then
+    assert _options(result, CONF_BAND_PRICE)[1] == {
+        "value": "Free",
+        "label": "Free (0 EUR/kWh on the first 24 kWh a day, then Ordinary)",
+    }
+
+
+async def test_an_import_allowance_comes_with_a_price_beyond_it(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - an allowance with nothing to charge beyond it
+    without_after = {
+        key: value
+        for key, value in _FREE.items()
+        if key != CONF_BAND_IMPORT_PRICE_AFTER
+    }
+    result = await _answer(
+        hass,
+        await _start(hass, _house(hass)),
+        {**_FREE_HOURS_DETAILS, CONF_PRICES: [_ORDINARY, without_after]},
+    )
+
+    # Then - asked for it, rather than charging import beyond it nothing
+    assert result["step_id"] == "details"
+    assert result["errors"] == {CONF_PRICES: "import_allowance"}
+
+
+async def test_the_price_beyond_an_allowance_is_another_of_the_plans_prices(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - one naming a price the plan does not have, and one naming
+    # itself
+    results = [
+        await _answer(
+            hass,
+            await _start(hass, _house(hass)),
+            {
+                **_FREE_HOURS_DETAILS,
+                CONF_PRICES: [_ORDINARY, {**_FREE, CONF_BAND_IMPORT_PRICE_AFTER: name}],
+            },
+        )
+        for name in ("Shoulder", "Free")
+    ]
+
+    # Then
+    for result in results:
+        assert result["errors"] == {CONF_PRICES: "import_price_after"}

@@ -362,6 +362,8 @@
         "no_prices": "Add at least one price: each band charges one of them.",
         "export_allowance": "An export allowance and the price beyond it go together: enter both, or neither.",
         "price_allowance": "A price's export allowance limits its own export price, so give that price an export price too, or leave its allowance empty.",
+        "import_allowance": "An import allowance and the price charged beyond it go together: enter both, or neither.",
+        "import_price_after": "Beyond an import allowance, name another of this plan's prices exactly as it appears in the list.",
         "market_adjustment": "This adjusts a market price, so it needs the market price entity it adjusts. Choose one, or leave the adjustment empty."
       }
     },
@@ -530,6 +532,15 @@
         },
         "band_export_allowance": {
           "name": "Export allowance, kWh a day (optional)"
+        },
+        "band_import_allowance": {
+          "name": "Import allowance, kWh (optional)"
+        },
+        "band_import_allowance_period": {
+          "name": "Import allowance lasts"
+        },
+        "band_import_price_after": {
+          "name": "Beyond the import allowance, charge the price named (optional)"
         }
       }
     }
@@ -661,6 +672,12 @@
     "plan_uncovered": "Not priced yet:\n{hours}",
     "plan_band_export": "export {price}",
     "plan_band_export_allowance": "export {price} on the first {allowance} kWh a day",
+    "plan_band_import_allowance_day": "{price} on the first {allowance} kWh a day, then {after}",
+    "plan_band_import_allowance_week": "{price} on the first {allowance} kWh a week, then {after}",
+    "plan_band_import_allowance_month": "{price} on the first {allowance} kWh a month, then {after}",
+    "plan_allowance_day": "Each day",
+    "plan_allowance_week": "Each week, from Monday",
+    "plan_allowance_month": "Each month",
     "export_price_entity": "Exports are priced by {entity}, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_fixed": "Exports are priced at {price} per kWh, from your Energy Dashboard's grid settings. Change it there.",
     "export_price_none": "No export price is set in your Energy Dashboard, so Could have earned stays at zero. Set one in its grid settings to see it.",

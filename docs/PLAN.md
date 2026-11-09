@@ -768,6 +768,11 @@ Carried forward rather than closed:
   Nord Pool, EnergyZero and easyEnergy publish wholesale prices; a template
   sensor would have no history. Found checking HEA-260 against European
   households, before 1.4.0b1.
+- **HEA-264** (ADR-0041): a named price can charge its import price only on the
+  first kWh of a day, week or month, its hours charged another named price
+  beyond it. Free hours without a limit were already a band at 0. Researched
+  across AU, UK and ES; event-based free sessions (Octopus, EDF) are not a
+  schedule, so not a plan.
 - **HEA-258** (ADR-0040): a plan's export can be capped at each calendar month's
   energy cost, with the excess lost or carried to the next month. New plans
   default to capped; plans entered before stay paid in full. The card says what
