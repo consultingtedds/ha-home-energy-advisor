@@ -33,6 +33,14 @@ named price it charges, so it counts across every band charging that price, and
 everything credited at the plan's price counts against the plan's. Each
 allowance starts again at local midnight.
 
+An import price can charge its rate only on the first kWh imported in a day,
+week or month, as free hours capped at a few kWh do (HEA-264). Beyond the
+allowance its hours are charged another price, the one the household would
+otherwise pay then. Like an export allowance it belongs to the named price, so
+it counts across every band charging that price; a week starts on Monday, and
+every period at local midnight. One price within it and one beyond, so the
+total does not depend on the order intervals are priced in.
+
 What export earns in a month can be capped at what the month's energy cost, as
 many plans cap it (HEA-258). The cap is on the energy
 alone: daily charges are payable however much is exported. Whatever the cap
@@ -93,6 +101,22 @@ _DAYS_OF = {
 }
 
 
+class AllowancePeriod(StrEnum):
+    """How long an import allowance lasts before it starts again (HEA-264)."""
+
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+
+    def start(self, day: date) -> date:
+        """The first day of the period `day` falls in."""
+        if self is AllowancePeriod.WEEK:
+            return day - timedelta(days=day.weekday())
+        if self is AllowancePeriod.MONTH:
+            return day.replace(day=1)
+        return day
+
+
 @dataclass(frozen=True)
 class Band:
     """One price, for some hours of some days.
@@ -104,6 +128,9 @@ class Band:
 
     `export_allowance` is how many kWh a day its export price pays on, shared
     with every band charging the same named price, `name` (ADR-0039).
+    `import_allowance` is how many kWh each `import_allowance_period` its import
+    price charges on, shared the same way, with `import_price_after` charged on
+    the rest (HEA-264).
     """
 
     days: Days | frozenset[Day]
@@ -112,6 +139,9 @@ class Band:
     import_price: Decimal
     export_price: Decimal | None = None
     export_allowance: Decimal | None = None
+    import_allowance: Decimal | None = None
+    import_allowance_period: AllowancePeriod = AllowancePeriod.DAY
+    import_price_after: Decimal = Decimal(0)
     # Whose allowance it shares, not what it charges, so two bands at the same
     # prices are the same band whatever their price is called.
     name: str = field(default="", compare=False)
@@ -317,6 +347,8 @@ def price_plan(
         raise ValueError(msg)
     months: dict[tuple[int, int], _Month] = {}
     allowances = _Allowances()
+    # Counted apart from export's, since a price can carry both.
+    import_allowances = _Allowances()
     for recorded in intervals:
         month = months.setdefault((recorded.start.year, recorded.start.month), _Month())
         band = (
@@ -326,10 +358,13 @@ def price_plan(
                 plan.day_of(recorded.start.date(), holidays), recorded.start.hour
             )
         )
-        month.energy += recorded.imported_kwh * (
-            plan.import_adjustment.apply(_market(recorded.import_price, recorded, plan))
+        month.energy += (
+            recorded.imported_kwh
+            * plan.import_adjustment.apply(
+                _market(recorded.import_price, recorded, plan)
+            )
             if band is None
-            else band.import_price
+            else import_allowances.charge(band, recorded)
         )
         if plan.export_per_interval:
             month.earned += recorded.exported_kwh * plan.export_adjustment.apply(
@@ -429,6 +464,19 @@ class _Allowances:
             credit
             + paid * plan.export_price
             + (exported - paid) * plan.export_price_after
+        )
+
+    def charge(self, band: Band, recorded: IntervalOfEnergy) -> Decimal:
+        """What `recorded`'s import costs at its band, the allowance counted.
+
+        The allowance is counted from the start of its period, a day, week or
+        month (HEA-264), so `_within`'s day is that period's first.
+        """
+        imported = recorded.imported_kwh
+        starts = band.import_allowance_period.start(recorded.start.date())
+        within = self._within(starts, band.name, band.import_allowance, imported)
+        return (
+            within * band.import_price + (imported - within) * band.import_price_after
         )
 
     def _within(

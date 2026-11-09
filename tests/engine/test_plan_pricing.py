@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from custom_components.home_energy_advisor.engine.plan_pricing import (
+    AllowancePeriod,
     Band,
     Day,
     Days,
@@ -823,3 +824,113 @@ def test_a_month_is_a_calendar_month_in_local_time() -> None:
     # Then - May's export meets May's energy cost, which is nothing
     assert cost.export_credit == Decimal(0)
     assert cost.export_unpaid == Decimal("3.00")
+
+
+# Import free up to an allowance (HEA-264)
+
+ORDINARY = Decimal("0.25")
+
+
+def free_hours_plan(
+    allowance: str,
+    period: AllowancePeriod = AllowancePeriod.DAY,
+    *,
+    split: bool = False,
+) -> Plan:
+    """Free from 11:00 to 15:00 every day up to `allowance`, 0.25 otherwise.
+
+    `split` prices the free hours as two bands charging the same named price,
+    as a form would if the window were entered in two parts.
+    """
+
+    def free(start: int, end: int) -> Band:
+        return Band(
+            Days.EVERY_DAY,
+            start,
+            end,
+            Decimal(0),
+            import_allowance=Decimal(allowance),
+            import_allowance_period=period,
+            import_price_after=ORDINARY,
+            name="Free",
+        )
+
+    window = (free(11, 13), free(13, 15)) if split else (free(11, 15),)
+    return Plan(
+        name="Free hours",
+        bands=(
+            Band(Days.EVERY_DAY, 0, 11, ORDINARY, name="Ordinary"),
+            *window,
+            Band(Days.EVERY_DAY, 15, 24, ORDINARY, name="Ordinary"),
+        ),
+    )
+
+
+def energy_of(plan: Plan, hours: list[IntervalOfEnergy]) -> Decimal:
+    return price_plan(plan, hours, days=Decimal(0), holidays=()).energy
+
+
+def test_import_within_a_free_allowance_costs_nothing() -> None:
+    # Given / When - 20 kWh in the free hours, under a 24 kWh daily allowance
+    energy = energy_of(
+        free_hours_plan("24"), [hour(WEDNESDAY, 11, "10"), hour(WEDNESDAY, 12, "10")]
+    )
+
+    # Then
+    assert energy == Decimal(0)
+
+
+def test_import_beyond_the_allowance_is_charged_the_price_after_it() -> None:
+    # Given / When - 30 kWh in the free hours, 6 over the allowance
+    energy = energy_of(
+        free_hours_plan("24"), [hour(WEDNESDAY, 11, "20"), hour(WEDNESDAY, 12, "10")]
+    )
+
+    # Then
+    assert energy == 6 * ORDINARY
+
+
+def test_a_daily_import_allowance_starts_again_at_midnight() -> None:
+    # Given / When - 30 kWh on Wednesday and 20 on Thursday
+    energy = energy_of(
+        free_hours_plan("24"), [hour(WEDNESDAY, 11, "30"), hour(THURSDAY, 11, "20")]
+    )
+
+    # Then - only Wednesday's 6 over are charged
+    assert energy == 6 * ORDINARY
+
+
+def test_an_import_allowance_counts_across_every_band_charging_its_price() -> None:
+    # Given / When - the free hours entered as two bands, 20 kWh in each part
+    energy = energy_of(
+        free_hours_plan("24", split=True),
+        [hour(WEDNESDAY, 11, "20"), hour(WEDNESDAY, 13, "20")],
+    )
+
+    # Then - one allowance between them, so 16 over
+    assert energy == 16 * ORDINARY
+
+
+def test_a_weekly_import_allowance_runs_monday_to_sunday() -> None:
+    # Given - 30 kWh a week, and 20 on each of Saturday, Sunday and Monday
+    sunday = SATURDAY + timedelta(days=1)
+    monday = SATURDAY + timedelta(days=2)
+    hours = [hour(day, 12, "20") for day in (SATURDAY, sunday, monday)]
+
+    # When
+    energy = energy_of(free_hours_plan("30", AllowancePeriod.WEEK), hours)
+
+    # Then - the weekend uses the week's 30 and 10 more; Monday starts a new one
+    assert energy == 10 * ORDINARY
+
+
+def test_a_monthly_import_allowance_starts_again_on_the_first() -> None:
+    # Given - 50 kWh a month, 40 on each of the last of October and the first of
+    # November
+    hours = [hour(date(2026, 10, 31), 12, "40"), hour(date(2026, 11, 1), 12, "40")]
+
+    # When
+    energy = energy_of(free_hours_plan("50", AllowancePeriod.MONTH), hours)
+
+    # Then
+    assert energy == Decimal(0)
