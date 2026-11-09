@@ -32,6 +32,14 @@ what it does not pay falls to the plan's. A band's allowance belongs to the
 named price it charges, so it counts across every band charging that price, and
 everything credited at the plan's price counts against the plan's. Each
 allowance starts again at local midnight.
+
+What export earns in a month can be capped at what the month's energy cost, as
+Spain's simplified compensation caps it (HEA-258). The cap is on the energy
+alone: daily charges are payable however much is exported. Whatever the cap
+does not pay is lost, or, on a plan that carries it forward, offsets the next
+month's energy, and whatever is still carried at the end of the period is said
+rather than credited. Months are calendar months in local time, part-months
+included, because a period picked on a dashboard need not be a billing period.
 """
 
 from __future__ import annotations
@@ -168,6 +176,17 @@ class MarketAdjustment:
         return (price + self.add) * self.multiply
 
 
+class ExportCap(StrEnum):
+    """How much of what export earns a month a plan pays (HEA-258)."""
+
+    # Every kWh exported is paid at its price.
+    NONE = "none"
+    # Paid up to the month's energy cost, and the rest lost.
+    MONTHLY = "monthly"
+    # Paid up to the month's energy cost, and the rest offsets the next month's.
+    CARRIED = "carried"
+
+
 @dataclass(frozen=True)
 class Plan:
     """A tariff plan as it is published: its bands, daily charge and export price.
@@ -176,7 +195,8 @@ class Plan:
     import, or pays for export, at each interval's market price instead (ADR-0037),
     adjusted by `import_adjustment` and `export_adjustment` (HEA-273).
     `export_allowance` is how many kWh a day its export price pays on, with
-    `export_price_after` paid on the rest (ADR-0039).
+    `export_price_after` paid on the rest (ADR-0039). `export_cap` is whether
+    what export earns a month is capped at the month's energy cost (HEA-258).
     """
 
     name: str
@@ -189,6 +209,7 @@ class Plan:
     export_price_after: Decimal = Decimal(0)
     import_adjustment: MarketAdjustment = field(default_factory=MarketAdjustment)
     export_adjustment: MarketAdjustment = field(default_factory=MarketAdjustment)
+    export_cap: ExportCap = ExportCap.NONE
 
     @property
     def prices_holidays(self) -> bool:
@@ -257,11 +278,18 @@ class IntervalOfEnergy:
 
 @dataclass(frozen=True)
 class PlanCost:
-    """What a plan would have charged, in its three parts."""
+    """What a plan would have charged, in its three parts.
+
+    `export_credit` is what export was paid, after any cap. `export_unpaid` is
+    what the cap did not pay, and `export_carried` what it carried forward and
+    was still unused when the period ended (HEA-258).
+    """
 
     energy: Decimal
     export_credit: Decimal
     daily_charges: Decimal
+    export_unpaid: Decimal = Decimal(0)
+    export_carried: Decimal = Decimal(0)
 
     @property
     def total(self) -> Decimal:
@@ -287,10 +315,10 @@ def price_plan(
     if plan.gaps():
         msg = f"Plan {plan.name!r} does not cover every hour exactly once"
         raise ValueError(msg)
-    energy = Decimal(0)
-    export_credit = Decimal(0)
+    months: dict[tuple[int, int], _Month] = {}
     allowances = _Allowances()
     for recorded in intervals:
+        month = months.setdefault((recorded.start.year, recorded.start.month), _Month())
         band = (
             None
             if plan.import_per_interval
@@ -298,21 +326,54 @@ def price_plan(
                 plan.day_of(recorded.start.date(), holidays), recorded.start.hour
             )
         )
-        energy += recorded.imported_kwh * (
+        month.energy += recorded.imported_kwh * (
             plan.import_adjustment.apply(_market(recorded.import_price, recorded, plan))
             if band is None
             else band.import_price
         )
         if plan.export_per_interval:
-            export_credit += recorded.exported_kwh * plan.export_adjustment.apply(
+            month.earned += recorded.exported_kwh * plan.export_adjustment.apply(
                 _market(recorded.export_price, recorded, plan)
             )
         else:
-            export_credit += allowances.credit(plan, band, recorded)
+            month.earned += allowances.credit(plan, band, recorded)
+    return _capped(plan, [months[key] for key in sorted(months)], days)
+
+
+@dataclass
+class _Month:
+    """What a month's import cost, and what its export earned before any cap."""
+
+    energy: Decimal = Decimal(0)
+    earned: Decimal = Decimal(0)
+
+
+def _capped(plan: Plan, months: list[_Month], days: Decimal) -> PlanCost:
+    """The plan's cost, with export paid as its cap allows, month by month.
+
+    A month's cap is its energy cost, never below nothing: a month the market
+    paid the household to import has no energy cost for export to offset.
+    """
+    paid = Decimal(0)
+    unpaid = Decimal(0)
+    carried = Decimal(0)
+    for month in months:
+        if plan.export_cap is ExportCap.NONE:
+            paid += month.earned
+            continue
+        earned = month.earned + carried
+        within = min(earned, max(month.energy, Decimal(0)))
+        paid += within
+        if plan.export_cap is ExportCap.CARRIED:
+            carried = earned - within
+        else:
+            unpaid += earned - within
     return PlanCost(
-        energy=energy,
-        export_credit=export_credit,
+        energy=sum((month.energy for month in months), Decimal(0)),
+        export_credit=paid,
         daily_charges=plan.daily_charge * days,
+        export_unpaid=unpaid,
+        export_carried=carried,
     )
 
 

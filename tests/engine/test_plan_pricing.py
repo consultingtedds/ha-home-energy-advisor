@@ -24,6 +24,7 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Band,
     Day,
     Days,
+    ExportCap,
     IntervalOfEnergy,
     MarketAdjustment,
     Plan,
@@ -688,3 +689,137 @@ def test_a_five_minute_interval_is_priced_at_the_band_its_start_falls_in() -> No
 
     # Then
     assert cost.energy == SHOULDER + PEAK
+
+
+# Export capped at the month's energy cost (HEA-258)
+
+APRIL = date(2026, 4, 15)
+MAY = date(2026, 5, 15)
+
+
+def capped_plan(cap: ExportCap, *, daily_charge: str = "0") -> Plan:
+    """Import at 0.20 and export at 0.10 all day, capped as `cap` says."""
+    return Plan(
+        name=f"Capped {cap}",
+        bands=(Band(Days.EVERY_DAY, 0, 24, Decimal("0.20")),),
+        daily_charge=Decimal(daily_charge),
+        export_price=Decimal("0.10"),
+        export_cap=cap,
+    )
+
+
+# A sunny April: 10 kWh in (2.00) and 50 out (5.00). A greyer May: 30 kWh in
+# (6.00) and 20 out (2.00).
+SUNNY_APRIL = [hour(APRIL, 12, "10", "50")]
+GREY_MAY = [hour(MAY, 12, "30", "20")]
+
+
+def test_export_paid_in_full_is_paid_whatever_the_month_cost() -> None:
+    # Given / When - the April a plan without a cap pays every kWh of
+    cost = price_plan(
+        capped_plan(ExportCap.NONE), SUNNY_APRIL, days=Decimal(0), holidays=()
+    )
+
+    # Then
+    assert cost == PlanCost(
+        energy=Decimal("2.00"), export_credit=Decimal("5.00"), daily_charges=Decimal(0)
+    )
+
+
+def test_a_monthly_cap_pays_export_up_to_the_months_energy_cost() -> None:
+    # Given / When - both months, capped each month
+    cost = price_plan(
+        capped_plan(ExportCap.MONTHLY),
+        SUNNY_APRIL + GREY_MAY,
+        days=Decimal(0),
+        holidays=(),
+    )
+
+    # Then - April pays its 2.00 of energy and loses 3.00; May's 2.00 is under
+    # its 6.00, so it is paid in full
+    assert cost == PlanCost(
+        energy=Decimal("8.00"),
+        export_credit=Decimal("4.00"),
+        daily_charges=Decimal(0),
+        export_unpaid=Decimal("3.00"),
+    )
+
+
+def test_a_carried_cap_offsets_the_next_months_energy_with_the_excess() -> None:
+    # Given / When - the same months, the excess carried forward
+    cost = price_plan(
+        capped_plan(ExportCap.CARRIED),
+        SUNNY_APRIL + GREY_MAY,
+        days=Decimal(0),
+        holidays=(),
+    )
+
+    # Then - April's 3.00 joins May's 2.00, all within May's 6.00
+    assert cost == PlanCost(
+        energy=Decimal("8.00"),
+        export_credit=Decimal("7.00"),
+        daily_charges=Decimal(0),
+    )
+
+
+def test_what_is_still_carried_when_the_period_ends_is_said_not_paid() -> None:
+    # Given / When - April alone, so nothing follows to take the excess
+    cost = price_plan(
+        capped_plan(ExportCap.CARRIED), SUNNY_APRIL, days=Decimal(0), holidays=()
+    )
+
+    # Then
+    assert cost.export_credit == Decimal("2.00")
+    assert cost.export_carried == Decimal("3.00")
+    assert cost.export_unpaid == Decimal(0)
+
+
+def test_the_cap_leaves_the_daily_charges_to_pay() -> None:
+    # Given / When - a sunny April with a daily charge of 0.50 over 30 days
+    cost = price_plan(
+        capped_plan(ExportCap.MONTHLY, daily_charge="0.50"),
+        SUNNY_APRIL,
+        days=Decimal(30),
+        holidays=(),
+    )
+
+    # Then - export cancels the energy and nothing more
+    assert cost.total == Decimal("15.00")
+
+
+def test_a_month_the_market_paid_to_import_has_nothing_for_export_to_offset() -> None:
+    # Given - import at a negative market price, 5 kWh at -0.20, and export
+    plan = Plan(
+        name="Market, capped",
+        bands=(),
+        import_per_interval=True,
+        export_price=Decimal("0.10"),
+        export_cap=ExportCap.MONTHLY,
+    )
+    intervals = [interval(APRIL, 12, 0, "5", "10", import_price="-0.20")]
+
+    # When
+    cost = price_plan(plan, intervals, days=Decimal(0), holidays=())
+
+    # Then - the month's energy cost is below nothing, so no export is paid
+    assert cost.energy == Decimal("-1.00")
+    assert cost.export_credit == Decimal(0)
+    assert cost.export_unpaid == Decimal("1.00")
+
+
+def test_a_month_is_a_calendar_month_in_local_time() -> None:
+    # Given - export in the last local hour of April and the first of May, which
+    # in UTC are both in April
+    intervals = [
+        hour(date(2026, 4, 30), 23, "10", "0"),
+        hour(date(2026, 5, 1), 0, "0", "30"),
+    ]
+
+    # When
+    cost = price_plan(
+        capped_plan(ExportCap.MONTHLY), intervals, days=Decimal(0), holidays=()
+    )
+
+    # Then - May's export meets May's energy cost, which is nothing
+    assert cost.export_credit == Decimal(0)
+    assert cost.export_unpaid == Decimal("3.00")
