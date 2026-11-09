@@ -710,6 +710,8 @@
     "card_from_generation": "From generation",
     "card_from_battery": "From the battery",
     "card_from_battery_grid": "From battery (grid)",
+    "card_of_which_stored_solar": "Of which stored solar",
+    "card_energy_used_came_from": "Where the {energy} of energy used came from",
     "card_including_stored_solar": "including stored solar",
     "card_energy_used": "Energy used",
     "card_unaccounted": "Unaccounted",

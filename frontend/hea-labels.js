@@ -101,6 +101,8 @@ export const DEFAULTS = Object.freeze({
   from_generation: "From generation",
   from_battery: "From the battery",
   from_battery_grid: "From battery (grid)",
+  of_which_stored_solar: "Of which stored solar",
+  energy_used_came_from: "Where the {energy} of energy used came from",
   including_stored_solar: "including stored solar",
   energy_used: "Energy used",
   unaccounted: "Unaccounted",

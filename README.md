@@ -569,10 +569,12 @@ see the answer rather than work it out.
 
 ![The self-sufficiency card, showing the share of energy that came from generation, from the battery and from the grid](https://raw.githubusercontent.com/consultingtedds/ha-home-energy-advisor/main/docs/images/card-self-sufficiency.png)
 
-What share of the house ran on your own electricity rather than the grid's, in
-energy and in money. Solar your battery stored and gave back later counts as
-your own. Battery energy charged from the grid does not, and is shown on its
-own.
+What share of the energy the house used, in kWh, came from your own electricity
+rather than the grid's. A gauge for each source: your own generation first, then,
+if you have a battery, how much of that the battery stored first and the energy
+it was charged with from the grid, then the grid. Solar your battery stored and gave back later
+counts as your own. Battery energy charged from the grid does not. Each gauge
+holds for whatever the page is filtered to.
 
 **Where the cost went.**
 

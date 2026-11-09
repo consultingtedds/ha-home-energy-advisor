@@ -30,14 +30,26 @@
  * No severity colouring, deliberately. HA's card grades its gauge red to green,
  * but a "good" self-sufficiency figure is a property of the household's roof,
  * not of the reading - a flat with two panels and a house with twenty have
- * different honest expectations - so a single accent makes no claim we cannot
- * support.
+ * different honest expectations - so each gauge takes its source's colour from
+ * Home Assistant's energy tokens, as the flow diagram does, and makes no claim
+ * we cannot support.
+ *
+ * **A row of gauges, each source its own (HEA-248, discussion 48).** One gauge
+ * the width of the card dazzled on a wide screen, and the figures beside it
+ * were read rather than glanced at. So each source gets a gauge the size of
+ * Home Assistant's, capped at its 250px: generation first as the headline, then
+ * the battery's stored solar and grid-bought parts, then the grid. Every one is
+ * a share of the energy the rows on screen used, so all four hold under any
+ * filter, which Home Assistant's whole-home gauges never have to. The battery's
+ * two are drawn only where the rows used any battery energy, so a home without
+ * one is not shown two gauges resting on nought.
  */
 
 import { registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import { HeaChartCard } from "./hea-chart-card.js";
-import { formatPercent } from "./hea-format.js";
+import { formatEnergy, formatPercent, localeFrom } from "./hea-format.js";
+import { fill } from "./hea-labels.js";
 
 export const TAG = "hea-self-sufficiency-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -90,7 +102,24 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
   static emptyKey = "no_energy_in_period";
 
   static cardStyle = `
-    ha-gauge { display: block; margin: 0 auto; --gauge-color: var(--primary-color); }
+    .intro {
+      margin-bottom: var(--hea-space-m);
+      color: var(--secondary-text-color);
+    }
+    .gauges {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: var(--hea-space-l);
+    }
+    /* One column, as wide as the cell up to Home Assistant's own cap on an
+       energy gauge. A grid rather than a flex column, whose centring would
+       shrink the gauge to nothing: its arc sizes itself to the width given. */
+    .gauge {
+      display: grid;
+      grid-template-columns: minmax(0, 250px);
+      justify-content: center;
+    }
+    ha-gauge { display: block; }
     .headline {
       margin-top: var(--hea-space-s);
       text-align: center;
@@ -99,25 +128,8 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .shares {
-      display: flex;
-      flex-wrap: wrap;
-      gap: var(--hea-space-l);
-      margin-top: var(--hea-space-l);
-    }
-    .share {
-      flex: 1 1 6em;
-      display: flex;
-      flex-direction: column;
-      gap: var(--hea-space-xs);
-    }
-    .label {
-      color: var(--secondary-text-color);
-      font-size: 0.85em;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .value { color: var(--primary-text-color); font-size: 1.2em; font-weight: 500; }
+    .share { margin-top: var(--hea-space-l); color: var(--secondary-text-color); }
+    .value { color: var(--primary-text-color); font-weight: 500; }
     .note {
       margin-top: var(--hea-space-m);
       color: var(--secondary-text-color);
@@ -202,51 +214,103 @@ class HeaSelfSufficiencyCard extends HeaChartCard {
   }
 
   /**
-   * The gauge, and the concept its number is a share of.
+   * Each gauge this card draws: its share, its words and its colour.
    *
-   * Said to include stored solar only where some was, so a home with panels and
-   * no battery is not told about a battery it does not have.
+   * The headline says it includes stored solar only where some was, so a home
+   * with panels and no battery is not told about a battery it does not have.
    */
-  _chartMarkup() {
-    const stored =
-      this._shares().storedSolar > ROUNDING
-        ? `<div class="headline">${this._labels.including_stored_solar}</div>`
-        : "";
-    return `<ha-gauge></ha-gauge>
-      <div class="headline">${this._labels.from_generation}</div>${stored}`;
+  _gauges() {
+    const shares = this._shares();
+    const batteryUsed = this._totals().energyFromBattery > 0;
+    return [
+      {
+        key: "generation",
+        label: this._labels.from_generation,
+        note: shares.storedSolar > ROUNDING ? this._labels.including_stored_solar : "",
+        colour: "var(--energy-solar-color, #ff9800)",
+      },
+      batteryUsed && {
+        key: "storedSolar",
+        label: this._labels.of_which_stored_solar,
+        colour: "var(--energy-solar-color, #ff9800)",
+      },
+      batteryUsed && {
+        key: "battery",
+        label: this._labels.from_battery_grid,
+        colour: "var(--energy-battery-out-color, #4db6ac)",
+      },
+      {
+        key: "grid",
+        label: this._labels.from_grid,
+        colour: "var(--energy-grid-consumption-color, #488fc2)",
+      },
+    ]
+      .filter(Boolean)
+      .map((gauge) => ({ ...gauge, value: shares[gauge.key] }));
   }
 
-  /** What the rest of the energy was, and what the headline counts. */
-  _breakdown(locale) {
-    const { battery, grid, unaccounted } = this._shares();
-    const figures = [
-      { label: "from_battery_grid", value: battery },
-      { label: "from_grid", value: grid },
-      { label: "unaccounted", value: unaccounted },
-    ]
-      // A nought-percent remainder is nothing to report, and a row saying so
-      // would read as a fault. The named sources stay whatever their share.
-      .filter(({ label, value }) => label !== "unaccounted" || value > ROUNDING)
+  /**
+   * The gauges, under a line saying what they are shares of.
+   *
+   * Every one is a share of the energy the rows used, in kWh, never of money:
+   * shown beside cards that lead with what was paid, a bare percentage was read
+   * as a share of the cost (HEA-248, the maintainer on the demo). So the line
+   * names the energy, and how much of it.
+   */
+  _chartMarkup() {
+    const locale = localeFrom(this._hass);
+    const intro = fill(this._labels.energy_used_came_from, {
+      energy: formatEnergy(this._totals().energyUsed, locale),
+    });
+    const gauges = this._gauges()
       .map(
-        ({ label, value }) => `
-        <div class="share">
-          <span class="label">${this._labels[label]}</span>
-          <span class="value" data-share="${label}">${formatPercent(value, locale)}</span>
+        ({ key, label, note, colour }) => `
+        <div class="gauge">
+          <ha-gauge data-gauge="${key}" style="--gauge-color: ${colour}"></ha-gauge>
+          <div class="headline">${label}</div>
+          ${note ? `<div class="headline">${note}</div>` : ""}
         </div>`,
       )
       .join("");
-    return `<div class="shares">${figures}</div>
-      <div class="note">${this._labels.self_sufficiency_note}</div>`;
+    return `<div class="intro" data-figure="energy-used">${intro}</div>
+      <div class="gauges">${gauges}</div>`;
   }
 
-  /** `ha-gauge` renders from properties; an attribute would be a string. */
-  _draw(gauge) {
-    gauge.min = 0;
-    gauge.max = 100;
-    gauge.value = this._shares().generation * 100;
-    gauge.label = "%";
-    gauge.formatOptions = GAUGE_FORMAT;
-    gauge.locale = this._hass?.locale;
+  /** What no source accounts for, where anything is, and what the headline counts. */
+  _breakdown(locale) {
+    const { unaccounted } = this._shares();
+    // A nought-percent remainder is nothing to report, and a line saying so
+    // would read as a fault.
+    const shortfall =
+      unaccounted > ROUNDING
+        ? `<div class="share">${this._labels.unaccounted}
+            <span class="value" data-share="unaccounted">${formatPercent(
+              unaccounted,
+              locale,
+            )}</span></div>`
+        : "";
+    return `${shortfall}<div class="note">${this._labels.self_sufficiency_note}</div>`;
+  }
+
+  /**
+   * Every gauge, not only the first: `HeaChartCard` hands `_draw` one element.
+   *
+   * `ha-gauge` renders from properties; an attribute would be a string.
+   */
+  _afterRender() {
+    if (!this._chartReady || this._isEmpty()) return;
+    const values = Object.fromEntries(
+      this._gauges().map(({ key, value }) => [key, value]),
+    );
+    for (const gauge of this.shadowRoot.querySelectorAll("ha-gauge")) {
+      gauge.hass = this._hass;
+      gauge.min = 0;
+      gauge.max = 100;
+      gauge.value = values[gauge.dataset.gauge] * 100;
+      gauge.label = "%";
+      gauge.formatOptions = GAUGE_FORMAT;
+      gauge.locale = this._hass?.locale;
+    }
   }
 }
 

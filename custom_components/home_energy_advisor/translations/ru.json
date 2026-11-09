@@ -710,6 +710,8 @@
     "card_from_generation": "От генерации",
     "card_from_battery": "Из батареи",
     "card_from_battery_grid": "Из батареи (сеть)",
+    "card_of_which_stored_solar": "В том числе запасённая солнечная",
+    "card_energy_used_came_from": "Откуда взялись {energy} потреблённой энергии",
     "card_including_stored_solar": "включая запасённую солнечную",
     "card_energy_used": "Потреблённая энергия",
     "card_unaccounted": "Неучтённое",

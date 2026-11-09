@@ -768,6 +768,12 @@ Carried forward rather than closed:
   Nord Pool, EnergyZero and easyEnergy publish wholesale prices; a template
   sensor would have no history. Found checking HEA-260 against European
   households, before 1.4.0b1.
+- **HEA-248** (discussion 48): the self-sufficiency card is a row of gauges,
+  one per source (generation incl. stored solar, stored solar, battery bought
+  from the grid, grid), each capped at Home Assistant's 250px and coloured
+  from its energy tokens. All four hold under a filter; the battery's two only
+  where the rows used battery energy. HA's self-consumed solar and grid
+  neutrality were passed over: whole-home only.
 - **HEA-264** (ADR-0041): a named price can charge its import price only on the
   first kWh of a day, week or month, its hours charged another named price
   beyond it. Free hours without a limit were already a band at 0. Researched

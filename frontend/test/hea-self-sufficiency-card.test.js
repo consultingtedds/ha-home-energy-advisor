@@ -14,7 +14,7 @@
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULTS as LABELS, resetLabels } from "../hea-labels.js";
+import { DEFAULTS as LABELS, fill, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-self-sufficiency-card.js";
 import {
   aDeviceRow,
@@ -66,6 +66,10 @@ const STORED_SUNSHINE = {
 const mount = (hass, config) => mountCard(TAG, hass, config);
 const ready = (card) => settled(expect, card);
 const gaugeOf = (card) => card.shadowRoot.querySelector("ha-gauge");
+const gaugeFor = (card, key) =>
+  card.shadowRoot.querySelector(`ha-gauge[data-gauge="${key}"]`);
+const gaugeKeys = (card) =>
+  [...card.shadowRoot.querySelectorAll("ha-gauge")].map((gauge) => gauge.dataset.gauge);
 
 const aHouse = (response = TWO_DEVICES) =>
   aHass({ devices: [AIRCON, METER], response });
@@ -163,11 +167,10 @@ describe("the share", () => {
 
     // Then - not 40%, which is what Home Assistant's grid-complement gauge
     // reads, counting a battery filled from cheap overnight import as self-made.
-    // The bought part is its own figure beside the headline
+    // The bought part is its own gauge beside the headline
     expect(gaugeOf(card).value).not.toBeCloseTo(40, 1);
-    const shown = text(card);
-    expect(shown).toContain(LABELS.from_battery_grid);
-    expect(shown).toMatch(/10\s*%/);
+    expect(text(card)).toContain(LABELS.from_battery_grid);
+    expect(gaugeFor(card, "battery").value).toBeCloseTo(10, 1);
   });
 
   it("says the headline includes stored solar when it does", async () => {
@@ -202,14 +205,14 @@ describe("the share", () => {
     await ready(card);
 
     // Then - 1 of 110 from the battery, none of it known to be sunshine, and 90
-    // of 110 from the grid. Shown so a household with a battery still sees where
-    // its energy came from, without one figure claiming more than the data
-    // supports
+    // of 110 from the grid, each a gauge of its own. Shown so a household with a
+    // battery still sees where its energy came from, without one figure claiming
+    // more than the data supports
     const shown = text(card);
     expect(shown).toContain(LABELS.from_battery_grid);
-    expect(shown).toMatch(/1\s*%/);
+    expect(gaugeFor(card, "battery").value).toBeCloseTo(0.91, 1);
     expect(shown).toContain(LABELS.from_grid);
-    expect(shown).toMatch(/82\s*%/);
+    expect(gaugeFor(card, "grid").value).toBeCloseTo(81.82, 1);
   });
 
   it("says what the headline counts", async () => {
@@ -336,5 +339,83 @@ describe("the gauge itself", () => {
     // entity - the plain `gauge` card does - would throw on every load
     expect(cardClass.chartTag).toBe("ha-gauge");
     expect(cardClass.bearingCard).toEqual({ type: "energy-self-sufficiency-gauge" });
+  });
+});
+
+describe("a gauge for each source (HEA-248)", () => {
+  it("draws generation, stored solar, bought battery and grid, in that order", async () => {
+    // Given / When - a household whose battery held some of each
+    const card = mount(aHouse(STORED_SUNSHINE));
+    await ready(card);
+
+    // Then - generation first, as the headline
+    expect(gaugeKeys(card)).toEqual(["generation", "storedSolar", "battery", "grid"]);
+  });
+
+  it("reads the stored solar on a gauge of its own, inside the headline's share", async () => {
+    // Given / When - 20 of the 100 kWh used was sunshine stored earlier
+    const card = mount(aHouse(STORED_SUNSHINE));
+    await ready(card);
+
+    // Then - 20% stored solar, part of the 30% headline, and the other 60% grid
+    expect(gaugeFor(card, "storedSolar").value).toBeCloseTo(20, 1);
+    expect(gaugeFor(card, "generation").value).toBeCloseTo(30, 1);
+    expect(gaugeFor(card, "grid").value).toBeCloseTo(60, 1);
+    expect(text(card)).toContain(LABELS.of_which_stored_solar);
+  });
+
+  it("says the gauges are shares of the energy used, and how much there was", async () => {
+    // Given / When - beside cards that lead with money, a bare percentage was
+    // read as a share of the cost (the maintainer, on the demo)
+    const card = mount(aHouse());
+    await ready(card);
+
+    // Then - 110 kWh between the two devices
+    expect(
+      card.shadowRoot.querySelector('[data-figure="energy-used"]').textContent,
+    ).toBe(fill(LABELS.energy_used_came_from, { energy: "110 kWh" }));
+  });
+
+  it("draws no battery gauges where the rows used no battery energy", async () => {
+    // Given / When - panels and no battery: two gauges resting on nought would
+    // tell the household about a battery it does not have
+    const card = mount(
+      aHass({
+        devices: [AIRCON],
+        response: {
+          ...bucketsFor("slow_poll_aircon", 100, 12.5, 14.0),
+          ...sourcesFor("slow_poll_aircon", 70, 30, 0),
+        },
+      }),
+    );
+    await ready(card);
+
+    // Then
+    expect(gaugeKeys(card)).toEqual(["generation", "grid"]);
+    expect(text(card)).not.toContain(LABELS.from_battery_grid);
+  });
+
+  it("gives each gauge its source's colour from Home Assistant's energy tokens", async () => {
+    // Given / When
+    const card = mount(aHouse(STORED_SUNSHINE));
+    await ready(card);
+
+    // Then - the colours the flow diagram and Home Assistant's own cards use,
+    // so a themed Energy Dashboard and these gauges agree
+    const colour = (key) => gaugeFor(card, key).style.getPropertyValue("--gauge-color");
+    expect(colour("generation")).toContain("--energy-solar-color");
+    expect(colour("battery")).toContain("--energy-battery-out-color");
+    expect(colour("grid")).toContain("--energy-grid-consumption-color");
+  });
+
+  it("keeps each gauge to Home Assistant's own size", () => {
+    // Given / When - the single gauge spanned the whole card and dazzled on a
+    // wide screen (discussion 48)
+    const cardClass = customElements.get(TAG);
+
+    // Then - capped as Home Assistant caps its energy gauges
+    expect(cardClass.cardStyle).toMatch(
+      /\.gauge\s*{[^}]*grid-template-columns:\s*minmax\(0, 250px\)/,
+    );
   });
 });

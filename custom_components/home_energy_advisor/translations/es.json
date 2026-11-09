@@ -710,6 +710,8 @@
     "card_from_generation": "De generación",
     "card_from_battery": "De la batería",
     "card_from_battery_grid": "De la batería (red)",
+    "card_of_which_stored_solar": "De ello, solar almacenado",
+    "card_energy_used_came_from": "De dónde vinieron los {energy} de energía consumida",
     "card_including_stored_solar": "incluida la solar almacenada",
     "card_energy_used": "Energía usada",
     "card_unaccounted": "Sin contabilizar",
