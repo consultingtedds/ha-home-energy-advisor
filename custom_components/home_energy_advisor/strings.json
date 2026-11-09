@@ -736,6 +736,7 @@
     "card_device_untracked": "Untracked",
     "card_hourly_shape_estimate": "One device's hourly shape is an estimate: each meter reading is spread across the hours it spanned, so cost may not land in the hour the energy was used.",
     "card_statistics_failed": "Statistics could not be loaded.",
+    "card_loading": "Loading…",
     "card_no_picker": "Add an Energy date picker card to choose the range.",
     "card_chart_not_loaded": "Home Assistant's chart component is not loaded. Adding any energy or statistics card to this dashboard will load it.",
     "card_no_cost_in_period": "No cost recorded in this period.",

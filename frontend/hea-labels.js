@@ -185,6 +185,7 @@ export const DEFAULTS = Object.freeze({
     "are complete about twenty minutes behind the clock, which is how long " +
     "meters are given to report.",
   statistics_failed: "Statistics could not be loaded.",
+  loading: "Loading…",
   no_picker: "Add an Energy date picker card to choose the range.",
   chart_not_loaded:
     "Home Assistant's chart component is not loaded. Adding any energy or " +

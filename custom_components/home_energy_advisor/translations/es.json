@@ -736,6 +736,7 @@
     "card_device_untracked": "Sin seguimiento",
     "card_hourly_shape_estimate": "La forma horaria de un dispositivo es una estimación: cada lectura del contador se reparte entre las horas que abarcó, así que el coste puede no caer en la hora en que se usó la energía.",
     "card_statistics_failed": "No se pudieron cargar las estadísticas.",
+    "card_loading": "Cargando…",
     "card_no_picker": "Añade una tarjeta de selección de fechas de Energía para elegir el rango.",
     "card_chart_not_loaded": "El componente de gráficos de Home Assistant no está cargado. Añadir cualquier tarjeta de energía o de estadísticas a este panel lo cargará.",
     "card_no_cost_in_period": "No se registró ningún coste en este periodo.",

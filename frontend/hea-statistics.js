@@ -327,6 +327,39 @@ const emptyBucket = (start) => ({
   accruing: false,
 });
 
+/** Questions to the recorder still awaiting their answer, per connection. */
+const inFlight = new WeakMap();
+
+/**
+ * Ask Home Assistant once, however many cards ask the same thing (HEA-261).
+ *
+ * Every card on a view asks for the same period's statistics at the same
+ * moment, and mostly for the same devices. The recorder answers one such
+ * request for three months in about a second, but four at once took ten on the
+ * reference home, so each card waited for all of them. A card asking what
+ * another has already asked is handed that request's answer instead.
+ *
+ * Only while it is in flight: a question asked after the answer arrives asks
+ * again, so nothing here can serve a figure older than the request for it.
+ * Keyed by the connection rather than by `hass`, which Home Assistant replaces
+ * on every state change. The answer is shared, so nothing reading it may
+ * change it.
+ */
+export const askOnce = (hass, message) => {
+  const owner = hass.connection ?? hass;
+  let asked = inFlight.get(owner);
+  if (!asked) {
+    asked = new Map();
+    inFlight.set(owner, asked);
+  }
+  const key = JSON.stringify(message);
+  const pending = asked.get(key);
+  if (pending) return pending;
+  const answer = hass.callWS(message).finally(() => asked.delete(key));
+  asked.set(key, answer);
+  return answer;
+};
+
 /**
  * Fetch and total each device's energy and cost over the period.
  *
@@ -346,7 +379,7 @@ export const fetchDeviceStatistics = async (
   // An empty `statistic_ids` is not a request for nothing - it is a request for
   // every statistic in the database.
   const buckets = statisticIds.length
-    ? await hass.callWS({
+    ? await askOnce(hass, {
         type: "recorder/statistics_during_period",
         start_time: period.start.toISOString(),
         end_time: period.end.toISOString(),

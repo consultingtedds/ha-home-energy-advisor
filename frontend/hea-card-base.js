@@ -427,7 +427,21 @@ export class HeaCard extends HTMLElement {
     // Deliberately empty: most cards are fully described by their markup.
   }
 
+  /**
+   * What the card says, by state.
+   *
+   * Loading has a sentence of its own, as Home Assistant's energy cards do.
+   * Falling through to the body drew a card's empty state before its figures
+   * had been asked for - "No cost recorded in this period" for a period with
+   * plenty - which on a long period read as a broken update (HEA-261). A
+   * period changed later keeps the figures it has until the new ones land,
+   * also as Home Assistant's own cards do, so only a card with nothing yet to
+   * show says it is loading.
+   */
   _content(locale) {
+    if (this._state === "loading") {
+      return `<p class="message" role="status">${this._labels.loading}</p>`;
+    }
     if (this._state === "empty") {
       return `<p class="message">${this._labels.no_devices}</p>`;
     }

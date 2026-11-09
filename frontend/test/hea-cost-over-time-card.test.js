@@ -1009,6 +1009,37 @@ describe("what a hovered bar says", () => {
   });
 });
 
+describe("while the figures are on their way", () => {
+  it("says it is loading, not that nothing was recorded", async () => {
+    // Given - a long period the recorder takes seconds to answer. Drawing the
+    // empty state meanwhile read as a broken update (HEA-261).
+    let answer;
+    const callWS = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const card = mount(aHass({ devices: AIRCON, callWS }));
+    await vi.waitFor(() => expect(callWS).toHaveBeenCalled());
+
+    // Then - it says the figures are coming, in the state it is really in
+    expect(card.shadowRoot.querySelector("[data-state]").dataset.state).toBe(
+      "loading",
+    );
+    expect(card.shadowRoot.textContent).toContain(LABELS.loading);
+    expect(card.shadowRoot.textContent).not.toMatch(/no cost recorded/i);
+
+    // When - the answer arrives
+    answer(twoDays);
+    await ready(card);
+
+    // Then - the chart replaces it
+    expect(card.shadowRoot.textContent).not.toContain(LABELS.loading);
+    expect(chartOf(card)).not.toBe(null);
+  });
+});
+
 describe("when there is nothing to draw", () => {
   it("says so when the period holds no buckets at all", async () => {
     // Given - a range earlier than any recorded statistic. An empty axis reads

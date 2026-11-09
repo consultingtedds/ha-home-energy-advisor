@@ -11,6 +11,7 @@ import { DEVICES_SENSOR } from "../hea-devices.js";
 import {
   BOUNDS,
   CONCEPTS,
+  askOnce,
   bucketPeriodFor,
   bucketsAcross,
   fetchDeviceStatistics,
@@ -339,6 +340,106 @@ describe("bucketsAcross", () => {
 
     // When / Then - the same object, not a copy that could drift from it
     expect(bucketsAcross([row], period)[0]).toBe(row);
+  });
+});
+
+describe("askOnce", () => {
+  /**
+   * Measured on the reference home: one three-month request answered in about
+   * a second, four of the same at once in ten, and every card on the view
+   * waited for all four (HEA-261).
+   */
+  const QUESTION = { type: "recorder/statistics_during_period", period: "day" };
+
+  /** A Home Assistant whose answer arrives only when the test says so. */
+  const aSlowHass = (connection = {}) => {
+    let answer;
+    let fail;
+    const callWS = vi.fn(
+      () =>
+        new Promise((resolve, reject) => {
+          answer = resolve;
+          fail = reject;
+        }),
+    );
+    return {
+      hass: { connection, callWS },
+      answer: (value) => answer(value),
+      fail: (error) => fail(error),
+    };
+  };
+
+  it("asks once for cards asking the same question at the same moment", async () => {
+    // Given - two cards on one view asking for the same period's figures
+    const { hass, answer } = aSlowHass();
+    const first = askOnce(hass, { ...QUESTION });
+    const second = askOnce(hass, { ...QUESTION });
+
+    // When - the recorder answers
+    answer({ "sensor.a": [] });
+
+    // Then - it was asked once, and both cards have its answer
+    expect(hass.callWS).toHaveBeenCalledTimes(1);
+    await expect(first).resolves.toEqual({ "sensor.a": [] });
+    await expect(second).resolves.toEqual({ "sensor.a": [] });
+  });
+
+  it("shares across the hass objects Home Assistant replaces on every change", async () => {
+    // Given - the same connection, handed to two cards in two hass objects
+    const connection = {};
+    const { hass, answer } = aSlowHass(connection);
+    const replaced = { ...hass, states: {} };
+
+    // When
+    const first = askOnce(hass, QUESTION);
+    const second = askOnce(replaced, QUESTION);
+    answer({});
+
+    // Then
+    await Promise.all([first, second]);
+    expect(hass.callWS).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks a different question on its own", () => {
+    // Given / When - a card narrowed to other devices
+    const { hass } = aSlowHass();
+    askOnce(hass, { ...QUESTION, statistic_ids: ["sensor.a"] });
+    askOnce(hass, { ...QUESTION, statistic_ids: ["sensor.b"] });
+
+    // Then
+    expect(hass.callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks again once the answer has arrived, so no figure is older than its request", async () => {
+    // Given - a question already answered
+    const { hass, answer } = aSlowHass();
+    const first = askOnce(hass, QUESTION);
+    answer({});
+    await first;
+
+    // When - a card asks it again, as it does when the period moves on
+    askOnce(hass, QUESTION);
+
+    // Then
+    expect(hass.callWS).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands a failure to every card that asked, and asks afresh after it", async () => {
+    // Given - two cards waiting on one request
+    const { hass, fail } = aSlowHass();
+    const first = askOnce(hass, QUESTION);
+    const second = askOnce(hass, QUESTION);
+
+    // When - it fails
+    fail(new Error("recorder busy"));
+
+    // Then - both are told, rather than one waiting for ever
+    await expect(first).rejects.toThrow("recorder busy");
+    await expect(second).rejects.toThrow("recorder busy");
+
+    // ...and the next card to ask is not handed the old failure
+    askOnce(hass, QUESTION);
+    expect(hass.callWS).toHaveBeenCalledTimes(2);
   });
 });
 

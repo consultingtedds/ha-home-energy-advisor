@@ -52,6 +52,9 @@ const aProbeCard = ({
   }
   customElements.define(cardTag, ProbeCard);
   const card = document.createElement(cardTag);
+  // As a card whose figures have arrived. This suite is about the component,
+  // and a card still waiting on the recorder says so instead (HEA-261).
+  card._state = "ready";
   card.setConfig({ type: `custom:${cardTag}` });
   return { card, chartTag };
 };
