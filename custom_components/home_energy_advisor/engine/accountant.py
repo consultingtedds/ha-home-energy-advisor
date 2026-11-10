@@ -278,18 +278,34 @@ class _RetainedBucket:
     solar_shares: Mapping[SourceKind, Decimal]
     draw: Decimal
     sources: Mapping[SourceKind, Decimal]
+    # Whether the house's own meter said how much this interval used. Where it
+    # did, a late reading from any other meter says only where the energy came
+    # from, and only a late house reading can raise it (HEA-269).
+    house_metered: bool = False
+    # Grid energy the interval counted beyond what its house meter had said, which
+    # a late house reading explains before anything else.
+    beyond_house: Decimal = Decimal(0)
+    # Discharge the house meter had not called for, which a late house reading
+    # draws on before generation - the order `HouseBalance` serves a house in.
+    spare_discharge: Decimal = Decimal(0)
+    # Generation and battery energy a late import has already been charged for
+    # replacing, so a second late import cannot replace it again.
+    displaced: Decimal = Decimal(0)
 
 
 # House roles whose energy *adds* to what the house consumed, and which can
 # therefore still correct a bucket that has closed. Their counterparts - export
 # and battery charge - subtract, so a late one would pull a published figure
 # down, and `HouseBalance` already carries both forward instead (ADR-0015's
-# 2026-09-16 and 2026-09-18 amendments).
+# 2026-09-16 and 2026-09-18 amendments). The house's own meter is not here:
+# what its late energy came from depends on the meters beside it, which
+# `_correct_metered` works out.
 _RAISES_CONSUMPTION = {
     SourceRole.GRID_IMPORT: SourceKind.IMPORT,
     SourceRole.GENERATION: SourceKind.GENERATION,
     SourceRole.BATTERY_DISCHARGE: SourceKind.BATTERY,
 }
+_CARRIED_FORWARD = frozenset({SourceRole.GRID_EXPORT, SourceRole.BATTERY_CHARGE})
 
 # What a kilowatt-hour from each source cost the household in the interval that
 # used it. Generation is free at the margin (ADR-0002), grid is the import price
@@ -1040,6 +1056,10 @@ class Accountant:
                     "solar_shares": _dump_by_source(bucket.solar_shares),
                     "draw": str(bucket.draw),
                     "sources": _dump_by_source(bucket.sources),
+                    "house_metered": bucket.house_metered,
+                    "beyond_house": str(bucket.beyond_house),
+                    "spare_discharge": str(bucket.spare_discharge),
+                    "displaced": str(bucket.displaced),
                 }
                 for start, bucket in self._retained.items()
             ],
@@ -1233,6 +1253,12 @@ class Accountant:
                 solar_shares=_load_by_source(bucket.get("solar_shares", {})),
                 draw=Decimal(bucket["draw"]),
                 sources=_load_by_source(bucket["sources"]),
+                # Absent before HEA-269: such an interval is corrected as one
+                # worked out from the balance, as it was when it was saved.
+                house_metered=bucket.get("house_metered", False),
+                beyond_house=Decimal(bucket.get("beyond_house", 0)),
+                spare_discharge=Decimal(bucket.get("spare_discharge", 0)),
+                displaced=Decimal(bucket.get("displaced", 0)),
             )
             for bucket in data["retained"]
         }
@@ -1783,15 +1809,93 @@ class Accountant:
                 if role is SourceRole.GRID_IMPORT:
                     meters = self._raw_import.setdefault(portion.start, {})
                     meters[entity_id] = meters.get(entity_id, Decimal(0)) + portion.kwh
-            elif (kind := _RAISES_CONSUMPTION.get(role)) is None:
+            elif role in _CARRIED_FORWARD:
                 # Export and charge subtract, and a finalised bucket's published
                 # figure never falls. Their carries settle them forward instead.
                 continue
             elif (retained := self._retained.get(portion.start)) is not None:
-                self._correct_house(kind, retained, portion.kwh)
-                self._weigh_late_house(portion.start, portion.kwh)
+                self._correct_closed(role, retained, portion.kwh, portion.start)
             else:
                 source.note_dropped_late(portion.start, portion.kwh)
+
+    def _correct_closed(
+        self,
+        role: SourceRole,
+        retained: _RetainedBucket,
+        kwh: Decimal,
+        start: datetime,
+    ) -> None:
+        """Correct a closed interval with a house meter's late energy.
+
+        Which correction applies follows how the interval was worked out when it
+        closed. One the house's own meter decided is corrected the same way; one
+        worked out from the balance takes import, generation and discharge as
+        energy the house used, and has no place for a house reading that was
+        silent when it closed.
+        """
+        if retained.house_metered:
+            self._correct_metered(role, retained, kwh, start)
+        elif (kind := _RAISES_CONSUMPTION.get(role)) is not None:
+            self._correct_house(kind, retained, kwh)
+            self._weigh_late_house(start, kwh)
+
+    def _correct_metered(
+        self,
+        role: SourceRole,
+        retained: _RetainedBucket,
+        kwh: Decimal,
+        start: datetime,
+    ) -> None:
+        """Late energy for an interval whose house meter said what it used.
+
+        Only the house meter raises what the house used. A late house reading
+        first explains grid energy already counted beyond it, then is served by
+        discharge the house had not yet called for, and the rest by the sun -
+        the order `HouseBalance` serves the house in. A late discharge only adds
+        to what a later house reading can draw on, and late generation changes
+        nothing, since the house branch already books whatever the grid and the
+        battery leave as sunshine. Raising what the house used from either would
+        count it twice once the house meter reported too (HEA-269).
+        """
+        if role is SourceRole.HOUSE_CONSUMPTION:
+            explained = min(kwh, retained.beyond_house)
+            retained.beyond_house -= explained
+            battery = min(kwh - explained, retained.spare_discharge)
+            retained.spare_discharge -= battery
+            self._correct_house(SourceKind.BATTERY, retained, battery)
+            self._correct_house(
+                SourceKind.GENERATION, retained, kwh - explained - battery
+            )
+            self._weigh_late_house(start, kwh - explained)
+        elif role is SourceRole.BATTERY_DISCHARGE:
+            retained.spare_discharge += kwh
+        elif role is SourceRole.GRID_IMPORT:
+            self._displace(retained, kwh)
+
+    def _displace(self, retained: _RetainedBucket, kwh: Decimal) -> None:
+        """Charge late import for the sunshine or battery it turns out to have replaced.
+
+        Under a house meter, import does not change what the house used - only
+        where it came from: the grid served what the interval closed booking as
+        generation, then as battery. The money follows that. The energy and its
+        source split stay as published, because a published share never falls:
+        Home Assistant reads a falling `total_increasing` figure as a meter reset.
+        So the grid's share of the split stays slightly low, and Paid is right.
+        """
+        already = retained.displaced
+        remaining = kwh
+        for kind in (SourceKind.GENERATION, SourceKind.BATTERY):
+            booked = retained.sources.get(kind, Decimal(0))
+            moved = min(remaining, max(Decimal(0), booked - already))
+            already = max(Decimal(0), already - booked)
+            remaining -= moved
+            extra = moved * (retained.import_price - _MARGINAL_PRICE_OF[kind](retained))
+            self._house.actual_cost += extra
+            self._house.cost_savings -= extra
+            if kind is SourceKind.BATTERY:
+                self._house.battery_savings -= extra
+                retained.spare_discharge += moved
+        retained.displaced += kwh - remaining
 
     def _correct_house(
         self, kind: SourceKind, retained: _RetainedBucket, kwh: Decimal
@@ -1809,12 +1913,26 @@ class Accountant:
         free then and is free now; a discharge is charged what that interval's
         battery energy cost. The counterfactual is the import price either way,
         so late generation shows up as saving rather than as spending.
+
+        Where the interval closed with devices drawing more than its meters had
+        reported, this is the energy they drew, and it is already in the
+        whole-home total. So it repays their debt first, at this source's price,
+        and only what is left raises the total. Counted again instead, it would
+        leave the debt to expire at the import price: a house served by its
+        battery or panels, billed for grid it never used (HEA-269).
         """
-        actual = kwh * _MARGINAL_PRICE_OF[kind](retained)
-        naive = kwh * retained.import_price
-        self._house.energy_kwh += kwh
+        if kwh <= 0:
+            return
+        unit_price = _MARGINAL_PRICE_OF[kind](retained)
+        overdrawn = max(Decimal(0), retained.draw - retained.consumption)
+        settlement = self._debts.repay(min(kwh, overdrawn), unit_price)
+        self._release(settlement, Decimal(1 if kind is SourceKind.BATTERY else 0))
+        grew = kwh - settlement.kwh
+        actual = grew * unit_price
+        naive = grew * retained.import_price
+        self._house.energy_kwh += grew
         self._house.add_by_source(
-            {kind: kwh}, retained.forgone_prices, retained.solar_shares
+            {kind: grew}, retained.forgone_prices, retained.solar_shares
         )
         self._house.actual_cost += actual
         self._house.naive_cost += naive
@@ -2052,6 +2170,7 @@ class Accountant:
             forgone_prices=forgone_prices,
             solar_shares=solar_shares,
         )
+        self._note_house_meter(self._retained[start], raw, served)
         self._resolve_bounds(start)
 
     def _hold(self, correction: _HeldCorrection) -> None:
@@ -2561,6 +2680,26 @@ class Accountant:
             draw=_sum(draws.values()),
             sources=dict(sources),
         )
+
+    def _note_house_meter(
+        self,
+        retained: _RetainedBucket,
+        raw: Mapping[SourceRole, Decimal],
+        served: Served,
+    ) -> None:
+        """Keep what a late house reading for this interval will need (HEA-269).
+
+        Whether the house meter decided it is asked exactly as `_decompose` asked
+        it a moment ago. Where it did, the grid energy counted beyond the house
+        reading and the discharge the house did not call for are what a late
+        house reading is explained by and served from.
+        """
+        if not self._is_readable(SourceRole.HOUSE_CONSUMPTION):
+            return
+        house = raw.get(SourceRole.HOUSE_CONSUMPTION, Decimal(0))
+        retained.house_metered = True
+        retained.beyond_house = max(Decimal(0), served.grid - house)
+        retained.spare_discharge = served.discharged - served.battery
 
     def _evict_stale(self) -> None:
         if self._watermark is None:
