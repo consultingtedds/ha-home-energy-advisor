@@ -69,6 +69,7 @@ from .energy_dashboard import (
     async_energy_prefs,
     async_export_price_said,
     batteries_in,
+    dashboard_meters,
     grid_meters_in,
     priced,
 )
@@ -164,6 +165,9 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         self._offered: list[dict[str, Any]] = []
         self._grids_offered: list[dict[str, Any]] = []
         self._grids: list[dict[str, Any]] = []
+        # What the Energy Dashboard uses in each role, read with the house screen
+        # and held for the grid and battery screens after it (HEA-279).
+        self._dashboard: Mapping[str, frozenset[str]] = {}
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -172,9 +176,12 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         if self._async_current_entries():
             return self.async_abort(reason="single_instance_allowed")
         if user_input is not None:
-            errors = _validate_house_sources(self.hass, user_input)
+            prefs = await _energy_dashboard_prefs(self.hass)
+            self._dashboard = dashboard_meters(prefs)
+            errors = _validate_house_sources(
+                self.hass, user_input, dashboard=self._dashboard
+            )
             if not errors:
-                prefs = await _energy_dashboard_prefs(self.hass)
                 self._offered = batteries_in(prefs)
                 self._grids_offered = grid_meters_in(self.hass, prefs)
                 # Choosing which batteries and grid meters to take is an answer to
@@ -265,6 +272,7 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
             self.hass,
             grid,
             house_metered=bool(self._house.get(CONF_HOUSE_CONSUMPTION_ENTITY)),
+            dashboard=self._dashboard,
         )
 
     async def _async_after_the_grid(self) -> ConfigFlowResult:
@@ -298,7 +306,11 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             chosen = [self._offered[int(index)] for index in user_input["batteries"]]
             refused = next(
-                (battery for battery in chosen if validate_battery(self.hass, battery)),
+                (
+                    battery
+                    for battery in chosen
+                    if validate_battery(self.hass, battery, dashboard=self._dashboard)
+                ),
                 None,
             )
             if refused is None:
@@ -334,7 +346,10 @@ class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             errors = _validate_house_sources(
-                self.hass, user_input, grid_meters(entry, CONF_GRID_EXPORT_ENTITY)
+                self.hass,
+                user_input,
+                grid_meters(entry, CONF_GRID_EXPORT_ENTITY),
+                dashboard=await _dashboard_meters(self.hass),
             )
             if not errors:
                 return self.async_update_reload_and_abort(
@@ -454,6 +469,11 @@ async def _energy_dashboard_prefs(hass: HomeAssistant) -> Any:  # noqa: ANN401 -
     return manager.data
 
 
+async def _dashboard_meters(hass: HomeAssistant) -> dict[str, frozenset[str]]:
+    """What the Energy Dashboard uses in each house role, for a form's checks."""
+    return dashboard_meters(await _energy_dashboard_prefs(hass))
+
+
 async def _export_price_placeholder(hass: HomeAssistant) -> dict[str, str]:
     """The sentence naming the export price, for a form a household looks in.
 
@@ -507,7 +527,10 @@ class GridSubentryFlowHandler(ConfigSubentryFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             errors = validate_grid_meter(
-                self.hass, user_input, house_metered=self._metered()
+                self.hass,
+                user_input,
+                house_metered=self._metered(),
+                dashboard=await _dashboard_meters(self.hass),
             )
             if not errors:
                 return self.async_create_entry(
@@ -529,7 +552,10 @@ class GridSubentryFlowHandler(ConfigSubentryFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             errors = validate_grid_meter(
-                self.hass, user_input, house_metered=self._metered()
+                self.hass,
+                user_input,
+                house_metered=self._metered(),
+                dashboard=await _dashboard_meters(self.hass),
             )
             if not errors:
                 return self.async_update_and_abort(
@@ -637,7 +663,9 @@ class BatterySubentryFlowHandler(ConfigSubentryFlow):
         """Collect one battery, suggesting the next one the Energy Dashboard holds."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = validate_battery(self.hass, user_input)
+            errors = validate_battery(
+                self.hass, user_input, dashboard=await _dashboard_meters(self.hass)
+            )
             if not errors:
                 return self.async_create_entry(
                     title=user_input[CONF_NAME], data=user_input
@@ -656,7 +684,9 @@ class BatterySubentryFlowHandler(ConfigSubentryFlow):
         subentry = self._get_reconfigure_subentry()
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = validate_battery(self.hass, user_input)
+            errors = validate_battery(
+                self.hass, user_input, dashboard=await _dashboard_meters(self.hass)
+            )
             if not errors:
                 return self.async_update_and_abort(
                     self._get_entry(),
@@ -703,6 +733,8 @@ def _validate_house_sources(
     hass: HomeAssistant,
     user_input: dict[str, Any],
     exports: tuple[str, ...] = (),
+    *,
+    dashboard: Mapping[str, frozenset[str]],
 ) -> dict[str, str]:
     """Reject a house input the chosen accounting model would mis-read.
 
@@ -724,6 +756,9 @@ def _validate_house_sources(
     meter here brings into the full-balance branch. One that cannot be read
     there is refused for the form as a whole, since its field is on another
     entry.
+
+    ``dashboard`` is what the Energy Dashboard uses in each role, which vouches
+    for a `total` sensor in that role and no other (HEA-279).
     """
     checked = [*_ALWAYS_READ]
     metered = bool(user_input.get(CONF_HOUSE_CONSUMPTION_ENTITY))
@@ -733,30 +768,38 @@ def _validate_house_sources(
     for key in checked:
         # Every meter under the input, so one bad array among several is caught:
         # the sum is only as sound as its worst member.
-        if error := _house_input_error(hass, house_entities(user_input, key)):
+        meters = house_entities(user_input, key)
+        if error := _house_input_error(hass, meters, _vouched(dashboard, key)):
             errors[key] = error
-    if not metered and _house_input_error(hass, exports):
+    vouched_exports = _vouched(dashboard, CONF_GRID_EXPORT_ENTITY)
+    if not metered and _house_input_error(hass, exports, vouched_exports):
         errors["base"] = "grid_export_not_countable"
     return errors
 
 
 def validate_grid_meter(
-    hass: HomeAssistant, answers: Mapping[str, Any], *, house_metered: bool
+    hass: HomeAssistant,
+    answers: Mapping[str, Any],
+    *,
+    house_metered: bool,
+    dashboard: Mapping[str, frozenset[str]],
 ) -> dict[str, str]:
     """Refuse a grid source whose meters or price would be misread.
 
     Its import meter is read by every decomposition branch, and its export
     meter by the full-balance branch, used where no house meter is configured
     (``house_metered``), so each is held to the house's standard where it is
-    read (HEA-67). Its import is priced by an entity or by a number, and by
-    exactly one: two would leave it unclear which is meant.
+    read (HEA-67), less what the Energy Dashboard vouches for (``dashboard``,
+    HEA-279). Its import is priced by an entity or by a number, and by exactly
+    one: two would leave it unclear which is meant.
     """
     errors: dict[str, str] = {}
     checked = [CONF_GRID_IMPORT_ENTITY]
     if not house_metered:
         checked.append(CONF_GRID_EXPORT_ENTITY)
     for key in checked:
-        if error := _house_input_error(hass, house_entities(answers, key)):
+        meters = house_entities(answers, key)
+        if error := _house_input_error(hass, meters, _vouched(dashboard, key)):
             errors[key] = error
     has_entity = bool(answers.get(CONF_PRICE_ENTITY))
     has_number = answers.get(CONF_FIXED_PRICE) is not None
@@ -765,18 +808,25 @@ def validate_grid_meter(
     return errors
 
 
-def validate_battery(hass: HomeAssistant, answers: Mapping[str, Any]) -> dict[str, str]:
+def validate_battery(
+    hass: HomeAssistant,
+    answers: Mapping[str, Any],
+    *,
+    dashboard: Mapping[str, frozenset[str]],
+) -> dict[str, str]:
     """Refuse a battery whose meters, level or capacity would be misread.
 
     Its meters feed the house balance, so they are held to the house's standard
-    (HEA-67): a net or uncountable counter here skews every figure. A level needs
-    the capacity it is a percentage of (HEA-178), typed or from a sensor
+    (HEA-67): a net or uncountable counter here skews every figure, unless the
+    Energy Dashboard uses it in the same role (``dashboard``, HEA-279). A level
+    needs the capacity it is a percentage of (HEA-178), typed or from a sensor
     (HEA-244); a capacity in watt-hours is refused where it is typed (HEA-227),
     and a capacity sensor whose unit is not energy where it is chosen.
     """
     errors: dict[str, str] = {}
     for key in (CONF_BATTERY_CHARGE_ENTITY, CONF_BATTERY_DISCHARGE_ENTITY):
-        if error := _house_input_error(hass, house_entities(answers, key)):
+        meters = house_entities(answers, key)
+        if error := _house_input_error(hass, meters, _vouched(dashboard, key)):
             errors[key] = error
     capacity = answers.get(CONF_BATTERY_CAPACITY_KWH)
     sensed = answers.get(CONF_BATTERY_CAPACITY_ENTITY)
@@ -801,14 +851,42 @@ _MAX_HOME_BATTERY_KWH = 200
 _CAPACITY_ERROR = "capacity_not_kwh"
 
 
-def _house_input_error(hass: HomeAssistant, entity_ids: tuple[str, ...]) -> str | None:
-    """The first reason any of these meters cannot be counted, else ``None``."""
+def _house_input_error(
+    hass: HomeAssistant, entity_ids: tuple[str, ...], vouched: frozenset[str]
+) -> str | None:
+    """The first reason any of these meters cannot be counted, else ``None``.
+
+    ``vouched`` are the sensors the Energy Dashboard uses in this input's role.
+    """
     for entity_id in entity_ids:
-        if _wrong_state_class_error(hass, entity_id, CONF_ENERGY_ENTITY):
+        if _wrong_state_class_error(
+            hass, entity_id, CONF_ENERGY_ENTITY
+        ) and not _vouched_total(hass, entity_id, vouched):
             return _HOUSE_STATE_CLASS_ERROR
         if _uncountable_unit_error(hass, entity_id):
             return _UNIT_ERROR
     return None
+
+
+def _vouched_total(
+    hass: HomeAssistant, entity_id: str, vouched: frozenset[str]
+) -> bool:
+    """Whether a `total` sensor is one the Energy Dashboard uses in this role.
+
+    `total` is how a net meter is marked, and the engine reads a falling counter
+    as a reset, so a house input is held to `total_increasing`. Some
+    integrations mark a lifetime counter that only rises as `total` too. The
+    Energy Dashboard's role says which it is - its grid import is energy from the
+    grid, not a net figure - so a `total` sensor it uses in this role is counted,
+    and one picked for any other role is not (HEA-279, discussion 58). Only
+    `total`: a measurement is no counter wherever it is used.
+    """
+    return entity_id in vouched and source_state_class(hass, entity_id) == "total"
+
+
+def _vouched(dashboard: Mapping[str, frozenset[str]], key: str) -> frozenset[str]:
+    """The sensors the Energy Dashboard uses in the role a house input fills."""
+    return dashboard.get(key, frozenset())
 
 
 _HOUSE_STATE_CLASS_ERROR = "house_not_total_increasing"

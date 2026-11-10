@@ -31,6 +31,7 @@ from .const import (
     CONF_BATTERY_SOC_ENTITY,
     CONF_ENERGY_DASHBOARD_ANSWERED,
     CONF_FIXED_PRICE,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PRICE_ENTITY,
@@ -272,6 +273,54 @@ def _grid_answers(source: Any) -> dict[str, Any] | None:  # noqa: ANN401 - untyp
     ):
         answers[CONF_GRID_EXPORT_ENTITY] = exported
     return answers
+
+
+def dashboard_meters(prefs: Any) -> dict[str, frozenset[str]]:  # noqa: ANN401 - untyped HA prefs
+    """Which sensors the Energy Dashboard uses in each house role (HEA-279).
+
+    Keyed by the house input each role fills here, and every key present, empty
+    where the Energy Dashboard uses nothing in it. Every register of a grid
+    source counts, not only the first. The meters mean the same on both shapes
+    of a grid source, so falling back from the lists to the source is safe for
+    them, unlike for the prices (HEA-209).
+
+    The setup checks read it: a `total` sensor is accepted only for a role the
+    Energy Dashboard uses it in, because there its role says what it is.
+    """
+    used: dict[str, set[str]] = {key: set() for key in _DASHBOARD_ROLES}
+    for source in (prefs or {}).get("energy_sources", []):
+        for key, meter in _role_meters(source):
+            used[key].add(meter)
+    return {key: frozenset(meters) for key, meters in used.items()}
+
+
+def _role_meters(source: Any) -> list[tuple[str, str]]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    """Each meter one Energy Dashboard source uses, with the house input it fills."""
+    return [
+        (key, meter)
+        for key, flows, stat in _DASHBOARD_ROLES_OF.get(source.get("type"), ())
+        for flow in (source.get(flows) if flows else None) or [source]
+        if (meter := flow.get(stat))
+    ]
+
+
+# Each Energy Dashboard source type's meters: the house input it fills here, the
+# list it sits in on the shape before 2026.9 (none for a type that never had
+# one), and the key naming it.
+_DASHBOARD_ROLES_OF: dict[Any, tuple[tuple[str, str | None, str], ...]] = {
+    "grid": (
+        (CONF_GRID_IMPORT_ENTITY, "flow_from", "stat_energy_from"),
+        (CONF_GRID_EXPORT_ENTITY, "flow_to", "stat_energy_to"),
+    ),
+    "solar": ((CONF_GENERATION_ENTITY, None, "stat_energy_from"),),
+    "battery": (
+        (CONF_BATTERY_CHARGE_ENTITY, None, "stat_energy_to"),
+        (CONF_BATTERY_DISCHARGE_ENTITY, None, "stat_energy_from"),
+    ),
+}
+_DASHBOARD_ROLES = tuple(
+    key for roles in _DASHBOARD_ROLES_OF.values() for key, _, _ in roles
+)
 
 
 def _counts_energy(hass: HomeAssistant, entity_id: str) -> bool:

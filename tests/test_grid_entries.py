@@ -254,9 +254,11 @@ async def test_an_unpriced_grid_source_is_suggested_on_the_form_instead(
 async def test_a_register_that_cannot_be_counted_is_refused_at_setup(
     hass: HomeAssistant,
 ) -> None:
-    # Given - the night register published as a `total` net counter
+    # Given - the night register published as a measurement, no counter at all.
+    # A `total` one would be accepted: the Energy Dashboard's own grid import
+    # vouches for it (HEA-279)
     hass.states.async_set(
-        "sensor.night_register", "100", {**_ENERGY, "state_class": "total"}
+        "sensor.night_register", "100", {**_ENERGY, "state_class": "measurement"}
     )
     with _with_energy_dashboard(_DAY, _NIGHT):
         result = await _house_screen(hass)

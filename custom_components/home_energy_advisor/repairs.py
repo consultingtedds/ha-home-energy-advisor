@@ -19,6 +19,7 @@ from .energy_dashboard import (
     async_keep,
     async_listed_differences,
     async_take,
+    dashboard_meters,
     differences_from,
     taken,
 )
@@ -75,15 +76,20 @@ class EnergyDashboardChangedFlow(RepairsFlow):
             return self.async_abort(reason="entry_removed")
         prefs = await async_energy_prefs(self.hass)
         found = differences_from(self.hass, prefs, entry)
+        # Taken from the Energy Dashboard, so it vouches for its own roles
+        # exactly as it does on the forms (HEA-279).
+        dashboard = dashboard_meters(prefs)
         for answers in found.theirs:
-            if validate_battery(self.hass, taken(answers)):
+            if validate_battery(self.hass, taken(answers), dashboard=dashboard):
                 return self.async_abort(
                     reason="battery_not_countable",
                     description_placeholders={"battery": answers[CONF_NAME]},
                 )
         metered = bool(entry.data.get(CONF_HOUSE_CONSUMPTION_ENTITY))
         for answers in found.grid_theirs:
-            if validate_grid_meter(self.hass, answers, house_metered=metered):
+            if validate_grid_meter(
+                self.hass, answers, house_metered=metered, dashboard=dashboard
+            ):
                 return self.async_abort(
                     reason="grid_meter_not_countable",
                     description_placeholders={"grid": answers[CONF_NAME]},

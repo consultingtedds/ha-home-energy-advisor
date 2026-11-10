@@ -579,9 +579,11 @@ async def test_a_standing_charge_alone_asks_nothing(hass: HomeAssistant) -> None
 async def test_a_register_the_form_would_refuse_is_not_taken(
     hass: HomeAssistant,
 ) -> None:
-    # Given - the night register is a net meter
+    # Given - the night register publishes a measurement, no counter at all. A
+    # `total` one would be taken: the Energy Dashboard's own grid import vouches
+    # for it (HEA-279)
     hass.states.async_set(
-        "sensor.night_register", "100", {**_ENERGY, "state_class": "total"}
+        "sensor.night_register", "100", {**_ENERGY, "state_class": "measurement"}
     )
     await _energy_dashboard(hass, _DAY, _NIGHT)
     entry = await _set_up(hass, answered={"batteries": [], "grid": []})
