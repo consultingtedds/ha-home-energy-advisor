@@ -152,6 +152,10 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
             else Decimal(0)
         )
         batteries = _proportional(energies, saved)
+        # The same withholding again, in energy: only the share the meters back
+        # is given a source. The overdraw's is learned when the debt is repaid,
+        # from whatever repays it (HEA-278).
+        metered = _proportional(energies, consumption)
 
         allocations = {
             label: DeviceAllocation(
@@ -160,7 +164,9 @@ class ProportionalAllocationStrategy(CostAllocationStrategy):
                 naive_cost=naives[label],
                 cost_savings=naives[label] - actuals[label],
                 battery_savings=batteries[label],
-                energy_by_source=split_by_source(energy, bucket.sources, consumption),
+                energy_by_source=split_by_source(
+                    metered[label], bucket.sources, consumption
+                ),
             )
             for label, energy in energies.items()
         }
@@ -179,11 +185,13 @@ def split_by_source(
     residue folded into the largest source, so they sum back to ``energy`` exactly
     - the invariant a self-sufficiency percentage depends on.
 
-    That per-label exactness is deliberately the invariant that holds. When
-    tracked draw exceeds the metered consumption the labels between them then
-    account for more of a source than the meters recorded, exactly as their
-    energies already exceed consumption; the alternative would leave a device's
-    own sources summing to less than its energy, which no share can be read from.
+    Where tracked draw exceeds the metered consumption, the caller passes only
+    each label's share of what was metered, so the labels between them account
+    for exactly the sources the meters recorded. The rest of a device's energy
+    has no source until the debt it raised is repaid, and the repayment is what
+    says where it came from (HEA-278). Splitting the whole draw in the bucket's
+    mix would show a device that outran a sliver of import as drawing all of it
+    from the grid.
 
     A bucket with no served energy yields an empty mapping: the honest answer is
     that nothing is known about what supplied it (HEA-51).

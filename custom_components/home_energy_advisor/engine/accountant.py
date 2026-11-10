@@ -156,10 +156,12 @@ class DeviceTotals:
 
     The three ``energy_from_*`` figures split ``energy_kwh`` across the sources
     that served it, for energy self-sufficiency (HEA-51). They sum to
-    ``energy_kwh`` for every bucket the house-level meters accounted for; a bucket
-    with draw but no readings at all contributes to the energy and to no source,
-    so over such an interval the split falls short rather than claiming a supply
-    nobody measured.
+    ``energy_kwh`` for every bucket the house-level meters accounted for. Energy
+    they did not account for - a bucket with draw but no readings, or draw beyond
+    what was metered - has no source until the debt it raised is repaid, when it
+    takes the source that repaid it (HEA-278). Debt forgiven unrepaid never gets
+    one, so over such an interval the split falls short rather than claiming a
+    supply nobody measured.
     """
 
     energy_kwh: Decimal
@@ -1927,6 +1929,9 @@ class Accountant:
         overdrawn = max(Decimal(0), retained.draw - retained.consumption)
         settlement = self._debts.repay(min(kwh, overdrawn), unit_price)
         self._release(settlement, Decimal(1 if kind is SourceKind.BATTERY else 0))
+        self._source_repaid(
+            settlement, {kind: kwh}, retained.forgone_prices, retained.solar_shares
+        )
         grew = kwh - settlement.kwh
         actual = grew * unit_price
         naive = grew * retained.import_price
@@ -2095,13 +2100,10 @@ class Accountant:
         run = self._running.setdefault(device, _Running())
         # The unfunded excess is the device's outright: no other figure holds it,
         # so handing it over now takes nothing from anyone. Only the funded part
-        # comes out of the remainder, and only that part waits.
+        # comes out of the remainder, and only that part waits. It has no source
+        # yet: the meters have not reported it, and its repayment says where it
+        # came from (HEA-278).
         run.energy_kwh += grew
-        run.add_by_source(
-            split_by_source(grew, retained.sources, retained.consumption),
-            retained.forgone_prices,
-            retained.solar_shares,
-        )
         funded_by_source = split_by_source(
             funded, retained.sources, retained.consumption
         )
@@ -2132,11 +2134,6 @@ class Accountant:
         # reconciles; its money waits there until the debt settles.
         self._debts.owe(start, grew, grew * retained.import_price, {device: kwh})
         self._house.energy_kwh += grew
-        self._house.add_by_source(
-            split_by_source(grew, retained.sources, retained.consumption),
-            retained.forgone_prices,
-            retained.solar_shares,
-        )
         retained.draw += kwh
 
     def _finalize_bucket(self, start: datetime) -> None:
@@ -2152,7 +2149,15 @@ class Accountant:
         )
         bucket = IntervalBucket(start=start, sources=sources, device_draws=draws)
         allocation = self._strategy.allocate(bucket, prices)
-        remainder = self._settle(start, allocation.untracked, draws, sources, prices)
+        remainder = self._settle(
+            start,
+            allocation.untracked,
+            draws,
+            sources,
+            prices,
+            forgone_prices=forgone_prices,
+            solar_shares=solar_shares,
+        )
         for device, share in allocation.devices.items():
             self._running.setdefault(device, _Running()).add(
                 share, forgone_prices, solar_shares
@@ -2280,13 +2285,16 @@ class Accountant:
             self._running.setdefault(pending.device, _Running()).bound(floor, ceiling)
         self._pending_bounds = waiting
 
-    def _settle(
+    def _settle(  # noqa: PLR0913 - each argument is one fact the bucket settled at
         self,
         start: datetime,
         remainder: DeviceAllocation,
         draws: Mapping[str, Decimal],
         sources: Mapping[SourceKind, Decimal],
         prices: Mapping[SourceKind, Decimal],
+        *,
+        forgone_prices: Mapping[SourceKind, Decimal],
+        solar_shares: Mapping[SourceKind, Decimal],
     ) -> DeviceAllocation:
         """Owes this bucket's overdraw, or spends its surplus repaying an older one.
 
@@ -2294,6 +2302,10 @@ class Accountant:
         remainder and records the excess as debt; one with a surplus offers it to
         the ledger before publishing what is left. Over the pair the published
         figures reconcile to the meter, which neither does alone (ADR-0015).
+
+        The surplus that repays is this bucket's own energy, so the repaid energy
+        takes this bucket's sources, as the remainder it is withheld from would
+        have (HEA-278).
         """
         consumption = _sum(sources.values())
         import_price = prices[SourceKind.IMPORT]
@@ -2307,6 +2319,7 @@ class Accountant:
         blended = remainder.actual_cost / remainder.energy_kwh
         settlement = self._debts.repay(remainder.energy_kwh, blended)
         self._release(settlement, _battery_share(sources, prices))
+        self._source_repaid(settlement, sources, forgone_prices, solar_shares)
         return _withhold(remainder, settlement.kwh, blended, import_price, sources)
 
     def _release(
@@ -2345,6 +2358,30 @@ class Accountant:
             self._house.naive_cost += amount
             self._house.cost_savings += saving
             self._house.battery_savings += saving * battery_share
+
+    def _source_repaid(
+        self,
+        settlement: Settlement,
+        sources: Mapping[SourceKind, Decimal],
+        forgone_prices: Mapping[SourceKind, Decimal],
+        solar_shares: Mapping[SourceKind, Decimal],
+    ) -> None:
+        """Give energy a repayment settled the sources that repaid it (HEA-278).
+
+        That energy was counted when the device drew it, on the device and on
+        the house, but given no source: the meters had not reported it, so
+        nothing was known about what served it. The repayment is where that is
+        learned. Only sources are added - the energy itself is already in both
+        totals - and only for energy that had none, so a published share never
+        falls. Debt that expires never comes here and keeps no source.
+        """
+        consumption = _sum(sources.values())
+        for device, kwh in settlement.energy.items():
+            shares = split_by_source(kwh, sources, consumption)
+            self._running.setdefault(device, _Running()).add_by_source(
+                shares, forgone_prices, solar_shares
+            )
+            self._house.add_by_source(shares, forgone_prices, solar_shares)
 
     def unreconciled_energy(self) -> Decimal:
         """Energy charged that the house meters never went on to account for.

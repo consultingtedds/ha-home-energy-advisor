@@ -332,24 +332,27 @@ def test_a_bucket_with_no_served_energy_attributes_no_source() -> None:
     assert aircon.energy_by_source == {}
 
 
-def test_overdrawn_bucket_keeps_each_device_summing_to_its_own_energy() -> None:
-    # Given - tracked draw exceeding the energy the house-level meters accounted
-    # for, which clamps the Untracked remainder to zero
+def test_overdrawn_bucket_gives_sources_only_to_what_the_meters_metered() -> None:
+    # Given - 1.2 kWh of tracked draw against 0.6 kWh the house meters accounted
+    # for, half from the grid and half from the sun
     result = STRATEGY.allocate(
         bucket(
-            {SourceKind.IMPORT: "0.4", SourceKind.GENERATION: "0.3"},
+            {SourceKind.IMPORT: "0.3", SourceKind.GENERATION: "0.3"},
             {"coarse_step_aircon": "0.8", "tumble_dryer": "0.4"},
         ),
         prices(),
     )
 
-    # Then - each device's split still sums to its own energy: the per-device
-    # invariant is the one a self-sufficiency figure depends on, so it holds even
-    # though the devices between them then exceed the metered source totals
+    # Then - each device takes its share of the metered sources and no more, so
+    # between them they claim exactly the 0.3 kWh of each that was metered. The
+    # rest of their energy has no source yet: it is what the house meters have
+    # not reported, and it is given one when they do (HEA-278)
     assert result.untracked.energy_kwh == Decimal(0)
-    for name in ("coarse_step_aircon", "tumble_dryer"):
-        allocation = result.devices[name]
-        assert (
-            sum(allocation.energy_by_source.values(), start=Decimal(0))
-            == allocation.energy_kwh
-        )
+    assert result.devices["coarse_step_aircon"].energy_by_source == {
+        SourceKind.IMPORT: Decimal("0.2"),
+        SourceKind.GENERATION: Decimal("0.2"),
+    }
+    assert result.devices["tumble_dryer"].energy_by_source == {
+        SourceKind.IMPORT: Decimal("0.1"),
+        SourceKind.GENERATION: Decimal("0.1"),
+    }

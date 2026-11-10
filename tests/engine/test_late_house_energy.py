@@ -146,6 +146,10 @@ def test_late_generation_repays_what_a_device_claimed_ahead_of_it() -> None:
     assert totals.whole_home.actual_cost == Decimal(0)
     assert totals.devices["steady_load"].actual_cost == Decimal(0)
     assert totals.unreconciled_kwh == Decimal(0)
+    # ...and all of it is shown as sunshine, the house's and the device's alike,
+    # as HEA-278 asks
+    assert totals.whole_home.energy_from_generation == Decimal("0.6")
+    assert totals.devices["steady_load"].energy_from_generation == Decimal("0.6")
 
 
 def test_a_late_house_reading_is_served_by_the_panels_beside_it() -> None:

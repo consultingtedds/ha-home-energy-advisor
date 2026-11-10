@@ -31,7 +31,7 @@ disagree.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -56,11 +56,17 @@ class Settlement:
     The two are separate rather than one net figure so that Cost Savings moves by
     exactly their difference: zero on expiry, and the real saving when the sun
     turned out to have served it.
+
+    ``energy`` is how much of ``kwh`` each device's share was, for a repayment:
+    the energy the repaying source is now known to have served, which had no
+    source until now (HEA-278). Empty on expiry, which learns nothing about where
+    the energy came from.
     """
 
     kwh: Decimal
     actual: Mapping[str, Decimal]
     naive: Mapping[str, Decimal]
+    energy: Mapping[str, Decimal] = field(default_factory=dict)
 
 
 @dataclass
@@ -111,14 +117,18 @@ class DebtLedger:
         remaining = available_kwh
         actual: dict[str, Decimal] = {}
         naive: dict[str, Decimal] = {}
+        energy: dict[str, Decimal] = {}
         while self._tranches and remaining > 0:
             settled = self._settle(self._tranches[0], remaining, unit_price)
             _merge(actual, settled.actual)
             _merge(naive, settled.naive)
+            _merge(energy, settled.energy)
             remaining -= settled.kwh
             if self._tranches[0].kwh == 0:
                 self._tranches.popleft()
-        return Settlement(kwh=available_kwh - remaining, actual=actual, naive=naive)
+        return Settlement(
+            kwh=available_kwh - remaining, actual=actual, naive=naive, energy=energy
+        )
 
     def expire(self, before: datetime) -> Settlement:
         """Forgives debt older than the expiry, charging it at the import rate.
@@ -201,6 +211,7 @@ class DebtLedger:
             kwh=paid,
             actual=_split(paid * unit_price, tranche.debtors),
             naive=_split(recorded, tranche.debtors),
+            energy=_split(paid, tranche.debtors),
         )
 
 
