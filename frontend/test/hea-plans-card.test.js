@@ -32,6 +32,16 @@ const NIGHT = {
   export_credit: 3.28,
   daily_charges: 9,
   total: 29.78,
+  rates: {
+    prices: [
+      { name: "Peak", import: 0.31, export: null },
+      { name: "Off-peak", import: 0.09, export: null },
+    ],
+    export: 0.04,
+    daily_charge: 0.3,
+    import_market: false,
+    export_market: false,
+  },
 };
 const PEAKY = {
   id: "peaky",
@@ -66,6 +76,29 @@ const figure = (card, key) =>
 
 const order = (card) =>
   [...card.shadowRoot.querySelectorAll("[data-plan]")].map((row) => row.dataset.plan);
+
+/** The column heads, in order: the last head row, under the group headings. */
+const heads = (card) =>
+  [...card.shadowRoot.querySelectorAll("thead tr:last-child th")].map(
+    (cell) => cell.textContent,
+  );
+
+/** Each line of a plan's Prices cell. */
+const priceLines = (card, id) =>
+  [...card.shadowRoot.querySelectorAll(`[data-plan="${id}"] td.prices > div`)].map(
+    (line) => line.textContent.replaceAll(/\s+/g, " ").trim(),
+  );
+
+/** A screen of the width asked for, as the cards ask `matchMedia` for it. */
+const onScreen = (narrow) =>
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockReturnValue({
+      matches: narrow,
+      addEventListener() {},
+      removeEventListener() {},
+    }),
+  );
 
 beforeEach(() => {
   resetLabels();
@@ -127,12 +160,13 @@ describe("the comparison", () => {
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - a saving reads as good news, a dearer plan as bad
+    // Then - under the "vs current plan" head, a saving reads as good news and a
+    // dearer plan as bad; the household's own plan says nothing against itself
     const night = card.shadowRoot.querySelector('[data-figure="difference:night"]');
-    expect(night.textContent).toBe(fill(LABELS.plans_less, { amount: "€11.04" }));
+    expect(night.textContent).toBe("€11.04 less");
     expect(night.classList.contains("gain")).toBe(true);
     const peaky = card.shadowRoot.querySelector('[data-figure="difference:peaky"]');
-    expect(peaky.textContent).toBe(fill(LABELS.plans_more, { amount: "€5.16" }));
+    expect(peaky.textContent).toBe("€5.16 more");
     expect(peaky.classList.contains("loss")).toBe(true);
     expect(figure(card, "difference:flat")).toBeUndefined();
   });
@@ -149,20 +183,46 @@ describe("the comparison", () => {
     expect(figure(card, "daily:night")).toBe("€9.00");
   });
 
-  it("names each part for the money it is, against the plan the household is on", async () => {
+  it("is a table whose heads say what each column is, like a bill", async () => {
     // Given / When
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - "Energy" and "Export" were read as what everything would have
-    // cost, or earned, had it all gone through the grid (HEA-277)
-    const night = card.shadowRoot.querySelector('[data-plan="night"]');
-    expect(night.textContent).toContain("Import cost");
-    expect(night.textContent).toContain("Export income");
+    // Then - each part named for the money it is (HEA-277), in the order a bill
+    // reads: what is paid, then what is earned, then the total (HEA-280)
+    expect(heads(card)).toEqual([
+      "Plan",
+      "Prices",
+      "Import cost",
+      "Daily charges",
+      "Export income",
+      "Total",
+      "vs current plan",
+    ]);
     const flat = card.shadowRoot.querySelector('[data-plan="flat"]');
     expect(flat.textContent).toContain("Current plan");
-    expect(figure(card, "difference:night")).toBe("€11.04 less than your current plan");
-    expect(figure(card, "difference:peaky")).toBe("€5.16 more than your current plan");
+  });
+
+  it("puts what is paid and what is earned under a heading each, the earned one tinted", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then - told apart by heading and tint, never by a minus or a coloured
+    // figure: "Export income" read as a loss with one (HEA-280)
+    const groups = [...card.shadowRoot.querySelectorAll("thead tr.groups th")].map(
+      (cell) => [cell.textContent, cell.colSpan],
+    );
+    expect(groups).toEqual([
+      ["", 2],
+      ["What you pay", 2],
+      ["What you earn", 1],
+      ["", 2],
+    ]);
+    const exported = card.shadowRoot.querySelector('[data-figure="export:night"]');
+    expect(exported.classList.contains("earn")).toBe(true);
+    const imported = card.shadowRoot.querySelector('[data-figure="energy:night"]');
+    expect(imported.classList.contains("earn")).toBe(false);
   });
 
   it("says what the comparison assumes", async () => {
@@ -172,6 +232,94 @@ describe("the comparison", () => {
 
     // Then
     expect(text(card)).toContain(LABELS.plans_note);
+  });
+});
+
+describe("each plan's own prices", () => {
+  it("lists each named price, then what export pays and the daily charge", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then - one to a line, as an offer lists its periods, in the minor unit a
+    // tariff is quoted in
+    expect(priceLines(card, "night")).toEqual([
+      "Peak 31.0 c/kWh",
+      "Off-peak 9.0 c/kWh",
+      "Export 4.0 c/kWh",
+      "Daily €0.30/day",
+    ]);
+  });
+
+  it("says a plan at the market is at the market, rather than naming a price", async () => {
+    // Given - a plan importing and exporting at market price entities
+    const market = {
+      ...NIGHT,
+      id: "market",
+      name: "Wholesale",
+      rates: { ...NIGHT.rates, prices: [], import_market: true, export_market: true },
+    };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, market] }));
+    await settled(expect, card);
+
+    // Then
+    expect(priceLines(card, "market")).toEqual([
+      "Market price",
+      "Export Market price",
+      "Daily €0.30/day",
+    ]);
+  });
+});
+
+describe("the period's energy", () => {
+  it("says once what the meters recorded, since it is the same for every plan", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then - the kWh are the household's; only the prices are the plan's
+    expect(card.shadowRoot.querySelector(".flows").textContent).toBe(
+      "Imported 134.3 kWh and exported 82 kWh in this period.",
+    );
+  });
+
+  it("says nothing of it where the meters recorded nothing", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome({ ...COMPARED, hours: 0 }));
+    await settled(expect, card);
+
+    // Then - the note saying there were no readings is the whole story
+    expect(card.shadowRoot.querySelector(".flows")).toBeNull();
+  });
+});
+
+describe("on a phone", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps the plan, its total and the difference, and says where the rest went", async () => {
+    // Given / When
+    onScreen(true);
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then - six columns do not fit a phone; the breakdown is on a wider screen
+    expect(heads(card)).toEqual(["Plan", "Total", "vs current plan"]);
+    expect(card.shadowRoot.querySelector("thead tr.groups")).toBeNull();
+    expect(text(card)).toContain(
+      "Import cost, export income and daily charges are shown on a wider screen.",
+    );
+  });
+
+  it("says nothing of a hidden breakdown on a wide screen", async () => {
+    // Given / When
+    onScreen(false);
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).not.toContain("shown on a wider screen");
   });
 });
 

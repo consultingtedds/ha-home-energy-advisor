@@ -35,6 +35,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
     CONF_BAND_IMPORT_PRICE,
+    CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
     CONF_CURRENCY,
@@ -48,6 +49,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PRICES,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
@@ -260,6 +262,66 @@ async def test_each_plan_is_priced_from_the_hours_the_meters_recorded(
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_each_plan_says_its_own_prices_for_the_card_to_list(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - a plan whose prices are named, and an offer entered before prices
+    # had names, its figures on each band
+    _calendar(hass, [])
+    named = {
+        **_FLAT,
+        CONF_NAME: "Two prices",
+        CONF_PRICES: [
+            {CONF_NAME: "Peak", CONF_BAND_IMPORT_PRICE: 0.31},
+            {CONF_NAME: "Night", CONF_BAND_IMPORT_PRICE: 0.09},
+        ],
+        CONF_BANDS: [
+            {
+                CONF_BAND_DAYS: "every_day",
+                CONF_BAND_START: 8,
+                CONF_BAND_END: 22,
+                CONF_BAND_PRICE: "Peak",
+            },
+            {
+                CONF_BAND_DAYS: "every_day",
+                CONF_BAND_START: 22,
+                CONF_BAND_END: 8,
+                CONF_BAND_PRICE: "Night",
+            },
+        ],
+    }
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, named),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+        ),
+    )
+
+    # When
+    plans = _by_name(await _compare(hass_ws_client, hass))
+
+    # Then - each price once, in the order the bands first use it, beside what
+    # export pays and the daily charge (HEA-280). An unnamed price is told
+    # apart by its figures, so the offer's two are not read as one
+    assert plans["Two prices"]["rates"] == {
+        "prices": [
+            {"name": "Peak", "import": 0.31, "export": None},
+            {"name": "Night", "import": 0.09, "export": None},
+        ],
+        "export": 0.05,
+        "daily_charge": 0.45,
+        "import_market": False,
+        "export_market": False,
+    }
+    assert plans["Night saver"]["rates"]["prices"] == [
+        {"name": "", "import": 0.31, "export": None},
+        {"name": "", "import": 0.09, "export": None},
+    ]
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
 async def test_a_capped_plan_says_what_export_it_did_not_pay(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
@@ -333,12 +395,20 @@ async def test_a_plan_that_leaves_hours_unpriced_is_listed_not_guessed(
     # When
     result = await _compare(hass_ws_client, hass)
 
-    # Then - named, marked incomplete, and given no figure
+    # Then - named, marked incomplete, and given no figure; its prices are still
+    # listed, so the household can see what it entered (HEA-280)
     assert result["plans"] == [
         {
             "id": result["plans"][0]["id"],
             "name": "Flat rate",
             "current": True,
+            "rates": {
+                "prices": [{"name": "", "import": 0.234, "export": None}],
+                "export": 0.05,
+                "daily_charge": 0.45,
+                "import_market": False,
+                "export_market": False,
+            },
             "incomplete": True,
         }
     ]

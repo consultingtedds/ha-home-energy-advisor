@@ -198,7 +198,12 @@ async def async_compare_plans(
     days = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
     plans = []
     for plan_id, tariff in tariffs.items():
-        named = {"id": plan_id, "name": tariff.plan.name, "current": tariff.current}
+        named = {
+            "id": plan_id,
+            "name": tariff.plan.name,
+            "current": tariff.current,
+            "rates": _rates(tariff),
+        }
         holidays = (
             await _holidays(hass, tariff.holidays, start, end)
             if tariff.holidays
@@ -302,6 +307,35 @@ async def _first_means(hass: HomeAssistant, entities: set[str]) -> dict[str, dat
         _means, hass, entities, _EVER, dt_util.utcnow(), "hour"
     )
     return {entity: _moment(rows[0]["start"]) for entity, rows in means.items() if rows}
+
+
+def _rates(tariff: TariffPlan) -> dict[str, Any]:
+    """A plan's own prices, for the card to list beside what it cost (HEA-280).
+
+    Each named price once, in the order its bands first use it, as an offer
+    lists its periods. Per kWh, and the daily charge per day, as entered. A plan
+    entered before prices had names carries its figures on each band, so an
+    unnamed price is told apart by its figures rather than all read as one.
+    """
+    prices: dict[object, dict[str, Any]] = {}
+    for band in tariff.plan.bands:
+        prices.setdefault(
+            band.name or (band.import_price, band.export_price),
+            {
+                "name": band.name,
+                "import": _number(band.import_price),
+                "export": None
+                if band.export_price is None
+                else _number(band.export_price),
+            },
+        )
+    return {
+        "prices": list(prices.values()),
+        "export": _number(tariff.plan.export_price),
+        "daily_charge": _number(tariff.plan.daily_charge),
+        "import_market": tariff.import_entity is not None,
+        "export_market": tariff.export_entity is not None,
+    }
 
 
 def _market_notes(tariff: TariffPlan, market: _AtMarket) -> dict[str, Any]:

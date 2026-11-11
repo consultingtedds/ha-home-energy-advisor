@@ -13,10 +13,18 @@
  * included, is priced here the same way instead, and compared with that.
  */
 
-import { HeaCard, registerCard } from "./hea-card-base.js";
+import { HeaCard, NARROW, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
-import { formatDateTime, formatMoney, savingTone } from "./hea-format.js";
+import {
+  formatDateTime,
+  formatEnergy,
+  formatMoney,
+  formatRate,
+  rateUnit,
+  savingTone,
+} from "./hea-format.js";
 import { fill, loadLabels } from "./hea-labels.js";
+import { TABLE_STYLE } from "./hea-table-card.js";
 
 export const TAG = "hea-plans-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -30,9 +38,19 @@ const COMPARE_PLANS = "home_energy_advisor/compare_plans";
  * still takes it off (HEA-277, discussion 58).
  */
 const PARTS = [
-  { key: "energy", label: "plans_energy" },
-  { key: "export", label: "plans_export", figure: "export_credit" },
-  { key: "daily", label: "plans_daily", figure: "daily_charges" },
+  { key: "energy", label: "plans_energy", group: "pay" },
+  { key: "daily", label: "plans_daily", figure: "daily_charges", group: "pay" },
+  { key: "export", label: "plans_export", figure: "export_credit", group: "earn" },
+];
+
+/**
+ * The parts under a heading each, in the order a bill reads: what is paid, then
+ * what is earned, then the total. Told apart by heading and by a faint tint on
+ * what is earned, never by a minus or a coloured figure (HEA-280).
+ */
+const GROUPS = [
+  { key: "pay", label: "plans_you_pay" },
+  { key: "earn", label: "plans_you_earn" },
 ];
 
 /** A plan with no figure: bands that leave hours unpriced, or no market price. */
@@ -50,35 +68,77 @@ const byTotal = (a, b) => {
 class HeaPlansCard extends HeaCard {
   static titleKey = "title_plans";
 
-  static cardStyle = `
-    .plans { display: flex; flex-direction: column; gap: var(--hea-space-m); }
-    .plan + .plan {
-      padding-top: var(--hea-space-m);
-      border-top: 1px solid var(--divider-color);
+  /** Wide and narrow draw different columns, so the card redraws between them. */
+  static narrowQuery = NARROW;
+
+  static cardStyle = `${TABLE_STYLE}
+    .flows {
+      margin-bottom: var(--hea-space-m);
+      color: var(--secondary-text-color);
+      font-size: 0.9em;
     }
-    .head {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: var(--hea-space-m);
+    /* As wide as the figures, not the card: spread across a full-width tab, a
+       plan's figures sat too far apart to read across (HEA-280). The wrapper
+       hugs the table too, so its scroll shadows sit at the table's own edges. */
+    .scroll { width: fit-content; max-width: 100%; }
+    /* A table that reads as one: bordered, its head shaded, a rule wherever a
+       group of columns starts, so the figures never run into the notes below. */
+    .plans {
+      width: auto;
+      font-variant-numeric: tabular-nums;
+      border: 1px solid var(--divider-color, #e0e0e0);
     }
-    .name { color: var(--primary-text-color); font-weight: 500; }
+    .plans th, .plans td { padding-inline: 12px; }
+    .plans thead th { background: var(--secondary-background-color); }
+    .plans thead tr.groups th { border-bottom: none; text-align: center; }
+    .plans .rule { border-left: 1px solid var(--divider-color, #e0e0e0); }
+    .plans .earn {
+      background: color-mix(in srgb, var(--success-color, #4caf50) 9%, transparent);
+    }
+    .plans thead .earn {
+      background: color-mix(
+        in srgb,
+        var(--success-color, #4caf50) 9%,
+        var(--secondary-background-color)
+      );
+    }
+    th.prices { text-align: left; }
+    td.prices {
+      text-align: left;
+      color: var(--secondary-text-color);
+      font-size: 0.85em;
+      line-height: 1.6;
+    }
+    td.prices .rate { color: var(--primary-text-color); }
+    .plans tbody td, .plans tbody th { border-bottom: none; vertical-align: top; }
+    .plans tbody + tbody tr:first-child > * {
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+    }
+    .plans tbody th { font-weight: 500; color: var(--primary-text-color); }
+    .tags { display: block; margin-top: 2px; font-weight: normal; }
     .tag {
-      margin-inline-start: var(--hea-space-s);
+      display: inline-block;
+      margin-inline-end: var(--hea-space-s);
       padding: 0 var(--hea-space-s);
       border-radius: var(--ha-border-radius-pill, 9px);
       background: var(--secondary-background-color);
       color: var(--secondary-text-color);
       font-size: 0.8em;
-      font-weight: normal;
     }
-    .total { font-size: 1.4em; white-space: nowrap; }
-    .parts, .difference, .incomplete {
+    td.total { font-weight: 500; }
+    tr.note td {
+      padding-top: 0;
+      padding-left: 14px;
+      text-align: left;
+      white-space: normal;
       color: var(--secondary-text-color);
-      font-size: 0.9em;
+      font-size: 0.85em;
     }
-    .parts { display: flex; flex-wrap: wrap; gap: 0 var(--hea-space-m); }
-    .part .value { color: var(--primary-text-color); white-space: nowrap; }
+    td.incomplete {
+      text-align: left;
+      white-space: normal;
+      color: var(--secondary-text-color);
+    }
   `;
 
   static getConfigElement() {
@@ -127,21 +187,108 @@ class HeaPlansCard extends HeaCard {
     const current = priced.find((plan) => plan.current);
     // Only worth saying where there is something it is cheaper than.
     const cheapest = priced.length > 1 ? priced[0] : undefined;
+    const wide = !this._isNarrow();
+    const parts = wide ? PARTS : [];
     const notes = [
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       current ? "" : this._labels.plans_no_current,
       this._labels.plans_note,
+      wide ? "" : this._labels.plans_breakdown_hidden,
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
     ].filter(Boolean);
+    const layout = { current, cheapest, parts, prices: wide };
     return `
-      <div class="plans">
-        ${plans.map((plan) => this._plan(plan, { current, cheapest }, locale)).join("")}
+      ${this._flows(locale)}
+      <div class="scroll">
+        <table class="plans">
+          <thead>${this._head(layout)}</thead>
+          ${plans.map((plan) => this._plan(plan, layout, locale)).join("")}
+        </table>
       </div>
       ${notes.map(hint).join("")}`;
   }
 
-  /** One plan: its name and total, what the total is made of, and the difference. */
-  _plan(plan, { current, cheapest }, locale) {
+  /**
+   * The column heads, under a heading for each group where the breakdown is
+   * shown: what the household would pay, and what it would earn.
+   */
+  _head({ parts, prices }) {
+    const leading = [this._labels.plans_plan, ...(prices ? [this._labels.plans_prices] : [])];
+    const cell = (label, classes = "") => `<th${classAttribute(classes)}>${label}</th>`;
+    const columns = [
+      cell(this._labels.plans_plan),
+      ...(prices ? [cell(this._labels.plans_prices, "prices")] : []),
+      ...parts.map((part, index) =>
+        cell(this._labels[part.label], this._partClasses(part, index)),
+      ),
+      cell(this._labels.plans_total, "rule"),
+      cell(this._labels.plans_vs_current),
+    ].join("");
+    if (!parts.length) return `<tr>${columns}</tr>`;
+    const groups = GROUPS.map((group) => {
+      const span = parts.filter((part) => part.group === group.key).length;
+      const classes = group.key === "earn" ? "rule earn" : "rule";
+      return `<th class="${classes}" colspan="${span}">${this._labels[group.label]}</th>`;
+    }).join("");
+    return `<tr class="groups"><th colspan="${leading.length}"></th>${groups}<th colspan="2" class="rule"></th></tr>
+      <tr>${columns}</tr>`;
+  }
+
+  /** Where a part's group starts, a rule; what is earned, a tint. */
+  _partClasses(part, index) {
+    const starts = index === 0 || PARTS[index - 1].group !== part.group;
+    return [starts ? "rule" : "", part.group === "earn" ? "earn" : ""]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  /**
+   * A plan's own prices, one to a line as an offer lists them: each named price
+   * per kWh, what export pays, and the daily charge. A plan at the market says
+   * so instead of naming a price it does not have.
+   */
+  _prices(plan, locale) {
+    const rates = plan.rates;
+    if (!rates) return "<td></td>";
+    const unit = rateUnit(locale);
+    const line = (label, value) =>
+      `<div>${escape(label)} <span class="rate">${value}</span></div>`;
+    const imports = rates.import_market
+      ? [line(this._labels.plans_market_price, "")]
+      : rates.prices.map((price) =>
+          line(price.name, `${formatRate(price.import, locale)} ${unit}`),
+        );
+    const exportRate = rates.export_market
+      ? this._labels.plans_market_price
+      : `${formatRate(rates.export, locale)} ${unit}`;
+    const daily = fill(this._labels.plans_per_day, {
+      amount: formatMoney(rates.daily_charge, locale),
+    });
+    const lines = [
+      ...imports,
+      line(this._labels.plans_export_rate, exportRate),
+      line(this._labels.plans_daily_rate, daily),
+    ];
+    return `<td class="prices">${lines.join("")}</td>`;
+  }
+
+  /**
+   * What the meters recorded, said once: the same for every plan, because the
+   * kWh are the household's and only the prices are the plan's (HEA-280).
+   */
+  _flows(locale) {
+    if (!this._compared.hours) return "";
+    return `<div class="flows">${fill(this._labels.plans_flows, {
+      imported: formatEnergy(this._compared.imported_kwh, locale),
+      exported: formatEnergy(this._compared.exported_kwh, locale),
+    })}</div>`;
+  }
+
+  /**
+   * One plan: a row of its figures, and any notes on it beneath, together in a
+   * group of their own so a note is never read as the next plan's.
+   */
+  _plan(plan, { current, cheapest, parts, prices }, locale) {
     const tags = [
       plan.current ? this._labels.plans_your_plan : "",
       plan === cheapest ? this._labels.plans_cheapest : "",
@@ -149,23 +296,25 @@ class HeaPlansCard extends HeaCard {
       .filter(Boolean)
       .map((tag) => `<span class="tag">${tag}</span>`)
       .join("");
-    const total = unpriced(plan) ? "" : this._total(plan, locale);
-    const head = `
-      <div class="head">
-        <span class="name">${escape(plan.name)}${tags}</span>
-        ${total}
-      </div>`;
+    const name = `<th>${escape(plan.name)}${tagLine(tags)}</th>`;
+    const rates = prices ? this._prices(plan, locale) : "";
+    const columns = parts.length + 3 + (prices ? 1 : 0);
     if (unpriced(plan)) {
       const why = plan.no_price ? this._labels.plans_no_price : this._labels.plans_incomplete;
-      return `<div class="plan" data-plan="${plan.id}">${head}
-        <div class="incomplete">${why}</div></div>`;
+      return `<tbody data-plan="${plan.id}"><tr>${name}${rates}
+        <td class="incomplete rule" colspan="${columns - 1 - (prices ? 1 : 0)}">${why}</td></tr></tbody>`;
     }
-    return `<div class="plan" data-plan="${plan.id}">${head}
-      <div class="parts">${PARTS.map((part) => this._part(plan, part, locale)).join("")}</div>
-      ${this._exportNotes(plan, locale)}
-      ${current && plan !== current ? this._difference(plan, current, locale) : ""}
-      ${this._marketNotes(plan, locale)}
-    </div>`;
+    const figures = parts
+      .map((part, index) => this._part(plan, part, locale, this._partClasses(part, index)))
+      .join("");
+    const difference = current && plan !== current ? this._difference(plan, current, locale) : "<td></td>";
+    const notes = [this._exportNotes(plan, locale), this._marketNotes(plan, locale)]
+      .join("")
+      .trim();
+    return `<tbody data-plan="${plan.id}">
+      <tr>${name}${rates}${figures}${this._total(plan, locale)}${difference}</tr>
+      ${notes ? `<tr class="note"><td colspan="${columns}">${notes}</td></tr>` : ""}
+    </tbody>`;
   }
 
   /**
@@ -219,20 +368,17 @@ class HeaPlansCard extends HeaCard {
   }
 
   _total(plan, locale) {
-    return `<span class="total" data-figure="total:${plan.id}">${formatMoney(
+    return `<td class="total rule" data-figure="total:${plan.id}">${formatMoney(
       plan.total,
       locale,
-    )}</span>`;
+    )}</td>`;
   }
 
-  _part(plan, { key, label, figure = key }, locale) {
-    return `
-      <span class="part">${this._labels[label]}
-        <span class="value" data-figure="${key}:${plan.id}">${formatMoney(
-          plan[figure],
-          locale,
-        )}</span>
-      </span>`;
+  _part(plan, { key, figure = key }, locale, classes = "") {
+    return `<td${classAttribute(classes)} data-figure="${key}:${plan.id}">${formatMoney(
+      plan[figure],
+      locale,
+    )}</td>`;
   }
 
   /** How much less or more than the household's own plan, as a saving is toned. */
@@ -240,15 +386,21 @@ class HeaPlansCard extends HeaCard {
     const saving = current.total - plan.total;
     const tone = savingTone(saving, locale);
     const amount = formatMoney(Math.abs(saving), locale);
-    let wording = this._labels.plans_same;
-    if (tone === "gain") wording = fill(this._labels.plans_less, { amount });
-    if (tone === "loss") wording = fill(this._labels.plans_more, { amount });
+    let wording = this._labels.plans_same_short;
+    if (tone === "gain") wording = fill(this._labels.plans_less_short, { amount });
+    if (tone === "loss") wording = fill(this._labels.plans_more_short, { amount });
     const classes = tone ? `difference ${tone}` : "difference";
-    return `<div class="${classes}" data-figure="difference:${plan.id}">${wording}</div>`;
+    return `<td class="${classes}" data-figure="difference:${plan.id}">${wording}</td>`;
   }
 }
 
 const hint = (note) => `<div class="hint">${note}</div>`;
+
+/** A cell's class attribute, or nothing for a cell with no class. */
+const classAttribute = (classes) => (classes ? ` class="${classes}"` : "");
+
+/** A plan's badges on a line of their own under its name, where it has any. */
+const tagLine = (tags) => (tags ? `<span class="tags">${tags}</span>` : "");
 
 /** A plan's name is the household's own words, so it is shown as text, not markup. */
 const escape = (value) =>
