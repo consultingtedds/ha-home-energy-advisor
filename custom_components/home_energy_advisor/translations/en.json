@@ -693,6 +693,7 @@
     "card_forgone_column": "Could have earned",
     "card_forgone_note": "Could have earned is what the generation each device used could have earned had you exported it instead, at your export rate at the time. It is money you did not receive, not money you paid, and it is not part of Paid.",
     "card_forgone_hidden_note": "Could have earned, what the generation each device used could have earned had you exported it instead, is shown on a wider screen.",
+    "card_device_costs_note": "The solid part of each bar is what the device cost. The whole bar is what it would have cost had all its energy come from the grid, at your grid price at the time.",
     "card_compared": "{change} vs {before}",
     "card_compared_period": "{period} vs {compared}",
     "card_saved_share": "{percent} of what you would have paid was saved.",
@@ -727,14 +728,14 @@
     "card_tab_summary": "Summary",
     "card_tab_devices": "Devices",
     "card_tab_tariffs": "Tariffs",
-    "card_plans_your_plan": "Your plan",
+    "card_plans_your_plan": "Current plan",
     "card_plans_cheapest": "Cheapest",
-    "card_plans_energy": "Energy",
-    "card_plans_export": "Export",
+    "card_plans_energy": "Import cost",
+    "card_plans_export": "Export income",
     "card_plans_daily": "Daily charges",
-    "card_plans_less": "{amount} less than your plan",
-    "card_plans_more": "{amount} more than your plan",
-    "card_plans_same": "The same as your plan",
+    "card_plans_less": "{amount} less than your current plan",
+    "card_plans_more": "{amount} more than your current plan",
+    "card_plans_same": "The same as your current plan",
     "card_plans_incomplete": "Not every hour has a price, so it cannot be compared. Edit the plan to finish its bands.",
     "card_plans_note": "For the whole home: each plan priced at the electricity you actually imported and exported, as if your battery had run the same way. Prices are compared as you entered them.",
     "card_plans_no_readings": "Your grid meters recorded nothing in this period, so only the daily charges are shown.",
@@ -787,6 +788,7 @@
     "card_editor_range_column": "Its own column",
     "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report.",
     "plan_start_nothing": "Nothing: enter its bands one at a time",
-    "plan_price_name": "Price {number}"
+    "plan_price_name": "Price {number}",
+    "plan_per_day": "{currency}/day"
   }
 }

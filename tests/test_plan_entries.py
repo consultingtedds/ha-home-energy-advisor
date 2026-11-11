@@ -765,6 +765,18 @@ async def test_the_prices_are_entered_in_the_plans_currency(
     }
 
 
+async def test_the_daily_charge_says_it_is_per_day_in_the_plans_currency(
+    hass: HomeAssistant,
+) -> None:
+    # Given / When - a field with no unit left a household unsure whether to type
+    # 1.10 or 110 (HEA-277, discussion 58)
+    result = await _start(hass, _house(hass))
+
+    # Then - in the household's currency, per day, as the prices say per kWh
+    daily = _field(result, CONF_PLAN_DAILY_CHARGE).config
+    assert daily["unit_of_measurement"] == "EUR/day"
+
+
 # A plan entered before its prices were named (the 1.3.0 betas) carries each
 # band's figures itself.
 _UNNAMED = {

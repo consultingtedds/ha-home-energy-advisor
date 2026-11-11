@@ -84,6 +84,10 @@ export const DEFAULTS = Object.freeze({
   forgone_hidden_note:
     "Could have earned, what the generation each device used could have earned " +
     "had you exported it instead, is shown on a wider screen.",
+  device_costs_note:
+    "The solid part of each bar is what the device cost. The whole bar is what " +
+    "it would have cost had all its energy come from the grid, at your grid " +
+    "price at the time.",
   compared: "{change} vs {before}",
   compared_period: "{period} vs {compared}",
   saved_share: "{percent} of what you would have paid was saved.",
@@ -125,14 +129,14 @@ export const DEFAULTS = Object.freeze({
   tab_summary: "Summary",
   tab_devices: "Devices",
   tab_tariffs: "Tariffs",
-  plans_your_plan: "Your plan",
+  plans_your_plan: "Current plan",
   plans_cheapest: "Cheapest",
-  plans_energy: "Energy",
-  plans_export: "Export",
+  plans_energy: "Import cost",
+  plans_export: "Export income",
   plans_daily: "Daily charges",
-  plans_less: "{amount} less than your plan",
-  plans_more: "{amount} more than your plan",
-  plans_same: "The same as your plan",
+  plans_less: "{amount} less than your current plan",
+  plans_more: "{amount} more than your current plan",
+  plans_same: "The same as your current plan",
   plans_incomplete:
     "Not every hour has a price, so it cannot be compared. Edit the plan to " +
     "finish its bands.",

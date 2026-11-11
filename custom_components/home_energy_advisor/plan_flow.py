@@ -438,8 +438,20 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
 
     def _unit(self) -> str:
         """What a price is per, in the household's currency."""
-        currency = self._get_entry().data.get(CONF_CURRENCY, DEFAULT_CURRENCY)
-        return f"{currency}/kWh"
+        return f"{self._currency()}/kWh"
+
+    def _per_day(self, labels: dict[str, str]) -> str:
+        """What a daily charge is in, translated: "AUD/day", "EUR/día".
+
+        A field with no unit left a household unsure whether to type a charge in
+        dollars or cents (HEA-277, discussion 58).
+        """
+        return labels.get("plan_per_day", "{currency}/day").replace(
+            "{currency}", self._currency()
+        )
+
+    def _currency(self) -> str:
+        return str(self._get_entry().data.get(CONF_CURRENCY, DEFAULT_CURRENCY))
 
     def _details_schema(self, labels: dict[str, str]) -> vol.Schema:
         # Labelled here rather than by translation key: a select inside the list
@@ -471,7 +483,10 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 vol.Required(CONF_PLAN_DAILY_CHARGE, default=0): (
                     selector.NumberSelector(
                         selector.NumberSelectorConfig(
-                            min=0, step="any", mode=selector.NumberSelectorMode.BOX
+                            min=0,
+                            step="any",
+                            mode=selector.NumberSelectorMode.BOX,
+                            unit_of_measurement=self._per_day(labels),
                         )
                     )
                 ),

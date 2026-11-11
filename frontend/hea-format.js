@@ -122,8 +122,23 @@ export const formatMoney = (value, { language, currency }) => {
 // A bare number beats a wrong symbol.
 const moneyOptions = (currency) =>
   currency
-    ? { style: "currency", currency }
+    ? inCurrency(currency)
     : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+
+/**
+ * The symbol a household writes their money in, the same on every figure.
+ *
+ * Narrow, because Intl's default names the country wherever the language does
+ * not assume it: "A$", "CA$", "NZ$" in English, where a household in any of
+ * those countries writes "$" (HEA-277, discussion 58). The currency is already
+ * Home Assistant's, so the country adds nothing. Every place money is written
+ * asks here, so a change and an axis never disagree with the figure beside them.
+ */
+const inCurrency = (currency) => ({
+  style: "currency",
+  currency,
+  currencyDisplay: "narrowSymbol",
+});
 
 /**
  * A money figure as `formatMoney` shows it: rounded to the currency's own
@@ -156,7 +171,7 @@ const asShown = (value, { language, currency } = {}) => {
 export const formatMoneyChange = (value, { language, currency }) => {
   if (typeof value !== "number" || !Number.isFinite(value)) return NO_FIGURE;
   const options = currency
-    ? { style: "currency", currency, signDisplay: "exceptZero" }
+    ? { ...inCurrency(currency), signDisplay: "exceptZero" }
     : {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -302,7 +317,7 @@ export const currencyLabel = ({ language, currency }) =>
 
 /** The currency's own symbol, as Intl writes it. */
 const currencySymbol = (language, currency) =>
-  new Intl.NumberFormat(language, { style: "currency", currency })
+  new Intl.NumberFormat(language, inCurrency(currency))
     .formatToParts(0)
     .find((part) => part.type === "currency")?.value ?? "";
 

@@ -22,11 +22,17 @@ export const TAG = "hea-plans-card";
 const EDITOR_TAG = `${TAG}-editor`;
 const COMPARE_PLANS = "home_energy_advisor/compare_plans";
 
-/** What each total is made of, in the order it is built. */
+/**
+ * What each total is made of, in the order it is built.
+ *
+ * Each as the money it is: the export credit is income, and the label says so,
+ * so it reads as a figure coming in rather than a cost below zero. The total
+ * still takes it off (HEA-277, discussion 58).
+ */
 const PARTS = [
-  { key: "energy", label: "plans_energy", sign: 1 },
-  { key: "export", label: "plans_export", figure: "export_credit", sign: -1 },
-  { key: "daily", label: "plans_daily", figure: "daily_charges", sign: 1 },
+  { key: "energy", label: "plans_energy" },
+  { key: "export", label: "plans_export", figure: "export_credit" },
+  { key: "daily", label: "plans_daily", figure: "daily_charges" },
 ];
 
 /** A plan with no figure: bands that leave hours unpriced, or no market price. */
@@ -219,11 +225,11 @@ class HeaPlansCard extends HeaCard {
     )}</span>`;
   }
 
-  _part(plan, { key, label, figure = key, sign }, locale) {
+  _part(plan, { key, label, figure = key }, locale) {
     return `
       <span class="part">${this._labels[label]}
         <span class="value" data-figure="${key}:${plan.id}">${formatMoney(
-          sign * plan[figure],
+          plan[figure],
           locale,
         )}</span>
       </span>`;

@@ -113,6 +113,25 @@ describe("registration", () => {
 });
 
 describe("the bars", () => {
+  it("says what the solid part and the whole bar each are", async () => {
+    // Given - a household asked what the bars were "based upon": all from the
+    // grid, or the export forgone (HEA-277, discussion 58)
+    const card = mount(aHass({ devices: [PUMP], response: THREE }));
+    await ready(card);
+
+    // When
+    const hint = [...card.shadowRoot.querySelectorAll(".hint")].map(
+      (line) => line.textContent,
+    );
+
+    // Then
+    expect(hint).toContain(
+      "The solid part of each bar is what the device cost. The whole bar is what " +
+        "it would have cost had all its energy come from the grid, at your grid " +
+        "price at the time.",
+    );
+  });
+
   it("fills to what was paid and outlines to what it would have cost", async () => {
     // Given - the outline carries the counterfactual and the fill carries the
     // spend, so the lighter space between them is the saving

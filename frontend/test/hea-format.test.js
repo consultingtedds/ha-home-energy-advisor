@@ -10,11 +10,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   changeTone,
+  currencyLabel,
   escapeText,
   formatBucketSpan,
   formatClockTime,
   formatEnergy,
   formatMoney,
+  formatMoneyChange,
   formatMoneyRange,
   formatPeriod,
   formatRate,
@@ -171,6 +173,17 @@ describe("formatMoney", () => {
     expect(formatted).toMatch(/€/);
   });
 
+  it("writes the symbol a household writes, not the one that names the country", () => {
+    // Given - English, where Intl's default symbol for a dollar that is not the
+    // US one carries the country: "A$", "CA$", "NZ$" (HEA-277, discussion 58)
+    const english = (currency) => ({ language: "en-GB", currency });
+
+    // When / Then - the symbol on the household's own bills
+    expect(formatMoney(14.34, english("AUD"))).toBe("$14.34");
+    expect(formatMoney(14.34, english("GBP"))).toBe("£14.34");
+    expect(formatMoney(14.34, english("EUR"))).toBe("€14.34");
+  });
+
   it("keeps the minus sign on a loss", () => {
     // Given - battery arbitrage can make Cost Savings negative (HEA-39), and
     // hiding that would be a lie in the user's favour
@@ -213,6 +226,18 @@ describe("formatMoney", () => {
     // Given / When / Then - the first render happens before any fetch resolves
     expect(formatMoney(undefined, EURO)).toBe("-");
     expect(formatMoney(Number.NaN, EURO)).toBe("-");
+  });
+});
+
+describe("the symbol beside a change and on an axis", () => {
+  it("is the same one every other figure on the card writes", () => {
+    // Given - a household in Australian dollars, reading English (HEA-277)
+    const australian = { language: "en-GB", currency: "AUD" };
+
+    // When / Then - "+$1.20" beside "$14.34", and "$" heading the axis, never
+    // "A$" in one place and "$" in another
+    expect(formatMoneyChange(1.2, australian)).toBe("+$1.20");
+    expect(currencyLabel(australian)).toBe("$");
   });
 });
 

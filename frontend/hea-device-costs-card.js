@@ -375,6 +375,20 @@ class HeaDeviceCostsCard extends HeaChartCard {
   }
 
   /**
+   * What the solid part and the whole bar each are, under the bars.
+   *
+   * Every other card says what it measures; this one left a household asking
+   * whether the bars were what it would cost all from the grid, or the export
+   * forgone (HEA-277, discussion 58). Only beside bars: an empty period has
+   * nothing for it to describe.
+   */
+  _caption(locale) {
+    const caption = super._caption(locale);
+    if (this._isEmpty()) return caption;
+    return `${caption}<div class="hint">${this._labels.device_costs_note}</div>`;
+  }
+
+  /**
    * Dearest first, by what was actually paid, and by name where two tie.
    *
    * Ranked by actual cost rather than by bar height, so it answers the same

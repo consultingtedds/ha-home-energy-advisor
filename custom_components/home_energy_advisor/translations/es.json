@@ -693,6 +693,7 @@
     "card_forgone_column": "Podría haber ganado",
     "card_forgone_note": "Podría haber ganado es lo que la generación que usó cada dispositivo podría haber ganado si la hubieras exportado, a tu tarifa de exportación de ese momento. Es dinero que no recibiste, no dinero que pagaste, y no forma parte de Pagado.",
     "card_forgone_hidden_note": "Podría haber ganado, lo que la generación que usó cada dispositivo podría haber ganado si la hubieras exportado, se muestra en una pantalla más ancha.",
+    "card_device_costs_note": "La parte sólida de cada barra es lo que costó el dispositivo. La barra entera es lo que habría costado si toda su energía hubiera venido de la red, al precio de la red en cada momento.",
     "card_compared": "{change} frente a {before}",
     "card_compared_period": "{period} frente a {compared}",
     "card_saved_share": "Se ahorró el {percent} de lo que habrías pagado.",
@@ -727,14 +728,14 @@
     "card_tab_summary": "Resumen",
     "card_tab_devices": "Dispositivos",
     "card_tab_tariffs": "Tarifas",
-    "card_plans_your_plan": "Tu tarifa",
+    "card_plans_your_plan": "Tarifa actual",
     "card_plans_cheapest": "La más barata",
-    "card_plans_energy": "Energía",
-    "card_plans_export": "Exportación",
+    "card_plans_energy": "Coste de la importación",
+    "card_plans_export": "Ingresos por exportación",
     "card_plans_daily": "Cargos diarios",
-    "card_plans_less": "{amount} menos que tu tarifa",
-    "card_plans_more": "{amount} más que tu tarifa",
-    "card_plans_same": "Lo mismo que tu tarifa",
+    "card_plans_less": "{amount} menos que tu tarifa actual",
+    "card_plans_more": "{amount} más que tu tarifa actual",
+    "card_plans_same": "Lo mismo que tu tarifa actual",
     "card_plans_incomplete": "No todas las horas tienen precio, así que no se puede comparar. Edita la tarifa para completar sus franjas.",
     "card_plans_note": "Para toda la casa: cada tarifa calculada con la electricidad que realmente importaste y exportaste, como si tu batería hubiera funcionado igual. Los precios se comparan tal como los introdujiste.",
     "card_plans_no_readings": "Tus contadores de red no registraron nada en este periodo, así que solo se muestran los cargos diarios.",
@@ -787,6 +788,7 @@
     "card_editor_range_column": "Su propia columna",
     "card_still_accruing": "El último intervalo aún se está contando, así que su barra crecerá. Las cifras están completas unos veinte minutos por detrás del reloj, que es el tiempo que se da a los contadores para informar.",
     "plan_start_nothing": "Nada: introducir sus franjas una a una",
-    "plan_price_name": "Precio {number}"
+    "plan_price_name": "Precio {number}",
+    "plan_per_day": "{currency}/día"
   }
 }

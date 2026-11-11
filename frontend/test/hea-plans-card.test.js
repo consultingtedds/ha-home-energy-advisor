@@ -142,10 +142,27 @@ describe("the comparison", () => {
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - export credited against the energy, and the daily charges added
+    // Then - the export credit is income, so it reads as the money it is rather
+    // than as a negative cost (HEA-277); the total still takes it off
     expect(figure(card, "energy:night")).toBe("€24.06");
-    expect(figure(card, "export:night")).toBe("-€3.28");
+    expect(figure(card, "export:night")).toBe("€3.28");
     expect(figure(card, "daily:night")).toBe("€9.00");
+  });
+
+  it("names each part for the money it is, against the plan the household is on", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then - "Energy" and "Export" were read as what everything would have
+    // cost, or earned, had it all gone through the grid (HEA-277)
+    const night = card.shadowRoot.querySelector('[data-plan="night"]');
+    expect(night.textContent).toContain("Import cost");
+    expect(night.textContent).toContain("Export income");
+    const flat = card.shadowRoot.querySelector('[data-plan="flat"]');
+    expect(flat.textContent).toContain("Current plan");
+    expect(figure(card, "difference:night")).toBe("€11.04 less than your current plan");
+    expect(figure(card, "difference:peaky")).toBe("€5.16 more than your current plan");
   });
 
   it("says what the comparison assumes", async () => {
