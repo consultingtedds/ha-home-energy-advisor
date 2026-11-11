@@ -102,3 +102,25 @@ mean before that.**
   a plan from an Energy Manager tariff file (HEA-266).
 - Revisit if: retailers publish prices finer than 5 minutes, or the recorder's
   short-term statistics change resolution.
+
+## Update - 2026-11-11: every plan is compared from when all of them can be priced
+
+Decision 3 priced an entity plan from its first price, and only that plan. Over a
+long period that compared plans over different days: one household's year
+charged a banded plan about 315 days of daily charges, an entity plan whose
+history began in April about 218, and one whose history began two days earlier
+about 2, with energy over the same unequal spans. The cheapest plan was then the
+one with the least history, which is the opposite of the comparison's purpose
+(HEA-294, discussion 58).
+
+Now the comparison finds one start for every plan: the latest of the grid
+meters' first recorded hour in the period and each entity plan's first price.
+Every plan's energy and daily charges are priced from that hour to the period's
+end, and the card says from when once, naming the plan whose prices set it, or
+the grid meters. A plan with no price at all in the period stays listed without
+a total and does not shorten the others.
+
+Rejected: each plan over its own days with the dates shown in its row, which
+leaves the totals not comparable and "cheapest" wrong; and dropping a plan whose
+prices do not reach back to the period's start, which hides a plan the
+household entered to compare. The maintainer chose one common span.

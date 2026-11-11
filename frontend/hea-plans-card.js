@@ -199,6 +199,7 @@ class HeaPlansCard extends HeaCard {
     const layout = { current, cheapest, parts, prices: wide };
     return `
       ${this._flows(locale)}
+      ${this._span(locale)}
       <div class="scroll">
         <table class="plans">
           <thead>${this._head(layout)}</thead>
@@ -285,6 +286,23 @@ class HeaPlansCard extends HeaCard {
   }
 
   /**
+   * From when every plan is compared, where that is later than the period: one
+   * span for all of them, so the totals are over the same days (HEA-294). Says
+   * what set it - a plan's prices or the grid meters' readings - so a year that
+   * became two days can be traced to the plan that made it so.
+   */
+  _span(locale) {
+    const from = this._compared.compared_from;
+    if (!from) return "";
+    const date = formatDateTime(new Date(from), locale);
+    const plan = this._compared.compared_from_plan;
+    const wording = plan
+      ? fill(this._labels.plans_compared_from_plan, { date, plan: escape(plan) })
+      : fill(this._labels.plans_compared_from_meters, { date });
+    return `<div class="flows span">${wording}</div>`;
+  }
+
+  /**
    * One plan: a row of its figures, and any notes on it beneath, together in a
    * group of their own so a note is never read as the next plan's.
    */
@@ -339,20 +357,18 @@ class HeaPlansCard extends HeaCard {
       .join("");
   }
 
-  /** What a market-priced plan's figures rest on, where there is anything to say. */
+  /**
+   * What a market-priced plan's figures rest on, where there is anything to say.
+   *
+   * Where its prices start is said once for the whole comparison (`_span`),
+   * since every plan is priced from the same hour (HEA-294).
+   */
   _marketNotes(plan, locale) {
-    const notes = [];
-    if (plan.priced_from) {
-      const date = formatDateTime(new Date(plan.priced_from), locale);
-      notes.push(fill(this._labels.plans_priced_from, { date }));
-    }
-    if (plan.carried_hours > 0) {
-      const hours = new Intl.NumberFormat(locale.language, {
-        maximumFractionDigits: 1,
-      }).format(plan.carried_hours);
-      notes.push(fill(this._labels.plans_carried, { hours }));
-    }
-    return notes.map((note) => `<div class="difference">${note}</div>`).join("");
+    if ((plan.carried_hours ?? 0) <= 0) return "";
+    const hours = new Intl.NumberFormat(locale.language, {
+      maximumFractionDigits: 1,
+    }).format(plan.carried_hours);
+    return `<div class="difference">${fill(this._labels.plans_carried, { hours })}</div>`;
   }
 
   /**

@@ -693,7 +693,7 @@ async def test_a_plan_importing_at_the_market_is_priced_at_each_hours_price(
     assert market["export_credit"] == pytest.approx(2 * 0.05)
     assert market["daily_charges"] == pytest.approx(1.0)
     assert market["carried_hours"] == 0
-    assert market["priced_from"] is None
+    assert result["compared_from"] is None
     assert result["five_minute_from"] is None
 
 
@@ -759,26 +759,79 @@ async def test_an_hour_the_market_price_is_missing_for_carries_the_last_price(
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
-async def test_a_market_plan_is_priced_from_the_first_price_recorded(
+async def test_every_plan_is_compared_from_when_all_of_them_can_be_priced(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
-    # Given - the price entity's history starts at 10:00, after the 07:00 import
+    # Given - the market plan's price history starts at 10:00, after the 07:00
+    # import, beside a banded plan that could price the whole day
     _record_prices(hass, "sensor.market_import", dict.fromkeys(range(10, 24), 0.2))
     await async_wait_recording_done(hass)
     await _set_up(
-        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _MARKET))
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _MARKET),
+        ),
     )
 
     # When
     result = await _compare(hass_ws_client, hass)
 
-    # Then - priced from 10:00, energy and daily charges alike, and said
-    market = _by_name(result)["Wholesale"]
-    assert dt_util.parse_datetime(market["priced_from"]) == DAY_START + timedelta(
+    # Then - both from 10:00, energy and daily charges alike, so the totals are
+    # over the same hours; the span is said, and which plan set it (HEA-294)
+    assert dt_util.parse_datetime(result["compared_from"]) == DAY_START + timedelta(
         hours=10
     )
+    assert result["compared_from_plan"] == "Wholesale"
+    assert result["imported_kwh"] == pytest.approx(1.5)
+    assert result["days"] == pytest.approx(14 / 24, abs=1e-4)
+    plans = _by_name(result)
+    flat = plans["Flat rate"]
+    assert flat["energy"] == pytest.approx(1.5 * 0.234)
+    assert flat["export_credit"] == pytest.approx(2.0 * 0.05)
+    assert flat["daily_charges"] == pytest.approx(0.45 * 14 / 24, abs=1e-4)
+    market = plans["Wholesale"]
     assert market["energy"] == pytest.approx(0.5 * 0.20 + 1 * 0.20)
     assert market["daily_charges"] == pytest.approx(1.0 * 14 / 24, abs=1e-4)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_period_before_the_meters_were_recorded_is_compared_from_them(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - two days asked for, the grid meters recorded only the second
+    _calendar(hass, [])
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass, start=DAY_START - timedelta(days=1))
+
+    # Then - one day's charge, not two against one day's energy; the meters, not
+    # a plan, set the start
+    assert dt_util.parse_datetime(result["compared_from"]) == DAY_START
+    assert result["compared_from_plan"] is None
+    assert _by_name(result)["Flat rate"]["daily_charges"] == pytest.approx(0.45)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_comparison_over_the_whole_period_says_no_start_of_its_own(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - every plan can price the whole day the meters recorded
+    _calendar(hass, [])
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - nothing to say: the card shows the period it asked for
+    assert result["compared_from"] is None
+    assert result["compared_from_plan"] is None
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")

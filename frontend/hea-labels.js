@@ -165,7 +165,10 @@ export const DEFAULTS = Object.freeze({
     "No market price was recorded in this period, so it cannot be compared.",
   plans_export_unpaid: "{amount} of export not paid: capped at each month's energy cost.",
   plans_export_carried: "{amount} of export carried forward and not yet used.",
-  plans_priced_from: "Priced from {date}, when its market price was first recorded.",
+  plans_compared_from_plan:
+    "Compared from {date}, when {plan}'s prices start, so every plan covers the same days.",
+  plans_compared_from_meters:
+    "Compared from {date}, when your grid meters' readings start, so every plan covers the same days.",
   plans_carried: "{hours} h priced at the last market price, where none was recorded.",
   plans_market_hourly: "Market prices are applied hour by hour, at each hour's average.",
   plans_market_five_minutes: "Market prices are applied five minutes at a time.",

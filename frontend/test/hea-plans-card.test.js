@@ -407,23 +407,56 @@ describe("plans priced from the market (HEA-260)", () => {
     export_credit: 4.1,
     daily_charges: 33,
     total: 50.4,
-    priced_from: null,
     carried_hours: 0,
   };
   const JUNE = new Date(2026, 5, 3, 14);
   const locale = (card) => localeFrom(card._hass);
 
-  it("says when its market prices started, if after the period did", async () => {
-    // Given - the price entity's history starts partway through
-    const late = { ...SPOT, priced_from: JUNE.toISOString() };
-    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, late] }));
+  it("says from when every plan is compared, and which plan's prices set it", async () => {
+    // Given - the market plan's prices start partway through, so every plan is
+    // compared from then (HEA-294)
+    const card = mountCard(
+      TAG,
+      aHome({
+        ...COMPARED,
+        compared_from: JUNE.toISOString(),
+        compared_from_plan: "Wholesale",
+        plans: [FLAT, SPOT],
+      }),
+    );
+    await settled(expect, card);
+
+    // Then - once, above the table, not under the one plan
+    const date = formatDateTime(JUNE, locale(card));
+    expect(card.shadowRoot.querySelector(".span").textContent).toBe(
+      `Compared from ${date}, when Wholesale's prices start, so every plan covers the same days.`,
+    );
+    const row = card.shadowRoot.querySelector('[data-plan="spot"]');
+    expect(row.textContent).not.toContain("Compared from");
+  });
+
+  it("says when it is the grid meters' readings that set the start", async () => {
+    // Given
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, compared_from: JUNE.toISOString(), compared_from_plan: null }),
+    );
     await settled(expect, card);
 
     // Then
-    const row = card.shadowRoot.querySelector('[data-plan="spot"]');
-    expect(row.textContent).toContain(
-      fill(LABELS.plans_priced_from, { date: formatDateTime(JUNE, locale(card)) }),
+    const date = formatDateTime(JUNE, locale(card));
+    expect(card.shadowRoot.querySelector(".span").textContent).toBe(
+      `Compared from ${date}, when your grid meters' readings start, so every plan covers the same days.`,
     );
+  });
+
+  it("says nothing of a start when the whole period is compared", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome({ ...COMPARED, compared_from: null }));
+    await settled(expect, card);
+
+    // Then
+    expect(card.shadowRoot.querySelector(".span")).toBeNull();
   });
 
   it("says how long was priced at a price carried over a gap", async () => {
@@ -437,7 +470,7 @@ describe("plans priced from the market (HEA-260)", () => {
     expect(row.textContent).toContain(fill(LABELS.plans_carried, { hours: "2.5" }));
   });
 
-  it("says nothing of carried prices or a start where there are none", async () => {
+  it("says nothing of carried prices where there are none", async () => {
     // Given / When
     const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, SPOT] }));
     await settled(expect, card);
@@ -445,7 +478,6 @@ describe("plans priced from the market (HEA-260)", () => {
     // Then
     const row = card.shadowRoot.querySelector('[data-plan="spot"]').textContent;
     expect(row).not.toContain(fill(LABELS.plans_carried, { hours: "0" }));
-    expect(row).not.toContain(LABELS.plans_priced_from.split("{")[0]);
   });
 
   it("says from when market prices were applied five minutes at a time", async () => {

@@ -192,10 +192,16 @@ async def async_compare_plans(
         hass, imports, exports, start, end, five_minutes=bool(markets)
     )
     prices = await _market_prices(hass, markets, start, end, recorded.five_minute_from)
+    at_market = {
+        plan_id: _at_market_prices(recorded, tariff, prices)
+        for plan_id, tariff in tariffs.items()
+    }
+    span = _common_span(start, recorded, tariffs, at_market)
+    intervals = span.of(recorded.intervals)
     # Charged up to now at most: the picker's Today runs to midnight, and a whole
     # day's charge against half a day's energy would make every total read high.
-    charged_until = max(start, min(end, dt_util.utcnow()))
-    days = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
+    charged_until = max(span.start, min(end, dt_util.utcnow()))
+    days = days_covered(dt_util.as_local(span.start), dt_util.as_local(charged_until))
     plans = []
     for plan_id, tariff in tariffs.items():
         named = {
@@ -209,19 +215,13 @@ async def async_compare_plans(
             if tariff.holidays
             else frozenset()
         )
-        market = _at_market_prices(recorded, tariff, prices)
+        market = at_market[plan_id]
         if market.unpriced:
             plans.append({**named, "no_price": True})
             continue
-        plan_days = days
-        if market.priced_from is not None:
-            plan_days = days_covered(
-                dt_util.as_local(market.priced_from),
-                dt_util.as_local(max(market.priced_from, charged_until)),
-            )
         try:
             cost = price_plan(
-                tariff.plan, market.intervals, days=plan_days, holidays=holidays
+                tariff.plan, span.of(market.intervals), days=days, holidays=holidays
             )
         except ValueError:
             # Only a plan edited outside its form can leave hours unpriced; it is
@@ -229,15 +229,55 @@ async def async_compare_plans(
             plans.append({**named, "incomplete": True})
             continue
         plans.append({**named, **_figures(cost), **_market_notes(tariff, market)})
-    intervals = recorded.intervals
     return {
         "hours": len(intervals),
         "days": float(days),
         "imported_kwh": _number(sum((i.imported_kwh for i in intervals), Decimal(0))),
         "exported_kwh": _number(sum((i.exported_kwh for i in intervals), Decimal(0))),
         "five_minute_from": _when(recorded.five_minute_from),
+        "compared_from": _when(span.start) if span.start > start else None,
+        "compared_from_plan": span.set_by,
         "plans": plans,
     }
+
+
+@dataclass(frozen=True)
+class _Span:
+    """From when every plan is compared, and which plan's prices set it, if one did."""
+
+    start: datetime
+    set_by: str | None = None
+
+    def of(self, intervals: list[IntervalOfEnergy]) -> list[IntervalOfEnergy]:
+        """The intervals that fall within the span."""
+        return [interval for interval in intervals if interval.start >= self.start]
+
+
+def _common_span(
+    start: datetime,
+    recorded: _Recorded,
+    tariffs: Mapping[str, TariffPlan],
+    at_market: Mapping[str, _AtMarket],
+) -> _Span:
+    """From when all the plans can be priced: the one span every plan is priced over.
+
+    A plan at a market price can only be priced from its price's first recorded
+    hour, and no plan from before the grid meters' first. Priced each from its
+    own start, a year's comparison charged one plan 315 days of daily charges
+    and another two, and the cheapest was whichever had the least history
+    (HEA-294, discussion 58). So the latest of those starts holds for every plan.
+
+    A plan with no price at all in the period does not shorten it for the others:
+    it is listed without a total.
+    """
+    span = _Span(start)
+    if recorded.intervals and recorded.intervals[0].start > start:
+        span = _Span(recorded.intervals[0].start)
+    for plan_id, market in at_market.items():
+        begins = market.priced_from
+        if begins is not None and not market.unpriced and begins > span.start:
+            span = _Span(begins, tariffs[plan_id].plan.name)
+    return span
 
 
 async def async_plan_diagnostics(
@@ -339,13 +379,14 @@ def _rates(tariff: TariffPlan) -> dict[str, Any]:
 
 
 def _market_notes(tariff: TariffPlan, market: _AtMarket) -> dict[str, Any]:
-    """What a market-priced plan's figures rest on, for the card to say."""
+    """What a market-priced plan's figures rest on, for the card to say.
+
+    Where its prices start is the comparison's, not the plan's: every plan is
+    priced from the same hour (`_common_span`, HEA-294).
+    """
     if not (tariff.import_entity or tariff.export_entity):
         return {}
-    return {
-        "priced_from": _when(market.priced_from),
-        "carried_hours": round(market.carried / _HOUR, 2),
-    }
+    return {"carried_hours": round(market.carried / _HOUR, 2)}
 
 
 def _when(moment: datetime | None) -> str | None:
