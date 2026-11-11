@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .plan_comparison import async_plan_diagnostics
+
 if TYPE_CHECKING:
     from typing import Any
 
@@ -32,8 +34,15 @@ if TYPE_CHECKING:
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant,  # noqa: ARG001 - platform signature; state is on the entry
+    hass: HomeAssistant,
     entry: HeaConfigEntry,
 ) -> dict[str, Any]:
-    """Return the diagnostics for a config entry."""
-    return entry.runtime_data.diagnostics()
+    """Return the diagnostics for a config entry.
+
+    The tariff plans are read here rather than by the coordinator, because when
+    a market price's statistics begin is a recorder query (HEA-276).
+    """
+    return {
+        **entry.runtime_data.diagnostics(),
+        "plans": await async_plan_diagnostics(hass, entry),
+    }

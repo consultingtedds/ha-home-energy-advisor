@@ -36,7 +36,12 @@ from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
-from .const import DOMAIN
+from .const import (
+    CONF_PLAN_EXPORT_PRICE_ENTITY,
+    CONF_PLAN_IMPORT_PRICE_ENTITY,
+    DOMAIN,
+    SUBENTRY_TYPE_PLAN,
+)
 from .engine.plan_pricing import IntervalOfEnergy, PlanCost, days_covered, price_plan
 from .house_inputs import grid_meters_of
 from .schemas import vol
@@ -60,6 +65,8 @@ _FIVE_MINUTES = timedelta(minutes=5)
 # How far before the period a market price is looked for, so a gap at its very
 # start carries the price before it rather than leaving the plan unpriced.
 _LOOKBACK = timedelta(days=1)
+# Before anything the recorder can hold, for asking when a statistic begins.
+_EVER = datetime(2000, 1, 1, tzinfo=UTC)
 _ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
 # The two resolutions the recorder keeps that a comparison reads.
 _Period = Literal["5minute", "hour"]
@@ -226,6 +233,75 @@ async def async_compare_plans(
         "five_minute_from": _when(recorded.five_minute_from),
         "plans": plans,
     }
+
+
+async def async_plan_diagnostics(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> dict[str, Any]:
+    """Every plan as entered, and what its market prices are, for the download.
+
+    A comparison could not be checked without them (HEA-276, discussion 58).
+    The settings are carried exactly as the household entered them rather than
+    as read: with the recorded statistics they reproduce every figure the card
+    shows, and a plan that cannot be read at all still appears. Its figures are
+    left out, because they depend on the period the card asks about.
+
+    Each market price entity says what it is and the first hour its mean was
+    recorded at - the one statistic a plan is priced from - so a feed the
+    recorder keeps nothing for shows up at once.
+    """
+    entered = {
+        subentry_id: subentry
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.subentry_type == SUBENTRY_TYPE_PLAN
+    }
+    entities = sorted(
+        {
+            entity
+            for subentry in entered.values()
+            for key in (CONF_PLAN_IMPORT_PRICE_ENTITY, CONF_PLAN_EXPORT_PRICE_ENTITY)
+            if (entity := subentry.data.get(key))
+        }
+    )
+    first = await _first_means(hass, set(entities))
+    return {
+        "plans": [
+            {
+                "id": subentry_id,
+                "title": subentry.title,
+                "settings": dict(subentry.data),
+            }
+            for subentry_id, subentry in entered.items()
+        ],
+        "market_entities": {
+            entity: _market_entity(hass, entity, first.get(entity))
+            for entity in entities
+        },
+    }
+
+
+def _market_entity(
+    hass: HomeAssistant, entity: str, first_mean: datetime | None
+) -> dict[str, Any]:
+    """What a market price entity reads, in what, and since when it is priced."""
+    state = hass.states.get(entity)
+    attributes = state.attributes if state else {}
+    return {
+        "state": state.state if state else None,
+        "unit": attributes.get(ATTR_UNIT_OF_MEASUREMENT),
+        "state_class": attributes.get("state_class"),
+        "mean_statistics_from": _when(first_mean),
+    }
+
+
+async def _first_means(hass: HomeAssistant, entities: set[str]) -> dict[str, datetime]:
+    """The first hour each entity's mean was recorded at, where it ever was."""
+    if RECORDER_DOMAIN not in hass.config.components or not entities:
+        return {}
+    means = await get_instance(hass).async_add_executor_job(
+        _means, hass, entities, _EVER, dt_util.utcnow(), "hour"
+    )
+    return {entity: _moment(rows[0]["start"]) for entity, rows in means.items() if rows}
 
 
 def _market_notes(tariff: TariffPlan, market: _AtMarket) -> dict[str, Any]:
