@@ -126,6 +126,7 @@ class HeaPlansCard extends HeaCard {
       font-size: 0.8em;
     }
     td.total { font-weight: 500; }
+    .saves { color: var(--secondary-text-color); font-size: 0.85em; }
     tr.note td {
       padding-top: 0;
       padding-left: 14px;
@@ -196,7 +197,10 @@ class HeaPlansCard extends HeaCard {
       wide ? "" : this._labels.plans_breakdown_hidden,
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
     ].filter(Boolean);
-    const layout = { current, cheapest, parts, prices: wide };
+    // Only for a house with an installation, which is the only kind the
+    // comparison gives the figure for (HEA-293).
+    const without = wide && plans.some((plan) => "without_installation" in plan);
+    const layout = { current, cheapest, parts, prices: wide, without };
     return `
       ${this._flows(locale)}
       ${this._span(locale)}
@@ -213,17 +217,21 @@ class HeaPlansCard extends HeaCard {
    * The column heads, under a heading for each group where the breakdown is
    * shown: what the household would pay, and what it would earn.
    */
-  _head({ parts, prices }) {
+  _head({ parts, prices, without }) {
     const leading = [this._labels.plans_plan, ...(prices ? [this._labels.plans_prices] : [])];
     const cell = (label, classes = "") => `<th${classAttribute(classes)}>${label}</th>`;
+    const trailing = [
+      cell(this._labels.plans_total, "rule"),
+      ...(without ? [cell(this._labels.plans_without, "rule")] : []),
+      cell(this._labels.plans_vs_current),
+    ];
     const columns = [
       cell(this._labels.plans_plan),
       ...(prices ? [cell(this._labels.plans_prices, "prices")] : []),
       ...parts.map((part, index) =>
         cell(this._labels[part.label], this._partClasses(part, index)),
       ),
-      cell(this._labels.plans_total, "rule"),
-      cell(this._labels.plans_vs_current),
+      ...trailing,
     ].join("");
     if (!parts.length) return `<tr>${columns}</tr>`;
     const groups = GROUPS.map((group) => {
@@ -231,8 +239,28 @@ class HeaPlansCard extends HeaCard {
       const classes = group.key === "earn" ? "rule earn" : "rule";
       return `<th class="${classes}" colspan="${span}">${this._labels[group.label]}</th>`;
     }).join("");
-    return `<tr class="groups"><th colspan="${leading.length}"></th>${groups}<th colspan="2" class="rule"></th></tr>
+    return `<tr class="groups"><th colspan="${leading.length}"></th>${groups}<th colspan="${trailing.length}" class="rule"></th></tr>
       <tr>${columns}</tr>`;
+  }
+
+  /**
+   * What the plan would have cost with no solar or battery, and what the
+   * installation saved on it beneath: the figure a household weighs its panels
+   * and battery by, on every plan (HEA-293). Plain, like every figure but the
+   * comparison with the current plan.
+   */
+  _without(plan, locale) {
+    if (!("without_installation" in plan)) return `<td class="rule"></td>`;
+    const saved = plan.without_installation - plan.total;
+    const amount = formatMoney(Math.abs(saved), locale);
+    const wording =
+      saved >= 0
+        ? fill(this._labels.plans_saves, { amount })
+        : fill(this._labels.plans_costs_more, { amount });
+    return `<td class="rule" data-figure="without:${plan.id}">${formatMoney(
+      plan.without_installation,
+      locale,
+    )}<div class="saves">${wording}</div></td>`;
   }
 
   /** Where a part's group starts, a rule; what is earned, a tint. */
@@ -306,7 +334,7 @@ class HeaPlansCard extends HeaCard {
    * One plan: a row of its figures, and any notes on it beneath, together in a
    * group of their own so a note is never read as the next plan's.
    */
-  _plan(plan, { current, cheapest, parts, prices }, locale) {
+  _plan(plan, { current, cheapest, parts, prices, without }, locale) {
     const tags = [
       plan.current ? this._labels.plans_your_plan : "",
       plan === cheapest ? this._labels.plans_cheapest : "",
@@ -316,11 +344,12 @@ class HeaPlansCard extends HeaCard {
       .join("");
     const name = `<th>${escape(plan.name)}${tagLine(tags)}</th>`;
     const rates = prices ? this._prices(plan, locale) : "";
-    const columns = parts.length + 3 + (prices ? 1 : 0);
+    const leading = prices ? 2 : 1;
+    const columns = leading + parts.length + 2 + (without ? 1 : 0);
     if (unpriced(plan)) {
       const why = plan.no_price ? this._labels.plans_no_price : this._labels.plans_incomplete;
       return `<tbody data-plan="${plan.id}"><tr>${name}${rates}
-        <td class="incomplete rule" colspan="${columns - 1 - (prices ? 1 : 0)}">${why}</td></tr></tbody>`;
+        <td class="incomplete rule" colspan="${columns - leading}">${why}</td></tr></tbody>`;
     }
     const figures = parts
       .map((part, index) => this._part(plan, part, locale, this._partClasses(part, index)))
@@ -330,7 +359,7 @@ class HeaPlansCard extends HeaCard {
       .join("")
       .trim();
     return `<tbody data-plan="${plan.id}">
-      <tr>${name}${rates}${figures}${this._total(plan, locale)}${difference}</tr>
+      <tr>${name}${rates}${figures}${this._total(plan, locale)}${without ? this._without(plan, locale) : ""}${difference}</tr>
       ${notes ? `<tr class="note"><td colspan="${columns}">${notes}</td></tr>` : ""}
     </tbody>`;
   }

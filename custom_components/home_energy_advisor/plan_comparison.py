@@ -37,13 +37,15 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
 
 from .const import (
+    CONF_GENERATION_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
 from .engine.plan_pricing import IntervalOfEnergy, PlanCost, days_covered, price_plan
-from .house_inputs import grid_meters_of
+from .house_inputs import batteries_of, grid_meters_of, house_entities
 from .schemas import vol
 from .tariff_plans import TariffPlan, plans_of
 
@@ -198,6 +200,7 @@ async def async_compare_plans(
     }
     span = _common_span(start, recorded, tariffs, at_market)
     intervals = span.of(recorded.intervals)
+    used = await _recorded_use(hass, entry, recorded, start, end)
     # Charged up to now at most: the picker's Today runs to midnight, and a whole
     # day's charge against half a day's energy would make every total read high.
     charged_until = max(span.start, min(end, dt_util.utcnow()))
@@ -223,12 +226,17 @@ async def async_compare_plans(
             cost = price_plan(
                 tariff.plan, span.of(market.intervals), days=days, holidays=holidays
             )
+            without = _without_installation(
+                tariff, span.of(market.intervals), used, days=days, holidays=holidays
+            )
         except ValueError:
             # Only a plan edited outside its form can leave hours unpriced; it is
             # listed, not guessed at.
             plans.append({**named, "incomplete": True})
             continue
-        plans.append({**named, **_figures(cost), **_market_notes(tariff, market)})
+        plans.append(
+            {**named, **_figures(cost), **without, **_market_notes(tariff, market)}
+        )
     return {
         "hours": len(intervals),
         "days": float(days),
@@ -441,12 +449,7 @@ async def _recorded_flows(  # noqa: PLR0913 - the meters and period and how fine
         else {}
     )
     five_minute_from = _first_whole_hour(fine)
-
-    def kept(moment: datetime, *, is_fine: bool) -> bool:
-        if five_minute_from is None:
-            return not is_fine
-        return (moment >= five_minute_from) is is_fine
-
+    kept = _kept_from(five_minute_from)
     imported = _summed(hourly, imports, kept, is_fine=False) | _summed(
         fine, imports, kept, is_fine=True
     )
@@ -464,6 +467,135 @@ async def _recorded_flows(  # noqa: PLR0913 - the meters and period and how fine
         ],
         five_minute_from,
     )
+
+
+def _kept_from(five_minute_from: datetime | None) -> Any:  # noqa: ANN401 - a predicate
+    """Which resolution an interval is read at: hourly, then 5-minute from then."""
+
+    def kept(moment: datetime, *, is_fine: bool) -> bool:
+        if five_minute_from is None:
+            return not is_fine
+        return (moment >= five_minute_from) is is_fine
+
+    return kept
+
+
+async def _recorded_use(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    recorded: _Recorded,
+    start: datetime,
+    end: datetime,
+) -> dict[datetime, Decimal] | None:
+    """What the house used in each interval, from its own meters (HEA-293).
+
+    ``None`` for a household with no generation and no battery: what it used is
+    what it imported, so pricing it again as if it had neither says nothing.
+
+    Read at the grid flows' own resolution. A balance can read below nothing in
+    an interval whose counters tick at different moments - a charge before the
+    import that supplied it - and that is carried into the intervals after it
+    rather than dropped, so the period adds up to what the meters say.
+    """
+    signs = _use_meters(entry)
+    if signs is None or RECORDER_DOMAIN not in hass.config.components:
+        return None
+    meters = set(signs)
+    recorder = get_instance(hass)
+    hourly = await recorder.async_add_executor_job(
+        _changes, hass, meters, start, end, "hour"
+    )
+    fine = (
+        await recorder.async_add_executor_job(
+            _changes, hass, meters, start, end, "5minute"
+        )
+        if recorded.five_minute_from is not None
+        else {}
+    )
+    kept = _kept_from(recorded.five_minute_from)
+    used: dict[datetime, Decimal] = defaultdict(Decimal)
+    for sign in (1, -1):
+        group = {meter for meter, its in signs.items() if its == sign}
+        read = _summed(hourly, group, kept, is_fine=False) | _summed(
+            fine, group, kept, is_fine=True
+        )
+        for moment, kwh in read.items():
+            used[moment] += sign * kwh
+    return _carried_forward(used)
+
+
+def _use_meters(entry: ConfigEntry) -> dict[str, int] | None:
+    """The meters what the house used is read from, each with its sign.
+
+    The house's own consumption meter where it has one. Otherwise the balance
+    the accounting is built from: import and generation and discharge in, export
+    and charge out, so what is lost inside the battery is never counted as used.
+    """
+    generation = house_entities(entry.data, CONF_GENERATION_ENTITY)
+    batteries = list(batteries_of(entry).values())
+    if not generation and not batteries:
+        return None
+    house = house_entities(entry.data, CONF_HOUSE_CONSUMPTION_ENTITY)
+    if house:
+        return dict.fromkeys(house, 1)
+    grids = list(grid_meters_of(entry).values())
+    signs = {grid.imported: 1 for grid in grids}
+    signs |= {grid.exported: -1 for grid in grids if grid.exported}
+    signs |= dict.fromkeys(generation, 1)
+    signs |= {battery.discharge: 1 for battery in batteries if battery.discharge}
+    signs |= {battery.charge: -1 for battery in batteries if battery.charge}
+    return signs
+
+
+def _carried_forward(used: Mapping[datetime, Decimal]) -> dict[datetime, Decimal]:
+    """Each interval's use, an interval below nothing taken off those after it."""
+    owed = Decimal(0)
+    carried: dict[datetime, Decimal] = {}
+    for moment in sorted(used):
+        kwh = used[moment] - owed
+        owed = max(Decimal(0), -kwh)
+        carried[dt_util.as_local(moment)] = max(Decimal(0), kwh)
+    return carried
+
+
+def _without_installation(
+    tariff: TariffPlan,
+    intervals: list[IntervalOfEnergy],
+    used: Mapping[datetime, Decimal] | None,
+    *,
+    days: Decimal,
+    holidays: frozenset[date],
+) -> dict[str, float]:
+    """What the plan would have cost with no solar or battery, where that differs.
+
+    Everything the house used, bought at the plan's prices, with its daily
+    charges: beside the plan's own total it reads as what the installation saved
+    on that plan (HEA-293, discussion 58). Nothing for a household with neither.
+    """
+    if used is None:
+        return {}
+    cost = price_plan(
+        tariff.plan, _as_if_without(intervals, used), days=days, holidays=holidays
+    )
+    return {"without_installation": _number(cost.total)}
+
+
+def _as_if_without(
+    intervals: list[IntervalOfEnergy], used: Mapping[datetime, Decimal]
+) -> list[IntervalOfEnergy]:
+    """The plan's intervals as a house with no solar or battery would have had them.
+
+    Everything used bought from the grid, nothing exported; a market plan keeps
+    each interval's price.
+    """
+    return [
+        replace(
+            interval,
+            imported_kwh=used.get(interval.start, Decimal(0)),
+            exported_kwh=Decimal(0),
+        )
+        for interval in intervals
+    ]
 
 
 def _changes(

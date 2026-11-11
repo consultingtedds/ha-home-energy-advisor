@@ -38,10 +38,14 @@ from custom_components.home_energy_advisor.const import (
     CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
+    CONF_BATTERY_CHARGE_ENTITY,
+    CONF_BATTERY_DISCHARGE_ENTITY,
     CONF_CURRENCY,
     CONF_FIXED_PRICE,
+    CONF_GENERATION_ENTITY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_CAP,
@@ -51,6 +55,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PRICES,
     DOMAIN,
+    SUBENTRY_TYPE_BATTERY,
     SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
 )
@@ -903,3 +908,133 @@ async def test_banded_plans_alone_are_priced_by_the_hour(
     assert result["five_minute_from"] is None
     assert result["imported_kwh"] == pytest.approx(2.5)
     assert "carried_hours" not in _by_name(result)["Flat rate"]
+
+
+# Each plan priced as if the household had no solar or battery (HEA-293)
+
+
+def _home_with(
+    data: dict[str, Any], *subentries: tuple[str, dict[str, Any]]
+) -> MockConfigEntry:
+    """A house whose own inputs are these, beside its grid, batteries and plans."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        version=7,
+        data={CONF_CURRENCY: "EUR", **data},
+        subentries_data=[
+            ConfigSubentryData(
+                subentry_type=kind, title=sub[CONF_NAME], data=sub, unique_id=None
+            )
+            for kind, sub in subentries
+        ],
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_plan_is_priced_on_everything_the_house_used_without_solar(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - 3 kWh generated at noon, beside the day's imports and the 2 kWh
+    # exported then, and no house meter: what the house used is import plus
+    # generation less export, hour by hour - 1, 1.5 and 1 kWh
+    _record(hass, "sensor.generation", {12: 3.0})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _home_with(
+            {CONF_GENERATION_ENTITY: ["sensor.generation"]},
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+        ),
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - all 3.5 kWh bought at the plan's price, nothing exported, and the
+    # day's charge: what the plan would have cost with no solar or battery
+    assert flat["without_installation"] == pytest.approx(3.5 * 0.234 + 0.45)
+    assert flat["total"] == pytest.approx(0.935)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_house_meter_says_what_the_house_used_where_there_is_one(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the same generation, and a house meter that says 4 kWh
+    _record(hass, "sensor.generation", {12: 3.0})
+    _record(hass, "sensor.house_consumption", {7: 1.0, 12: 2.0, 20: 1.0})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _home_with(
+            {
+                CONF_GENERATION_ENTITY: ["sensor.generation"],
+                CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+            },
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+        ),
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - the meter's 4 kWh, not the balance's 3.5
+    assert flat["without_installation"] == pytest.approx(4.0 * 0.234 + 0.45)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_battery_s_charge_is_not_counted_as_used_until_it_is_discharged(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - no export meter and no generation; a battery charging 1 kWh at
+    # noon and giving back 0.8 at 20:00. At noon the house used less than
+    # nothing by the balance (0.5 in, 1 into the battery), which is carried
+    # into the evening rather than dropped
+    _record(hass, "sensor.battery_charge", {12: 1.0})
+    _record(hass, "sensor.battery_discharge", {20: 0.8})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    grid = {key: _GRID[key] for key in _GRID if key != CONF_GRID_EXPORT_ENTITY}
+    battery = {
+        CONF_NAME: "Battery",
+        CONF_BATTERY_CHARGE_ENTITY: "sensor.battery_charge",
+        CONF_BATTERY_DISCHARGE_ENTITY: "sensor.battery_discharge",
+    }
+    await _set_up(
+        hass,
+        _home_with(
+            {},
+            (SUBENTRY_TYPE_GRID, grid),
+            (SUBENTRY_TYPE_BATTERY, battery),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+        ),
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - 1 + 0 + (1.8 - 0.5) = 2.3 kWh: the 0.2 kWh lost in the battery is
+    # not something a house without one would have bought
+    assert flat["without_installation"] == pytest.approx(2.3 * 0.234 + 0.45)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_house_with_no_solar_or_battery_has_nothing_to_compare_it_with(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - grid meters only
+    _calendar(hass, [])
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - the figure would equal its import cost, a saving of nothing, so it
+    # is not given at all
+    assert "without_installation" not in flat

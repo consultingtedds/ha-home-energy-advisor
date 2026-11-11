@@ -273,6 +273,74 @@ describe("each plan's own prices", () => {
   });
 });
 
+describe("each plan without solar or battery", () => {
+  // The same plans, as the comparison gives them for a house with an
+  // installation: what each would have cost buying everything it used.
+  const WITH_SOLAR = {
+    ...COMPARED,
+    plans: [
+      { ...FLAT, without_installation: 70.15 },
+      { ...NIGHT, without_installation: 61.4 },
+      { ...PEAKY, without_installation: 79.2 },
+    ],
+  };
+
+  it("adds a column beside Total, with what the installation saved on that plan", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome(WITH_SOLAR));
+    await settled(expect, card);
+
+    // Then - the figure a household weighs its panels and battery by, on every
+    // plan (HEA-293, discussion 58)
+    expect(heads(card)).toEqual([
+      "Plan",
+      "Prices",
+      "Import cost",
+      "Daily charges",
+      "Export income",
+      "Total",
+      "Without solar or battery",
+      "vs current plan",
+    ]);
+    const night = card.shadowRoot.querySelector('[data-figure="without:night"]');
+    expect(night.firstChild.textContent).toBe("€61.40");
+    expect(night.querySelector(".saves").textContent).toBe("saves €31.62");
+  });
+
+  it("says so where the installation cost more than it saved on a plan", async () => {
+    // Given - a battery charged dear and discharged cheap can cost money
+    const dearer = { ...COMPARED, plans: [{ ...FLAT, without_installation: 38.32 }] };
+
+    // When
+    const card = mountCard(TAG, aHome(dearer));
+    await settled(expect, card);
+
+    // Then - never a saving below nothing
+    const flat = card.shadowRoot.querySelector('[data-figure="without:flat"]');
+    expect(flat.querySelector(".saves").textContent).toBe("€2.50 more");
+  });
+
+  it("has no such column for a house with neither", async () => {
+    // Given / When - the comparison gives no figure, as for a grid-only house
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then
+    expect(heads(card)).not.toContain("Without solar or battery");
+  });
+
+  it("leaves it out on a phone, with the breakdown", async () => {
+    // Given / When
+    onScreen(true);
+    const card = mountCard(TAG, aHome(WITH_SOLAR));
+    await settled(expect, card);
+
+    // Then
+    expect(heads(card)).toEqual(["Plan", "Total", "vs current plan"]);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("the period's energy", () => {
   it("says once what the meters recorded, since it is the same for every plan", async () => {
     // Given / When
