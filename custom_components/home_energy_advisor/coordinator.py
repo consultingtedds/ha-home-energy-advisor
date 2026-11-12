@@ -114,8 +114,19 @@ _SOURCE_STALE_GRACE = timedelta(minutes=30)
 # synthetic over-read gives 0.01 % at 1 %, 0.17 % at 10 % and 0.61 % at 25 %. One
 # percent is therefore far outside anything reporting latency produces, and needs
 # roughly a 30-40 % over-read to reach - egregious, which is the bar a Repair
-# nobody can act on has to clear (HEA-69, HEA-82).
-_UNRECONCILED_SHARE_LIMIT = Decimal("0.01")
+# nobody can act on has to clear (HEA-69, HEA-82). It is the floor: device
+# meters each read a percent or two off with nothing counted twice, and the more
+# of the house they measure the further that lifts the total, so the limit grows
+# with the tracked share (HEA-297).
+_UNRECONCILED_SHARE_FLOOR = Decimal("0.01")
+_UNRECONCILED_SHARE_PER_TRACKED = Decimal("0.03")
+
+
+def unreconciled_limit(tracked_share: Decimal) -> Decimal:
+    """The unreconciled share past which meter accuracy no longer explains it."""
+    allowed = _UNRECONCILED_SHARE_PER_TRACKED * tracked_share
+    return max(_UNRECONCILED_SHARE_FLOOR, allowed)
+
 
 # Where the scale-change Repair sends a household for the full instructions.
 # The Repair itself stays short: the fix is a template sensor, and a YAML
@@ -1205,13 +1216,14 @@ class HeaCoordinator(DataUpdateCoordinator[Totals]):
         total stops growing while good energy keeps accumulating beneath it.
         """
         share = self._accountant.unreconciled_share()
-        egregious = share >= _UNRECONCILED_SHARE_LIMIT
+        tracked = self._accountant.tracked_share()
+        egregious = share >= unreconciled_limit(tracked)
         if egregious and not self._unreconciled_raised:
             issues.async_raise(
                 self.hass,
                 issues.ISSUE_UNRECONCILED_ENERGY,
                 issues.ISSUE_UNRECONCILED_ENERGY,
-                {"share": f"{share:.1%}"},
+                {"share": f"{share:.1%}", "tracked": f"{tracked:.1%}"},
             )
             self._unreconciled_raised = True
         elif not egregious and self._unreconciled_raised:

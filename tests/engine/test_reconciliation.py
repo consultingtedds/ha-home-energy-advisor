@@ -245,6 +245,22 @@ def test_an_accountant_that_has_published_nothing_reports_no_share() -> None:
     assert a_home().unreconciled_share() == Decimal(0)
 
 
+def test_the_tracked_share_is_how_much_of_the_house_the_devices_account_for() -> None:
+    # Given / When - a house that used 0.6 kWh, 0.4 of it by the tracked device
+    acc = a_home()
+    overdraw_then_repay(acc)
+
+    # Then - two thirds: how much of the house its device meters measure, which
+    # is how far their own accuracy can lift the total above the house meter
+    # with nothing counted twice (HEA-297)
+    assert acc.tracked_share() == Decimal("0.4") / Decimal("0.6")
+
+
+def test_an_accountant_that_has_published_nothing_tracks_no_share() -> None:
+    # Given / When / Then
+    assert a_home().tracked_share() == Decimal(0)
+
+
 CIRCUIT = "sensor.kitchen_circuit_energy"
 APPLIANCE = "sensor.coarse_step_aircon_energy"
 

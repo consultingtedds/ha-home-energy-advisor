@@ -37,6 +37,7 @@ from custom_components.home_energy_advisor.const import (
     SERVICE_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
 )
+from custom_components.home_energy_advisor.coordinator import unreconciled_limit
 from custom_components.home_energy_advisor.diagnostics import (
     async_get_config_entry_diagnostics,
 )
@@ -877,8 +878,14 @@ async def test_totals_that_never_reconcile_raise_a_repair(
         await hass.async_block_till_done()
     await _tick(hass, freezer, start + timedelta(minutes=220))
 
-    # Then - the household is told their totals no longer add up to their meter
+    # Then - the household is told their totals no longer add up to their meter,
+    # and how much of the house their device meters cover, so a gap a meter's
+    # accuracy could explain can be told from a double count (HEA-297)
     assert _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
+    raised = ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_UNRECONCILED_ENERGY)
+    assert raised is not None
+    assert raised.translation_placeholders is not None
+    assert raised.translation_placeholders["tracked"] == "100.0%"
     assert entry.state is ConfigEntryState.LOADED
 
     # When - the sensor selection is fixed and the household rebases their figures
@@ -896,6 +903,26 @@ async def test_totals_that_never_reconcile_raise_a_repair(
 
     # Then - the Repair clears with the figures it was raised on
     assert not _has_issue(hass, ISSUE_UNRECONCILED_ENERGY)
+
+
+@pytest.mark.parametrize(
+    ("tracked", "limit"),
+    [
+        ("0", "0.01"),
+        ("0.30", "0.01"),
+        ("0.50", "0.015"),
+        ("0.92", "0.0276"),
+        ("1", "0.03"),
+    ],
+)
+def test_the_unreconciled_limit_allows_for_the_device_meters_own_accuracy(
+    tracked: str, limit: str
+) -> None:
+    # Given / When / Then - a device meter can read a percent or two high with
+    # nothing counted twice, and the more of the house the devices measure, the
+    # further that lifts the total: so the Repair waits for more than meter
+    # accuracy could explain, and never less than 1% (HEA-297, discussion 58)
+    assert unreconciled_limit(Decimal(tracked)) == Decimal(limit)
 
 
 async def test_a_source_claiming_more_than_the_house_raises_a_named_repair(

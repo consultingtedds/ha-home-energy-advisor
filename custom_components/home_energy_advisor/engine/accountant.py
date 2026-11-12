@@ -2409,6 +2409,20 @@ class Accountant:
             return Decimal(0)
         return self._debts.forgiven_kwh() / published
 
+    def tracked_share(self) -> Decimal:
+        """How much of the house's energy the tracked devices account for.
+
+        Each device meter carries its own error, so the more of the house they
+        measure, the further their errors can lift the total above the house
+        meter with nothing counted twice. A threshold on ``unreconciled_share``
+        is scaled by this (HEA-297).
+        """
+        published = self._house.energy_kwh
+        if published <= 0:
+            return Decimal(0)
+        tracked = _sum(run.snapshot().energy_kwh for run in self._running.values())
+        return tracked / published
+
     def implausible_devices(self) -> frozenset[str]:
         """Devices whose source is claiming more energy than the whole house.
 
