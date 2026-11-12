@@ -751,8 +751,10 @@ Carried forward rather than closed:
   export, can follow a market price entity (Amber, Localvolts, Flow Power).
   Priced five minutes at a time where the recorder keeps 5-minute statistics,
   hourly means before; a gap carries the last price, and a plan is priced from
-  the market's first recorded price. Released as a beta first; pricing the
-  accounting itself from the current plan follows as HEA-267.
+  the market's first recorded price. Released as a beta first. HEA-267
+  (ADR-0042, proposed) turns the other way: the current plan is priced at
+  Paid's prices, with only its daily charge and cap typed, so the household
+  keeps its prices once, where the Energy Dashboard reads them.
 - **HEA-268** (discussion 58, ADR-0038): a band applies to any of Monday to
   Sunday and public holidays, with weekdays, weekends and holidays, and every
   day kept as shortcuts. A holiday is a day of its own only in a plan with a
