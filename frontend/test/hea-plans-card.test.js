@@ -72,7 +72,13 @@ const answering = (comparison = COMPARED) =>
 const aHome = (comparison) => aHass({ callWS: answering(comparison) });
 
 const figure = (card, key) =>
-  card.shadowRoot.querySelector(`[data-figure="${key}"]`)?.textContent;
+  card.shadowRoot.querySelector(`[data-figure="${key}"]`)?.firstChild?.textContent;
+
+/** Whose favour a figure is shown in: "gain", "loss", or neither. */
+const tone = (card, key) => {
+  const cell = card.shadowRoot.querySelector(`[data-figure="${key}"]`);
+  return ["gain", "loss"].find((name) => cell?.classList.contains(name));
+};
 
 const order = (card) =>
   [...card.shadowRoot.querySelectorAll("[data-plan]")].map((row) => row.dataset.plan);
@@ -136,14 +142,28 @@ describe("the comparison", () => {
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then
+    // Then - each a cost to the household, so each -€ in red (HEA-296)
     expect(order(card)).toEqual(["night", "flat", "peaky"]);
-    expect(figure(card, "total:night")).toBe("€29.78");
-    expect(figure(card, "total:flat")).toBe("€40.82");
-    expect(figure(card, "total:peaky")).toBe("€45.98");
+    expect(figure(card, "total:night")).toBe("-€29.78");
+    expect(figure(card, "total:flat")).toBe("-€40.82");
+    expect(figure(card, "total:peaky")).toBe("-€45.98");
+    expect(tone(card, "total:night")).toBe("loss");
   });
 
-  it("marks the household's own plan and the cheapest", async () => {
+  it("shows a plan in credit as money in the household's favour", async () => {
+    // Given - export income beat the import cost and the daily charges
+    const credit = { ...NIGHT, total: -0.03 };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, credit] }));
+    await settled(expect, card);
+
+    // Then - "-€0.03" read as a loss, and it was the opposite (HEA-296)
+    expect(figure(card, "total:night")).toBe("€0.03");
+    expect(tone(card, "total:night")).toBe("gain");
+  });
+
+  it("marks the household's own plan and the cheapest, each in a colour of its own", async () => {
     // Given / When
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
@@ -153,34 +173,50 @@ describe("the comparison", () => {
     expect(row("flat").textContent).toContain(LABELS.plans_your_plan);
     expect(row("night").textContent).toContain(LABELS.plans_cheapest);
     expect(row("peaky").textContent).not.toContain(LABELS.plans_cheapest);
+    expect(row("flat").querySelector(".tag.current")).not.toBeNull();
+    expect(row("night").querySelector(".tag.cheapest")).not.toBeNull();
   });
 
-  it("says how much less or more every other plan would have cost", async () => {
+  it("says by how much every other plan is cheaper or dearer, signed by whose favour", async () => {
     // Given / When
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - under the "vs current plan" head, a saving reads as good news and a
-    // dearer plan as bad; the household's own plan says nothing against itself
-    const night = card.shadowRoot.querySelector('[data-figure="difference:night"]');
-    expect(night.textContent).toBe("€11.04 less");
-    expect(night.classList.contains("gain")).toBe(true);
-    const peaky = card.shadowRoot.querySelector('[data-figure="difference:peaky"]');
-    expect(peaky.textContent).toBe("€5.16 more");
-    expect(peaky.classList.contains("loss")).toBe(true);
+    // Then - cheaper is in the household's favour, €, green; dearer -€, red;
+    // the head says what it is against, so no word doubles the sign
+    expect(figure(card, "difference:night")).toBe("€11.04");
+    expect(tone(card, "difference:night")).toBe("gain");
+    expect(figure(card, "difference:peaky")).toBe("-€5.16");
+    expect(tone(card, "difference:peaky")).toBe("loss");
     expect(figure(card, "difference:flat")).toBeUndefined();
   });
 
-  it("shows what each total is made of", async () => {
+  it("shows what each total is made of, what is paid against what is earned", async () => {
     // Given / When
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - the export credit is income, so it reads as the money it is rather
-    // than as a negative cost (HEA-277); the total still takes it off
-    expect(figure(card, "energy:night")).toBe("€24.06");
+    // Then - what the household pays -€ in red, the export income € in green;
+    // the total still takes the income off (HEA-277, HEA-296)
+    expect(figure(card, "energy:night")).toBe("-€24.06");
+    expect(tone(card, "energy:night")).toBe("loss");
     expect(figure(card, "export:night")).toBe("€3.28");
-    expect(figure(card, "daily:night")).toBe("€9.00");
+    expect(tone(card, "export:night")).toBe("gain");
+    expect(figure(card, "daily:night")).toBe("-€9.00");
+    expect(tone(card, "daily:night")).toBe("loss");
+  });
+
+  it("leaves a figure of nothing plain, in nobody's favour", async () => {
+    // Given - a plan that pays nothing for export
+    const unpaid = { ...NIGHT, export_credit: 0 };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, unpaid] }));
+    await settled(expect, card);
+
+    // Then
+    expect(figure(card, "export:night")).toBe("€0.00");
+    expect(tone(card, "export:night")).toBeUndefined();
   });
 
   it("is a table whose heads say what each column is, like a bill", async () => {
@@ -303,8 +339,11 @@ describe("each plan without solar or battery", () => {
       "vs current plan",
     ]);
     const night = card.shadowRoot.querySelector('[data-figure="without:night"]');
-    expect(night.firstChild.textContent).toBe("€61.40");
+    // A cost, so -€ in red; what the installation saved, in green (HEA-296)
+    expect(night.firstChild.textContent).toBe("-€61.40");
+    expect(night.classList.contains("loss")).toBe(true);
     expect(night.querySelector(".saves").textContent).toBe("saves €31.62");
+    expect(night.querySelector(".saves").classList.contains("gain")).toBe(true);
   });
 
   it("says so where the installation cost more than it saved on a plan", async () => {
@@ -318,6 +357,7 @@ describe("each plan without solar or battery", () => {
     // Then - never a saving below nothing
     const flat = card.shadowRoot.querySelector('[data-figure="without:flat"]');
     expect(flat.querySelector(".saves").textContent).toBe("€2.50 more");
+    expect(flat.querySelector(".saves").classList.contains("loss")).toBe(true);
   });
 
   it("has no such column for a house with neither", async () => {

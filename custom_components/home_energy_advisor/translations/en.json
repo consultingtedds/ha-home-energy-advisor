@@ -746,8 +746,6 @@
     "card_plans_saves": "saves {amount}",
     "card_plans_costs_more": "{amount} more",
     "card_plans_vs_current": "vs current plan",
-    "card_plans_less_short": "{amount} less",
-    "card_plans_more_short": "{amount} more",
     "card_plans_same_short": "The same",
     "card_plans_flows": "Imported {imported} and exported {exported} in this period.",
     "card_plans_breakdown_hidden": "Import cost, export income and daily charges are shown on a wider screen.",

@@ -89,7 +89,13 @@ class HeaPlansCard extends HeaCard {
       border: 1px solid var(--divider-color, #e0e0e0);
     }
     .plans th, .plans td { padding-inline: 12px; }
-    .plans thead th { background: var(--secondary-background-color); }
+    /* Heads in the main text colour and a heavier weight, so the table's shape
+       reads at a glance (HEA-296). */
+    .plans thead th {
+      background: var(--secondary-background-color);
+      color: var(--primary-text-color);
+      font-weight: 500;
+    }
     .plans thead tr.groups th { border-bottom: none; text-align: center; }
     .plans .rule { border-left: 1px solid var(--divider-color, #e0e0e0); }
     .plans .earn {
@@ -125,8 +131,19 @@ class HeaPlansCard extends HeaCard {
       color: var(--secondary-text-color);
       font-size: 0.8em;
     }
+    /* Each badge in a colour of its own, so a plan's standing stands out:
+       the theme's own colours, so a dark theme reads too (HEA-296). */
+    .tag.current {
+      background: color-mix(in srgb, var(--primary-color, #03a9f4) 18%, transparent);
+      color: var(--primary-color, #03a9f4);
+    }
+    .tag.cheapest {
+      background: color-mix(in srgb, var(--success-color, #4caf50) 18%, transparent);
+      color: var(--success-color, #4caf50);
+    }
     td.total { font-weight: 500; }
-    .saves { color: var(--secondary-text-color); font-size: 0.85em; }
+    .saves { font-size: 0.85em; }
+    .saves:not(.gain):not(.loss) { color: var(--secondary-text-color); }
     tr.note td {
       padding-top: 0;
       padding-left: 14px;
@@ -246,21 +263,22 @@ class HeaPlansCard extends HeaCard {
   /**
    * What the plan would have cost with no solar or battery, and what the
    * installation saved on it beneath: the figure a household weighs its panels
-   * and battery by, on every plan (HEA-293). Plain, like every figure but the
-   * comparison with the current plan.
+   * and battery by, on every plan (HEA-293). A cost, so signed as one; the
+   * saving beneath in its own favour's colour (HEA-296).
    */
   _without(plan, locale) {
     if (!("without_installation" in plan)) return `<td class="rule"></td>`;
+    const cost = signed(-plan.without_installation, locale);
     const saved = plan.without_installation - plan.total;
     const amount = formatMoney(Math.abs(saved), locale);
+    const tone = savingTone(saved, locale);
     const wording =
-      saved >= 0
-        ? fill(this._labels.plans_saves, { amount })
-        : fill(this._labels.plans_costs_more, { amount });
-    return `<td class="rule" data-figure="without:${plan.id}">${formatMoney(
-      plan.without_installation,
-      locale,
-    )}<div class="saves">${wording}</div></td>`;
+      tone === "loss"
+        ? fill(this._labels.plans_costs_more, { amount })
+        : fill(this._labels.plans_saves, { amount });
+    const saves = ["saves", tone].filter(Boolean).join(" ");
+    const classes = ["rule", cost.tone].filter(Boolean).join(" ");
+    return `<td class="${classes}" data-figure="without:${plan.id}">${cost.text}<div class="${saves}">${wording}</div></td>`;
   }
 
   /** Where a part's group starts, a rule; what is earned, a tint. */
@@ -336,11 +354,11 @@ class HeaPlansCard extends HeaCard {
    */
   _plan(plan, { current, cheapest, parts, prices, without }, locale) {
     const tags = [
-      plan.current ? this._labels.plans_your_plan : "",
-      plan === cheapest ? this._labels.plans_cheapest : "",
+      plan.current ? ["current", this._labels.plans_your_plan] : undefined,
+      plan === cheapest ? ["cheapest", this._labels.plans_cheapest] : undefined,
     ]
       .filter(Boolean)
-      .map((tag) => `<span class="tag">${tag}</span>`)
+      .map(([kind, label]) => `<span class="tag ${kind}">${label}</span>`)
       .join("");
     const name = `<th>${escape(plan.name)}${tagLine(tags)}</th>`;
     const rates = prices ? this._prices(plan, locale) : "";
@@ -412,30 +430,28 @@ class HeaPlansCard extends HeaCard {
     return fill(this._labels.plans_market_from, { date: formatDateTime(fine, locale) });
   }
 
+  /** What the plan costs, or what it leaves in the household's favour. */
   _total(plan, locale) {
-    return `<td class="total rule" data-figure="total:${plan.id}">${formatMoney(
-      plan.total,
-      locale,
-    )}</td>`;
+    return moneyCell(`total:${plan.id}`, -plan.total, locale, "total rule");
   }
 
-  _part(plan, { key, figure = key }, locale, classes = "") {
-    return `<td${classAttribute(classes)} data-figure="${key}:${plan.id}">${formatMoney(
-      plan[figure],
-      locale,
-    )}</td>`;
+  /** What is paid is against the household, what is earned in its favour. */
+  _part(plan, { key, figure = key, group }, locale, classes = "") {
+    const favour = group === "earn" ? plan[figure] : -plan[figure];
+    return moneyCell(`${key}:${plan.id}`, favour, locale, classes);
   }
 
-  /** How much less or more than the household's own plan, as a saving is toned. */
+  /**
+   * By how much the plan is cheaper or dearer than the household's own, signed
+   * the same way: cheaper is in its favour. The head says what it is against,
+   * so no word beside it doubles the sign.
+   */
   _difference(plan, current, locale) {
     const saving = current.total - plan.total;
-    const tone = savingTone(saving, locale);
-    const amount = formatMoney(Math.abs(saving), locale);
-    let wording = this._labels.plans_same_short;
-    if (tone === "gain") wording = fill(this._labels.plans_less_short, { amount });
-    if (tone === "loss") wording = fill(this._labels.plans_more_short, { amount });
-    const classes = tone ? `difference ${tone}` : "difference";
-    return `<td class="${classes}" data-figure="difference:${plan.id}">${wording}</td>`;
+    if (!savingTone(saving, locale)) {
+      return `<td class="difference" data-figure="difference:${plan.id}">${this._labels.plans_same_short}</td>`;
+    }
+    return moneyCell(`difference:${plan.id}`, saving, locale, "difference");
   }
 }
 
@@ -443,6 +459,30 @@ const hint = (note) => `<div class="hint">${note}</div>`;
 
 /** A cell's class attribute, or nothing for a cell with no class. */
 const classAttribute = (classes) => (classes ? ` class="${classes}"` : "");
+
+/**
+ * Money signed by whose favour it is in, the one rule the whole table follows
+ * (HEA-296, discussion 58): what the household pays is -€ in red, what is in
+ * its favour € in green, and nothing is plain. A total in credit read as a loss
+ * when it carried a minus, and a saving written as a word read differently
+ * from the total beside it.
+ *
+ * `favour` is the amount in the household's favour, below zero for a cost. Its
+ * tone is judged as `savingTone` judges every saving, on the figure as shown,
+ * so a fraction of a cent is never coloured.
+ */
+const signed = (favour, locale) => {
+  const tone = savingTone(favour, locale);
+  const shown = tone === "loss" ? -Math.abs(favour) : Math.abs(favour);
+  return { text: formatMoney(shown, locale), tone };
+};
+
+/** A table cell holding one signed figure, its tone among its classes. */
+const moneyCell = (figure, favour, locale, classes = "") => {
+  const { text, tone } = signed(favour, locale);
+  const all = [classes, tone].filter(Boolean).join(" ");
+  return `<td${classAttribute(all)} data-figure="${figure}">${text}</td>`;
+};
 
 /** A plan's badges on a line of their own under its name, where it has any. */
 const tagLine = (tags) => (tags ? `<span class="tags">${tags}</span>` : "");

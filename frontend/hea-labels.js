@@ -147,8 +147,6 @@ export const DEFAULTS = Object.freeze({
   plans_saves: "saves {amount}",
   plans_costs_more: "{amount} more",
   plans_vs_current: "vs current plan",
-  plans_less_short: "{amount} less",
-  plans_more_short: "{amount} more",
   plans_same_short: "The same",
   plans_flows: "Imported {imported} and exported {exported} in this period.",
   plans_breakdown_hidden:

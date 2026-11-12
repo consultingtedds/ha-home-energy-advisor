@@ -746,8 +746,6 @@
     "card_plans_saves": "экономия {amount}",
     "card_plans_costs_more": "на {amount} больше",
     "card_plans_vs_current": "По сравнению с текущим тарифом",
-    "card_plans_less_short": "На {amount} меньше",
-    "card_plans_more_short": "На {amount} больше",
     "card_plans_same_short": "Столько же",
     "card_plans_flows": "За этот период получено из сети {imported}, отдано в сеть {exported}.",
     "card_plans_breakdown_hidden": "Стоимость импорта, доход от экспорта и ежедневные платежи показываются на более широком экране.",

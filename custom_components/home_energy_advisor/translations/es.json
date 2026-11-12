@@ -746,8 +746,6 @@
     "card_plans_saves": "ahorra {amount}",
     "card_plans_costs_more": "{amount} más",
     "card_plans_vs_current": "Frente a tu tarifa actual",
-    "card_plans_less_short": "{amount} menos",
-    "card_plans_more_short": "{amount} más",
     "card_plans_same_short": "Lo mismo",
     "card_plans_flows": "Importaste {imported} y exportaste {exported} en este periodo.",
     "card_plans_breakdown_hidden": "El coste de la importación, los ingresos por exportación y los cargos diarios se muestran en una pantalla más ancha.",
