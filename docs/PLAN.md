@@ -833,8 +833,8 @@ Carried forward rather than closed:
   HEA-294, HEA-296 and HEA-297. b3 is the last beta: 1.5.0 follows once
   discussion 58 confirms the table and the Repair, with nothing else added.
 - **Open after 1.5.0:** HEA-299 (discussion 58: a plan priced at one carried
-  price across a long gap in its sensor's statistics, and a card that does not
-  name the sensor), HEA-267 (ADR-0042), HEA-298 (check the household's prices
+  price across a long gap in its sensor's statistics, a card that does not name
+  the sensor, and days with no recorded energy charged a daily charge), HEA-267 (ADR-0042), HEA-298 (check the household's prices
   and meters against a bill) and HEA-272 (discussion 58: clear the figures for
   a chosen period). HEA-295, editing plans from the Tariffs tab, is parked: a
   card cannot open Home Assistant's settings flow robustly.
