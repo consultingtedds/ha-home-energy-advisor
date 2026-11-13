@@ -1246,36 +1246,34 @@ Closed since:
   passed with every figure zero. The count is a search space, not a defect count,
   and that remains true in both directions.
 
-### Epic 12 - Tariff catalogue and supplier shortlist
+### Epic 12 - Tariff catalogue and supplier shortlist (DECIDED AGAINST 2026-11-13)
 
-HEA-281. The plan comparison can price any plan against a household's recorded
-import and export; the hard part is getting plans in. Each offer has to be
-found, its tax basis worked out and its prices typed, which took the reference
-home hours in November 2026. This epic adds a shared, versioned catalogue of
-offers a household can import as plans, then a shortlist ranking them against
-the household's own history.
+HEA-281 proposed a shared catalogue of offers a household could import as
+plans, and a shortlist ranking them against its history. Every route to one
+needs something the project should not depend on:
 
-- **No money changes hands**: no affiliate links, sponsored placement or paid
-  ranking. An affiliate-funded service was assessed on 2026-11-11 and rejected.
-- **Multi-country from the schema up.** Spain is first, but no field assumes its
-  tariffs; each country has a layer of regulated charges.
-- **Every price carries its source**, tax basis, who checked it and when. A
-  stale price is flagged, never shown as current.
-- **Only data whose terms allow reuse.**
+- **Someone maintaining prices.** Offers, promotions and regulated charges
+  change constantly: eight public sources gave eight different prices for one
+  Spanish offer in November 2026. A stale price is worse than none, because it
+  ranks offers wrongly while looking authoritative.
+- **A regulator's licence.** Spain's comparator data is reserved to private and
+  research use, and a request is likely to end in a charge or a refusal.
+- **Prices reported by households.** Open to abuse, honest mistakes and
+  retention deals agreed with one customer.
 
-Tickets: HEA-282 (schema, as an ADR), HEA-283 (repository, licence and
-governance), HEA-284 (start a plan from a catalogue offer), HEA-285 (Spanish
-seed), HEA-286 (survey of data sources per country), HEA-287 (CNMC licence
-request), HEA-288 (compare on the CNMC), HEA-289 (Australian CDR spike),
-HEA-290 (compare on the supply meter's readings), HEA-291 (shortlist) and
-HEA-292 (referral links, parked).
+Australia's CDR feed is the one clean source, for one active household. So the
+epic and HEA-282 to HEA-287, HEA-291 and HEA-292 are cancelled. Four
+single-country tickets are parked: HEA-288 (compare on the CNMC, the first to
+return to once nothing else is left), HEA-289 (CDR spike), HEA-266 (Energy
+Manager files) and HEA-290 (supply-meter readings). Where accurate prices come
+from is the household's own bill (HEA-298), which works in every country.
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled, and Epic 9 closed with
 nothing taken upstream. Epic 10 runs whenever there is appetite for it and
 blocks nothing, because it is new capability rather than a fix. Epic 11 is not
-scheduled at all: it is whatever households report next. Epic 12 is not
-scheduled either.
+scheduled at all: it is whatever households report next. Epic 12 was decided
+against.
 
 ## Risks and open questions
 
