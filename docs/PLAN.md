@@ -798,6 +798,46 @@ Carried forward rather than closed:
   are fixed, so belong in the daily charge. Only some Australian networks and
   Flanders do, each differently, and both need sub-hourly data HEA keeps for
   about ten days.
+- **HEA-276** (discussion 58): the diagnostics carry the tariff plans as
+  entered, and each price sensor a plan follows with when its statistics start.
+- **HEA-277** (discussion 58): the comparison names its figures (Import cost,
+  Export income shown positive), writes the currency as a household does ($,
+  not A$) and the daily charge per day, and marks the current plan.
+- **HEA-278**: energy a device drew ahead of the house meters takes the source
+  of the energy that repays it, rather than having none.
+- **HEA-279** (discussion 58): a `total` house meter is accepted where the Energy
+  Dashboard already uses it in the same role.
+- **1.4.0, released 2026-11-11**, carrying HEA-248, HEA-258, HEA-260, HEA-261,
+  HEA-264, HEA-265, HEA-268, HEA-271, HEA-273 and HEA-276 to HEA-279.
+- **HEA-269** (discussion 58): $0.79 paid for 0.1 kWh imported. Two faults found
+  by replay are fixed (late house energy repays a device's debt, and a late
+  house reading is counted once), though neither was the cause on that house,
+  whose own meters disagree. Open until the household confirms Paid holds.
+- **HEA-280** (discussion 58): the comparison is a table, each plan's prices
+  beside its import cost, daily charges, export income and total, then its
+  difference from the current plan.
+- **HEA-294** (discussion 58): every plan is compared over the same days, from
+  when all of them can be priced, and the card says which dates. A market plan
+  had been priced only from its sensor's first statistics while a typed plan
+  covered the whole period, so Cheapest could not be trusted over a year.
+- **HEA-293** (discussion 58): each plan is also priced as if the house had no
+  solar or battery, with what the installation saves on it.
+- **HEA-296** (discussion 58): one sign rule across the table. What the household
+  pays is -$ in red, what is in its favour $ in green, and the badges are
+  coloured.
+- **HEA-297** (discussion 58): the unreconciled-energy Repair allows for the
+  device meters' own accuracy. It raises at the larger of 1% and 3% of the share
+  of the house they track, and says how much is tracked before suggesting double
+  counting.
+- **1.5.0b1 to 1.5.0b3, 2026-11-11 to 2026-11-12**, carrying HEA-280, HEA-293,
+  HEA-294, HEA-296 and HEA-297. b3 is the last beta: 1.5.0 follows once
+  discussion 58 confirms the table and the Repair, with nothing else added.
+- **Open after 1.5.0:** HEA-299 (discussion 58: a plan priced at one carried
+  price across a long gap in its sensor's statistics, and a card that does not
+  name the sensor), HEA-267 (ADR-0042), HEA-298 (check the household's prices
+  and meters against a bill) and HEA-272 (discussion 58: clear the figures for
+  a chosen period). HEA-295, editing plans from the Tariffs tab, is parked: a
+  card cannot open Home Assistant's settings flow robustly.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
@@ -1206,11 +1246,36 @@ Closed since:
   passed with every figure zero. The count is a search space, not a defect count,
   and that remains true in both directions.
 
+### Epic 12 - Tariff catalogue and supplier shortlist
+
+HEA-281. The plan comparison can price any plan against a household's recorded
+import and export; the hard part is getting plans in. Each offer has to be
+found, its tax basis worked out and its prices typed, which took the reference
+home hours in November 2026. This epic adds a shared, versioned catalogue of
+offers a household can import as plans, then a shortlist ranking them against
+the household's own history.
+
+- **No money changes hands**: no affiliate links, sponsored placement or paid
+  ranking. An affiliate-funded service was assessed on 2026-11-11 and rejected.
+- **Multi-country from the schema up.** Spain is first, but no field assumes its
+  tariffs; each country has a layer of regulated charges.
+- **Every price carries its source**, tax basis, who checked it and when. A
+  stale price is flagged, never shown as current.
+- **Only data whose terms allow reuse.**
+
+Tickets: HEA-282 (schema, as an ADR), HEA-283 (repository, licence and
+governance), HEA-284 (start a plan from a catalogue offer), HEA-285 (Spanish
+seed), HEA-286 (survey of data sources per country), HEA-287 (CNMC licence
+request), HEA-288 (compare on the CNMC), HEA-289 (Australian CDR spike),
+HEA-290 (compare on the supply meter's readings), HEA-291 (shortlist) and
+HEA-292 (referral links, parked).
+
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled, and Epic 9 closed with
 nothing taken upstream. Epic 10 runs whenever there is appetite for it and
 blocks nothing, because it is new capability rather than a fix. Epic 11 is not
-scheduled at all: it is whatever households report next.
+scheduled at all: it is whatever households report next. Epic 12 is not
+scheduled either.
 
 ## Risks and open questions
 
