@@ -835,8 +835,9 @@ Carried forward rather than closed:
 - **Open after 1.5.0:** HEA-299 (discussion 58: a plan priced at one carried
   price across a long gap in its sensor's statistics, a card that does not name
   the sensor, and days with no recorded energy charged a daily charge), HEA-267 (ADR-0042), HEA-298 (check the household's prices
-  and meters against a bill) and HEA-272 (discussion 58: clear the figures for
-  a chosen period). HEA-295, editing plans from the Tariffs tab, is parked: a
+  and meters against a bill), HEA-300 (each plan's kWh per price, to check
+  against a bill or a comparison site) and HEA-272 (discussion 58: clear the
+  figures for a chosen period). HEA-295, editing plans from the Tariffs tab, is parked: a
   card cannot open Home Assistant's settings flow robustly.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
