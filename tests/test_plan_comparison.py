@@ -139,12 +139,23 @@ def _house(*subentries: tuple[str, dict[str, Any]]) -> MockConfigEntry:
     )
 
 
-def _record(hass: HomeAssistant, statistic_id: str, hours: dict[int, float]) -> None:
-    """Hourly statistics for a meter: kWh in each local hour of the day, else 0."""
+def _record(
+    hass: HomeAssistant,
+    statistic_id: str,
+    hours: dict[int, float],
+    missing: frozenset[int] = frozenset(),
+) -> None:
+    """Hourly statistics for a meter: kWh in each local hour of the day, else 0.
+
+    No row at all for the `missing` hours, as when the recorder was down. The
+    counter kept counting, so what it counted then arrives in the next row.
+    """
     total = 0.0
     rows = []
     for hour in range(24):
         total += hours.get(hour, 0.0)
+        if hour in missing:
+            continue
         start = (DAY_START + timedelta(hours=hour)).astimezone(UTC)
         rows.append(StatisticData(start=start, state=total, sum=total))
     metadata = StatisticMetaData(
@@ -248,10 +259,12 @@ async def test_each_plan_is_priced_from_the_hours_the_meters_recorded(
     # When - over the whole day
     result = await _compare(hass_ws_client, hass)
 
-    # Then - what was recorded, and each plan priced at it
+    # Then - what was recorded, and each plan priced at it. Every hour has a row,
+    # the hours with nothing imported included, so nothing is left out
     assert result["imported_kwh"] == pytest.approx(2.5)
     assert result["exported_kwh"] == pytest.approx(2.0)
     assert result["days"] == pytest.approx(1)
+    assert result["left_out"] == []
     plans = _by_name(result)
     flat = plans["Flat rate"]
     assert flat["current"] is True
@@ -487,7 +500,7 @@ async def test_every_import_register_is_counted(
 
 
 @pytest.mark.usefixtures("recorder_mock")
-async def test_a_period_with_nothing_recorded_charges_only_the_days(
+async def test_a_period_with_nothing_recorded_charges_nothing(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
     # Given - no statistics at all
@@ -499,10 +512,236 @@ async def test_a_period_with_nothing_recorded_charges_only_the_days(
     # When
     result = await _compare(hass_ws_client, hass)
 
-    # Then - said as no hours recorded, so the card can say so too
+    # Then - the whole day left out, its daily charge with it: a day the meters
+    # have no record of is not a day of no use (ADR-0043). Said as no hours
+    # recorded, so the card can say so too
     assert result["hours"] == 0
+    assert result["days"] == 0
+    assert _left_out(result) == [(DAY_START, DAY_END, "grid")]
     flat = _by_name(result)["Flat rate"]
-    assert (flat["energy"], flat["daily_charges"]) == (0, pytest.approx(0.45))
+    assert (flat["energy"], flat["daily_charges"]) == (0, 0)
+
+
+def _left_out(result: dict[str, Any]) -> list[tuple[datetime, datetime, str]]:
+    """The stretches the comparison left out, as times and what had no data."""
+    return [
+        (_time(stretch["from"]), _time(stretch["to"]), stretch["source"])
+        for stretch in result["left_out"]
+    ]
+
+
+def _time(text: str) -> datetime:
+    moment = dt_util.parse_datetime(text)
+    assert moment is not None, text
+    return moment
+
+
+def _at(hour: float) -> datetime:
+    return DAY_START + timedelta(hours=hour)
+
+
+# Hours with no data, left out for every plan (HEA-299, ADR-0043)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_hours_the_grid_meters_did_not_record_are_left_out_for_every_plan(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the day's flows, but no row at all from 13:00 to 18:00, as when
+    # the recorder was down for five hours
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    gap = frozenset(range(13, 18))
+    _record(hass, "sensor.grid_import", {7: 1.0, 12: 0.5, 20: 1.0}, gap)
+    _record(hass, "sensor.grid_export", {12: 2.0}, gap)
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - those five hours are left out, and every plan's daily charge for
+    # them with them; the energy recorded either side is priced as before
+    assert _left_out(result) == [(_at(13), _at(18), "grid")]
+    assert result["days"] == pytest.approx(19 / 24, abs=1e-4)
+    plans = _by_name(result)
+    assert plans["Flat rate"]["energy"] == pytest.approx(2.5 * 0.234)
+    assert plans["Flat rate"]["daily_charges"] == pytest.approx(
+        0.45 * 19 / 24, abs=1e-4
+    )
+    assert plans["Night saver"]["daily_charges"] == pytest.approx(
+        0.30 * 19 / 24, abs=1e-4
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_two_hours_the_grid_meters_did_not_record_are_bridged(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - no row for 13:00 or 14:00: a restart, the counter counting on
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    gap = frozenset({13, 14})
+    _record(hass, "sensor.grid_import", {7: 1.0, 12: 0.5, 14: 0.4, 20: 1.0}, gap)
+    _record(hass, "sensor.grid_export", {12: 2.0}, gap)
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - nothing left out: the whole day's charge, and 14:00's 0.4 kWh
+    # arriving in the 15:00 row
+    assert result["left_out"] == []
+    assert result["days"] == pytest.approx(1)
+    assert result["imported_kwh"] == pytest.approx(2.9)
+    assert _by_name(result)["Flat rate"]["daily_charges"] == pytest.approx(0.45)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_price_missing_for_two_hours_carries_the_last_price(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - no price for 11:00 or 12:00, after 0.40 at 10:00
+    prices = {hour: 0.20 for hour in range(24) if hour not in {11, 12}} | {10: 0.40}
+    _record_prices(hass, "sensor.market_import", prices)
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _MARKET))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - 12:00's import at the price before the gap, and nothing left out
+    assert result["left_out"] == []
+    market = _by_name(result)["Wholesale"]
+    assert market["energy"] == pytest.approx(0.20 + 0.5 * 0.40 + 0.20)
+    assert market["daily_charges"] == pytest.approx(1.0)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_price_missing_for_longer_is_left_out_for_every_plan(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - no price from 10:00 to 13:00, three hours, beside a banded plan
+    prices = {hour: 0.20 for hour in range(24) if hour not in {10, 11, 12}}
+    _record_prices(hass, "sensor.market_import", prices)
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _MARKET),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - those hours left out of both plans, 12:00's import and export
+    # with them, so the two are compared over the same 21 hours; the sensor
+    # with no statistics is named
+    assert _left_out(result) == [(_at(10), _at(13), "sensor.market_import")]
+    assert result["imported_kwh"] == pytest.approx(2.0)
+    assert result["exported_kwh"] == 0
+    plans = _by_name(result)
+    flat = plans["Flat rate"]
+    assert flat["energy"] == pytest.approx(2.0 * 0.234)
+    assert flat["export_credit"] == 0
+    assert flat["daily_charges"] == pytest.approx(0.45 * 21 / 24, abs=1e-4)
+    market = plans["Wholesale"]
+    assert market["energy"] == pytest.approx(2.0 * 0.20)
+    assert market["daily_charges"] == pytest.approx(1.0 * 21 / 24, abs=1e-4)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_price_that_stops_part_way_leaves_out_the_rest_of_the_period(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the market price recorded until 16:00, then nothing: the GloBird
+    # case, a sensor whose statistics stopped (discussion 58)
+    _record_prices(hass, "sensor.market_import", dict.fromkeys(range(16), 0.2))
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _MARKET),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - not one price carried across the evening: 16:00 onwards left out,
+    # 20:00's import with it
+    assert _left_out(result) == [(_at(16), DAY_END, "sensor.market_import")]
+    assert result["imported_kwh"] == pytest.approx(1.5)
+    market = _by_name(result)["Wholesale"]
+    assert market["energy"] == pytest.approx(1.5 * 0.20)
+    assert market["daily_charges"] == pytest.approx(16 / 24, abs=1e-4)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_price_just_before_the_period_carries_into_its_first_hour(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - 0.30 at 23:00 the night before, then nothing until 01:00
+    _record_prices(
+        hass,
+        "sensor.market_import",
+        {-1: 0.30} | dict.fromkeys(range(1, 24), 0.2),
+    )
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _MARKET))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - an hour's gap across midnight, carried, so the whole day compared
+    assert result["left_out"] == []
+    assert _by_name(result)["Wholesale"]["daily_charges"] == pytest.approx(1.0)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_price_recorded_only_before_the_period_cannot_be_compared(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the market price stopped the day before, beside a banded plan
+    _record_prices(hass, "sensor.market_import", dict.fromkeys(range(-24, 0), 0.2))
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _MARKET),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - nothing carried in from the day before; the plan is listed alone,
+    # naming its sensor, and the banded plan keeps the whole day
+    assert result["left_out"] == []
+    plans = _by_name(result)
+    assert plans["Wholesale"]["no_price"] is True
+    assert plans["Wholesale"]["no_price_entities"] == ["sensor.market_import"]
+    assert plans["Flat rate"]["daily_charges"] == pytest.approx(0.45)
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
@@ -697,8 +936,7 @@ async def test_a_plan_importing_at_the_market_is_priced_at_each_hours_price(
     assert market["energy"] == pytest.approx(1 * 0.12 + 0.5 * 0.30 + 1 * 0.22)
     assert market["export_credit"] == pytest.approx(2 * 0.05)
     assert market["daily_charges"] == pytest.approx(1.0)
-    assert market["carried_hours"] == 0
-    assert result["compared_from"] is None
+    assert result["left_out"] == []
     assert result["five_minute_from"] is None
 
 
@@ -743,27 +981,6 @@ async def test_where_five_minute_statistics_are_kept_each_is_priced_on_its_own(
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
-async def test_an_hour_the_market_price_is_missing_for_carries_the_last_price(
-    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
-) -> None:
-    # Given - no price recorded for 12:00, after 0.40 at 11:00
-    prices = {hour: 0.20 for hour in range(24) if hour != 12} | {11: 0.40}
-    _record_prices(hass, "sensor.market_import", prices)
-    await async_wait_recording_done(hass)
-    await _set_up(
-        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _MARKET))
-    )
-
-    # When
-    result = await _compare(hass_ws_client, hass)
-
-    # Then - priced at the price before it, and said
-    market = _by_name(result)["Wholesale"]
-    assert market["energy"] == pytest.approx(0.20 + 0.5 * 0.40 + 0.20)
-    assert market["carried_hours"] == 1
-
-
-@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
 async def test_every_plan_is_compared_from_when_all_of_them_can_be_priced(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
@@ -784,11 +1001,9 @@ async def test_every_plan_is_compared_from_when_all_of_them_can_be_priced(
     result = await _compare(hass_ws_client, hass)
 
     # Then - both from 10:00, energy and daily charges alike, so the totals are
-    # over the same hours; the span is said, and which plan set it (HEA-294)
-    assert dt_util.parse_datetime(result["compared_from"]) == DAY_START + timedelta(
-        hours=10
-    )
-    assert result["compared_from_plan"] == "Wholesale"
+    # over the same hours; what was left out is said, and which sensor had no
+    # statistics (HEA-294, ADR-0043)
+    assert _left_out(result) == [(DAY_START, _at(10), "sensor.market_import")]
     assert result["imported_kwh"] == pytest.approx(1.5)
     assert result["days"] == pytest.approx(14 / 24, abs=1e-4)
     plans = _by_name(result)
@@ -815,28 +1030,9 @@ async def test_a_period_before_the_meters_were_recorded_is_compared_from_them(
     result = await _compare(hass_ws_client, hass, start=DAY_START - timedelta(days=1))
 
     # Then - one day's charge, not two against one day's energy; the meters, not
-    # a plan, set the start
-    assert dt_util.parse_datetime(result["compared_from"]) == DAY_START
-    assert result["compared_from_plan"] is None
+    # a plan, left the first day out
+    assert _left_out(result) == [(DAY_START - timedelta(days=1), DAY_START, "grid")]
     assert _by_name(result)["Flat rate"]["daily_charges"] == pytest.approx(0.45)
-
-
-@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
-async def test_a_comparison_over_the_whole_period_says_no_start_of_its_own(
-    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
-) -> None:
-    # Given - every plan can price the whole day the meters recorded
-    _calendar(hass, [])
-    await _set_up(
-        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
-    )
-
-    # When
-    result = await _compare(hass_ws_client, hass)
-
-    # Then - nothing to say: the card shows the period it asked for
-    assert result["compared_from"] is None
-    assert result["compared_from_plan"] is None
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
@@ -907,7 +1103,6 @@ async def test_banded_plans_alone_are_priced_by_the_hour(
     # not read
     assert result["five_minute_from"] is None
     assert result["imported_kwh"] == pytest.approx(2.5)
-    assert "carried_hours" not in _by_name(result)["Flat rate"]
 
 
 # Each plan priced as if the household had no solar or battery (HEA-293)

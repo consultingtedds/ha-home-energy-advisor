@@ -59,12 +59,16 @@ export const formatClockTime = (date, locale) =>
     timeZone: locale.timeZone,
   }).format(date);
 
-/** A moment as a date and the household's clock - "3 Jun 2026, 14:00". */
-export const formatDateTime = (date, locale) =>
-  `${new Intl.DateTimeFormat(locale.language, {
+/** The day a moment falls on, in the household's zone - "3 Jun 2026". */
+export const formatDate = (date, locale) =>
+  new Intl.DateTimeFormat(locale.language, {
     ...DATE_FORMAT,
     timeZone: locale.timeZone,
-  }).format(date)}, ${formatClockTime(date, locale)}`;
+  }).format(date);
+
+/** A moment as a date and the household's clock - "3 Jun 2026, 14:00". */
+export const formatDateTime = (date, locale) =>
+  `${formatDate(date, locale)}, ${formatClockTime(date, locale)}`;
 
 /** A day named the way a chart axis names one - "Thu, 17 Sep". */
 const formatBucketDay = (date, locale) =>

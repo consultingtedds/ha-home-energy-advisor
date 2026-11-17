@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 HEA-299 (GitHub discussion 58). Replaces decision 3 of ADR-0037 ("a gap carries
 the last price") and its 2026-11-11 update (one common start), and the part of

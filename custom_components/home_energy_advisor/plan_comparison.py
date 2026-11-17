@@ -10,8 +10,12 @@ any period the statistics reach can be compared, past months included.
 A plan importing or exporting at a market price is priced from that price
 entity's own statistics (ADR-0037). Every plan is then priced five minutes at a
 time from the first whole hour the recorder still keeps 5-minute statistics
-for, and hour by hour before it; an interval with no price carries the last one,
-and a plan is priced only from the market's first recorded price.
+for, and hour by hour before it.
+
+A stretch with no data - no grid statistics, or no price for a market price a
+plan follows - is bridged where it is two hours or less, a missing price
+carrying the last one. A longer one is left out for every plan, its daily
+charges with it, and said (ADR-0043).
 """
 
 from __future__ import annotations
@@ -64,9 +68,12 @@ _REGISTERED = f"{DOMAIN}_compare_plans_registered"
 _SHOWN = Decimal("0.0001")
 _HOUR = timedelta(hours=1)
 _FIVE_MINUTES = timedelta(minutes=5)
-# How far before the period a market price is looked for, so a gap at its very
-# start carries the price before it rather than leaving the plan unpriced.
-_LOOKBACK = timedelta(days=1)
+# The longest stretch with no data that is bridged rather than left out: a
+# restart, a late publish, a missed statistics hour (ADR-0043). A market price
+# is looked for this far before the period too, to carry into its start.
+_BRIDGE = timedelta(hours=2)
+# What a stretch with no grid statistics is left out for, beside a price entity.
+_GRID_METERS = "grid"
 # Before anything the recorder can hold, for asking when a statistic begins.
 _EVER = datetime(2000, 1, 1, tzinfo=UTC)
 _ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
@@ -81,26 +88,22 @@ class _Recorded:
     intervals: list[IntervalOfEnergy]
     five_minute_from: datetime | None = None
 
-    def length_of(self, interval: IntervalOfEnergy) -> timedelta:
-        fine = self.five_minute_from is not None and interval.start >= (
-            self.five_minute_from
-        )
+    def length_at(self, moment: datetime) -> timedelta:
+        """How long a statistic starting at `moment` covers: an hour, or 5 minutes."""
+        fine = self.five_minute_from is not None and moment >= self.five_minute_from
         return _FIVE_MINUTES if fine else _HOUR
 
 
 @dataclass(frozen=True)
-class _AtMarket:
-    """A plan's intervals with the market prices it is charged at.
+class _Stretch:
+    """A stretch left out of every plan, and what had no data for it."""
 
-    `priced_from` is where the market's prices began, when that was after the
-    first interval; `carried` is how long was priced at a price carried over a
-    gap. `unpriced` is a plan needing a market price no interval had.
-    """
+    start: datetime
+    end: datetime
+    source: str
 
-    intervals: list[IntervalOfEnergy]
-    priced_from: datetime | None = None
-    carried: timedelta = timedelta(0)
-    unpriced: bool = False
+    def overlaps(self, start: datetime, length: timedelta) -> bool:
+        return start < self.end and start + length > self.start
 
 
 def async_register(hass: HomeAssistant) -> None:
@@ -194,17 +197,24 @@ async def async_compare_plans(
         hass, imports, exports, start, end, five_minutes=bool(markets)
     )
     prices = await _market_prices(hass, markets, start, end, recorded.five_minute_from)
-    at_market = {
-        plan_id: _at_market_prices(recorded, tariff, prices)
-        for plan_id, tariff in tariffs.items()
-    }
-    span = _common_span(start, recorded, tariffs, at_market)
-    intervals = span.of(recorded.intervals)
-    used = await _recorded_use(hass, entry, recorded, start, end)
     # Charged up to now at most: the picker's Today runs to midnight, and a whole
     # day's charge against half a day's energy would make every total read high.
-    charged_until = max(span.start, min(end, dt_util.utcnow()))
-    days = days_covered(dt_util.as_local(span.start), dt_util.as_local(charged_until))
+    charged_until = max(start, min(end, dt_util.utcnow()))
+    # A price with nothing in the period leaves only its own plans unpriced:
+    # left out for everyone, it would leave nothing to compare.
+    silent = {e for e in markets if not _any_within(prices, e, start, end)}
+    left_out = _left_out(recorded, prices, markets - silent, start, charged_until)
+    intervals = _kept(recorded, left_out)
+    used = await _recorded_use(hass, entry, recorded, start, end)
+    missing = sum(
+        (
+            days_covered(dt_util.as_local(stretch.start), dt_util.as_local(stretch.end))
+            for stretch in _merged(left_out)
+        ),
+        Decimal(0),
+    )
+    period = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
+    days = period - missing
     plans = []
     for plan_id, tariff in tariffs.items():
         named = {
@@ -218,74 +228,146 @@ async def async_compare_plans(
             if tariff.holidays
             else frozenset()
         )
-        market = at_market[plan_id]
-        if market.unpriced:
-            plans.append({**named, "no_price": True})
+        followed = [e for e in (tariff.import_entity, tariff.export_entity) if e]
+        if quiet := [entity for entity in followed if entity in silent]:
+            plans.append({**named, "no_price": True, "no_price_entities": quiet})
             continue
+        priced = _at_market_prices(recorded, intervals, tariff, prices)
         try:
-            cost = price_plan(
-                tariff.plan, span.of(market.intervals), days=days, holidays=holidays
-            )
+            cost = price_plan(tariff.plan, priced, days=days, holidays=holidays)
             without = _without_installation(
-                tariff, span.of(market.intervals), used, days=days, holidays=holidays
+                tariff, priced, used, days=days, holidays=holidays
             )
         except ValueError:
             # Only a plan edited outside its form can leave hours unpriced; it is
             # listed, not guessed at.
             plans.append({**named, "incomplete": True})
             continue
-        plans.append(
-            {**named, **_figures(cost), **without, **_market_notes(tariff, market)}
-        )
+        plans.append({**named, **_figures(cost), **without})
     return {
         "hours": len(intervals),
         "days": float(days),
         "imported_kwh": _number(sum((i.imported_kwh for i in intervals), Decimal(0))),
         "exported_kwh": _number(sum((i.exported_kwh for i in intervals), Decimal(0))),
         "five_minute_from": _when(recorded.five_minute_from),
-        "compared_from": _when(span.start) if span.start > start else None,
-        "compared_from_plan": span.set_by,
+        "left_out": [
+            {
+                "from": _when(stretch.start),
+                "to": _when(stretch.end),
+                "source": stretch.source,
+            }
+            for stretch in left_out
+        ],
         "plans": plans,
     }
 
 
-@dataclass(frozen=True)
-class _Span:
-    """From when every plan is compared, and which plan's prices set it, if one did."""
-
-    start: datetime
-    set_by: str | None = None
-
-    def of(self, intervals: list[IntervalOfEnergy]) -> list[IntervalOfEnergy]:
-        """The intervals that fall within the span."""
-        return [interval for interval in intervals if interval.start >= self.start]
-
-
-def _common_span(
-    start: datetime,
+def _left_out(
     recorded: _Recorded,
-    tariffs: Mapping[str, TariffPlan],
-    at_market: Mapping[str, _AtMarket],
-) -> _Span:
-    """From when all the plans can be priced: the one span every plan is priced over.
+    prices: Mapping[str, Mapping[datetime, Decimal]],
+    entities: Iterable[str],
+    start: datetime,
+    end: datetime,
+) -> list[_Stretch]:
+    """The stretches every plan leaves out, each with what had no data for it.
 
-    A plan at a market price can only be priced from its price's first recorded
-    hour, and no plan from before the grid meters' first. Priced each from its
-    own start, a year's comparison charged one plan 315 days of daily charges
-    and another two, and the cheapest was whichever had the least history
-    (HEA-294, discussion 58). So the latest of those starts holds for every plan.
+    Priced each over what it could be, a year's comparison charged one plan 315
+    days of daily charges and another two, and the cheapest was whichever had
+    the least data (HEA-294, discussion 58). So a stretch any source has no data
+    for is left out of every plan (ADR-0043).
 
-    A plan with no price at all in the period does not shorten it for the others:
-    it is listed without a total.
+    The grid meters' counters carry a short gap's energy into the next row, so
+    one at the period's start is bridged as any other. A price is carried only
+    from one recorded before the gap, so a gap a price starts the period with,
+    with none in the `_BRIDGE` before it, is never bridged.
     """
-    span = _Span(start)
-    if recorded.intervals and recorded.intervals[0].start > start:
-        span = _Span(recorded.intervals[0].start)
-    for plan_id, market in at_market.items():
-        begins = market.priced_from
-        if begins is not None and not market.unpriced and begins > span.start:
-            span = _Span(begins, tariffs[plan_id].plan.name)
-    return span
+    stretches = [
+        _Stretch(gap_start, gap_end, _GRID_METERS)
+        for gap_start, gap_end in _uncovered(
+            [interval.start for interval in recorded.intervals],
+            recorded,
+            start,
+            end,
+            bridged_from_start=True,
+        )
+    ]
+    for entity in sorted(entities):
+        stretches += [
+            _Stretch(max(gap_start, start), gap_end, entity)
+            for gap_start, gap_end in _uncovered(
+                list(prices.get(entity, {})),
+                recorded,
+                start - _BRIDGE,
+                end,
+                bridged_from_start=False,
+            )
+            if gap_end > start
+        ]
+    return sorted(stretches, key=lambda stretch: (stretch.start, stretch.source))
+
+
+def _uncovered(
+    moments: Iterable[datetime],
+    recorded: _Recorded,
+    start: datetime,
+    end: datetime,
+    *,
+    bridged_from_start: bool,
+) -> list[tuple[datetime, datetime]]:
+    """The stretches from `start` to `end` no statistic covers, too long to bridge.
+
+    Each statistic covers its hour, or its five minutes where they are kept.
+    A stretch of `_BRIDGE` or less is bridged, unless it runs from `start` and
+    `bridged_from_start` is false.
+    """
+    gaps: list[tuple[datetime, datetime]] = []
+    reached = start
+    for moment in sorted(moment for moment in moments if moment < end):
+        if moment > reached:
+            gaps.append((reached, moment))
+        reached = max(reached, moment + recorded.length_at(moment))
+    if reached < end:
+        gaps.append((reached, end))
+    return [
+        (gap_start, gap_end)
+        for gap_start, gap_end in gaps
+        if gap_end - gap_start > _BRIDGE
+        or (gap_start == start and not bridged_from_start)
+    ]
+
+
+def _merged(stretches: Iterable[_Stretch]) -> list[_Stretch]:
+    """The stretches as one set of times, overlaps counted once."""
+    merged: list[_Stretch] = []
+    for stretch in sorted(stretches, key=lambda stretch: stretch.start):
+        if merged and stretch.start <= merged[-1].end:
+            last = merged[-1]
+            merged[-1] = replace(last, end=max(last.end, stretch.end))
+        else:
+            merged.append(stretch)
+    return merged
+
+
+def _kept(recorded: _Recorded, left_out: list[_Stretch]) -> list[IntervalOfEnergy]:
+    """The recorded intervals no stretch left out touches."""
+    return [
+        interval
+        for interval in recorded.intervals
+        if not any(
+            stretch.overlaps(interval.start, recorded.length_at(interval.start))
+            for stretch in left_out
+        )
+    ]
+
+
+def _any_within(
+    prices: Mapping[str, Mapping[datetime, Decimal]],
+    entity: str,
+    start: datetime,
+    end: datetime,
+) -> bool:
+    """Whether the entity recorded any price within the period itself."""
+    return any(start <= moment < end for moment in prices.get(entity, {}))
 
 
 async def async_plan_diagnostics(
@@ -384,17 +466,6 @@ def _rates(tariff: TariffPlan) -> dict[str, Any]:
         "import_market": tariff.import_entity is not None,
         "export_market": tariff.export_entity is not None,
     }
-
-
-def _market_notes(tariff: TariffPlan, market: _AtMarket) -> dict[str, Any]:
-    """What a market-priced plan's figures rest on, for the card to say.
-
-    Where its prices start is the comparison's, not the plan's: every plan is
-    priced from the same hour (`_common_span`, HEA-294).
-    """
-    if not (tariff.import_entity or tariff.export_entity):
-        return {}
-    return {"carried_hours": round(market.carried / _HOUR, 2)}
 
 
 def _when(moment: datetime | None) -> str | None:
@@ -657,14 +728,15 @@ async def _market_prices(
 ) -> dict[str, dict[datetime, Decimal]]:
     """Each market price entity's mean price per interval, per kWh.
 
-    Hourly means before `five_minute_from` (from a day before the period, so a
-    gap at its start carries the price before it) and 5-minute means from it.
+    Hourly means before `five_minute_from` (from `_BRIDGE` before the period, so
+    a short gap at its start carries the price before it) and 5-minute means
+    from it.
     """
     if RECORDER_DOMAIN not in hass.config.components or not entities:
         return {}
     recorder = get_instance(hass)
     hourly = await recorder.async_add_executor_job(
-        _means, hass, entities, start - _LOOKBACK, five_minute_from or end, "hour"
+        _means, hass, entities, start - _BRIDGE, five_minute_from or end, "hour"
     )
     fine = (
         await recorder.async_add_executor_job(
@@ -723,32 +795,33 @@ def _per_kwh(hass: HomeAssistant, entity: str) -> Decimal:
 
 def _at_market_prices(
     recorded: _Recorded,
+    intervals: list[IntervalOfEnergy],
     tariff: TariffPlan,
     prices: Mapping[str, Mapping[datetime, Decimal]],
-) -> _AtMarket:
-    """The plan's intervals, each with the market prices the plan follows.
+) -> list[IntervalOfEnergy]:
+    """The intervals compared, each with the market prices the plan follows.
 
-    An interval with no price of its own carries the last one before it. Until
-    every price the plan follows has been recorded once there is nothing to
-    carry, so those intervals are left out and the plan priced from then.
+    An interval with no price of its own carries the last one before it: the
+    gaps left among the intervals compared are the short ones `_left_out`
+    bridges. One with nothing to carry keeps no price, and the engine refuses
+    the plan rather than guess.
     """
     entities = [e for e in (tariff.import_entity, tariff.export_entity) if e]
     if not entities:
-        return _AtMarket(recorded.intervals)
+        return intervals
     first = recorded.intervals[0].start if recorded.intervals else None
     last = {e: _last_before(prices.get(e, {}), first) for e in entities}
     priced: list[IntervalOfEnergy] = []
-    carried = timedelta(0)
-    left_out = False
+    kept = {interval.start for interval in intervals}
     for interval in recorded.intervals:
         moment = interval.start.astimezone(UTC)
-        own = {e: prices.get(e, {}).get(moment) for e in entities}
-        last |= {entity: price for entity, price in own.items() if price is not None}
-        if any(last[entity] is None for entity in entities):
-            left_out = True
+        last |= {
+            entity: price
+            for entity in entities
+            if (price := prices.get(entity, {}).get(moment)) is not None
+        }
+        if interval.start not in kept:
             continue
-        if any(price is None for price in own.values()):
-            carried += recorded.length_of(interval)
         priced.append(
             replace(
                 interval,
@@ -760,12 +833,7 @@ def _at_market_prices(
                 else None,
             )
         )
-    return _AtMarket(
-        priced,
-        priced_from=priced[0].start if priced and left_out else None,
-        carried=carried,
-        unpriced=left_out and not priced,
-    )
+    return priced
 
 
 def _last_before(

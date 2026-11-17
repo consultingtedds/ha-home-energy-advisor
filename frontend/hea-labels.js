@@ -149,6 +149,7 @@ export const DEFAULTS = Object.freeze({
   plans_vs_current: "vs current plan",
   plans_same_short: "The same",
   plans_flows: "Imported {imported} and exported {exported} in this period.",
+  plans_flows_compared: "Imported {imported} and exported {exported} in the hours compared.",
   plans_breakdown_hidden:
     "Import cost, export income and daily charges are shown on a wider screen.",
   plans_incomplete:
@@ -159,18 +160,20 @@ export const DEFAULTS = Object.freeze({
     "imported and exported, as if your battery had run the same way. Prices are " +
     "compared as you entered them.",
   plans_no_readings:
-    "Your grid meters recorded nothing in this period, so only the daily " +
-    "charges are shown.",
+    "Your grid meters recorded nothing in this period, so there is nothing to compare.",
   plans_no_current: "Mark one plan as the one you are on to see how the others compare.",
   plans_no_price:
-    "No market price was recorded in this period, so it cannot be compared.",
+    "{sensors} recorded no statistics in this period, so it cannot be compared. " +
+    "Check it in Developer Tools > Statistics.",
   plans_export_unpaid: "{amount} of export not paid: capped at each month's energy cost.",
   plans_export_carried: "{amount} of export carried forward and not yet used.",
-  plans_compared_from_plan:
-    "Compared from {date}, when {plan}'s prices start, so every plan covers the same days.",
-  plans_compared_from_meters:
-    "Compared from {date}, when your grid meters' readings start, so every plan covers the same days.",
-  plans_carried: "{hours} h priced at the last market price, where none was recorded.",
+  plans_left_out_meters:
+    "Left out of every plan, daily charges included: {when}. Your grid meters " +
+    "recorded nothing then.",
+  plans_left_out_price:
+    "Left out of every plan, daily charges included: {when}. {sensor} recorded " +
+    "no statistics then. Check it in Developer Tools > Statistics.",
+  plans_stretch: "{from} to {to}",
   plans_market_hourly: "Market prices are applied hour by hour, at each hour's average.",
   plans_market_five_minutes: "Market prices are applied five minutes at a time.",
   plans_market_from:

@@ -10,7 +10,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { formatDateTime, formatMoney, localeFrom } from "../hea-format.js";
+import {
+  formatClockTime,
+  formatDateTime,
+  formatMoney,
+  localeFrom,
+} from "../hea-format.js";
 import { DEFAULTS as LABELS, fill, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-plans-card.js";
 import { JULY, MAY, aHass, mountCard, settled, text } from "./doubles.js";
@@ -475,16 +480,26 @@ describe("what it cannot compare", () => {
     expect(text(card)).toContain(LABELS.plans_no_current);
   });
 
-  it("names a market plan with no price in the period, without a figure", async () => {
+  it("names a market plan with no price in the period, and its sensor", async () => {
     // Given - a wholesale plan whose price entity recorded nothing then
-    const unpriced = { id: "spot", name: "Wholesale", current: false, no_price: true };
+    const unpriced = {
+      id: "spot",
+      name: "Wholesale",
+      current: false,
+      no_price: true,
+      no_price_entities: ["sensor.spot_price"],
+    };
     const card = mountCard(TAG, aHome({ ...COMPARED, plans: [unpriced, FLAT] }));
     await settled(expect, card);
 
-    // Then - listed last, said why, and never ranked
+    // Then - listed last, said why with the sensor to check, and never ranked
+    // (HEA-299)
     expect(order(card)).toEqual(["flat", "spot"]);
     const row = card.shadowRoot.querySelector('[data-plan="spot"]');
-    expect(row.textContent).toContain(LABELS.plans_no_price);
+    expect(row.textContent).toContain(
+      "sensor.spot_price recorded no statistics in this period, so it cannot be " +
+        "compared. Check it in Developer Tools > Statistics.",
+    );
     expect(figure(card, "total:spot")).toBeUndefined();
   });
 
@@ -515,77 +530,125 @@ describe("plans priced from the market (HEA-260)", () => {
     export_credit: 4.1,
     daily_charges: 33,
     total: 50.4,
-    carried_hours: 0,
+    rates: {
+      prices: [],
+      export: 0.05,
+      daily_charge: 1.1,
+      import_market: true,
+      export_market: false,
+    },
   };
   const JUNE = new Date(2026, 5, 3, 14);
+  const JUNE_EVENING = new Date(2026, 5, 3, 20);
+  const JULY_MORNING = new Date(2026, 6, 1, 8);
+  const JULY_NOON = new Date(2026, 6, 1, 12);
   const locale = (card) => localeFrom(card._hass);
+  const stretch = (from, to, source) => ({
+    from: from.toISOString(),
+    to: to.toISOString(),
+    source,
+  });
+  const leftOut = (card) =>
+    [...card.shadowRoot.querySelectorAll(".left-out")].map((line) => line.textContent);
 
-  it("says from when every plan is compared, and which plan's prices set it", async () => {
-    // Given - the market plan's prices start partway through, so every plan is
-    // compared from then (HEA-294)
-    const card = mountCard(
-      TAG,
-      aHome({
-        ...COMPARED,
-        compared_from: JUNE.toISOString(),
-        compared_from_plan: "Wholesale",
-        plans: [FLAT, SPOT],
-      }),
-    );
+  it("says what every plan left out, naming the price sensor to check", async () => {
+    // Given - the market price recorded nothing on two stretches (HEA-299)
+    const hass = aHome({
+      ...COMPARED,
+      left_out: [
+        stretch(JUNE, JUNE_EVENING, "sensor.spot_price"),
+        stretch(JULY_MORNING, JULY_NOON, "sensor.spot_price"),
+      ],
+      plans: [FLAT, SPOT],
+    });
+    hass.states["sensor.spot_price"] = {
+      entity_id: "sensor.spot_price",
+      state: "0.21",
+      attributes: { friendly_name: "Spot price" },
+    };
+    const card = mountCard(TAG, hass);
     await settled(expect, card);
 
-    // Then - once, above the table, not under the one plan
-    const date = formatDateTime(JUNE, locale(card));
-    expect(card.shadowRoot.querySelector(".span").textContent).toBe(
-      `Compared from ${date}, when Wholesale's prices start, so every plan covers the same days.`,
-    );
+    // Then - once, above the table, both stretches under the one sensor, named
+    // as the household finds it, and each day named once
+    const at = (moment) => formatDateTime(moment, locale(card));
+    const clock = (moment) => formatClockTime(moment, locale(card));
+    expect(leftOut(card)).toEqual([
+      `Left out of every plan, daily charges included: ${at(JUNE)} to ${clock(JUNE_EVENING)}, ` +
+        `${at(JULY_MORNING)} to ${clock(JULY_NOON)}. Spot price (sensor.spot_price) recorded ` +
+        "no statistics then. Check it in Developer Tools > Statistics.",
+    ]);
     const row = card.shadowRoot.querySelector('[data-plan="spot"]');
-    expect(row.textContent).not.toContain("Compared from");
+    expect(row.textContent).not.toContain("Left out");
   });
 
-  it("says when it is the grid meters' readings that set the start", async () => {
+  it("says when it was the grid meters that recorded nothing", async () => {
     // Given
     const card = mountCard(
       TAG,
-      aHome({ ...COMPARED, compared_from: JUNE.toISOString(), compared_from_plan: null }),
+      aHome({ ...COMPARED, left_out: [stretch(JUNE, JUNE_EVENING, "grid")] }),
     );
     await settled(expect, card);
 
     // Then
-    const date = formatDateTime(JUNE, locale(card));
-    expect(card.shadowRoot.querySelector(".span").textContent).toBe(
-      `Compared from ${date}, when your grid meters' readings start, so every plan covers the same days.`,
-    );
+    const at = (moment) => formatDateTime(moment, locale(card));
+    const clock = (moment) => formatClockTime(moment, locale(card));
+    expect(leftOut(card)).toEqual([
+      `Left out of every plan, daily charges included: ${at(JUNE)} to ${clock(JUNE_EVENING)}. ` +
+        "Your grid meters recorded nothing then.",
+    ]);
   });
 
-  it("says nothing of a start when the whole period is compared", async () => {
-    // Given / When
-    const card = mountCard(TAG, aHome({ ...COMPARED, compared_from: null }));
-    await settled(expect, card);
-
-    // Then
-    expect(card.shadowRoot.querySelector(".span")).toBeNull();
-  });
-
-  it("says how long was priced at a price carried over a gap", async () => {
+  it("names both days when a stretch runs from one day into another", async () => {
     // Given
-    const gappy = { ...SPOT, carried_hours: 2.5 };
-    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, gappy] }));
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, left_out: [stretch(JUNE, JULY_MORNING, "grid")] }),
+    );
     await settled(expect, card);
 
     // Then
-    const row = card.shadowRoot.querySelector('[data-plan="spot"]');
-    expect(row.textContent).toContain(fill(LABELS.plans_carried, { hours: "2.5" }));
+    const at = (moment) => formatDateTime(moment, locale(card));
+    expect(leftOut(card)).toEqual([
+      `Left out of every plan, daily charges included: ${at(JUNE)} to ${at(JULY_MORNING)}. ` +
+        "Your grid meters recorded nothing then.",
+    ]);
   });
 
-  it("says nothing of carried prices where there are none", async () => {
+  it("counts the kWh over the hours compared when any were left out", async () => {
+    // Given
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, left_out: [stretch(JUNE, JUNE_EVENING, "grid")] }),
+    );
+    await settled(expect, card);
+
+    // Then - the kWh read against the costs beneath, not the whole period
+    expect(card.shadowRoot.querySelector(".flows").textContent).toBe(
+      "Imported 134.3 kWh and exported 82 kWh in the hours compared.",
+    );
+  });
+
+  it("says nothing was left out when nothing was", async () => {
     // Given / When
-    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, SPOT] }));
+    const card = mountCard(TAG, aHome({ ...COMPARED, left_out: [] }));
     await settled(expect, card);
 
     // Then
-    const row = card.shadowRoot.querySelector('[data-plan="spot"]').textContent;
-    expect(row).not.toContain(fill(LABELS.plans_carried, { hours: "0" }));
+    expect(leftOut(card)).toEqual([]);
+  });
+
+  it("says only that nothing was recorded when the whole period was", async () => {
+    // Given - no readings at all, so the whole period is left out
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, hours: 0, left_out: [stretch(JUNE, JULY_NOON, "grid")] }),
+    );
+    await settled(expect, card);
+
+    // Then - one note, not the same thing said twice
+    expect(leftOut(card)).toEqual([]);
+    expect(text(card)).toContain(LABELS.plans_no_readings);
   });
 
   it("says from when market prices were applied five minutes at a time", async () => {

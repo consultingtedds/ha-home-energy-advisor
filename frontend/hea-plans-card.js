@@ -16,6 +16,8 @@
 import { HeaCard, NARROW, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
 import {
+  formatClockTime,
+  formatDate,
   formatDateTime,
   formatEnergy,
   formatMoney,
@@ -56,8 +58,12 @@ const GROUPS = [
 /** A plan with no figure: bands that leave hours unpriced, or no market price. */
 const unpriced = (plan) => Boolean(plan.incomplete || plan.no_price);
 
-/** A plan priced from a market price entity, which says what it rests on. */
-const followsTheMarket = (plan) => "carried_hours" in plan;
+/** A plan priced from a market price entity, which says how finely it was priced. */
+const followsTheMarket = (plan) =>
+  Boolean(plan.rates?.import_market || plan.rates?.export_market);
+
+/** What a stretch left out had no data for, when it was not a price entity. */
+const GRID_METERS = "grid";
 
 /** Cheapest first, and a plan that cannot be priced after every one that can. */
 const byTotal = (a, b) => {
@@ -220,7 +226,7 @@ class HeaPlansCard extends HeaCard {
     const layout = { current, cheapest, parts, prices: wide, without };
     return `
       ${this._flows(locale)}
-      ${this._span(locale)}
+      ${this._leftOut(locale)}
       <div class="scroll">
         <table class="plans">
           <thead>${this._head(layout)}</thead>
@@ -321,31 +327,63 @@ class HeaPlansCard extends HeaCard {
 
   /**
    * What the meters recorded, said once: the same for every plan, because the
-   * kWh are the household's and only the prices are the plan's (HEA-280).
+   * kWh are the household's and only the prices are the plan's (HEA-280). Only
+   * the hours compared are counted, so with any left out it says so, and the kWh
+   * read against the costs beneath them (HEA-299).
    */
   _flows(locale) {
     if (!this._compared.hours) return "";
-    return `<div class="flows">${fill(this._labels.plans_flows, {
+    const wording = this._compared.left_out?.length
+      ? this._labels.plans_flows_compared
+      : this._labels.plans_flows;
+    return `<div class="flows">${fill(wording, {
       imported: formatEnergy(this._compared.imported_kwh, locale),
       exported: formatEnergy(this._compared.exported_kwh, locale),
     })}</div>`;
   }
 
   /**
-   * From when every plan is compared, where that is later than the period: one
-   * span for all of them, so the totals are over the same days (HEA-294). Says
-   * what set it - a plan's prices or the grid meters' readings - so a year that
-   * became two days can be traced to the plan that made it so.
+   * What every plan left out, said once above the table: the stretches with no
+   * data, each under what had none - the grid meters, or a price sensor named,
+   * with where to look (HEA-299, ADR-0043). Every plan is compared over the same
+   * hours, so a year that became a month can be traced to the sensor that made
+   * it so. Nothing where the meters recorded nothing at all: a note says that.
    */
-  _span(locale) {
-    const from = this._compared.compared_from;
-    if (!from) return "";
-    const date = formatDateTime(new Date(from), locale);
-    const plan = this._compared.compared_from_plan;
-    const wording = plan
-      ? fill(this._labels.plans_compared_from_plan, { date, plan: escape(plan) })
-      : fill(this._labels.plans_compared_from_meters, { date });
-    return `<div class="flows span">${wording}</div>`;
+  _leftOut(locale) {
+    const stretches = this._compared.left_out ?? [];
+    if (!stretches.length || !this._compared.hours) return "";
+    const bySource = new Map();
+    for (const stretch of stretches) {
+      const from = new Date(stretch.from);
+      const to = new Date(stretch.to);
+      // A stretch inside one day names that day once: "3 Jun 2026, 14:00 to 20:00".
+      const sameDay = formatDate(from, locale) === formatDate(to, locale);
+      const when = fill(this._labels.plans_stretch, {
+        from: formatDateTime(from, locale),
+        to: sameDay ? formatClockTime(to, locale) : formatDateTime(to, locale),
+      });
+      bySource.set(stretch.source, [...(bySource.get(stretch.source) ?? []), when]);
+    }
+    return [...bySource]
+      .map(([source, whens]) => {
+        const when = whens.join(", ");
+        const wording =
+          source === GRID_METERS
+            ? fill(this._labels.plans_left_out_meters, { when })
+            : fill(this._labels.plans_left_out_price, {
+                when,
+                sensor: this._sensor(source),
+              });
+        return `<div class="flows left-out" data-source="${escape(source)}">${wording}</div>`;
+      })
+      .join("");
+  }
+
+  /** A price sensor as the household finds it: its name, and its entity ID. */
+  _sensor(entityId) {
+    const name = this._hass?.states?.[entityId]?.attributes?.friendly_name;
+    const id = escape(entityId);
+    return name && name !== entityId ? `${escape(name)} (${id})` : id;
   }
 
   /**
@@ -365,7 +403,11 @@ class HeaPlansCard extends HeaCard {
     const leading = prices ? 2 : 1;
     const columns = leading + parts.length + 2 + (without ? 1 : 0);
     if (unpriced(plan)) {
-      const why = plan.no_price ? this._labels.plans_no_price : this._labels.plans_incomplete;
+      const why = plan.no_price
+        ? fill(this._labels.plans_no_price, {
+            sensors: (plan.no_price_entities ?? []).map((id) => this._sensor(id)).join(", "),
+          })
+        : this._labels.plans_incomplete;
       return `<tbody data-plan="${plan.id}"><tr>${name}${rates}
         <td class="incomplete rule" colspan="${columns - leading}">${why}</td></tr></tbody>`;
     }
@@ -373,9 +415,7 @@ class HeaPlansCard extends HeaCard {
       .map((part, index) => this._part(plan, part, locale, this._partClasses(part, index)))
       .join("");
     const difference = current && plan !== current ? this._difference(plan, current, locale) : "<td></td>";
-    const notes = [this._exportNotes(plan, locale), this._marketNotes(plan, locale)]
-      .join("")
-      .trim();
+    const notes = this._exportNotes(plan, locale).trim();
     return `<tbody data-plan="${plan.id}">
       <tr>${name}${rates}${figures}${this._total(plan, locale)}${without ? this._without(plan, locale) : ""}${difference}</tr>
       ${notes ? `<tr class="note"><td colspan="${columns}">${notes}</td></tr>` : ""}
@@ -402,20 +442,6 @@ class HeaPlansCard extends HeaCard {
           )}</div>`,
       )
       .join("");
-  }
-
-  /**
-   * What a market-priced plan's figures rest on, where there is anything to say.
-   *
-   * Where its prices start is said once for the whole comparison (`_span`),
-   * since every plan is priced from the same hour (HEA-294).
-   */
-  _marketNotes(plan, locale) {
-    if ((plan.carried_hours ?? 0) <= 0) return "";
-    const hours = new Intl.NumberFormat(locale.language, {
-      maximumFractionDigits: 1,
-    }).format(plan.carried_hours);
-    return `<div class="difference">${fill(this._labels.plans_carried, { hours })}</div>`;
   }
 
   /**
