@@ -1383,6 +1383,9 @@ async def test_a_free_window_is_read_with_its_allowance_and_the_price_after_it(
     assert free.import_allowance == Decimal(24)
     assert free.import_allowance_period is AllowancePeriod.DAY
     assert free.import_price_after == Decimal("0.25")
+    # And which price that is, so what it charges is counted on its row, as
+    # HEA-300 lists them
+    assert free.import_price_after_name == "Ordinary"
     assert plan.plan.bands[0].import_allowance is None
 
 

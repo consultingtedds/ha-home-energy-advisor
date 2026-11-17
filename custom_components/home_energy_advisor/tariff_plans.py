@@ -169,6 +169,7 @@ def band_from(data: Mapping[str, Any], prices: Mapping[str, Mapping[str, Any]]) 
         if after is None
         else _decimal(prices[after][CONF_BAND_IMPORT_PRICE]),
         name=named or "",
+        import_price_after_name=after or "",
     )
 
 

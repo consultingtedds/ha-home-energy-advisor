@@ -48,7 +48,14 @@ from .const import (
     DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
-from .engine.plan_pricing import IntervalOfEnergy, PlanCost, days_covered, price_plan
+from .engine.plan_pricing import (
+    IntervalOfEnergy,
+    Plan,
+    PlanCost,
+    PriceLine,
+    days_covered,
+    price_plan,
+)
 from .house_inputs import batteries_of, grid_meters_of, house_entities
 from .schemas import vol
 from .tariff_plans import TariffPlan, plans_of
@@ -243,7 +250,14 @@ async def async_compare_plans(
             # listed, not guessed at.
             plans.append({**named, "incomplete": True})
             continue
-        plans.append({**named, **_figures(cost), **without})
+        plans.append(
+            {
+                **named,
+                **_figures(cost),
+                **without,
+                "breakdown": _breakdown(tariff.plan, cost, days),
+            }
+        )
     return {
         "hours": len(intervals),
         "days": float(days),
@@ -483,6 +497,45 @@ def _figures(cost: PlanCost) -> dict[str, float]:
         "export_unpaid": _number(cost.export_unpaid),
         "export_carried": _number(cost.export_carried),
     }
+
+
+def _breakdown(plan: Plan, cost: PlanCost, days: Decimal) -> dict[str, Any]:
+    """A plan's cost line by line, as a bill lists it (HEA-300).
+
+    The daily charge, each price's kWh and what they cost, and what export was
+    paid on, so a household can match each line against a bill. The average
+    import rate is what each kWh cost on average, with the plan's cheapest and
+    dearest import prices for the card to read it between.
+    """
+    imported = sum((line.kwh for line in cost.imports), Decimal(0))
+    return {
+        "daily": {
+            "rate": _number(plan.daily_charge),
+            "days": _number(days),
+            "amount": _number(cost.daily_charges),
+        },
+        "imports": [_line(line) for line in cost.imports],
+        "exports": [
+            {**_line(line), "beyond_allowance": line.beyond_allowance}
+            for line in cost.exports
+        ],
+        "average_import_rate": _number(cost.energy / imported) if imported else None,
+        "cheapest_import_rate": _optional_number(cost.cheapest_import),
+        "dearest_import_rate": _optional_number(cost.dearest_import),
+    }
+
+
+def _line(line: PriceLine) -> dict[str, Any]:
+    return {
+        "name": line.name,
+        "rate": _optional_number(line.rate),
+        "kwh": _number(line.kwh),
+        "amount": _number(line.amount),
+    }
+
+
+def _optional_number(value: Decimal | None) -> float | None:
+    return None if value is None else _number(value)
 
 
 def _number(value: Decimal) -> float:

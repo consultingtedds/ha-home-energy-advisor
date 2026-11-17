@@ -339,6 +339,68 @@ async def test_each_plan_says_its_own_prices_for_the_card_to_list(
     ]
 
 
+_TWO_PRICES = {
+    **_FLAT,
+    CONF_NAME: "Two prices",
+    CONF_PRICES: [
+        {CONF_NAME: "Peak", CONF_BAND_IMPORT_PRICE: 0.31},
+        {CONF_NAME: "Night", CONF_BAND_IMPORT_PRICE: 0.09},
+    ],
+    CONF_BANDS: [
+        {
+            CONF_BAND_DAYS: "every_day",
+            CONF_BAND_START: 8,
+            CONF_BAND_END: 22,
+            CONF_BAND_PRICE: "Peak",
+        },
+        {
+            CONF_BAND_DAYS: "every_day",
+            CONF_BAND_START: 22,
+            CONF_BAND_END: 8,
+            CONF_BAND_PRICE: "Night",
+        },
+    ],
+}
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_each_plan_breaks_its_cost_down_line_by_line_as_a_bill_does(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - two named prices: 07:00's 1 kWh falls at Night, 12:00's 0.5 and
+    # 20:00's 1 at Peak
+    _calendar(hass, [])
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _TWO_PRICES))
+    )
+
+    # When
+    plan = _by_name(await _compare(hass_ws_client, hass))["Two prices"]
+
+    # Then - the daily charge, each price's kWh and cost, and what export was
+    # paid on, so every line can be matched against a bill (HEA-300)
+    assert plan["breakdown"] == {
+        "daily": {"rate": 0.45, "days": 1.0, "amount": 0.45},
+        "imports": [
+            {"name": "Peak", "rate": 0.31, "kwh": 1.5, "amount": 0.465},
+            {"name": "Night", "rate": 0.09, "kwh": 1.0, "amount": 0.09},
+        ],
+        "exports": [
+            {
+                "name": "",
+                "rate": 0.05,
+                "kwh": 2.0,
+                "amount": 0.1,
+                "beyond_allowance": False,
+            }
+        ],
+        # 0.555 for 2.5 kWh, read between the plan's cheapest and dearest
+        "average_import_rate": 0.222,
+        "cheapest_import_rate": 0.09,
+        "dearest_import_rate": 0.31,
+    }
+
+
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
 async def test_a_capped_plan_says_what_export_it_did_not_pay(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
@@ -579,6 +641,12 @@ async def test_hours_the_grid_meters_did_not_record_are_left_out_for_every_plan(
     assert plans["Night saver"]["daily_charges"] == pytest.approx(
         0.30 * 19 / 24, abs=1e-4
     )
+    # The breakdown covers the same hours, so its lines add up to the figures
+    breakdown = plans["Night saver"]["breakdown"]
+    assert sum(line["kwh"] for line in breakdown["imports"]) == pytest.approx(
+        result["imported_kwh"]
+    )
+    assert breakdown["daily"]["days"] == pytest.approx(19 / 24, abs=1e-4)
 
 
 @pytest.mark.usefixtures("recorder_mock")
@@ -938,6 +1006,18 @@ async def test_a_plan_importing_at_the_market_is_priced_at_each_hours_price(
     assert market["daily_charges"] == pytest.approx(1.0)
     assert result["left_out"] == []
     assert result["five_minute_from"] is None
+    # One line for the market, no rate of its own; its average read between the
+    # cheapest and dearest hours it was charged at, not the hours nothing was
+    # imported in
+    breakdown = market["breakdown"]
+    assert breakdown["imports"] == [
+        {"name": "", "rate": None, "kwh": 2.5, "amount": 0.49}
+    ]
+    assert breakdown["average_import_rate"] == pytest.approx(0.196)
+    assert (breakdown["cheapest_import_rate"], breakdown["dearest_import_rate"]) == (
+        0.12,
+        0.30,
+    )
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")

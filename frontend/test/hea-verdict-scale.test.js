@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { savingRate, verdictScaleFor } from "../hea-verdict-scale.js";
+import { savingRate, verdictColour, verdictScaleFor } from "../hea-verdict-scale.js";
 
 /** A row as the statistics layer publishes one, cut to what the scale reads. */
 const aRow = (costAtGridPrice, costSavings) => ({ costAtGridPrice, costSavings });
@@ -236,5 +236,30 @@ describe("the lightness ramp", () => {
     // Then - light text on a dark card, and the good end the brightest of it
     expect(good).toBeGreaterThan(bad);
     expect(bad).toBeGreaterThan(50);
+  });
+});
+
+describe("the one ramp every verdict is drawn from", () => {
+  it("colours a position as the largest device at that saving rate is coloured", () => {
+    // Given - the plans card asks the scale for a position directly (HEA-300);
+    // the largest device on a table is said at full weight, as a plan is
+    const largest = aRow(10, 7);
+    const scale = verdictScaleFor([largest, aRow(1, 0.5)]);
+
+    // When / Then - one ramp, so the same verdict wears the same colour
+    for (const dark of [false, true]) {
+      const { text, edge } = verdictScaleFor([largest], { dark })(largest);
+      expect(verdictColour(0.7, { dark })).toEqual({ text, edge });
+    }
+    expect(verdictColour(0.7)).toEqual({
+      text: scale(largest).text,
+      edge: scale(largest).edge,
+    });
+  });
+
+  it("clamps a position off either end to that end", () => {
+    // Given / When / Then
+    expect(verdictColour(-0.4)).toEqual(verdictColour(0));
+    expect(verdictColour(1.6)).toEqual(verdictColour(1));
   });
 });

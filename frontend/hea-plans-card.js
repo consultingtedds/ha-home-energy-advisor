@@ -15,6 +15,7 @@
 
 import { HeaCard, NARROW, registerCard } from "./hea-card-base.js";
 import { HeaCardEditor, registerEditor } from "./hea-card-editor.js";
+import { drawsOnDark } from "./hea-colour.js";
 import {
   formatClockTime,
   formatDate,
@@ -27,6 +28,7 @@ import {
 } from "./hea-format.js";
 import { fill, loadLabels } from "./hea-labels.js";
 import { TABLE_STYLE } from "./hea-table-card.js";
+import { verdictColour } from "./hea-verdict-scale.js";
 
 export const TAG = "hea-plans-card";
 const EDITOR_TAG = `${TAG}-editor`;
@@ -103,6 +105,8 @@ class HeaPlansCard extends HeaCard {
       font-weight: 500;
     }
     .plans thead tr.groups th { border-bottom: none; text-align: center; }
+    /* One heading over two rows, so both halves sit where its figures do. */
+    .plans thead tr.groups th.without, .plans thead th.without { text-align: right; }
     .plans .rule { border-left: 1px solid var(--divider-color, #e0e0e0); }
     .plans .earn {
       background: color-mix(in srgb, var(--success-color, #4caf50) 9%, transparent);
@@ -163,6 +167,68 @@ class HeaPlansCard extends HeaCard {
       white-space: normal;
       color: var(--secondary-text-color);
     }
+    /* A plan's row opens its bill (HEA-300): the whole row takes the pointer,
+       and its name is the button a keyboard reaches. */
+    tr.figures { cursor: pointer; }
+    button.open {
+      all: unset;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+    }
+    button.open:focus-visible {
+      outline: 2px solid var(--primary-color, #03a9f4);
+      outline-offset: 2px;
+    }
+    button.open::before {
+      content: "▸";
+      display: inline-block;
+      width: 1em;
+      color: var(--secondary-text-color);
+    }
+    button.open[aria-expanded="true"]::before { content: "▾"; }
+    /* Context, not money: in the secondary colour unless its verdict colours
+       it, never in the red or green of the figure above it. */
+    .average { font-size: 0.85em; color: var(--secondary-text-color); }
+    /* Allowed to wrap under the import cost, so the column stays as wide as
+       its figure rather than its note. */
+    td > div > .average { display: inline-block; white-space: normal; max-width: 7em; }
+    tr.bill-row > td {
+      padding: 0 12px 12px 14px;
+      text-align: left;
+      white-space: normal;
+    }
+    .plans .bill {
+      width: auto;
+      border: none;
+      margin-top: var(--hea-space-xs);
+      font-size: 0.9em;
+    }
+    .plans .bill th, .plans .bill td {
+      padding: 2px 10px;
+      text-align: right;
+      white-space: nowrap;
+      border: none;
+    }
+    .plans .bill th { text-align: left; font-weight: normal; }
+    .plans .bill thead th {
+      background: none;
+      color: var(--secondary-text-color);
+      font-weight: 400;
+      font-size: 0.8em;
+    }
+    .plans .bill tr.subtotal > *, .plans .bill tr.total > * {
+      font-weight: 500;
+      border-top: 1px solid var(--divider-color, #e0e0e0);
+    }
+    /* On a phone the bill fits the three columns the table keeps, rather than
+       widening the table past the screen: tighter, and an average may wrap. */
+    @media (max-width: 767px) {
+      tr.bill-row > td { padding: 0 4px 8px; }
+      .plans .bill { font-size: 0.8em; }
+      .plans .bill th, .plans .bill td { padding: 2px 5px; }
+      .plans .bill .average { white-space: normal; }
+    }
   `;
 
   static getConfigElement() {
@@ -217,6 +283,7 @@ class HeaPlansCard extends HeaCard {
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       current ? "" : this._labels.plans_no_current,
       this._labels.plans_note,
+      priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",
       wide ? "" : this._labels.plans_breakdown_hidden,
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
     ].filter(Boolean);
@@ -245,7 +312,7 @@ class HeaPlansCard extends HeaCard {
     const cell = (label, classes = "") => `<th${classAttribute(classes)}>${label}</th>`;
     const trailing = [
       cell(this._labels.plans_total, "rule"),
-      ...(without ? [cell(this._labels.plans_without, "rule")] : []),
+      ...(without ? [cell(this._labels.plans_without, "rule without")] : []),
       cell(this._labels.plans_vs_current),
     ];
     const columns = [
@@ -262,12 +329,17 @@ class HeaPlansCard extends HeaCard {
       const classes = group.key === "earn" ? "rule earn" : "rule";
       return `<th class="${classes}" colspan="${span}">${this._labels[group.label]}</th>`;
     }).join("");
-    return `<tr class="groups"><th colspan="${leading.length}"></th>${groups}<th colspan="${trailing.length}" class="rule"></th></tr>
+    // The installation's column is headed over both rows, as the groups are:
+    // "Buying everything" above "from the grid" (HEA-300).
+    const after = without
+      ? `<th class="rule"></th><th class="rule without">${this._labels.plans_without_group}</th><th></th>`
+      : `<th colspan="${trailing.length}" class="rule"></th>`;
+    return `<tr class="groups"><th colspan="${leading.length}"></th>${groups}${after}</tr>
       <tr>${columns}</tr>`;
   }
 
   /**
-   * What the plan would have cost with no solar or battery, and what the
+   * What the plan would have cost buying everything from the grid, and what the
    * installation saved on it beneath: the figure a household weighs its panels
    * and battery by, on every plan (HEA-293). A cost, so signed as one; the
    * saving beneath in its own favour's colour (HEA-296).
@@ -391,14 +463,8 @@ class HeaPlansCard extends HeaCard {
    * group of their own so a note is never read as the next plan's.
    */
   _plan(plan, { current, cheapest, parts, prices, without }, locale) {
-    const tags = [
-      plan.current ? ["current", this._labels.plans_your_plan] : undefined,
-      plan === cheapest ? ["cheapest", this._labels.plans_cheapest] : undefined,
-    ]
-      .filter(Boolean)
-      .map(([kind, label]) => `<span class="tag ${kind}">${label}</span>`)
-      .join("");
-    const name = `<th>${escape(plan.name)}${tagLine(tags)}</th>`;
+    const opened = this._opened.has(plan.id);
+    const name = this._name(plan, cheapest, opened);
     const rates = prices ? this._prices(plan, locale) : "";
     const leading = prices ? 2 : 1;
     const columns = leading + parts.length + 2 + (without ? 1 : 0);
@@ -416,10 +482,227 @@ class HeaPlansCard extends HeaCard {
       .join("");
     const difference = current && plan !== current ? this._difference(plan, current, locale) : "<td></td>";
     const notes = this._exportNotes(plan, locale).trim();
+    const bill =
+      opened && plan.breakdown
+        ? `<tr class="bill-row"><td colspan="${columns}">${this._bill(plan, locale)}</td></tr>`
+        : "";
     return `<tbody data-plan="${plan.id}">
-      <tr>${name}${rates}${figures}${this._total(plan, locale)}${without ? this._without(plan, locale) : ""}${difference}</tr>
+      <tr class="figures">${name}${rates}${figures}${this._total(plan, locale)}${without ? this._without(plan, locale) : ""}${difference}</tr>
       ${notes ? `<tr class="note"><td colspan="${columns}">${notes}</td></tr>` : ""}
+      ${bill}
     </tbody>`;
+  }
+
+  /**
+   * A plan's name and its badges. A plan with a bill to open names itself on
+   * the button that opens it, which says whether it is open (HEA-300).
+   */
+  _name(plan, cheapest, opened) {
+    const tags = [
+      plan.current ? ["current", this._labels.plans_your_plan] : undefined,
+      plan === cheapest ? ["cheapest", this._labels.plans_cheapest] : undefined,
+    ]
+      .filter(Boolean)
+      .map(([kind, label]) => `<span class="tag ${kind}">${label}</span>`)
+      .join("");
+    const title =
+      plan.breakdown && !unpriced(plan)
+        ? `<button class="open" type="button" aria-expanded="${opened}">${escape(plan.name)}</button>`
+        : escape(plan.name);
+    return `<th>${title}${tagLine(tags)}</th>`;
+  }
+
+  /** The plans whose bills are open, kept across a redraw or a new fetch. */
+  get _opened() {
+    this._openPlans ??= new Set();
+    return this._openPlans;
+  }
+
+  /**
+   * One listener for the whole card, on the shadow root that outlives every
+   * redraw: a plan's row, or the button on its name, opens and closes its bill.
+   */
+  _afterRender() {
+    if (this._listening) return;
+    this._listening = true;
+    this.shadowRoot.addEventListener("click", (event) => {
+      const row = event.target.closest?.("tr.figures");
+      const id = row?.closest("tbody[data-plan]")?.dataset.plan;
+      if (!id) return;
+      if (this._opened.has(id)) this._opened.delete(id);
+      else this._opened.add(id);
+      this._render();
+    });
+  }
+
+  /**
+   * A plan's total line by line, as a bill lists it (HEA-300): its daily
+   * charges first, being charged by the day; then each price's kWh and what
+   * they cost, and the import cost they add up to; then export, and what any
+   * cap did not pay of it; then the total. Every amount signed as the table
+   * signs it, so each line can be matched to a column above and to a bill.
+   */
+  _bill(plan, locale) {
+    const { daily } = plan.breakdown;
+    const days = new Intl.NumberFormat(locale.language, { maximumFractionDigits: 2 });
+    const lines = [
+      billRow(locale, {
+        name: this._labels.plans_daily,
+        rate: fill(this._labels.plans_per_day, { amount: formatMoney(daily.rate, locale) }),
+        used: fill(daily.days === 1 ? this._labels.plans_day : this._labels.plans_days, {
+          days: days.format(daily.days),
+        }),
+        favour: -daily.amount,
+        key: "daily",
+      }),
+      ...this._importLines(plan, locale),
+      ...this._exportLines(plan, locale),
+      billRow(locale, {
+        name: this._labels.plans_total,
+        favour: -plan.total,
+        key: "total",
+        classes: "total",
+      }),
+    ];
+    const head = ["", this._labels.plans_rate, this._labels.plans_used, this._labels.plans_amount]
+      .map((label) => `<th>${label}</th>`)
+      .join("");
+    const note =
+      plan.breakdown.average_import_rate === null ? "" : hint(this._labels.plans_average_note);
+    return `<table class="bill"><thead><tr>${head}</tr></thead><tbody>${lines.join("")}</tbody></table>${note}`;
+  }
+
+  /** A rate per kWh as the card writes one, its unit beside it. */
+  _rate(value, locale) {
+    return `${formatRate(value, locale)} ${rateUnit(locale)}`;
+  }
+
+  /** What a market line averaged, since it has no one rate of its own. */
+  _averageOf({ kwh, amount }, locale) {
+    return kwh ? fill(this._labels.plans_average, { rate: this._rate(amount / kwh, locale) }) : "";
+  }
+
+  /**
+   * Each import price's line, then the import cost they add up to: its kWh,
+   * and the average rate they came to, carrying its verdict as a device's does
+   * on the devices table - the figure coloured, and a band down its row.
+   */
+  _importLines(plan, locale) {
+    const { imports } = plan.breakdown;
+    const verdict = this._averageVerdict(plan, locale);
+    const lines = imports.map((line, index) =>
+      billRow(locale, {
+        name:
+          line.rate === null
+            ? this._labels.plans_market_price
+            : line.name || this._labels.plans_unnamed_price,
+        rate: line.rate === null ? this._averageOf(line, locale) : this._rate(line.rate, locale),
+        used: formatEnergy(line.kwh, locale),
+        favour: -line.amount,
+        key: "import-" + index,
+      }),
+    );
+    const band = verdict?.colour ? "box-shadow: inset 4px 0 0 " + verdict.colour.edge : "";
+    lines.push(
+      billRow(locale, {
+        name: this._labels.plans_energy,
+        rate: this._average(plan, locale, "bill-average", verdict),
+        used: formatEnergy(sum(imports, "kwh"), locale),
+        favour: -plan.energy,
+        key: "energy",
+        classes: "subtotal",
+        style: band,
+      }),
+    );
+    return lines;
+  }
+
+  /**
+   * Each export price's line, what they add up to where there is more than
+   * one, and what any cap did not pay of them, so the bill still adds up to the
+   * total (HEA-258).
+   */
+  _exportLines(plan, locale) {
+    const { exports } = plan.breakdown;
+    const lines = exports.map((line, index) =>
+      billRow(locale, {
+        name: this._exportName(line),
+        rate: line.rate === null ? this._averageOf(line, locale) : this._rate(line.rate, locale),
+        used: formatEnergy(line.kwh, locale),
+        favour: line.amount,
+        key: "export-" + index,
+      }),
+    );
+    if (exports.length > 1) {
+      lines.push(
+        billRow(locale, {
+          name: this._labels.plans_export,
+          used: formatEnergy(sum(exports, "kwh"), locale),
+          favour: sum(exports, "amount"),
+          key: "export",
+          classes: "subtotal",
+        }),
+      );
+    }
+    const capped = (plan.export_unpaid ?? 0) + (plan.export_carried ?? 0);
+    if (capped > 0) {
+      lines.push(
+        billRow(locale, { name: this._labels.plans_capped, favour: -capped, key: "capped" }),
+      );
+    }
+    return lines;
+  }
+
+  /** An export line's name: its price's, or the plan's own export price. */
+  _exportName(line) {
+    if (line.rate === null) return this._labels.plans_market_price;
+    if (line.name) return line.name;
+    return line.beyond_allowance
+      ? this._labels.plans_export_beyond
+      : this._labels.plans_export_rate;
+  }
+
+  /**
+   * The plan's average import rate, coloured by where it falls between the
+   * plan's dearest price and its cheapest, and said in words on its title.
+   */
+  _average(plan, locale, figure, verdict = this._averageVerdict(plan, locale)) {
+    if (!verdict) return "";
+    const style = verdict.colour ? ` style="color: ${verdict.colour.text}"` : "";
+    return `<span class="average" data-figure="${figure}"${style} title="${escape(verdict.title)}">${verdict.text}</span>`;
+  }
+
+  /**
+   * Where the average falls on the device table's verdict scale (HEA-106): red
+   * at the plan's dearest import price, green at its cheapest. Full weight,
+   * since every plan prices the same kWh. No colour where the plan has only one
+   * price, which leaves nothing to compare.
+   */
+  _averageVerdict(plan, locale) {
+    const breakdown = plan.breakdown;
+    const average = breakdown?.average_import_rate;
+    if (average === null || average === undefined) return undefined;
+    const rate = (value) => this._rate(value, locale);
+    const cheapest = breakdown.cheapest_import_rate;
+    const dearest = breakdown.dearest_import_rate;
+    const spread = dearest - cheapest;
+    const colour =
+      spread > 0
+        ? verdictColour((dearest - average) / spread, { dark: drawsOnDark(this) })
+        : undefined;
+    const wording = plan.rates?.import_market
+      ? this._labels.plans_average_title_market
+      : this._labels.plans_average_title;
+    return {
+      colour,
+      // The figure kept with its unit where the line wraps under the cost.
+      text: fill(this._labels.plans_average, { rate: rate(average).replace(" ", " ") }),
+      title: fill(wording, {
+        average: rate(average),
+        cheapest: rate(cheapest),
+        dearest: rate(dearest),
+      }),
+    };
   }
 
   /**
@@ -461,10 +744,22 @@ class HeaPlansCard extends HeaCard {
     return moneyCell(`total:${plan.id}`, -plan.total, locale, "total rule");
   }
 
-  /** What is paid is against the household, what is earned in its favour. */
+  /**
+   * What is paid is against the household, what is earned in its favour. The
+   * import cost carries the plan's average rate beneath it, coloured, with no
+   * band down the row: a band would read as a verdict on the whole plan, and a
+   * plan can be the cheapest while its import timing is poor (HEA-300).
+   */
   _part(plan, { key, figure = key, group }, locale, classes = "") {
     const favour = group === "earn" ? plan[figure] : -plan[figure];
-    return moneyCell(`${key}:${plan.id}`, favour, locale, classes);
+    if (key !== "energy" || !plan.breakdown) {
+      return moneyCell(`${key}:${plan.id}`, favour, locale, classes);
+    }
+    const { text, tone } = signed(favour, locale);
+    const all = [classes, tone].filter(Boolean).join(" ");
+    const average = this._average(plan, locale, "average:" + plan.id);
+    const beneath = average ? "<div>" + average + "</div>" : "";
+    return `<td${classAttribute(all)} data-figure="${key}:${plan.id}">${text}${beneath}</td>`;
   }
 
   /**
@@ -482,6 +777,22 @@ class HeaPlansCard extends HeaCard {
 }
 
 const hint = (note) => `<div class="hint">${note}</div>`;
+
+/** The sum of one field over a bill's lines. */
+const sum = (lines, field) => lines.reduce((total, line) => total + line[field], 0);
+
+/** A cell's style attribute, or nothing for a cell with no style. */
+const styleAttribute = (style) => (style ? ` style="${style}"` : "");
+
+/**
+ * One line of a plan's bill: what it is, its rate, what was used, and the
+ * money signed as the table above signs it. `name` is escaped, since a price's
+ * name is the household's own words; `rate` and `used` are the card's.
+ */
+const billRow = (locale, { name, rate = "", used = "", favour, key, classes = "", style = "" }) => {
+  const money = moneyCell("bill-" + key, favour, locale);
+  return `<tr${classAttribute(classes)}><th${styleAttribute(style)}>${escape(name)}</th><td>${rate}</td><td>${used}</td>${money}</tr>`;
+};
 
 /** A cell's class attribute, or nothing for a cell with no class. */
 const classAttribute = (classes) => (classes ? ` class="${classes}"` : "");

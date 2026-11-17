@@ -130,7 +130,8 @@ class Band:
     with every band charging the same named price, `name` (ADR-0039).
     `import_allowance` is how many kWh each `import_allowance_period` its import
     price charges on, shared the same way, with `import_price_after` charged on
-    the rest (HEA-264).
+    the rest (HEA-264). `import_price_after_name` is the named price that is, so
+    what it charges is counted on that price's row (HEA-300).
     """
 
     days: Days | frozenset[Day]
@@ -145,6 +146,7 @@ class Band:
     # Whose allowance it shares, not what it charges, so two bands at the same
     # prices are the same band whatever their price is called.
     name: str = field(default="", compare=False)
+    import_price_after_name: str = field(default="", compare=False)
 
     def __post_init__(self) -> None:
         """Refuse a band of no days, or hours that are not whole hours of one."""
@@ -307,12 +309,37 @@ class IntervalOfEnergy:
 
 
 @dataclass(frozen=True)
+class PriceLine:
+    """What one of a plan's prices charged or paid, as a bill's line reads.
+
+    `name` is the named price, empty for the plan's own export price and for
+    one a plan entered before prices had names. `rate` is per kWh, or `None`
+    for a market price, which has no one rate. `beyond_allowance` marks the
+    plan's export price after its allowance (ADR-0039).
+    """
+
+    name: str
+    rate: Decimal | None
+    kwh: Decimal
+    amount: Decimal
+    beyond_allowance: bool = False
+
+
+@dataclass(frozen=True)
 class PlanCost:
     """What a plan would have charged, in its three parts.
 
     `export_credit` is what export was paid, after any cap. `export_unpaid` is
     what the cap did not pay, and `export_carried` what it carried forward and
     was still unused when the period ended (HEA-258).
+
+    `imports` and `exports` break the energy and the export down by price, so a
+    household can match each line against a bill (HEA-300). The import lines
+    add up to `energy`; the export lines are what export earned before any cap,
+    so they add up to `export_credit` plus what the cap did not pay.
+    `cheapest_import` and `dearest_import` are the ends the plan's average
+    import price is read against: its own prices, or for a market price, the
+    cheapest and dearest it charged.
     """
 
     energy: Decimal
@@ -320,6 +347,10 @@ class PlanCost:
     daily_charges: Decimal
     export_unpaid: Decimal = Decimal(0)
     export_carried: Decimal = Decimal(0)
+    imports: tuple[PriceLine, ...] = field(default=(), compare=False)
+    exports: tuple[PriceLine, ...] = field(default=(), compare=False)
+    cheapest_import: Decimal | None = field(default=None, compare=False)
+    dearest_import: Decimal | None = field(default=None, compare=False)
 
     @property
     def total(self) -> Decimal:
@@ -349,6 +380,7 @@ def price_plan(
     allowances = _Allowances()
     # Counted apart from export's, since a price can carry both.
     import_allowances = _Allowances()
+    lines = _Lines(plan)
     for recorded in intervals:
         month = months.setdefault((recorded.start.year, recorded.start.month), _Month())
         band = (
@@ -358,21 +390,25 @@ def price_plan(
                 plan.day_of(recorded.start.date(), holidays), recorded.start.hour
             )
         )
-        month.energy += (
-            recorded.imported_kwh
-            * plan.import_adjustment.apply(
+        if band is None:
+            price = plan.import_adjustment.apply(
                 _market(recorded.import_price, recorded, plan)
             )
-            if band is None
-            else import_allowances.charge(band, recorded)
-        )
+            month.energy += lines.charge_at_market(recorded.imported_kwh, price)
+        else:
+            month.energy += lines.charge(
+                band, *import_allowances.charge(band, recorded)
+            )
         if plan.export_per_interval:
-            month.earned += recorded.exported_kwh * plan.export_adjustment.apply(
+            price = plan.export_adjustment.apply(
                 _market(recorded.export_price, recorded, plan)
             )
+            month.earned += lines.pay(
+                [(_AT_MARKET, recorded.exported_kwh, recorded.exported_kwh * price)]
+            )
         else:
-            month.earned += allowances.credit(plan, band, recorded)
-    return _capped(plan, [months[key] for key in sorted(months)], days)
+            month.earned += lines.pay(allowances.credit(plan, band, recorded))
+    return _capped(plan, [months[key] for key in sorted(months)], days, lines)
 
 
 @dataclass
@@ -383,8 +419,11 @@ class _Month:
     earned: Decimal = Decimal(0)
 
 
-def _capped(plan: Plan, months: list[_Month], days: Decimal) -> PlanCost:
+def _capped(plan: Plan, months: list[_Month], days: Decimal, lines: _Lines) -> PlanCost:
     """The plan's cost, with export paid as its cap allows, month by month.
+
+    With the lines it is made of, which no cap changes: they say what each price
+    charged and earned, and the cap only what of the earnings was paid.
 
     A month's cap is its energy cost, never below nothing: a month the market
     paid the household to import has no energy cost for export to offset.
@@ -409,6 +448,10 @@ def _capped(plan: Plan, months: list[_Month], days: Decimal) -> PlanCost:
         daily_charges=plan.daily_charge * days,
         export_unpaid=unpaid,
         export_carried=carried,
+        imports=lines.imports(),
+        exports=lines.exports(),
+        cheapest_import=lines.cheapest_import(),
+        dearest_import=lines.dearest_import(),
     )
 
 
@@ -450,24 +493,31 @@ class _Allowances:
 
     def credit(
         self, plan: Plan, band: Band | None, recorded: IntervalOfEnergy
-    ) -> Decimal:
-        """What `recorded`'s export earns, at its band's price, then the plan's."""
+    ) -> list[_Paid]:
+        """What `recorded`'s export earns, at its band's price, then the plan's.
+
+        Each part with the line it is paid on, the kWh and what they earned.
+        """
         day = recorded.start.date()
         exported = recorded.exported_kwh
-        credit = Decimal(0)
+        parts: list[_Paid] = []
         if band is not None and band.export_price is not None:
             paid = self._within(day, band.name, band.export_allowance, exported)
-            credit += paid * band.export_price
+            parts.append(
+                (_band_export(band, band.export_price), paid, paid * band.export_price)
+            )
             exported -= paid
         paid = self._within(day, None, plan.export_allowance, exported)
-        return (
-            credit
-            + paid * plan.export_price
-            + (exported - paid) * plan.export_price_after
-        )
+        parts.append((_plans_export(plan), paid, paid * plan.export_price))
+        if plan.export_allowance is not None:
+            beyond = exported - paid
+            parts.append(
+                (_beyond_export(plan), beyond, beyond * plan.export_price_after)
+            )
+        return parts
 
-    def charge(self, band: Band, recorded: IntervalOfEnergy) -> Decimal:
-        """What `recorded`'s import costs at its band, the allowance counted.
+    def charge(self, band: Band, recorded: IntervalOfEnergy) -> tuple[Decimal, Decimal]:
+        """`recorded`'s import within its band's allowance, and beyond it.
 
         The allowance is counted from the start of its period, a day, week or
         month (HEA-264), so `_within`'s day is that period's first.
@@ -475,9 +525,7 @@ class _Allowances:
         imported = recorded.imported_kwh
         starts = band.import_allowance_period.start(recorded.start.date())
         within = self._within(starts, band.name, band.import_allowance, imported)
-        return (
-            within * band.import_price + (imported - within) * band.import_price_after
-        )
+        return within, imported - within
 
     def _within(
         self, day: date, whose: str | None, allowance: Decimal | None, kwh: Decimal
@@ -489,6 +537,140 @@ class _Allowances:
         within = min(kwh, max(allowance - used, Decimal(0)))
         self._used[(day, whose)] = used + within
         return within
+
+
+# A line of a plan's breakdown: its price's name, rate per kWh (none for a market
+# price), and whether it is the plan's export price beyond its allowance.
+_Line = tuple[str, Decimal | None, bool]
+# What one part of an interval's flow came to: its line, kWh and money.
+_Paid = tuple[_Line, Decimal, Decimal]
+
+_AT_MARKET: _Line = ("", None, False)
+
+
+def _band_import(name: str, rate: Decimal) -> _Line:
+    return (name, rate, False)
+
+
+def _band_export(band: Band, rate: Decimal) -> _Line:
+    return (band.name, rate, False)
+
+
+def _plans_export(plan: Plan) -> _Line:
+    return ("", plan.export_price, False)
+
+
+def _beyond_export(plan: Plan) -> _Line:
+    return ("", plan.export_price_after, True)
+
+
+class _Lines:
+    """A plan's flows counted by the price that charged or paid them (HEA-300).
+
+    Every price the plan has gets its line before anything is counted, in the
+    order its bands first use it, so a price nothing was charged at still reads
+    as a line of nothing, as a bill lists every period whether used or not.
+    """
+
+    def __init__(self, plan: Plan) -> None:
+        self._imports: dict[_Line, list[Decimal]] = {}
+        self._exports: dict[_Line, list[Decimal]] = {}
+        self._charged: list[Decimal] = []
+        if plan.import_per_interval:
+            self._open(self._imports, _AT_MARKET)
+        else:
+            for band in plan.bands:
+                self._open(self._imports, _band_import(band.name, band.import_price))
+            for band in plan.bands:
+                if band.import_allowance is not None:
+                    self._open(
+                        self._imports,
+                        _band_import(
+                            band.import_price_after_name, band.import_price_after
+                        ),
+                    )
+        if plan.export_per_interval:
+            self._open(self._exports, _AT_MARKET)
+            return
+        for band in plan.bands:
+            if band.export_price is not None:
+                self._open(self._exports, _band_export(band, band.export_price))
+        self._open(self._exports, _plans_export(plan))
+        if plan.export_allowance is not None:
+            self._open(self._exports, _beyond_export(plan))
+
+    @staticmethod
+    def _open(lines: dict[_Line, list[Decimal]], line: _Line) -> None:
+        lines.setdefault(line, [Decimal(0), Decimal(0)])
+
+    @staticmethod
+    def _add(
+        lines: dict[_Line, list[Decimal]], line: _Line, kwh: Decimal, money: Decimal
+    ) -> None:
+        counted = lines.setdefault(line, [Decimal(0), Decimal(0)])
+        counted[0] += kwh
+        counted[1] += money
+
+    def charge(self, band: Band, within: Decimal, beyond: Decimal) -> Decimal:
+        """Count import at its band's price and beyond its allowance; the cost."""
+        cost = within * band.import_price
+        self._add(
+            self._imports, _band_import(band.name, band.import_price), within, cost
+        )
+        if band.import_allowance is None:
+            return cost
+        after = beyond * band.import_price_after
+        self._add(
+            self._imports,
+            _band_import(band.import_price_after_name, band.import_price_after),
+            beyond,
+            after,
+        )
+        return cost + after
+
+    def charge_at_market(self, kwh: Decimal, price: Decimal) -> Decimal:
+        """Count import at the market's price; what it cost."""
+        cost = kwh * price
+        self._add(self._imports, _AT_MARKET, kwh, cost)
+        if kwh:
+            self._charged.append(price)
+        return cost
+
+    def pay(self, parts: Iterable[_Paid]) -> Decimal:
+        """Count each part of export on its line; what they earned."""
+        earned = Decimal(0)
+        for line, kwh, money in parts:
+            self._add(self._exports, line, kwh, money)
+            earned += money
+        return earned
+
+    def imports(self) -> tuple[PriceLine, ...]:
+        """The import lines, in order."""
+        return self._finished(self._imports)
+
+    def exports(self) -> tuple[PriceLine, ...]:
+        """The export lines, in order."""
+        return self._finished(self._exports)
+
+    def cheapest_import(self) -> Decimal | None:
+        """The cheapest import price: the plan's own, or the market's charged."""
+        return min(self._import_rates(), default=None)
+
+    def dearest_import(self) -> Decimal | None:
+        """The dearest import price: the plan's own, or the market's charged."""
+        return max(self._import_rates(), default=None)
+
+    def _import_rates(self) -> list[Decimal]:
+        if _AT_MARKET in self._imports:
+            return self._charged
+        return [rate for _, rate, _ in self._imports if rate is not None]
+
+    @staticmethod
+    def _finished(lines: dict[_Line, list[Decimal]]) -> tuple[PriceLine, ...]:
+        return tuple(
+            PriceLine(name, rate, kwh, money, beyond_allowance=beyond)
+            for (name, rate, beyond), (kwh, money) in lines.items()
+        )
 
 
 def _market(price: Decimal | None, recorded: IntervalOfEnergy, plan: Plan) -> Decimal:

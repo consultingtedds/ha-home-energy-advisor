@@ -90,10 +90,11 @@ const CARDS = [
 
 /**
  * What the served bundle should weigh, and how far it may drift before someone
- * looks. One request of about 51 KB is right; 25 requests means a deploy left
- * the old modules behind, which has happened and looked fine.
+ * looks. One request of about 92 KB is right (it was 51 KB before the plan
+ * comparison and its bills); 25 requests means a deploy left the old modules
+ * behind, which has happened and looked fine.
  */
-const BUNDLE_KB = { min: 30, max: 90 };
+const BUNDLE_KB = { min: 30, max: 120 };
 
 const results = [];
 

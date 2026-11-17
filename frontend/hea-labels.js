@@ -143,9 +143,10 @@ export const DEFAULTS = Object.freeze({
   plans_daily_rate: "Daily",
   plans_per_day: "{amount}/day",
   plans_total: "Total",
-  plans_without: "Without solar or battery",
-  plans_saves: "saves {amount}",
-  plans_costs_more: "{amount} more",
+  plans_without_group: "Buying everything",
+  plans_without: "from the grid",
+  plans_saves: "your installation saves you {amount}",
+  plans_costs_more: "your installation costs you {amount} more",
   plans_vs_current: "vs current plan",
   plans_same_short: "The same",
   plans_flows: "Imported {imported} and exported {exported} in this period.",
@@ -174,6 +175,22 @@ export const DEFAULTS = Object.freeze({
     "Left out of every plan, daily charges included: {when}. {sensor} recorded " +
     "no statistics then. Check it in Developer Tools > Statistics.",
   plans_stretch: "{from} to {to}",
+  plans_open: "Select a plan to see its total line by line, as a bill lists it.",
+  plans_rate: "Rate",
+  plans_used: "Used",
+  plans_amount: "Amount",
+  plans_day: "{days} day",
+  plans_days: "{days} days",
+  plans_unnamed_price: "Price",
+  plans_export_beyond: "Export beyond its allowance",
+  plans_capped: "Not paid under the export cap",
+  plans_average: "average {rate}",
+  plans_average_title:
+    "{average} on average: your cheapest price is {cheapest} and your dearest {dearest}.",
+  plans_average_title_market:
+    "{average} on average: the cheapest hour you imported in was {cheapest}, and the dearest {dearest}.",
+  plans_average_note:
+    "The average is the import cost divided by the kWh imported: worked out from your use, not one of the plan's prices.",
   plans_market_hourly: "Market prices are applied hour by hour, at each hour's average.",
   plans_market_five_minutes: "Market prices are applied five minutes at a time.",
   plans_market_from:

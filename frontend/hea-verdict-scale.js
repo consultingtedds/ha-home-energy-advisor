@@ -198,6 +198,36 @@ const AUDIBLE = 0.05;
 const round = (value) => Math.round(value * 10) / 10;
 
 /**
+ * The colour of a verdict at `position` on the scale, 0 the worst and 1 the
+ * best, said at `weight` of full volume.
+ *
+ * The one ramp every verdict on these cards is drawn from, so "how well did
+ * this do" reads the same wherever it is asked - how well a device saved here,
+ * and how well a plan's import fell in its cheap hours on the plans card
+ * (HEA-300).
+ *
+ * @param {number} position where on the scale, clamped to 0..1
+ * @param {{dark?: boolean, weight?: number}} options the card's ground, and how
+ *   loudly to say it
+ * @returns {{text: string, edge: string}} the colour for a figure, and for the
+ *   band down the start of its row
+ */
+export const verdictColour = (position, { dark = false, weight = 1 } = {}) => {
+  const ground = dark ? "dark" : "light";
+  const { hue, lightness } = rampAt(Math.min(1, Math.max(0, position)), ground);
+  // Saturation carries the weight; lightness stays where the verdict put it.
+  // Text recedes toward grey and the edge recedes toward nothing at all -
+  // both are "this does not matter", each said the way its own medium can.
+  // Fading a figure to transparent would make it unreadable, and a grey bar on
+  // every trivial row is noise rather than the absence of a claim.
+  const saturation = SATURATION[ground] * weight ** TOWARD_GREY;
+  return {
+    text: `hsl(${round(hue)}, ${round(saturation)}%, ${round(lightness)}%)`,
+    edge: `hsla(${round(hue)}, ${round(SATURATION[ground])}%, ${round(lightness)}%, ${round(weight)})`,
+  };
+};
+
+/**
  * A verdict for every row, weighted against the rows it is shown beside.
  *
  * Built for a set rather than per row because the weighting is relative: a
@@ -210,7 +240,6 @@ const round = (value) => Math.round(value * 10) / 10;
  * @returns {(row: object) => ({rate: number, text: string, edge: string}|undefined)}
  */
 export const verdictScaleFor = (rows, { dark = false } = {}) => {
-  const ground = dark ? "dark" : "light";
   const costOf = (row) => Math.max(0, row?.costAtGridPrice ?? 0);
   const largest = Math.max(0, ...(rows ?? []).map(costOf));
 
@@ -227,18 +256,6 @@ export const verdictScaleFor = (rows, { dark = false } = {}) => {
     // Clamped for the *colour* only. The rate handed back is the real one: a
     // caller stating it in words has to be able to say a device paid 20% more
     // than the grid would have, which a rate floored at zero cannot express.
-    const clamped = Math.min(1, Math.max(0, rate));
-    const { hue, lightness } = rampAt(clamped, ground);
-    // Saturation carries the weight; lightness stays where the verdict put it.
-    // Text recedes toward grey and the edge recedes toward nothing at all -
-    // both are "this device does not matter", each said the way its own medium
-    // can. Fading a figure to transparent would make it unreadable, and a grey
-    // bar on every trivial row is noise rather than the absence of a claim.
-    const saturation = SATURATION[ground] * weight ** TOWARD_GREY;
-    return {
-      rate,
-      text: `hsl(${round(hue)}, ${round(saturation)}%, ${round(lightness)}%)`,
-      edge: `hsla(${round(hue)}, ${round(SATURATION[ground])}%, ${round(lightness)}%, ${round(weight)})`,
-    };
+    return { rate, ...verdictColour(rate, { dark, weight }) };
   };
 };

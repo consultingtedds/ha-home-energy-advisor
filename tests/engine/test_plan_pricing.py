@@ -31,6 +31,7 @@ from custom_components.home_energy_advisor.engine.plan_pricing import (
     Plan,
     PlanCost,
     PlanGap,
+    PriceLine,
     days_covered,
     price_plan,
 )
@@ -852,6 +853,7 @@ def free_hours_plan(
             import_allowance=Decimal(allowance),
             import_allowance_period=period,
             import_price_after=ORDINARY,
+            import_price_after_name="Ordinary",
             name="Free",
         )
 
@@ -934,3 +936,173 @@ def test_a_monthly_import_allowance_starts_again_on_the_first() -> None:
 
     # Then
     assert energy == Decimal(0)
+
+
+# What each price charged, row by row as a bill lists it (HEA-300)
+
+PUNTA = Decimal("0.245")
+LLANO = Decimal("0.18")
+VALLE = Decimal("0.098")
+
+# Three named periods, as a Spanish 2.0TD offer publishes them: Valle overnight
+# and all weekend, Punta mornings and evenings, Llano around them.
+THREE_PERIODS = Plan(
+    name="Three periods",
+    bands=(
+        Band(Days.WEEKDAYS, 0, 8, VALLE, name="Valle"),
+        Band(Days.WEEKDAYS, 8, 10, LLANO, name="Llano"),
+        Band(Days.WEEKDAYS, 10, 14, PUNTA, name="Punta"),
+        Band(Days.WEEKDAYS, 14, 18, LLANO, name="Llano"),
+        Band(Days.WEEKDAYS, 18, 22, PUNTA, name="Punta"),
+        Band(Days.WEEKDAYS, 22, 24, LLANO, name="Llano"),
+        Band(Days.REST_DAYS, 0, 24, VALLE, name="Valle"),
+    ),
+    export_price=Decimal("0.05"),
+)
+
+
+def test_each_price_says_the_kwh_it_charged_and_what_they_cost() -> None:
+    # Given - a weekday and a Saturday: 7 kWh fall in Valle, 2 in Llano and 3 in
+    # Punta
+    hours = [
+        hour(WEDNESDAY, 3, "4"),
+        hour(WEDNESDAY, 9, "1.5"),
+        hour(WEDNESDAY, 12, "2"),
+        hour(WEDNESDAY, 20, "1"),
+        hour(WEDNESDAY, 23, "0.5"),
+        hour(SATURDAY, 12, "3"),
+    ]
+
+    # When
+    cost = price_plan(THREE_PERIODS, hours, days=Decimal(2), holidays=())
+
+    # Then - one row a price, in the order its bands first use it, adding up to
+    # the energy cost
+    assert cost.imports == (
+        PriceLine("Valle", VALLE, Decimal(7), Decimal("0.686")),
+        PriceLine("Llano", LLANO, Decimal(2), Decimal("0.360")),
+        PriceLine("Punta", PUNTA, Decimal(3), Decimal("0.735")),
+    )
+    assert sum(line.amount for line in cost.imports) == cost.energy
+
+
+def test_a_price_that_charged_nothing_still_has_its_row() -> None:
+    # Given - only weekend hours, all in Valle
+    hours = [hour(SATURDAY, 12, "3")]
+
+    # When
+    cost = price_plan(THREE_PERIODS, hours, days=Decimal(1), holidays=())
+
+    # Then - a bill lists every period, used or not
+    assert cost.imports == (
+        PriceLine("Valle", VALLE, Decimal(3), Decimal("0.294")),
+        PriceLine("Llano", LLANO, Decimal(0), Decimal(0)),
+        PriceLine("Punta", PUNTA, Decimal(0), Decimal(0)),
+    )
+
+
+def test_a_plans_cheapest_and_dearest_import_prices_are_said() -> None:
+    # Given / When
+    cost = price_plan(
+        THREE_PERIODS, [hour(SATURDAY, 12, "3")], days=Decimal(0), holidays=()
+    )
+
+    # Then - the ends of the scale a household's average is read against
+    assert (cost.cheapest_import, cost.dearest_import) == (VALLE, PUNTA)
+
+
+def test_import_beyond_an_allowance_counts_under_the_price_charged_for_it() -> None:
+    # Given - 30 kWh in the free hours, 6 over the 24 kWh allowance, and 2 kWh
+    # in the ordinary hours
+    hours = [
+        hour(WEDNESDAY, 11, "20"),
+        hour(WEDNESDAY, 12, "10"),
+        hour(WEDNESDAY, 16, "2"),
+    ]
+
+    # When
+    cost = price_plan(free_hours_plan("24"), hours, days=Decimal(0), holidays=())
+
+    # Then - the 6 over are charged at Ordinary, so they are on its row
+    assert cost.imports == (
+        PriceLine("Ordinary", ORDINARY, Decimal(8), Decimal("2.00")),
+        PriceLine("Free", Decimal(0), Decimal(24), Decimal(0)),
+    )
+    assert (cost.cheapest_import, cost.dearest_import) == (Decimal(0), ORDINARY)
+
+
+def test_a_market_import_is_one_row_with_the_ends_it_was_charged_between() -> None:
+    # Given - a wholesale price with the supplier's charges and VAT on top: 0.12
+    # becomes 0.1815, and -0.02 becomes 0.0121
+    plan = Plan(
+        name="Wholesale, adjusted",
+        bands=(),
+        import_per_interval=True,
+        import_adjustment=MarketAdjustment(Decimal("0.03"), Decimal("1.21")),
+    )
+    intervals = [
+        interval(WEDNESDAY, 12, 0, "0.4", import_price="0.12"),
+        interval(WEDNESDAY, 12, 5, "1.5", import_price="-0.02"),
+    ]
+
+    # When
+    cost = price_plan(plan, intervals, days=Decimal(0), holidays=())
+
+    # Then - no price of its own to name, so no rate on the row
+    assert cost.imports == (PriceLine("", None, Decimal("1.9"), Decimal("0.09075")),)
+    assert (cost.cheapest_import, cost.dearest_import) == (
+        Decimal("0.0121"),
+        Decimal("0.1815"),
+    )
+
+
+def test_each_export_price_says_the_kwh_it_paid_on() -> None:
+    # Given - the plan's own 0.04 pays on 3 kWh a day, then 0.02; 2 kWh go out
+    # at midday, then 20 in the evening, whose price pays on 15
+    plan = evening_plan(export_allowance=Decimal(3))
+    hours = [hour(WEDNESDAY, 12, "0", "2"), hour(WEDNESDAY, 19, "0", "20")]
+
+    # When
+    cost = price_plan(plan, hours, days=Decimal(0), holidays=())
+
+    # Then - the band's price, the plan's, and the plan's beyond its allowance
+    assert cost.exports == (
+        PriceLine("Evening", Decimal("0.10"), Decimal(15), Decimal("1.50")),
+        PriceLine("", Decimal("0.04"), Decimal(3), Decimal("0.12")),
+        PriceLine(
+            "", Decimal("0.02"), Decimal(4), Decimal("0.08"), beyond_allowance=True
+        ),
+    )
+    assert sum(line.amount for line in cost.exports) == cost.export_credit
+
+
+def test_export_rows_say_what_was_earned_before_any_cap() -> None:
+    # Given / When - a sunny April on a capped plan: 5.00 earned, 2.00 paid
+    cost = price_plan(
+        capped_plan(ExportCap.MONTHLY), SUNNY_APRIL, days=Decimal(0), holidays=()
+    )
+
+    # Then - the rows are the export, and the cap is what was not paid of them
+    assert cost.exports == (
+        PriceLine("", Decimal("0.10"), Decimal(50), Decimal("5.00")),
+    )
+    assert cost.exports[0].amount - cost.export_unpaid == cost.export_credit
+
+
+def test_a_market_export_is_one_row() -> None:
+    # Given
+    plan = Plan(
+        name="Market feed-in",
+        bands=FLAT.bands,
+        export_per_interval=True,
+    )
+    intervals = [
+        interval(WEDNESDAY, 12, 0, "0", "4", export_price="0.07"),
+        interval(WEDNESDAY, 12, 5, "0", "6", export_price="0.03"),
+    ]
+
+    # When
+    cost = price_plan(plan, intervals, days=Decimal(0), holidays=())
+
+    # Then
+    assert cost.exports == (PriceLine("", None, Decimal(10), Decimal("0.46")),)

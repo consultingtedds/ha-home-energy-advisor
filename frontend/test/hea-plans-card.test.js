@@ -18,6 +18,7 @@ import {
 } from "../hea-format.js";
 import { DEFAULTS as LABELS, fill, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-plans-card.js";
+import { verdictColour } from "../hea-verdict-scale.js";
 import { JULY, MAY, aHass, mountCard, settled, text } from "./doubles.js";
 
 const FLAT = {
@@ -333,6 +334,8 @@ describe("each plan without solar or battery", () => {
 
     // Then - the figure a household weighs its panels and battery by, on every
     // plan (HEA-293, discussion 58)
+    // Named for what it prices, which holds for any generation or battery,
+    // over two head rows as the groups beside it are (HEA-300)
     expect(heads(card)).toEqual([
       "Plan",
       "Prices",
@@ -340,14 +343,21 @@ describe("each plan without solar or battery", () => {
       "Daily charges",
       "Export income",
       "Total",
-      "Without solar or battery",
+      "from the grid",
       "vs current plan",
     ]);
+    const groups = [...card.shadowRoot.querySelectorAll("thead tr.groups th")].map(
+      (cell) => cell.textContent,
+    );
+    expect(groups).toEqual(["", "What you pay", "What you earn", "", "Buying everything", ""]);
     const night = card.shadowRoot.querySelector('[data-figure="without:night"]');
-    // A cost, so -€ in red; what the installation saved, in green (HEA-296)
+    // A cost, so -€ in red; what the installation saved, in green (HEA-296),
+    // saying whose saving it is so it never reads as a saving without it
     expect(night.firstChild.textContent).toBe("-€61.40");
     expect(night.classList.contains("loss")).toBe(true);
-    expect(night.querySelector(".saves").textContent).toBe("saves €31.62");
+    expect(night.querySelector(".saves").textContent).toBe(
+      "your installation saves you €31.62",
+    );
     expect(night.querySelector(".saves").classList.contains("gain")).toBe(true);
   });
 
@@ -361,7 +371,9 @@ describe("each plan without solar or battery", () => {
 
     // Then - never a saving below nothing
     const flat = card.shadowRoot.querySelector('[data-figure="without:flat"]');
-    expect(flat.querySelector(".saves").textContent).toBe("€2.50 more");
+    expect(flat.querySelector(".saves").textContent).toBe(
+      "your installation costs you €2.50 more",
+    );
     expect(flat.querySelector(".saves").classList.contains("loss")).toBe(true);
   });
 
@@ -371,7 +383,8 @@ describe("each plan without solar or battery", () => {
     await settled(expect, card);
 
     // Then
-    expect(heads(card)).not.toContain("Without solar or battery");
+    expect(heads(card)).not.toContain("from the grid");
+    expect(text(card)).not.toContain("Buying everything");
   });
 
   it("leaves it out on a phone, with the breakdown", async () => {
@@ -738,5 +751,288 @@ describe("export a capped plan did not pay (HEA-258)", () => {
     for (const id of ["flat", "night"]) {
       expect(row(card, id).querySelector('[data-figure^="export-"]')).toBe(null);
     }
+  });
+});
+
+describe("each plan's bill (HEA-300)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // Three named periods over 30 days: 675 kWh in, 82 out. 91.58 of energy
+  // averages 13.57 c/kWh, a quarter of the way up from Valle to Punta.
+  const BILL = {
+    id: "bill",
+    name: "Three periods",
+    current: false,
+    energy: 91.58,
+    export_credit: 4.1,
+    daily_charges: 9,
+    total: 96.48,
+    breakdown: {
+      daily: { rate: 0.3, days: 30, amount: 9 },
+      imports: [
+        { name: "Punta", rate: 0.245, kwh: 120, amount: 29.4 },
+        { name: "Llano", rate: 0.18, kwh: 95, amount: 17.1 },
+        { name: "Valle", rate: 0.098, kwh: 460, amount: 45.08 },
+      ],
+      exports: [{ name: "", rate: 0.05, kwh: 82, amount: 4.1, beyond_allowance: false }],
+      average_import_rate: 0.135674,
+      cheapest_import_rate: 0.098,
+      dearest_import_rate: 0.245,
+    },
+  };
+  const WITH_BILL = { ...COMPARED, plans: [FLAT, BILL] };
+  const POSITION = (0.245 - 0.135674) / (0.245 - 0.098);
+
+  const planRow = (card, id) =>
+    card.shadowRoot.querySelector(`[data-plan="${id}"] tr.figures`);
+  const open = (card, id) => planRow(card, id).click();
+  const bill = (card, id) => card.shadowRoot.querySelector(`[data-plan="${id}"] .bill`);
+  /** Each of a bill's rows, as the text of each of its cells. */
+  const billRows = (card, id) =>
+    [...bill(card, id).querySelectorAll("tr")].map((row) =>
+      [...row.children].map((cell) => cell.textContent.replaceAll(/\s+/g, " ").trim()),
+    );
+  const mounted = async (comparison = WITH_BILL) => {
+    const card = mountCard(TAG, aHome(comparison));
+    await settled(expect, card);
+    return card;
+  };
+
+  it("is closed until the plan is selected", async () => {
+    // Given / When
+    const card = await mounted();
+
+    // Then - the table compares plans; a bill is one plan's detail
+    expect(bill(card, "bill")).toBeNull();
+    expect(text(card)).toContain(LABELS.plans_open);
+  });
+
+  it("opens beneath the plan's row, line by line as a bill lists it", async () => {
+    // Given
+    const card = await mounted();
+
+    // When
+    open(card, "bill");
+
+    // Then - the daily charge first, then each price's kWh and cost, the import
+    // cost they add up to, the export, and the total, each matching its column
+    // in the table above
+    expect(billRows(card, "bill")).toEqual([
+      ["", "Rate", "Used", "Amount"],
+      ["Daily charges", "€0.30/day", "30 days", "-€9.00"],
+      ["Punta", "24.5 c/kWh", "120 kWh", "-€29.40"],
+      ["Llano", "18.0 c/kWh", "95 kWh", "-€17.10"],
+      ["Valle", "9.8 c/kWh", "460 kWh", "-€45.08"],
+      ["Import cost", "average 13.57 c/kWh", "675 kWh", "-€91.58"],
+      ["Export", "5.0 c/kWh", "82 kWh", "€4.10"],
+      ["Total", "", "", "-€96.48"],
+    ]);
+    expect(text(card)).toContain(LABELS.plans_average_note);
+  });
+
+  it("closes when the plan is selected again", async () => {
+    // Given
+    const card = await mounted();
+    open(card, "bill");
+
+    // When
+    open(card, "bill");
+
+    // Then
+    expect(bill(card, "bill")).toBeNull();
+  });
+
+  it("is opened from a button on the plan's name, which says whether it is open", async () => {
+    // Given - a keyboard reaches a button, and a screen reader hears its state
+    const card = await mounted();
+    const button = () =>
+      card.shadowRoot.querySelector('[data-plan="bill"] th button.open');
+    expect(button().getAttribute("aria-expanded")).toBe("false");
+
+    // When
+    button().click();
+
+    // Then
+    expect(bill(card, "bill")).not.toBeNull();
+    expect(button().getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("colours the average on the device table's scale, from the dearest price to the cheapest", async () => {
+    // Given
+    const card = await mounted();
+
+    // When
+    open(card, "bill");
+
+    // Then - the figure and a band down its row, as a device's verdict is drawn
+    const expected = verdictColour(POSITION);
+    const average = bill(card, "bill").querySelector("[data-figure='bill-average']");
+    expect(average.style.color).toBe(expected.text);
+    expect(average.title).toBe(
+      "13.57 c/kWh on average: your cheapest price is 9.8 c/kWh and your dearest 24.5 c/kWh.",
+    );
+    const importRow = average.closest("tr");
+    expect(importRow.firstElementChild.style.boxShadow).toContain(expected.edge);
+  });
+
+  it("puts the same average under the plan's import cost, with no band on the plan's row", async () => {
+    // Given / When
+    const card = await mounted();
+
+    // Then - a band down the row would read as a verdict on the whole plan
+    const average = card.shadowRoot.querySelector("[data-figure='average:bill']");
+    // The figure kept with its unit, so a wrapped line never strands "c/kWh"
+    expect(average.textContent).toBe("average 13.57 c/kWh");
+    expect(average.style.color).toBe(verdictColour(POSITION).text);
+    expect(average.title).toContain("on average");
+    expect(planRow(card, "bill").querySelector("th").style.boxShadow).toBe("");
+  });
+
+  it("colours nothing for a plan with one price, which has nothing to compare", async () => {
+    // Given
+    const flat = {
+      ...BILL,
+      breakdown: {
+        ...BILL.breakdown,
+        imports: [{ name: "Flat", rate: 0.2, kwh: 675, amount: 135 }],
+        average_import_rate: 0.2,
+        cheapest_import_rate: 0.2,
+        dearest_import_rate: 0.2,
+      },
+    };
+
+    // When
+    const card = await mounted({ ...COMPARED, plans: [FLAT, flat] });
+
+    // Then
+    const average = card.shadowRoot.querySelector("[data-figure='average:bill']");
+    expect(average.textContent).toBe("average 20.0 c/kWh");
+    expect(average.style.color).toBe("");
+  });
+
+  it("says what a cap did not pay, so the bill still adds up to the total", async () => {
+    // Given - 5.00 earned, 3.00 of it over the cap
+    const capped = {
+      ...BILL,
+      export_credit: 2,
+      export_unpaid: 3,
+      total: 98.58,
+      breakdown: {
+        ...BILL.breakdown,
+        exports: [{ name: "", rate: 0.1, kwh: 50, amount: 5, beyond_allowance: false }],
+      },
+    };
+    const card = await mounted({ ...COMPARED, plans: [FLAT, capped] });
+
+    // When
+    open(card, "bill");
+
+    // Then
+    expect(billRows(card, "bill").slice(-3)).toEqual([
+      ["Export", "10.0 c/kWh", "50 kWh", "€5.00"],
+      ["Not paid under the export cap", "", "", "-€3.00"],
+      ["Total", "", "", "-€98.58"],
+    ]);
+  });
+
+  it("totals export paid at more than one price", async () => {
+    // Given - an evening price paying on 15 kWh, the plan's own price, and what
+    // it pays beyond its allowance
+    const tiered = {
+      ...BILL,
+      export_credit: 1.7,
+      total: 98.88,
+      breakdown: {
+        ...BILL.breakdown,
+        exports: [
+          { name: "Evening", rate: 0.1, kwh: 15, amount: 1.5, beyond_allowance: false },
+          { name: "", rate: 0.04, kwh: 3, amount: 0.12, beyond_allowance: false },
+          { name: "", rate: 0.02, kwh: 4, amount: 0.08, beyond_allowance: true },
+        ],
+      },
+    };
+    const card = await mounted({ ...COMPARED, plans: [FLAT, tiered] });
+
+    // When
+    open(card, "bill");
+
+    // Then
+    expect(billRows(card, "bill").slice(-5)).toEqual([
+      ["Evening", "10.0 c/kWh", "15 kWh", "€1.50"],
+      ["Export", "4.0 c/kWh", "3 kWh", "€0.12"],
+      ["Export beyond its allowance", "2.0 c/kWh", "4 kWh", "€0.08"],
+      ["Export income", "", "22 kWh", "€1.70"],
+      ["Total", "", "", "-€98.88"],
+    ]);
+  });
+
+  it("gives a market price one line, at the average it worked out to", async () => {
+    // Given - imported at the market's hourly prices, between 6 and 32 c/kWh
+    const market = {
+      ...BILL,
+      rates: { prices: [], export: 0.05, daily_charge: 0.3, import_market: true },
+      breakdown: {
+        ...BILL.breakdown,
+        imports: [{ name: "", rate: null, kwh: 675, amount: 91.58 }],
+        cheapest_import_rate: 0.06,
+        dearest_import_rate: 0.32,
+      },
+    };
+    const card = await mounted({ ...COMPARED, plans: [FLAT, market] });
+
+    // When
+    open(card, "bill");
+
+    // Then
+    const rows = billRows(card, "bill");
+    expect(rows[2]).toEqual(["Market price", "average 13.57 c/kWh", "675 kWh", "-€91.58"]);
+    const average = bill(card, "bill").querySelector("[data-figure='bill-average']");
+    expect(average.title).toBe(
+      "13.57 c/kWh on average: the cheapest hour you imported in was 6.0 c/kWh, and the dearest 32.0 c/kWh.",
+    );
+  });
+
+  it("opens on a phone too, where the table leaves the parts out", async () => {
+    // Given
+    onScreen(true);
+    const card = await mounted();
+
+    // When
+    open(card, "bill");
+
+    // Then - four narrow columns fit where the table's six do not
+    expect(billRows(card, "bill")[5]).toEqual([
+      "Import cost",
+      "average 13.57 c/kWh",
+      "675 kWh",
+      "-€91.58",
+    ]);
+  });
+
+  it("says a single day of charges as one day", async () => {
+    // Given - a day's comparison
+    const oneDay = {
+      ...BILL,
+      breakdown: { ...BILL.breakdown, daily: { rate: 0.3, days: 1, amount: 0.3 } },
+    };
+    const card = await mounted({ ...COMPARED, plans: [FLAT, oneDay] });
+
+    // When
+    open(card, "bill");
+
+    // Then
+    expect(billRows(card, "bill")[1][2]).toBe("1 day");
+  });
+
+  it("stays open when the period's figures are fetched again", async () => {
+    // Given
+    const card = await mounted();
+    open(card, "bill");
+
+    // When - the same plan, priced again
+    card._render();
+
+    // Then
+    expect(bill(card, "bill")).not.toBeNull();
   });
 });
