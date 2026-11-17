@@ -424,31 +424,49 @@ class HeaPlansCard extends HeaCard {
   _leftOut(locale) {
     const stretches = this._compared.left_out ?? [];
     if (!stretches.length || !this._compared.hours) return "";
-    const bySource = new Map();
+    // Grouped by what had no data, and apart from what a meter could not have
+    // recorded, which is a different fault with a different fix (ADR-0044).
+    const byCause = new Map();
     for (const stretch of stretches) {
-      const from = new Date(stretch.from);
-      const to = new Date(stretch.to);
-      // A stretch inside one day names that day once: "3 Jun 2026, 14:00 to 20:00".
-      const sameDay = formatDate(from, locale) === formatDate(to, locale);
-      const when = fill(this._labels.plans_stretch, {
-        from: formatDateTime(from, locale),
-        to: sameDay ? formatClockTime(to, locale) : formatDateTime(to, locale),
-      });
-      bySource.set(stretch.source, [...(bySource.get(stretch.source) ?? []), when]);
+      const impossible = stretch.kwh !== undefined;
+      const key = `${impossible ? "impossible" : "missing"}:${stretch.source}`;
+      const cause = byCause.get(key) ?? { source: stretch.source, impossible, whens: [] };
+      cause.whens.push(this._stretch(stretch, locale));
+      byCause.set(key, cause);
     }
-    return [...bySource]
-      .map(([source, whens]) => {
+    return [...byCause.values()]
+      .map(({ source, impossible, whens }) => {
         const when = whens.join(", ");
-        const wording =
-          source === GRID_METERS
-            ? fill(this._labels.plans_left_out_meters, { when })
-            : fill(this._labels.plans_left_out_price, {
-                when,
-                sensor: this._sensor(source),
-              });
+        const sensor = source === GRID_METERS ? "" : this._sensor(source);
+        let wording = fill(this._labels.plans_left_out_price, { when, sensor });
+        if (impossible) {
+          wording = fill(this._labels.plans_left_out_impossible, { when, sensor });
+        } else if (source === GRID_METERS) {
+          wording = fill(this._labels.plans_left_out_meters, { when });
+        }
         return `<div class="flows left-out" data-source="${escape(source)}">${wording}</div>`;
       })
       .join("");
+  }
+
+  /**
+   * When a stretch ran: a stretch inside one day names that day once, "3 Jun
+   * 2026, 14:00 to 20:00", and one a meter could not have recorded says how
+   * much it recorded.
+   */
+  _stretch(stretch, locale) {
+    const from = new Date(stretch.from);
+    const to = new Date(stretch.to);
+    const sameDay = formatDate(from, locale) === formatDate(to, locale);
+    const span = {
+      from: formatDateTime(from, locale),
+      to: sameDay ? formatClockTime(to, locale) : formatDateTime(to, locale),
+    };
+    if (stretch.kwh === undefined) return fill(this._labels.plans_stretch, span);
+    return fill(this._labels.plans_stretch_kwh, {
+      ...span,
+      kwh: formatEnergy(stretch.kwh, locale),
+    });
   }
 
   /** A price sensor as the household finds it: its name, and its entity ID. */

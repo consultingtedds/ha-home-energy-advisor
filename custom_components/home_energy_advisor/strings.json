@@ -637,6 +637,20 @@
           "description": "The Home Energy Advisor configuration whose totals to reset."
         }
       }
+    },
+    "compare_plans": {
+      "name": "Compare tariff plans",
+      "description": "Prices every tariff plan you have entered over a period, as the Compare tariff plans card does, and returns the figures for a script, an automation or another tool to use.",
+      "fields": {
+        "start": {
+          "name": "Start",
+          "description": "When the period starts. A time without a time zone is your Home Assistant's own."
+        },
+        "end": {
+          "name": "End",
+          "description": "When the period ends. A period running past now is compared up to now."
+        }
+      }
     }
   },
   "exceptions": {
@@ -645,6 +659,15 @@
     },
     "reset_entry_not_loaded": {
       "message": "That Home Energy Advisor configuration is not loaded, so its totals cannot be reset. Try again once it has started."
+    },
+    "compare_end_before_start": {
+      "message": "The period ends before it starts. Give an end after the start."
+    },
+    "compare_not_started": {
+      "message": "The period has not started yet, so nothing has been recorded to compare."
+    },
+    "compare_not_loaded": {
+      "message": "Home Energy Advisor is not loaded, so the plans cannot be compared. Try again once it has started."
     }
   },
   "common": {
@@ -761,6 +784,8 @@
     "card_plans_left_out_meters": "Left out of every plan, daily charges included: {when}. Your grid meters recorded nothing then.",
     "card_plans_left_out_price": "Left out of every plan, daily charges included: {when}. {sensor} recorded no statistics then. Check it in Developer Tools > Statistics.",
     "card_plans_stretch": "{from} to {to}",
+    "card_plans_stretch_kwh": "{from} to {to} ({kwh})",
+    "card_plans_left_out_impossible": "Left out of every plan, daily charges included: {when}. {sensor} recorded more than a home can use in an hour then. Correct it in Developer Tools > Statistics.",
     "card_plans_open": "Select a plan to see its total line by line, as a bill lists it.",
     "card_plans_rate": "Rate",
     "card_plans_used": "Used",

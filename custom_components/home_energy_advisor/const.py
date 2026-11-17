@@ -113,6 +113,7 @@ CONF_CYCLE_METERS: Final = "cycle_meters"
 # rather than a button entity: rebasing is irreversible, and a button on a device
 # page is one accidental tap away with no confirmation.
 SERVICE_RESET_TOTALS: Final = "reset_totals"
+SERVICE_COMPARE_PLANS: Final = "compare_plans"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 
 # Dispatcher signal telling a household's sensors to drop the restore baseline

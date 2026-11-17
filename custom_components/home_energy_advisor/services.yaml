@@ -1,3 +1,15 @@
+compare_plans:
+  fields:
+    start:
+      required: true
+      example: "2026-11-01 00:00:00"
+      selector:
+        datetime:
+    end:
+      required: true
+      example: "2026-12-01 00:00:00"
+      selector:
+        datetime:
 reset_totals:
   fields:
     config_entry_id:

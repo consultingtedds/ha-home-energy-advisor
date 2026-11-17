@@ -412,8 +412,11 @@ or bands at all. A plan can also take only its feed-in from the market, with
 typed, as the feeds leave it out. Recent days are priced five minutes at a time,
 while Home Assistant still keeps 5-minute statistics (ten days by default), and
 older periods at each hour's average price, so a recent figure can move a little
-once it is older. The card says which applied, from when the market's prices were
-first recorded, and how many hours carried the last price over a gap in them.
+once it is older. The card says which applied. A gap of up to two hours in the
+market's prices is priced at the last one; a longer gap, or one in your grid
+meters' statistics, is left out of every plan, daily charges included, so every
+plan is compared over the same hours. The card names the sensor that recorded
+nothing and when, so you can check it in **Developer Tools** > **Statistics**.
 
 **Wholesale prices.** Some price sensors give the wholesale price rather than what
 you pay: Nord Pool, EnergyZero and easyEnergy do. A dynamic contract on one adds
@@ -439,6 +442,29 @@ you would have used energy, and run any battery, the same way on another plan;
 on a plan with different cheap hours you might have shifted some of it. Prices
 are compared as you enter them, so enter them all with tax or all without.
 Daily charges are counted here only: they are never part of any device's cost.
+
+**Each plan's bill.** Select a plan on the card to open its total line by line,
+as a bill lists it: the daily charges, then each price with the kWh it charged
+and what they cost, the import cost they add up to, what export earned, and the
+total. Set the period to your bill's dates and you can check your own plan
+against your bill line by line. Beside the import cost is the average you paid
+per kWh, coloured from red at the plan's dearest price to green at its cheapest:
+the greener it is, the more of your import fell in the plan's cheap hours.
+
+**Using the comparison elsewhere.** The `home_energy_advisor.compare_plans`
+action returns the same figures as the card, for a script, an automation or
+another tool. Give it a start and an end, in your own time zone:
+
+```yaml
+action: home_energy_advisor.compare_plans
+data:
+  start: "2026-11-01 00:00:00"
+  end: "2026-12-01 00:00:00"
+response_variable: plans
+```
+
+`plans.plans` then lists each plan with its `total`, `energy`, `export_credit`,
+`daily_charges` and its `breakdown`, line by line.
 
 ### Settings you can change later
 

@@ -637,6 +637,20 @@
           "description": "La configuración de Home Energy Advisor cuyos totales se van a reiniciar."
         }
       }
+    },
+    "compare_plans": {
+      "name": "Comparar tarifas",
+      "description": "Calcula el coste de cada tarifa que has introducido durante un periodo, como hace la tarjeta de comparar tarifas, y devuelve las cifras para que las use un script, una automatización u otra herramienta.",
+      "fields": {
+        "start": {
+          "name": "Inicio",
+          "description": "Cuándo empieza el periodo. Una hora sin zona horaria es la de tu Home Assistant."
+        },
+        "end": {
+          "name": "Fin",
+          "description": "Cuándo termina el periodo. Un periodo que llega más allá de ahora se compara hasta ahora."
+        }
+      }
     }
   },
   "exceptions": {
@@ -645,6 +659,15 @@
     },
     "reset_entry_not_loaded": {
       "message": "Esa configuración de Home Energy Advisor no está cargada, así que no se pueden reiniciar sus totales. Inténtalo de nuevo cuando haya arrancado."
+    },
+    "compare_end_before_start": {
+      "message": "El periodo termina antes de empezar. Indica un fin posterior al inicio."
+    },
+    "compare_not_started": {
+      "message": "El periodo aún no ha empezado, así que no hay nada registrado que comparar."
+    },
+    "compare_not_loaded": {
+      "message": "Home Energy Advisor no está cargado, así que no se pueden comparar las tarifas. Inténtalo de nuevo cuando haya arrancado."
     }
   },
   "common": {
@@ -761,6 +784,8 @@
     "card_plans_left_out_meters": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. Tus contadores de red no registraron nada entonces.",
     "card_plans_left_out_price": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. {sensor} no registró estadísticas entonces. Revísalo en Herramientas para desarrolladores > Estadísticas.",
     "card_plans_stretch": "{from} a {to}",
+    "card_plans_stretch_kwh": "{from} a {to} ({kwh})",
+    "card_plans_left_out_impossible": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. {sensor} registró entonces más de lo que un hogar puede consumir en una hora. Corrígelo en Herramientas para desarrolladores > Estadísticas.",
     "card_plans_open": "Selecciona un plan para ver su total línea a línea, como lo detalla una factura.",
     "card_plans_rate": "Precio",
     "card_plans_used": "Consumo",

@@ -175,6 +175,9 @@ export const DEFAULTS = Object.freeze({
     "Left out of every plan, daily charges included: {when}. {sensor} recorded " +
     "no statistics then. Check it in Developer Tools > Statistics.",
   plans_stretch: "{from} to {to}",
+  plans_stretch_kwh: "{from} to {to} ({kwh})",
+  plans_left_out_impossible:
+    "Left out of every plan, daily charges included: {when}. {sensor} recorded more than a home can use in an hour then. Correct it in Developer Tools > Statistics.",
   plans_open: "Select a plan to see its total line by line, as a bill lists it.",
   plans_rate: "Rate",
   plans_used: "Used",

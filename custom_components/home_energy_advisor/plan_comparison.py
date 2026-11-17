@@ -34,8 +34,9 @@ from homeassistant.components.websocket_api.decorators import (
     websocket_command,
 )
 from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, UnitOfEnergy
-from homeassistant.core import callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.core import ServiceCall, ServiceResponse, SupportsResponse, callback
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import EnergyConverter
@@ -46,6 +47,7 @@ from .const import (
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     DOMAIN,
+    SERVICE_COMPARE_PLANS,
     SUBENTRY_TYPE_PLAN,
 )
 from .engine.plan_pricing import (
@@ -81,6 +83,10 @@ _FIVE_MINUTES = timedelta(minutes=5)
 _BRIDGE = timedelta(hours=2)
 # What a stretch with no grid statistics is left out for, beside a price entity.
 _GRID_METERS = "grid"
+# More than any home could use in an hour: a large three-phase connection
+# delivers around 40 to 45 kW. A change beyond it, either way, is a fault in the
+# statistics, and its interval is left out (ADR-0044).
+_CEILING_PER_HOUR = Decimal(100)
 # Before anything the recorder can hold, for asking when a statistic begins.
 _EVER = datetime(2000, 1, 1, tzinfo=UTC)
 _ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
@@ -90,10 +96,14 @@ _Period = Literal["5minute", "hour"]
 
 @dataclass(frozen=True)
 class _Recorded:
-    """The grid flows of a period, and from when they are five minutes apart."""
+    """The grid flows of a period, and from when they are five minutes apart.
+
+    With the intervals a grid meter recorded more than a home could use in.
+    """
 
     intervals: list[IntervalOfEnergy]
     five_minute_from: datetime | None = None
+    impossible: tuple[_Stretch, ...] = ()
 
     def length_at(self, moment: datetime) -> timedelta:
         """How long a statistic starting at `moment` covers: an hour, or 5 minutes."""
@@ -103,23 +113,71 @@ class _Recorded:
 
 @dataclass(frozen=True)
 class _Stretch:
-    """A stretch left out of every plan, and what had no data for it."""
+    """A stretch left out of every plan, and what had no data for it.
+
+    Or, with `kwh`, the meter that recorded that much in it: more than a home
+    could use (ADR-0044).
+    """
 
     start: datetime
     end: datetime
     source: str
+    kwh: Decimal | None = None
 
     def overlaps(self, start: datetime, length: timedelta) -> bool:
         return start < self.end and start + length > self.start
 
 
 def async_register(hass: HomeAssistant) -> None:
-    """Offer the comparison to the card, once however many times setup runs."""
+    """Offer the comparison, once however many times setup runs.
+
+    To the card, over the websocket, and as an action returning the same
+    result, for scripts, automations and other tools to read (HEA-302): a
+    comparison is worked out for a period asked, so it is answered on demand
+    rather than kept in a sensor, as `weather.get_forecasts` answers.
+    """
     if hass.data.get(_REGISTERED):
         return
     async_register_command(hass, _websocket_compare_plans)
     async_register_command(hass, _websocket_list_plans)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_COMPARE_PLANS,
+        _async_handle_compare,
+        schema=_ACTION_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
     hass.data[_REGISTERED] = True
+
+
+_ACTION_SCHEMA = vol.Schema(
+    {vol.Required("start"): cv.datetime, vol.Required("end"): cv.datetime}
+)
+
+
+async def _async_handle_compare(call: ServiceCall) -> ServiceResponse:
+    """Price every plan over the period the action names.
+
+    A time without a zone is the household's own, as a script's is. A period
+    the meters have not reached yet has nothing to compare, so it is refused
+    rather than answered with nothing.
+    """
+    start = dt_util.as_utc(call.data["start"])
+    end = dt_util.as_utc(call.data["end"])
+    if end <= start:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="compare_end_before_start"
+        )
+    if start >= dt_util.utcnow():
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="compare_not_started"
+        )
+    entries = call.hass.config_entries.async_loaded_entries(DOMAIN)
+    if not entries:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="compare_not_loaded"
+        )
+    return await async_compare_plans(call.hass, entries[0], start, end)
 
 
 @websocket_command({vol.Required("type"): LIST_PLANS})
@@ -210,9 +268,12 @@ async def async_compare_plans(
     # A price with nothing in the period leaves only its own plans unpriced:
     # left out for everyone, it would leave nothing to compare.
     silent = {e for e in markets if not _any_within(prices, e, start, end)}
-    left_out = _left_out(recorded, prices, markets - silent, start, charged_until)
+    used, use_impossible = await _recorded_use(hass, entry, recorded, start, end)
+    left_out = _with_impossible(
+        _left_out(recorded, prices, markets - silent, start, charged_until),
+        [*recorded.impossible, *use_impossible],
+    )
     intervals = _kept(recorded, left_out)
-    used = await _recorded_use(hass, entry, recorded, start, end)
     missing = sum(
         (
             days_covered(dt_util.as_local(stretch.start), dt_util.as_local(stretch.end))
@@ -269,6 +330,7 @@ async def async_compare_plans(
                 "from": _when(stretch.start),
                 "to": _when(stretch.end),
                 "source": stretch.source,
+                **({} if stretch.kwh is None else {"kwh": _number(stretch.kwh)}),
             }
             for stretch in left_out
         ],
@@ -348,6 +410,50 @@ def _uncovered(
         if gap_end - gap_start > _BRIDGE
         or (gap_start == start and not bridged_from_start)
     ]
+
+
+def _with_impossible(
+    left_out: list[_Stretch], impossible: Iterable[_Stretch]
+) -> list[_Stretch]:
+    """The stretches left out, with each interval a meter could not have recorded.
+
+    Once each: a balance-read house reads the grid meters too, so the same
+    interval can be found twice.
+    """
+    seen = {(stretch.start, stretch.source) for stretch in left_out}
+    found = list(left_out)
+    for stretch in impossible:
+        if (stretch.start, stretch.source) not in seen:
+            seen.add((stretch.start, stretch.source))
+            found.append(stretch)
+    return sorted(found, key=lambda stretch: (stretch.start, stretch.source))
+
+
+def _impossible(
+    changes: Mapping[str, Iterable[Mapping[str, Any]]],
+    meters: Iterable[str],
+    kept: Any,  # noqa: ANN401 - the caller's choice of interval
+    *,
+    is_fine: bool,
+) -> list[_Stretch]:
+    """Each interval a meter changed by more than a home could use (ADR-0044).
+
+    Held to the hourly ceiling's rate, so five minutes may change by a twelfth
+    of it. Either way: a counter that fell by as much is as wrong.
+    """
+    length = _FIVE_MINUTES if is_fine else _HOUR
+    ceiling = _CEILING_PER_HOUR * Decimal(length.total_seconds()) / Decimal(3600)
+    found: list[_Stretch] = []
+    for meter in sorted(meters):
+        for row in changes.get(meter, ()):
+            change = row.get("change")
+            moment = _moment(row["start"])
+            if change is None or not kept(moment, is_fine=is_fine):
+                continue
+            kwh = Decimal(str(change))
+            if abs(kwh) > ceiling:
+                found.append(_Stretch(moment, moment + length, meter, kwh))
+    return found
 
 
 def _merged(stretches: Iterable[_Stretch]) -> list[_Stretch]:
@@ -590,6 +696,10 @@ async def _recorded_flows(  # noqa: PLR0913 - the meters and period and how fine
             for moment in sorted(imported.keys() | exported.keys())
         ],
         five_minute_from,
+        (
+            *_impossible(hourly, meters, kept, is_fine=False),
+            *_impossible(fine, meters, kept, is_fine=True),
+        ),
     )
 
 
@@ -610,8 +720,11 @@ async def _recorded_use(
     recorded: _Recorded,
     start: datetime,
     end: datetime,
-) -> dict[datetime, Decimal] | None:
+) -> tuple[dict[datetime, Decimal] | None, list[_Stretch]]:
     """What the house used in each interval, from its own meters (HEA-293).
+
+    With each interval one of those meters recorded more than a home could use
+    in (ADR-0044).
 
     ``None`` for a household with no generation and no battery: what it used is
     what it imported, so pricing it again as if it had neither says nothing.
@@ -623,7 +736,7 @@ async def _recorded_use(
     """
     signs = _use_meters(entry)
     if signs is None or RECORDER_DOMAIN not in hass.config.components:
-        return None
+        return None, []
     meters = set(signs)
     recorder = get_instance(hass)
     hourly = await recorder.async_add_executor_job(
@@ -645,7 +758,11 @@ async def _recorded_use(
         )
         for moment, kwh in read.items():
             used[moment] += sign * kwh
-    return _carried_forward(used)
+    impossible = [
+        *_impossible(hourly, meters, kept, is_fine=False),
+        *_impossible(fine, meters, kept, is_fine=True),
+    ]
+    return _carried_forward(used), impossible
 
 
 def _use_meters(entry: ConfigEntry) -> dict[str, int] | None:

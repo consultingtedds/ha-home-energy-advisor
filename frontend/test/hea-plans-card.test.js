@@ -612,6 +612,30 @@ describe("plans priced from the market (HEA-260)", () => {
     ]);
   });
 
+  it("names a meter that recorded more than a home could use, and how much", async () => {
+    // Given - the house meter recorded 11,041 kWh in one hour (HEA-301, ADR-0044)
+    const hass = aHome({
+      ...COMPARED,
+      left_out: [{ ...stretch(JUNE, JUNE_EVENING, "sensor.house"), kwh: 11041 }],
+    });
+    hass.states["sensor.house"] = {
+      entity_id: "sensor.house",
+      state: "4120",
+      attributes: { friendly_name: "House consumption" },
+    };
+    const card = mountCard(TAG, hass);
+    await settled(expect, card);
+
+    // Then - where to correct it, not "recorded no statistics"
+    const at = (moment) => formatDateTime(moment, locale(card));
+    const clock = (moment) => formatClockTime(moment, locale(card));
+    expect(leftOut(card)).toEqual([
+      `Left out of every plan, daily charges included: ${at(JUNE)} to ${clock(JUNE_EVENING)} ` +
+        "(11,041 kWh). House consumption (sensor.house) recorded more than a home " +
+        "can use in an hour then. Correct it in Developer Tools > Statistics.",
+    ]);
+  });
+
   it("names both days when a stretch runs from one day into another", async () => {
     // Given
     const card = mountCard(

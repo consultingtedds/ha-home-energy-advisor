@@ -24,6 +24,7 @@ from homeassistant.components.recorder.statistics import async_import_statistics
 from homeassistant.config_entries import ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from homeassistant.core import ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -874,6 +875,93 @@ async def test_a_period_that_is_not_a_time_is_refused(
     assert response["error"]["code"] == "invalid_format"
 
 
+# The comparison as an action, for scripts and other tools (HEA-302)
+
+
+async def _call_compare(
+    hass: HomeAssistant, start: str | datetime, end: str | datetime
+) -> ServiceResponse:
+    return await hass.services.async_call(
+        DOMAIN,
+        "compare_plans",
+        {"start": start, "end": end},
+        blocking=True,
+        return_response=True,
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_the_action_returns_what_the_card_is_shown(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the current plan and an offer
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _TWO_PRICES),
+        ),
+    )
+
+    # When - the same day asked both ways, the action in local time as a
+    # household types it into a script
+    shown = await _compare(hass_ws_client, hass)
+    returned = await _call_compare(hass, "2026-10-14 00:00:00", "2026-10-15 00:00:00")
+
+    # Then - one comparison, whichever asks
+    assert returned == shown
+    assert set(_by_name(shown)) == {"Flat rate", "Two prices"}
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_the_action_refuses_an_end_before_its_start(hass: HomeAssistant) -> None:
+    # Given
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When / Then - said in the household's language, not as a traceback
+    with pytest.raises(ServiceValidationError) as refused:
+        await _call_compare(hass, DAY_END, DAY_START)
+    assert refused.value.translation_key == "compare_end_before_start"
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_the_action_refuses_a_period_that_has_not_started(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+    tomorrow = dt_util.now() + timedelta(days=1)
+
+    # When / Then - nothing has been recorded yet to compare
+    with pytest.raises(ServiceValidationError) as refused:
+        await _call_compare(hass, tomorrow, tomorrow + timedelta(days=1))
+    assert refused.value.translation_key == "compare_not_started"
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_the_action_refuses_while_the_integration_is_not_set_up(
+    hass: HomeAssistant,
+) -> None:
+    # Given - set up, then unloaded, so the action is registered but has
+    # nothing to compare
+    entry = _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    await _set_up(hass, entry)
+    await hass.config_entries.async_unload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When / Then
+    with pytest.raises(ServiceValidationError) as refused:
+        await _call_compare(hass, DAY_START, DAY_END)
+    assert refused.value.translation_key == "compare_not_loaded"
+
+
 # Plans priced from a market price entity (HEA-260, ADR-0037)
 
 # A wholesale plan: import at whatever the market charged, a flat feed-in, and
@@ -1313,3 +1401,165 @@ async def test_a_house_with_no_solar_or_battery_has_nothing_to_compare_it_with(
     # Then - the figure would equal its import cost, a saving of nothing, so it
     # is not given at all
     assert "without_installation" not in flat
+
+
+# An hour no home could use, left out for every plan (HEA-301, ADR-0044)
+
+
+def _impossible(result: dict[str, Any]) -> list[tuple[datetime, datetime, str, float]]:
+    """The stretches left out for recording more than a home could use."""
+    return [
+        (
+            _time(stretch["from"]),
+            _time(stretch["to"]),
+            stretch["source"],
+            stretch["kwh"],
+        )
+        for stretch in result["left_out"]
+        if "kwh" in stretch
+    ]
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_grid_hour_no_home_could_import_is_left_out_for_every_plan(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the day's flows, and 13:00 recording 11,041 kWh in, as a glitched
+    # template leaves in the statistics
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    _record(hass, "sensor.grid_import", {7: 1.0, 12: 0.5, 13: 11041.0, 20: 1.0})
+    _record(hass, "sensor.grid_export", {12: 2.0})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - that hour left out of every plan with its daily charge, and named
+    # with what the meter recorded, so it can be found and corrected
+    assert _impossible(result) == [(_at(13), _at(14), "sensor.grid_import", 11041.0)]
+    assert result["imported_kwh"] == pytest.approx(2.5)
+    assert result["days"] == pytest.approx(23 / 24, abs=1e-4)
+    flat = _by_name(result)["Flat rate"]
+    assert flat["energy"] == pytest.approx(2.5 * 0.234)
+    assert flat["daily_charges"] == pytest.approx(0.45 * 23 / 24, abs=1e-4)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_an_hour_at_the_ceiling_is_a_real_hour(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - exactly 100 kWh in an hour, more than any home here would, but
+    # not beyond what the ceiling allows
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    _record(hass, "sensor.grid_import", {3: 100.0})
+    _record(hass, "sensor.grid_export", {})
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - priced, nothing left out
+    assert result["left_out"] == []
+    assert _by_name(result)["Flat rate"]["energy"] == pytest.approx(100 * 0.234)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_counter_that_fell_by_more_than_the_ceiling_is_left_out_too(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - an export meter whose statistics fell by 500 kWh at 15:00, as a
+    # bad correction leaves them
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    _record(hass, "sensor.grid_import", {7: 1.0})
+    _record(hass, "sensor.grid_export", {12: 2.0, 15: -500.0})
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then
+    assert _impossible(result) == [(_at(15), _at(16), "sensor.grid_export", -500.0)]
+    assert result["exported_kwh"] == pytest.approx(2.0)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_impossible_hour_on_the_house_meter_is_left_out_for_every_plan(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the house meter recorded 11,041 kWh at 20:00, the hour hlps4's
+    # did, while the grid meters are sound
+    _record(hass, "sensor.generation", {12: 3.0})
+    _record(hass, "sensor.house_consumption", {7: 1.0, 12: 2.0, 20: 11041.0})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _home_with(
+            {
+                CONF_GENERATION_ENTITY: ["sensor.generation"],
+                CONF_HOUSE_CONSUMPTION_ENTITY: "sensor.house_consumption",
+            },
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the hour is left out of every figure, not only the one it would
+    # have multiplied, so every column still covers the same hours
+    assert _impossible(result) == [
+        (_at(20), _at(21), "sensor.house_consumption", 11041.0)
+    ]
+    flat = _by_name(result)["Flat rate"]
+    assert flat["energy"] == pytest.approx(1.5 * 0.234)
+    assert flat["without_installation"] == pytest.approx(
+        3.0 * 0.234 + 0.45 * 23 / 24, abs=1e-4
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_five_minutes_are_held_to_the_same_rate(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - five-minute statistics from 12:00, with 9 kWh in the five minutes
+    # from 12:05: 108 kWh an hour, over the ceiling, though far under 100 kWh
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    _record(hass, "sensor.grid_import", {7: 1.0})
+    _record(hass, "sensor.grid_export", {})
+    _record_prices(hass, "sensor.market_import", dict.fromkeys(range(24), 0.25))
+    _record_five_minute_meter(
+        hass, "sensor.grid_import", 12, total_before=1.0, kwh={(12, 5): 9.0}
+    )
+    _record_five_minute_meter(hass, "sensor.grid_export", 12, total_before=0.0, kwh={})
+    _record_five_minute_prices(hass, "sensor.market_import", 12, 0.25, {})
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _MARKET))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - those five minutes left out, and only those
+    five = timedelta(minutes=5)
+    assert _impossible(result) == [
+        (_at(12) + five, _at(12) + 2 * five, "sensor.grid_import", 9.0)
+    ]
+    assert result["imported_kwh"] == pytest.approx(1.0)
