@@ -603,8 +603,16 @@
       "fix_flow": {
         "step": {
           "init": {
+            "title": "An impossible hour",
+            "description": "**{sensor}** recorded **{recorded}** in the hour from **{when}**. No home can use more than 100 kWh in an hour, so Home Energy Advisor leaves this hour out of the tariff plan comparison, and your Energy Dashboard shows it as recorded.\n\n{cause}\n\n{suggestion}\n\n{partner}\n\nCorrect the hour, or leave it as it is. Nothing changes until you confirm a correction.",
+            "menu_options": {
+              "correct": "Correct the hour",
+              "leave": "Leave it as it is"
+            }
+          },
+          "correct": {
             "title": "Correct an impossible hour",
-            "description": "**{sensor}** recorded **{recorded}** in the hour from **{when}**. No home can use more than 100 kWh in an hour, so Home Energy Advisor leaves this hour out of the tariff plan comparison, and your Energy Dashboard shows it as recorded.\n\n{cause}\n\n{suggestion}\n\n{partner}\n\nEnter what the hour should have recorded. Nothing changes until you confirm on the next step. If the hour is right, close this and choose Ignore.",
+            "description": "Enter what the hour from **{when}** should have recorded. {suggestion}\n\nNothing changes until you confirm on the next step.",
             "data": {
               "value": "What the hour should have recorded"
             }
@@ -613,6 +621,9 @@
             "title": "Change Home Assistant's statistics for this hour?",
             "description": "This changes Home Assistant's own long-term statistics for **{sensor}**, for the hour from **{when}**:\n\n- from **{recorded}** to **{value}**, a change of **{difference}**;\n- every chart, your Energy Dashboard and every card that reads this sensor's statistics will show the new value for that hour, and its running total moves by the same amount from that hour on;\n- the sensor's own readings and its state history are not changed.\n\nHome Assistant keeps no undo. To reverse this later, open Developer Tools > Statistics, find **{sensor}**, and set the same hour back to **{recorded}**.\n\nSubmit to make the change, or close this to leave the hour as it is."
           }
+        },
+        "abort": {
+          "left_as_it_is": "Left as it is. The hour stays as recorded, and this notice is ignored. To see it again, choose Show ignored repairs in the three-dot menu of Settings > Repairs."
         }
       }
     },
@@ -621,8 +632,16 @@
       "fix_flow": {
         "step": {
           "init": {
+            "title": "An impossible cost",
+            "description": "**{sensor}** recorded **{recorded}** for the hour from **{when}**. That is more than 100 kWh could have cost at the dearest price this meter was charged in the week either side (**{ceiling}**), so it cannot be right. It is a cost your Energy Dashboard shows.\n\n{cause}\n\n{suggestion}\n\n{partner}\n\nCorrect the cost, or leave it as it is. Nothing changes until you confirm a correction.",
+            "menu_options": {
+              "correct": "Correct the cost",
+              "leave": "Leave it as it is"
+            }
+          },
+          "correct": {
             "title": "Correct an impossible cost",
-            "description": "**{sensor}** recorded **{recorded}** for the hour from **{when}**. That is more than 100 kWh could have cost at the dearest price this meter was charged in the week either side (**{ceiling}**), so it cannot be right. It is a cost your Energy Dashboard shows.\n\n{cause}\n\n{suggestion}\n\n{partner}\n\nEnter what the hour should have cost. Nothing changes until you confirm on the next step. If the cost is right, close this and choose Ignore.",
+            "description": "Enter what the hour from **{when}** should have cost. {suggestion}\n\nNothing changes until you confirm on the next step.",
             "data": {
               "value": "What the hour should have cost"
             }
@@ -631,6 +650,9 @@
             "title": "Change Home Assistant's statistics for this cost?",
             "description": "This changes Home Assistant's own long-term statistics for **{sensor}**, the cost your Energy Dashboard shows, for the hour from **{when}**:\n\n- from **{recorded}** to **{value}**, a change of **{difference}**;\n- your Energy Dashboard and every chart or card that reads this statistic will show the new cost for that hour, and its running total moves by the same amount from that hour on;\n- the energy meter it was worked out from is not changed: it has a Repair of its own if it needs one.\n\nHome Assistant keeps no undo. To reverse this later, open Developer Tools > Statistics, find **{sensor}**, and set the same hour back to **{recorded}**.\n\nSubmit to make the change, or close this to leave the hour as it is."
           }
+        },
+        "abort": {
+          "left_as_it_is": "Left as it is. The cost stays as recorded, and this notice is ignored. To see it again, choose Show ignored repairs in the three-dot menu of Settings > Repairs."
         }
       }
     },
@@ -718,6 +740,10 @@
     "impossible_cause_counted_again": "This looks like the meter's whole total being counted again, as happens when a sensor briefly reads zero and then comes back.",
     "impossible_cause_fell": "The meter's statistics fell by this much in one hour.",
     "impossible_cause_jumped": "The meter jumped by this much in one hour.",
+    "impossible_cause_restarted": "The meter's statistics started their running total again from zero here, so this hour reads as a fall the size of everything recorded before it. That is the statistics restarting, as when an integration is set up again or after a gap in its data, not energy going backwards.",
+    "impossible_suggest_restarted": "The energy across the restart is not known from the statistics, so 0 kWh is suggested: what was recorded, and no more.",
+    "impossible_cost_cause_restarted": "This cost's statistics started their running total again from zero here, so this hour reads as a fall the size of everything recorded before it. That is the statistics restarting, not money coming back.",
+    "impossible_cost_suggest_restarted": "The cost across the restart is not known from the statistics, so 0 is suggested: what was recorded, and no more.",
     "impossible_suggest_window": "In the five minutes from {window} the meter jumped by {jump}; the rest of the hour recorded {rest}, so {suggestion} is suggested.",
     "impossible_suggest_days": "Over the week either side, this meter recorded {low} to {high} at this hour, so {suggestion} is suggested.",
     "impossible_suggest_none": "There are too few similar hours around it to suggest a value, so enter what you think it should have been.",

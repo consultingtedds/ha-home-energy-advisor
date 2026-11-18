@@ -630,24 +630,49 @@ async def test_hours_the_grid_meters_did_not_record_are_left_out_for_every_plan(
     # When
     result = await _compare(hass_ws_client, hass)
 
-    # Then - those five hours are left out, and every plan's daily charge for
-    # them with them; the energy recorded either side is priced as before
-    assert _left_out(result) == [(_at(13), _at(18), "grid")]
-    assert result["days"] == pytest.approx(19 / 24, abs=1e-4)
+    # Then - those five hours are left out with the 18:00 row that carries
+    # whatever they recorded (ADR-0046), and every plan's daily charge for them
+    # with them; the energy recorded either side is priced as before
+    assert _left_out(result) == [(_at(13), _at(19), "grid")]
+    assert result["days"] == pytest.approx(18 / 24, abs=1e-4)
     plans = _by_name(result)
     assert plans["Flat rate"]["energy"] == pytest.approx(2.5 * 0.234)
     assert plans["Flat rate"]["daily_charges"] == pytest.approx(
-        0.45 * 19 / 24, abs=1e-4
+        0.45 * 18 / 24, abs=1e-4
     )
     assert plans["Night saver"]["daily_charges"] == pytest.approx(
-        0.30 * 19 / 24, abs=1e-4
+        0.30 * 18 / 24, abs=1e-4
     )
     # The breakdown covers the same hours, so its lines add up to the figures
     breakdown = plans["Night saver"]["breakdown"]
     assert sum(line["kwh"] for line in breakdown["imports"]) == pytest.approx(
         result["imported_kwh"]
     )
-    assert breakdown["daily"]["days"] == pytest.approx(19 / 24, abs=1e-4)
+    assert breakdown["daily"]["days"] == pytest.approx(18 / 24, abs=1e-4)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_the_row_that_ends_a_long_gap_is_left_out_with_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - no rows from 13:00 to 16:00 while 3 kWh was imported, so the
+    # 16:00 row's change carries all three hours (ADR-0046)
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    gap = frozenset({13, 14, 15})
+    _record(hass, "sensor.grid_import", {7: 1.0, 14: 3.0, 20: 1.0}, gap)
+    _record(hass, "sensor.grid_export", {}, gap)
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the gap's energy is never priced as one hour
+    assert _left_out(result) == [(_at(13), _at(17), "grid")]
+    assert result["imported_kwh"] == pytest.approx(2.0)
+    assert _by_name(result)["Flat rate"]["energy"] == pytest.approx(2.0 * 0.234)
 
 
 @pytest.mark.usefixtures("recorder_mock")

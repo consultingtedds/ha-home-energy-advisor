@@ -857,7 +857,17 @@ Carried forward rather than closed:
   side. The Energy Dashboard's cost or compensation for the hour has a Repair
   of its own, so the household chooses which to correct; a correction is two
   steps and adjusts that one hour of that one statistic. The ceiling stays fixed.
-- **Open after 1.6.0:** HEA-267 (ADR-0042, proposed: the current plan priced at
+- **1.6.0, released 2026-11-18**, carrying HEA-299 to HEA-302, straight to
+  stable.
+- **HEA-303** (ADR-0046), found by 1.6.0's first check on the reference home:
+  three Repairs, all the first row after an integration's data stopped during
+  commissioning in 2024. A row is now judged by its rate across the time since
+  the meter's previous row, so energy recorded late raises nothing; the row that
+  ends a gap of more than two hours is left out of the comparison with it; a
+  running total falling to zero is named a statistics restart and suggested 0;
+  and every Repair opens on a choice to correct the hour or leave it as it is,
+  since Home Assistant shows no Ignore on a Repair with a fix flow. For 1.6.1.
+- **Open after 1.6.1:** HEA-267 (ADR-0042, proposed: the current plan priced at
   the Energy Dashboard's prices), then HEA-298 (check prices and meters against
   a bill, which prices the bill's dates at the household's own prices, so it
   follows HEA-267), HEA-272 (discussion 58: clear the figures for a chosen

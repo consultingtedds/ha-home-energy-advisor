@@ -7,8 +7,10 @@ recorder's own adjustment, read back afterwards.
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from statistics import median
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -57,6 +59,12 @@ if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 LOCAL = ZoneInfo("Europe/Madrid")
+# The integration's own common strings, which a test in English is shown.
+LABELS: dict[str, str] = json.loads(
+    (Path(impossible_hours.__file__).parent / "strings.json").read_text(
+        encoding="utf-8"
+    )
+)["common"]
 METER = "sensor.grid_import"
 # The faulty hour: 20:00 on Wednesday 14 October 2026, local time.
 FAULT = datetime(2026, 10, 14, 20, tzinfo=LOCAL)
@@ -112,24 +120,31 @@ def _fortnight(
     return hours
 
 
-def _record_fortnight(
+def _record_fortnight(  # noqa: PLR0913 - each way a meter's statistics go wrong
     hass: HomeAssistant,
     fault_kwh: float | None,
     *,
     fault_reading: float | None = None,
     evenings: list[float] = EVENINGS,
     statistic_id: str = METER,
+    gap_hours: int = 0,
+    restarted: bool = False,
 ) -> None:
     """A fortnight of a meter's hourly statistics around the fault.
 
     `fault_reading` is the meter's own reading at the end of the faulty hour,
     where it differs from the running total, as when a sensor read zero and
-    came back.
+    came back. `gap_hours` leaves no rows for that many hours before the fault,
+    as when an integration stopped delivering data, so the fault's change is
+    all that arrived across them. `restarted` starts the running total again
+    from zero at the fault, as Home Assistant does when a statistic restarts.
     """
     total = 1000.0
     rows = []
     for start, change in _fortnight(fault_kwh, evenings):
-        total += change
+        if FAULT - timedelta(hours=gap_hours) <= start < FAULT:
+            continue
+        total = 0.0 if start == FAULT and restarted else total + change
         state = fault_reading if start == FAULT and fault_reading else total
         rows.append(StatisticData(start=start.astimezone(UTC), state=state, sum=total))
     async_import_statistics(hass, _metadata(statistic_id), rows)
@@ -233,12 +248,18 @@ def _issue(hass: HomeAssistant, issue_id: str | None = None) -> ir.IssueEntry | 
     return ir.async_get(hass).async_get_issue(DOMAIN, issue_id or _issue_id())
 
 
-async def _open(hass: HomeAssistant, issue_id: str | None = None) -> Any:  # noqa: ANN401 - the flow's result
-    """Open the Repair, as selecting it in Settings does."""
+async def _choice(hass: HomeAssistant, issue_id: str | None = None) -> Any:  # noqa: ANN401 - the flow's result
+    """Open the Repair, as selecting it in Settings does: its first step."""
     await async_setup_component(hass, "repairs", {})
     manager = repairs_flow_manager(hass)
     assert manager is not None
     return await manager.async_init(DOMAIN, data={"issue_id": issue_id or _issue_id()})
+
+
+async def _open(hass: HomeAssistant, issue_id: str | None = None) -> Any:  # noqa: ANN401 - the flow's result
+    """Open the Repair and choose to correct the hour."""
+    choice = await _choice(hass, issue_id)
+    return await _answer(choice["flow_id"], {"next_step_id": "correct"}, hass)
 
 
 async def _answer(flow_id: str, answer: dict[str, Any], hass: HomeAssistant) -> Any:  # noqa: ANN401
@@ -616,6 +637,115 @@ def _cost_now(hass: HomeAssistant) -> float:
     return float(change)
 
 
+# A row that ends a gap, judged across it (ADR-0046)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_energy_recorded_late_across_a_gap_raises_nothing(
+    hass: HomeAssistant,
+) -> None:
+    # Given - no rows for 75 hours, then 117.69 kWh in the first row back: about
+    # 1.6 kWh an hour across the gap, as on the reference home in February 2025
+    _record_fortnight(hass, 117.69, gap_hours=75)
+    entry = await _set_up(hass)
+
+    # When
+    found = await impossible_hours.async_check(hass, entry)
+
+    # Then - real energy, only recorded late, so not a fault
+    assert found == []
+    assert _issue(hass) is None
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_row_beyond_the_rate_across_its_gap_is_still_impossible(
+    hass: HomeAssistant,
+) -> None:
+    # Given - 500 kWh in the first row after three hours with none: 125 kWh an
+    # hour across the four hours it covers
+    _record_fortnight(hass, 500.0, gap_hours=3)
+    entry = await _set_up(hass)
+
+    # When
+    await impossible_hours.async_check(hass, entry)
+
+    # Then
+    assert _issue(hass) is not None
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_statistics_restart_is_named_and_suggested_as_nothing(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the running total restarted from zero after a week with no rows,
+    # as on the reference home in November 2024
+    _record_fortnight(hass, None, gap_hours=24 * 6, restarted=True)
+    entry = await _set_up(hass)
+
+    # When
+    (found,) = await impossible_hours.async_check(hass, entry)
+
+    # Then - a restart, not energy going backwards, and nothing recorded is
+    # the honest value: the meter's reading across the gap is not trusted
+    assert found.cause == impossible_hours.CAUSE_RESTARTED
+    assert found.suggestion == impossible_hours.Suggestion(value=0.0)
+    opened = await _open(hass)
+    assert (
+        opened["description_placeholders"]["suggestion"]
+        == (LABELS["impossible_suggest_restarted"])
+    )
+
+
+# Leaving it as it is
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_repair_opens_on_a_choice_to_correct_or_leave_it(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    _record_fortnight(hass, 11041.0)
+    entry = await _set_up(hass)
+    await impossible_hours.async_check(hass, entry)
+
+    # When
+    choice = await _choice(hass)
+
+    # Then - Home Assistant offers no Ignore on a Repair with a fix flow, so
+    # leaving it is one of the Repair's own answers
+    assert choice["type"] == "menu"
+    assert choice["menu_options"] == ["correct", "leave"]
+    assert choice["description_placeholders"]["recorded"] == "11041.00 kWh"
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_leaving_it_ignores_the_repair_and_changes_nothing(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    _record_fortnight(hass, 11041.0)
+    entry = await _set_up(hass)
+    await impossible_hours.async_check(hass, entry)
+    choice = await _choice(hass)
+
+    # When
+    left = await _answer(choice["flow_id"], {"next_step_id": "leave"}, hass)
+    await async_wait_recording_done(hass)
+
+    # Then - ignored, as Ignore does, the hour as recorded, and still ignored
+    # after the next check finds it again
+    assert left["type"] == "abort"
+    assert left["reason"] == "left_as_it_is"
+    issue = _issue(hass)
+    assert issue is not None
+    assert issue.dismissed_version is not None
+    assert _hour_now(hass) == pytest.approx(11041.0)
+    await impossible_hours.async_check(hass, entry)
+    still = _issue(hass)
+    assert still is not None
+    assert still.dismissed_version is not None
+
+
 # Correcting it
 
 
@@ -632,7 +762,7 @@ async def test_the_repair_offers_the_suggestion_and_says_why(
     opened = await _open(hass)
 
     # Then - the suggested value filled in, and what it came from in words
-    assert opened["step_id"] == "init"
+    assert opened["step_id"] == "correct"
     placeholders = opened["description_placeholders"]
     assert placeholders["sensor"] == METER
     assert placeholders["recorded"] == "11041.00 kWh"

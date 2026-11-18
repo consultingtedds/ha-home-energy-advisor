@@ -470,18 +470,26 @@ response_variable: plans
 that misfires, can leave an hour in Home Assistant's statistics recording
 hundreds or thousands of kWh. Any hour in which your grid, house, generation or
 battery meters recorded more than 100 kWh is left out of every plan, and the
-card names it. Once a day Home Energy Advisor also checks the whole history of
-those meters and of every meter in your Energy Dashboard, and raises a notice
+card names it. Energy that arrives late is not a glitch: when a meter's data
+stops for a while, everything it counted meanwhile lands in the first hour back,
+so that hour is judged against 100 kWh for every hour since the meter's last
+row, and the comparison leaves it out with the gap rather than pricing days of
+energy as one hour. Once a day Home Energy Advisor also checks the whole history
+of those meters and of every meter in your Energy Dashboard, and raises a notice
 in **Settings** > **Repairs** for each such hour. It says what was recorded,
 what probably happened, and what the hour most likely should have been: worked
 out from the five minutes the jump happened in where Home Assistant still keeps
 them (ten days by default), otherwise from the same hour on the days either
-side. You can correct the hour from the notice. Nothing is changed until you
-confirm, and the confirmation says exactly what will change: the sensor's
-statistics for that hour, which your Energy Dashboard and every chart read too,
-while its own readings are left alone. Home Assistant keeps no undo, so the
-notice gives the value to set back in **Developer Tools** > **Statistics** should
-you want to reverse it. If the hour is right, choose **Ignore**.
+side. Where a sensor's statistics started again from zero, as when an
+integration is set up again, the notice says so and suggests 0, since the energy
+across a restart is not known. Open the notice and choose to correct the hour,
+or to leave it as it is. Leaving it ignores the notice; **Show ignored repairs**
+in the menu of **Settings** > **Repairs** brings it back. Nothing is changed
+until you confirm a correction, and the confirmation says exactly what will
+change: the sensor's statistics for that hour, which your Energy Dashboard and
+every chart read too, while its own readings are left alone. Home Assistant
+keeps no undo, so the notice gives the value to set back in **Developer Tools** >
+**Statistics** should you want to reverse it.
 
 A glitch on a grid meter is usually priced into your Energy Dashboard's cost or
 compensation for the same hour too. That cost gets a notice of its own, found on

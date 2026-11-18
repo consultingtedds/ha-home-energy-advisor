@@ -352,19 +352,21 @@ def _left_out(
     the least data (HEA-294, discussion 58). So a stretch any source has no data
     for is left out of every plan (ADR-0043).
 
-    The grid meters' counters carry a short gap's energy into the next row, so
-    one at the period's start is bridged as any other. A price is carried only
-    from one recorded before the gap, so a gap a price starts the period with,
-    with none in the `_BRIDGE` before it, is never bridged.
+    The grid meters' counters carry a gap's energy into the next row, so one at
+    the period's start is bridged as any other, and the row that ends a gap too
+    long to bridge is left out with it: its change is the gap's, and would
+    otherwise be priced as one interval (ADR-0046). A price is carried only from
+    one recorded before the gap, so a gap a price starts the period with, with
+    none in the `_BRIDGE` before it, is never bridged; a price is no counter,
+    so the price after a gap is its own.
     """
     stretches = [
         _Stretch(gap_start, gap_end, _GRID_METERS)
         for gap_start, gap_end in _uncovered(
             [interval.start for interval in recorded.intervals],
             recorded,
-            start,
-            end,
-            bridged_from_start=True,
+            (start, end),
+            counted=True,
         )
     ]
     for entity in sorted(entities):
@@ -373,9 +375,8 @@ def _left_out(
             for gap_start, gap_end in _uncovered(
                 list(prices.get(entity, {})),
                 recorded,
-                start - _BRIDGE,
-                end,
-                bridged_from_start=False,
+                (start - _BRIDGE, end),
+                counted=False,
             )
             if gap_end > start
         ]
@@ -385,30 +386,35 @@ def _left_out(
 def _uncovered(
     moments: Iterable[datetime],
     recorded: _Recorded,
-    start: datetime,
-    end: datetime,
+    span: tuple[datetime, datetime],
     *,
-    bridged_from_start: bool,
+    counted: bool,
 ) -> list[tuple[datetime, datetime]]:
-    """The stretches from `start` to `end` no statistic covers, too long to bridge.
+    """The stretches of `span` no statistic covers, too long to bridge.
 
-    Each statistic covers its hour, or its five minutes where they are kept.
-    A stretch of `_BRIDGE` or less is bridged, unless it runs from `start` and
-    `bridged_from_start` is false.
+    Each statistic covers its hour, or its five minutes where they are kept. A
+    stretch of `_BRIDGE` or less is bridged. Meters are `counted`: a counter
+    carries a gap's energy into its next row, so even a short gap they start
+    `span` with is bridged, and a stretch too long to bridge runs on to the end
+    of the row that ends it, unless it runs from the start of `span`: what is
+    read begins there, so whether that row ends a gap or is the meter's first is
+    not known. A price is no counter, so a gap it starts `span` with is never
+    bridged, and the price after a gap is its own.
     """
-    gaps: list[tuple[datetime, datetime]] = []
+    start, end = span
+    gaps: list[tuple[datetime, datetime, datetime]] = []
     reached = start
     for moment in sorted(moment for moment in moments if moment < end):
+        covered = moment + recorded.length_at(moment)
         if moment > reached:
-            gaps.append((reached, moment))
-        reached = max(reached, moment + recorded.length_at(moment))
+            gaps.append((reached, moment, covered))
+        reached = max(reached, covered)
     if reached < end:
-        gaps.append((reached, end))
+        gaps.append((reached, end, end))
     return [
-        (gap_start, gap_end)
-        for gap_start, gap_end in gaps
-        if gap_end - gap_start > _BRIDGE
-        or (gap_start == start and not bridged_from_start)
+        (gap_start, min(row_end, end) if counted and gap_start > start else gap_end)
+        for gap_start, gap_end, row_end in gaps
+        if gap_end - gap_start > _BRIDGE or (gap_start == start and not counted)
     ]
 
 
@@ -439,7 +445,9 @@ def _impossible(
     """Each interval a meter changed by more than a home could use (ADR-0044).
 
     Held to the hourly ceiling's rate, so five minutes may change by a twelfth
-    of it. Either way: a counter that fell by as much is as wrong.
+    of it, and a row that ends a gap may rise by the rate across the gap, since
+    the gap's energy arrives in it (ADR-0046). A fall is held to its own
+    interval: a counter that fell by as much is as wrong, after a gap or not.
 
     A row after a gap short enough to bridge carries the gap's energy too
     (ADR-0043), so it is left out from the gap's start: otherwise the gap would
@@ -485,7 +493,9 @@ def _impossible_of(
     found: list[_Stretch] = []
     recorded_to: datetime | None = None
     for moment, kwh in rows:
-        if abs(kwh) > ceiling:
+        covered = moment + length - (recorded_to or moment)
+        allowed = ceiling * Decimal(covered / length) if kwh > 0 else ceiling
+        if abs(kwh) > allowed:
             bridged = recorded_to is not None and moment - recorded_to <= _BRIDGE
             start = recorded_to if bridged and recorded_to else moment
             found.append(_Stretch(start, moment + length, meter, kwh))

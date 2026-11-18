@@ -360,13 +360,23 @@ template that misfired, so Home Assistant counted its whole total as one hour's
 use. The hour is wrong everywhere that reads it, your Energy Dashboard included,
 and the plan comparison leaves it out.
 
+It can also be a sensor's statistics starting again from zero, as when an
+integration is set up again or after its data stopped for a while: the hour
+then reads as a fall the size of everything recorded before it. The notice says
+so, and suggests 0, since the energy across a restart is not known. Energy that
+merely arrived late, after a meter's data stopped, raises no notice: the first
+hour back is judged against 100 kWh for every hour since the meter's last row.
+
 Open the notice. It says what the hour recorded, what probably happened, and what
 it most likely should have been, worked out from the five minutes the jump
 happened in where Home Assistant still keeps them, or from the same hour on the
-days either side. Correct it there, or set it yourself in **Developer Tools** >
-**Statistics**, or choose **Ignore** if the hour is right. Nothing is changed
-until you confirm, and the confirmation gives the value to set back should you
-change your mind. Either way, the notice clears at the next check.
+days either side. Then choose to correct the hour or to leave it as it is.
+Leaving it ignores the notice, and **Show ignored repairs** in the menu of
+**Settings** > **Repairs** brings it back. You can also set the hour yourself in
+**Developer Tools** > **Statistics**. Nothing is changed until you confirm a
+correction, and the confirmation gives the value to set back should you change
+your mind. A notice whose hour has been corrected, here or by hand, clears at the
+next check.
 
 The Energy Dashboard's cost or compensation for the same hour usually carries
 the same glitch, priced, and has a notice of its own: one that recorded more
@@ -378,8 +388,9 @@ either, both or neither.
 The line above the table says which hours and why. Where a price sensor a plan
 follows, or your grid meters, recorded nothing for more than two hours, those
 hours are left out of every plan, their daily charges too, so every plan is still
-compared over the same hours. An hour a meter recorded more than a home can use
-in is left out the same way. Check the named sensor in **Developer Tools** >
+compared over the same hours. So is the grid meters' first hour back after such
+a stretch, since it carries whatever they counted while nothing was recorded.
+An hour a meter recorded more than a home can use in is left out the same way. Check the named sensor in **Developer Tools** >
 **Statistics**: its state can look right while its statistics have stopped, as
 happens when its unit is changed. A gap of two hours or less is bridged, since
 that is a restart or a late reading rather than a fault.

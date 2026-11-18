@@ -32,6 +32,19 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**Some notices about impossible hours in Settings > Repairs go away by
+themselves.** An hour that ended a stretch when a meter's data had stopped, and
+that carried the energy counted meanwhile, was read as one impossible hour. It is
+now judged across the stretch, and is no longer raised. A notice where a sensor's
+statistics started again from zero now says so, and suggests 0.
+
+**Every one of these notices can now be left as it is.** 1.6.0 told you to choose
+Ignore, but Home Assistant shows no Ignore on a notice that offers a correction.
+Open the notice and choose **Leave it as it is**; **Show ignored repairs** in the
+menu of Settings > Repairs brings it back.
+
 ## 1.6.0
 
 **You may see notices in Settings > Repairs a few minutes after updating, about

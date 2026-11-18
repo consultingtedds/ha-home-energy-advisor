@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.const import CONF_NAME, UnitOfEnergy
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers import selector
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
@@ -23,7 +24,7 @@ from homeassistant.util import dt as dt_util
 from . import issues
 from .common_strings import async_common_strings
 from .config_flow import validate_battery, validate_grid_meter
-from .const import CONF_HOUSE_CONSUMPTION_ENTITY
+from .const import CONF_HOUSE_CONSUMPTION_ENTITY, DOMAIN
 from .energy_dashboard import (
     async_energy_prefs,
     async_keep,
@@ -36,6 +37,7 @@ from .energy_dashboard import (
 from .impossible_hours import (
     CAUSE_COUNTED_AGAIN,
     CAUSE_FELL,
+    CAUSE_RESTARTED,
     MONEY,
     amount,
     sensor_name,
@@ -96,14 +98,39 @@ class ImpossibleHourFlow(RepairsFlow):
         return amount(value, self._unit)
 
     async def async_step_init(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA signature
+    ) -> RepairsFlowResult:
+        """The hour, what probably happened, and a choice: correct it or leave it.
+
+        Home Assistant offers no Ignore on a Repair with a fix flow, so leaving
+        the hour as it is has to be one of the Repair's own answers (ADR-0046).
+        """
+        return self.async_show_menu(
+            step_id="init",
+            menu_options=["correct", "leave"],
+            description_placeholders={**self._named(), **await self._explained()},
+        )
+
+    async def async_step_leave(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA signature
+    ) -> RepairsFlowResult:
+        """Leave the hour as recorded, and ignore the Repair as Ignore would.
+
+        Aborted rather than finished: Home Assistant deletes the issue of a
+        finished fix, and the next check would raise it afresh. An ignored issue
+        stays ignored when the check finds it again, and can be found under Show
+        ignored repairs.
+        """
+        ir.async_ignore_issue(self.hass, DOMAIN, self._issue_id, ignore=True)
+        return self.async_abort(reason="left_as_it_is")
+
+    async def async_step_correct(
         self, user_input: dict[str, Any] | None = None
     ) -> RepairsFlowResult:
-        """The hour, what probably happened, and what it should have recorded.
-
-        Opened with the issue's own data rather than an answer, so only an input
-        carrying a value is one.
-        """
-        if user_input is not None and _VALUE in user_input:
+        """What the hour should have recorded, the suggestion filled in."""
+        if user_input is not None:
             self._value = float(user_input[_VALUE])
             return await self.async_step_confirm()
         suggested = self._data.get("suggestion")
@@ -120,7 +147,7 @@ class ImpossibleHourFlow(RepairsFlow):
             }
         )
         return self.async_show_form(
-            step_id="init",
+            step_id="correct",
             data_schema=self.add_suggested_values_to_schema(
                 schema, {} if suggested is None else {_VALUE: suggested}
             ),
@@ -183,6 +210,7 @@ class ImpossibleHourFlow(RepairsFlow):
         cause = {
             CAUSE_COUNTED_AGAIN: labels.get(f"{key}cause_counted_again", ""),
             CAUSE_FELL: labels.get(f"{key}cause_fell", ""),
+            CAUSE_RESTARTED: labels.get(f"{key}cause_restarted", ""),
         }.get(str(self._data.get("cause")), labels.get(f"{key}cause_jumped", ""))
         return {
             "cause": cause,
@@ -197,6 +225,8 @@ class ImpossibleHourFlow(RepairsFlow):
         key = self._strings
         if data.get("suggestion") is None:
             return labels.get(f"{key}suggest_none", "")
+        if data.get("cause") == CAUSE_RESTARTED:
+            return labels.get(f"{key}suggest_restarted", "")
         suggestion = self._amount(_number(data["suggestion"]))
         if data.get("window"):
             return labels.get(f"{key}suggest_window", "").format(

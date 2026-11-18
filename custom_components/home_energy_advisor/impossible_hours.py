@@ -25,6 +25,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from statistics import median
 from typing import TYPE_CHECKING, Any
 
@@ -80,6 +81,9 @@ MONEY = "money"
 CAUSE_COUNTED_AGAIN = "counted_again"
 CAUSE_FELL = "fell"
 CAUSE_JUMPED = "jumped"
+CAUSE_RESTARTED = "restarted"
+# A running total this close to zero is a statistic starting again.
+_ZERO_TOTAL = 1e-9
 
 
 @dataclass(frozen=True)
@@ -127,6 +131,7 @@ class ImpossibleHour:
     unit: str = _KWH
     partner: str | None = None
     ceiling: float = IMPOSSIBLE_KWH_PER_HOUR
+    restarted: bool = False
 
     @property
     def translation_key(self) -> str:
@@ -144,7 +149,9 @@ class ImpossibleHour:
 
     @property
     def cause(self) -> str:
-        """What probably happened, as one of the three causes ADR-0045 names."""
+        """What probably happened: ADR-0045's three causes, and ADR-0046's restart."""
+        if self.restarted:
+            return CAUSE_RESTARTED
         if self.change < 0:
             return CAUSE_FELL
         if self.reading and abs(self.change - self.reading) <= _COUNTED_AGAIN * abs(
@@ -254,95 +261,162 @@ def impossible_hours(
     return found
 
 
-def _changes(
-    rows: Iterable[Mapping[str, Any]],
-) -> list[tuple[datetime, float, float | None]]:
-    """A statistic's hourly changes and readings, in order, its first row left out."""
-    ordered = sorted(rows, key=lambda row: _moment(row["start"]))
-    return [
-        (
-            _moment(row["start"]),
-            float(row["change"]),
-            None if row.get("state") is None else float(row["state"]),
+@dataclass(frozen=True)
+class _Row:
+    """One row of a statistic: its change, reading and running total.
+
+    `hours` is how long since the statistic's previous row began: 1 for an
+    ordinary hour, more for the row that ends a gap, whose change covers all of
+    it (ADR-0046).
+    """
+
+    moment: datetime
+    change: float
+    reading: float | None
+    total: float | None
+    hours: float
+
+    @property
+    def restarted(self) -> bool:
+        """A fall to a running total of zero: the statistic starting again."""
+        return (
+            self.change < 0 and self.total is not None and abs(self.total) < _ZERO_TOTAL
         )
-        for row in ordered[1:]
-        if row.get("change") is not None
+
+    def beyond(self, ceiling_per_hour: float) -> bool:
+        """Whether the change is more than the ceiling allows (ADR-0046).
+
+        A rise across the time since the previous row, since a gap's energy
+        arrives in the row that ends it. A fall within its own hour: a counter
+        never runs backwards, so a fall is never energy recorded late.
+        """
+        if self.change < 0:
+            return -self.change > ceiling_per_hour
+        return self.change > ceiling_per_hour * self.hours
+
+
+def _changes(rows: Iterable[Mapping[str, Any]]) -> list[_Row]:
+    """A statistic's rows in order, its first row left out.
+
+    With nothing before it, the recorder gives the first row's whole total as
+    its change.
+    """
+    ordered = sorted(rows, key=lambda row: _moment(row["start"]))
+    found: list[_Row] = []
+    for before, row in pairwise(ordered):
+        if row.get("change") is None:
+            continue
+        moment = _moment(row["start"])
+        found.append(
+            _Row(
+                moment,
+                float(row["change"]),
+                _optional(row.get("state")),
+                _optional(row.get("sum")),
+                (moment - _moment(before["start"])) / _HOUR,
+            )
+        )
+    return found
+
+
+def _optional(value: Any) -> float | None:  # noqa: ANN401 - a recorder field
+    return None if value is None else float(value)
+
+
+def _ordinary(
+    rows: list[_Row], impossible: set[datetime]
+) -> list[tuple[datetime, float]]:
+    """The hours a typical hour is read from: whole hours, none impossible."""
+    return [
+        (row.moment, row.change)
+        for row in rows
+        if row.hours == 1 and row.moment not in impossible
     ]
 
 
 def _impossible_energy(
-    meter: str,
-    rows: list[tuple[datetime, float, float | None]],
-    partner: str | None,
+    meter: str, rows: list[_Row], partner: str | None
 ) -> list[ImpossibleHour]:
-    impossible = {moment for moment, change, _ in rows if _beyond(change)}
-    ordinary = [
-        (moment, change) for moment, change, _ in rows if moment not in impossible
-    ]
+    impossible = {row.moment for row in rows if row.beyond(IMPOSSIBLE_KWH_PER_HOUR)}
+    ordinary = _ordinary(rows, impossible)
     return [
         ImpossibleHour(
             meter,
-            moment,
-            change,
-            reading,
-            suggestion_from_days(moment, ordinary),
+            row.moment,
+            row.change,
+            row.reading,
+            Suggestion(value=0.0)
+            if row.restarted
+            else suggestion_from_days(row.moment, ordinary),
             partner=partner,
+            restarted=row.restarted,
         )
-        for moment, change, reading in rows
-        if moment in impossible
+        for row in rows
+        if row.moment in impossible
     ]
 
 
 def _impossible_money(
     statistic: str,
-    rows: list[tuple[datetime, float, float | None]],
-    meter_rows: list[tuple[datetime, float, float | None]],
+    rows: list[_Row],
+    meter_rows: list[_Row],
     meter: str,
     unit: str,
 ) -> list[ImpossibleHour]:
     """A cost's impossible hours, each judged against its meter's prices."""
-    energy = {moment: change for moment, change, _ in meter_rows}
-    meter_ordinary = [(m, c) for m, c in energy.items() if not _beyond(c)]
+    energy = {row.moment: row for row in meter_rows}
+    meter_ordinary = _ordinary(
+        meter_rows,
+        {row.moment for row in meter_rows if row.beyond(IMPOSSIBLE_KWH_PER_HOUR)},
+    )
     prices = {
-        moment: change / energy[moment]
-        for moment, change, _ in rows
-        if moment in energy
-        and not _beyond(energy[moment])
-        and abs(energy[moment]) >= _PRICED_FROM_KWH
+        row.moment: row.change / energy[row.moment].change
+        for row in rows
+        if row.hours == 1
+        and row.moment in energy
+        and energy[row.moment].hours == 1
+        and not energy[row.moment].beyond(IMPOSSIBLE_KWH_PER_HOUR)
+        and abs(energy[row.moment].change) >= _PRICED_FROM_KWH
     }
     found: list[ImpossibleHour] = []
-    for moment, change, reading in rows:
+    for row in rows:
         dearest = max(
             (
                 price
                 for other, price in prices.items()
-                if other != moment and abs(other - moment) <= _EITHER_SIDE
+                if other != row.moment and abs(other - row.moment) <= _EITHER_SIDE
             ),
             default=None,
         )
         if dearest is None or dearest <= 0:
             continue
         ceiling = IMPOSSIBLE_KWH_PER_HOUR * dearest
-        if abs(change) <= ceiling:
+        if not row.beyond(ceiling):
             continue
+        suggestion = (
+            Suggestion(value=0.0)
+            if row.restarted
+            else _suggested_cost(
+                row.moment,
+                row.change,
+                energy={moment: each.change for moment, each in energy.items()},
+                meter_ordinary=meter_ordinary,
+                prices=prices,
+                rows=rows,
+            )
+        )
         found.append(
             ImpossibleHour(
                 statistic,
-                moment,
-                change,
-                reading,
-                _suggested_cost(
-                    moment,
-                    change,
-                    energy=energy,
-                    meter_ordinary=meter_ordinary,
-                    prices=prices,
-                    rows=rows,
-                ),
+                row.moment,
+                row.change,
+                row.reading,
+                suggestion,
                 kind=MONEY,
                 unit=unit,
                 partner=meter,
                 ceiling=ceiling,
+                restarted=row.restarted,
             )
         )
     return found
@@ -355,7 +429,7 @@ def _suggested_cost(  # noqa: PLR0913 - the hour with its meter and the prices a
     energy: Mapping[datetime, float],
     meter_ordinary: list[tuple[datetime, float]],
     prices: Mapping[datetime, float],
-    rows: list[tuple[datetime, float, float | None]],
+    rows: list[_Row],
 ) -> Suggestion | None:
     """The hour's energy as it now stands, at the hour's price (ADR-0045).
 
@@ -386,7 +460,7 @@ def _suggested_cost(  # noqa: PLR0913 - the hour with its meter and the prices a
             return Suggestion(
                 value=_rounded(kwh_now * price), energy=kwh_now, price=price
             )
-    ordinary = [(m, c) for m, c, _ in rows if m != moment]
+    ordinary = [(row.moment, row.change) for row in rows if row.hours == 1]
     return suggestion_from_days(moment, ordinary)
 
 
@@ -546,7 +620,13 @@ def _rounded(value: float) -> float:
 def _hourly_history(hass: HomeAssistant, statistics: set[str]) -> Mapping[str, Any]:
     """Each statistic's hourly change and reading over all its history. A read."""
     return statistics_during_period(
-        hass, _EVER, dt_util.utcnow(), statistics, "hour", _IN_KWH, {"change", "state"}
+        hass,
+        _EVER,
+        dt_util.utcnow(),
+        statistics,
+        "hour",
+        _IN_KWH,
+        {"change", "state", "sum"},
     )
 
 
