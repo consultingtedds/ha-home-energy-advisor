@@ -32,6 +32,23 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**You may see notices in Settings > Repairs a few minutes after updating, about
+hours long past.** Home Energy Advisor now checks the whole history of your grid,
+house, solar and battery meters, and of every meter in your Energy Dashboard,
+for any hour that recorded more than a home can use (100 kWh), such as a sensor
+that briefly read zero years ago. Each one gets a notice of its own, and so does
+the Energy Dashboard cost for that hour. Nothing is changed unless you open a
+notice and confirm a correction; if an hour is right, choose Ignore.
+
+**The tariff plan comparison may show fewer days than before.** Hours where a
+price sensor or your grid meters recorded nothing for more than two hours are now
+left out of every plan, with their daily charges, instead of being priced at a
+carried price or charged for energy nobody recorded. The card says which hours,
+and which sensor. Select a plan to see its total line by line, as a bill lists
+it.
+
 ## 1.0.0
 
 **Home Energy Advisor is now in the HACS default store.** Anyone can find it by

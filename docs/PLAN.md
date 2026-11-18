@@ -832,13 +832,37 @@ Carried forward rather than closed:
 - **1.5.0b1 to 1.5.0b3, 2026-11-11 to 2026-11-12**, carrying HEA-280, HEA-293,
   HEA-294, HEA-296 and HEA-297. b3 is the last beta: 1.5.0 follows once
   discussion 58 confirms the table and the Repair, with nothing else added.
-- **Open after 1.5.0:** HEA-299 (discussion 58: a plan priced at one carried
-  price across a long gap in its sensor's statistics, a card that does not name
-  the sensor, and days with no recorded energy charged a daily charge), HEA-267 (ADR-0042), HEA-298 (check the household's prices
-  and meters against a bill), HEA-300 (each plan's kWh per price, to check
-  against a bill or a comparison site) and HEA-272 (discussion 58: clear the
-  figures for a chosen period). HEA-295, editing plans from the Tariffs tab, is parked: a
-  card cannot open Home Assistant's settings flow robustly.
+- **1.5.0, released 2026-11-16**, the code 1.5.0b3 ran.
+- **HEA-299** (discussion 58, ADR-0043): an hour the comparison has no data for,
+  price or energy, is left out of every plan with its daily charges, and the
+  card names the sensor. Gaps of up to two hours are bridged. It replaces the
+  one-day carried price, and HEA-294's common start becomes the case where the
+  left-out hours come first.
+- **HEA-300**: selecting a plan opens its bill, line by line, so a household can
+  match each line to a bill. The average import rate is shown on the bill and
+  under each plan's import cost, coloured on the device table's verdict ramp
+  from the plan's dearest price to its cheapest; the ramp is now shared. The
+  no-installation column became "Buying everything from the grid", and says
+  what "your installation saves you".
+- **HEA-302** (discussion 58): `home_energy_advisor.compare_plans`, an action
+  returning the comparison for a start and end, for scripts and other tools. A
+  sensor per plan was declined: a comparison is for a period asked, and the
+  table is too big for attributes. An exports-earned sensor was dropped too:
+  Home Assistant's Energy Dashboard already makes one, its compensation sensor.
+- **HEA-301** (discussion 58, ADR-0044, ADR-0045): an hour a meter recorded more
+  than 100 kWh in, either way, is left out of the comparison and named. A daily
+  check of every meter the comparison reads and every Energy Dashboard meter
+  raises a Repair per impossible hour, saying what probably happened and what it
+  should have been, from its five minutes where kept, else the same hour either
+  side. The Energy Dashboard's cost or compensation for the hour has a Repair
+  of its own, so the household chooses which to correct; a correction is two
+  steps and adjusts that one hour of that one statistic. The ceiling stays fixed.
+- **Open after 1.6.0:** HEA-267 (ADR-0042, proposed: the current plan priced at
+  the Energy Dashboard's prices), then HEA-298 (check prices and meters against
+  a bill, which prices the bill's dates at the household's own prices, so it
+  follows HEA-267), HEA-272 (discussion 58: clear the figures for a chosen
+  period) and HEA-242 (payback). HEA-295, editing plans from the Tariffs tab, is
+  parked: a card cannot open Home Assistant's settings flow robustly.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
@@ -1360,7 +1384,11 @@ it again. Each has a closed Linear ticket with the detail.
   is about 1.4 times the largest domestic supply. Nobody has asked, and a
   setting on a guess is one to maintain for ever and a way to switch the guard
   off. A site that does exceed it sees the refusal in a Repair naming the input,
-  so it is not silent. Reopen when such a household asks.
+  so it is not silent. Reopen when such a household asks. Decided the same way
+  for the 100 kWh ceiling on the statistics (ADR-0044, maintainer 2026-11-18).
+- **A sensor per tariff plan** (HEA-302, 2026-11-17). Its state would need one
+  fixed period and a timed re-read of every plan's history, and the table does
+  not fit in attributes. The `compare_plans` action answers on demand instead.
 - **Flagging a power-only device whose upstream has died** (HEA-158, closed
   2026-10-23). An integration that publishes `0` W instead of `unavailable` when
   its backend fails makes a dead device look exactly like one switched off, and

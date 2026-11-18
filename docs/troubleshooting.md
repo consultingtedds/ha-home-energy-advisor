@@ -350,6 +350,40 @@ The limit is 100 kW of continuous draw, which is about 1.4 times the largest
 domestic supply. If your site genuinely draws more than that, please open an
 issue: the figure is fixed today and can be made adjustable.
 
+## A notification says a meter recorded more than a home can use in one hour
+
+This one is about the past, not the reading arriving now. Once a day Home Energy
+Advisor checks the long-term statistics of your grid, house, solar and battery
+meters, and of every meter in your Energy Dashboard, for an hour that recorded
+more than 100 kWh. That is almost always a sensor that briefly read zero, or a
+template that misfired, so Home Assistant counted its whole total as one hour's
+use. The hour is wrong everywhere that reads it, your Energy Dashboard included,
+and the plan comparison leaves it out.
+
+Open the notice. It says what the hour recorded, what probably happened, and what
+it most likely should have been, worked out from the five minutes the jump
+happened in where Home Assistant still keeps them, or from the same hour on the
+days either side. Correct it there, or set it yourself in **Developer Tools** >
+**Statistics**, or choose **Ignore** if the hour is right. Nothing is changed
+until you confirm, and the confirmation gives the value to set back should you
+change your mind. Either way, the notice clears at the next check.
+
+The Energy Dashboard's cost or compensation for the same hour usually carries
+the same glitch, priced, and has a notice of its own: one that recorded more
+than 100 kWh could have cost at the dearest price you paid that week. Correct
+either, both or neither.
+
+## The plan comparison leaves some hours out
+
+The line above the table says which hours and why. Where a price sensor a plan
+follows, or your grid meters, recorded nothing for more than two hours, those
+hours are left out of every plan, their daily charges too, so every plan is still
+compared over the same hours. An hour a meter recorded more than a home can use
+in is left out the same way. Check the named sensor in **Developer Tools** >
+**Statistics**: its state can look right while its statistics have stopped, as
+happens when its unit is changed. A gap of two hours or less is bridged, since
+that is a restart or a late reading rather than a fault.
+
 ## A device paused after its firmware updated
 
 A firmware update can change what a device's counter counts in without changing

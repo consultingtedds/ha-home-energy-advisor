@@ -173,17 +173,31 @@ you have generation or a battery. No options beyond the two every card takes.
 ### Compare tariff plans
 
 What each tariff plan you have entered would have cost over the period, cheapest
-first. For each plan:
+first, as a table. For each plan:
 
-- **Its total**: the energy it would have charged, less what it would have paid
-  for your exports, plus its daily charges.
-- **What the total is made of**: energy, export and daily charges.
-- **The difference from your plan**: how much less or more than the plan you are
-  on, in green where it would have cost less.
+- **Its prices**: each of its named prices, what export pays, and its daily
+  charge.
+- **What you pay and what you earn**: its import cost, with the average it came
+  to per kWh beneath, its daily charges, and its export income.
+- **Its total**, and **the difference from your plan**. Anything you pay is -€
+  in red, anything in your favour € in green.
+- **Buying everything from the grid**, where you have generation or a battery:
+  what the plan would have cost with neither, and what your installation saves
+  you on it.
+
+The average import rate is coloured from red at the plan's dearest price to green
+at its cheapest, on the same scale as the device table's verdicts, so the greener
+it is, the more of your import fell in the plan's cheap hours. Select a plan to
+open its bill beneath it: the daily charges, each price with the kWh it charged
+and what they cost, the import cost, the export, and the total, each matching its
+column above. Set the period to a bill's dates to check your own plan against it.
 
 Every plan, yours included, is priced the same way, at the electricity your
-meters recorded hour by hour. So the figure for your own plan is not Paid, which
-leaves daily charges out and is worked out device by device. The README's
+meters recorded hour by hour, and over the same hours: a stretch a price sensor
+or the grid meters have no data for is left out of every plan, and a line above
+the table says which and why. So the figure for your own plan is not Paid, which
+leaves daily charges out and is worked out device by device. On a phone the table
+keeps each plan's total and difference, and the bill still opens. The README's
 *Comparing tariff plans* says how to enter a plan and what the comparison
 assumes.
 
