@@ -598,6 +598,42 @@
       "title": "{name} no tiene ninguna cifra",
       "description": "{name} está configurado como dispositivo con seguimiento, pero Home Energy Advisor no ha publicado nada para él: ni un cero, nada. Así que nunca mostrará lo que ha costado, por mucho que esperes.\n\nTus totales no están mal por esto. Lo que haya usado {name} se cuenta en Sin seguimiento, de modo que el total de tu casa sigue cuadrando; lo que falta es ver qué dispositivo lo gastó.\n\nEsto se ha visto al añadir varios dispositivos seguidos, uno tras otro, y aún no se sabe por qué. **La solución es quitar {name} y volver a añadirlo**, y funciona: un dispositivo añadido por su cuenta siempre ha salido completo.\n\nSi vuelve a pasar, o le pasa a más de un dispositivo, cuéntalo en GitHub e incluye una descarga de diagnóstico: este fallo es difícil de pillar y un segundo caso ayudaría mucho."
     },
+    "impossible_hour": {
+      "title": "{sensor} registró más de lo que un hogar puede consumir en una hora",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Corregir una hora imposible",
+            "description": "**{sensor}** registró **{recorded}** en la hora desde las **{when}**. Ningún hogar puede consumir más de 100 kWh en una hora, así que Home Energy Advisor excluye esta hora de la comparación de tarifas, y tu panel de energía la muestra tal como se registró.\n\n{cause}\n\n{suggestion}\n\n{partner}\n\nIndica lo que la hora debería haber registrado. No se cambia nada hasta que lo confirmes en el paso siguiente. Si la hora es correcta, cierra esto y elige Ignorar.",
+            "data": {
+              "value": "Lo que la hora debería haber registrado"
+            }
+          },
+          "confirm": {
+            "title": "¿Cambiar las estadísticas de Home Assistant para esta hora?",
+            "description": "Esto cambia las estadísticas a largo plazo de Home Assistant para **{sensor}**, en la hora desde las **{when}**:\n\n- de **{recorded}** a **{value}**, un cambio de **{difference}**;\n- todos los gráficos, tu panel de energía y todas las tarjetas que leen las estadísticas de este sensor mostrarán el nuevo valor para esa hora, y su total acumulado se mueve en la misma cantidad a partir de esa hora;\n- las lecturas del propio sensor y su historial de estados no cambian.\n\nHome Assistant no guarda forma de deshacerlo. Para revertirlo más adelante, abre Herramientas para desarrolladores > Estadísticas, busca **{sensor}** y vuelve a poner la misma hora en **{recorded}**.\n\nEnvía para hacer el cambio, o cierra esto para dejar la hora como está."
+          }
+        }
+      }
+    },
+    "impossible_cost": {
+      "title": "{sensor} registró más de lo que se le puede cobrar a un hogar en una hora",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Corregir un coste imposible",
+            "description": "**{sensor}** registró **{recorded}** para la hora desde las **{when}**. Es más de lo que habrían costado 100 kWh al precio más caro que pagó este contador en la semana anterior y la siguiente (**{ceiling}**), así que no puede ser correcto. Es un coste que muestra tu panel de energía.\n\n{cause}\n\n{suggestion}\n\n{partner}\n\nIndica lo que debería haber costado la hora. No se cambia nada hasta que lo confirmes en el paso siguiente. Si el coste es correcto, cierra esto y elige Ignorar.",
+            "data": {
+              "value": "Lo que debería haber costado la hora"
+            }
+          },
+          "confirm": {
+            "title": "¿Cambiar las estadísticas de Home Assistant para este coste?",
+            "description": "Esto cambia las estadísticas a largo plazo de Home Assistant para **{sensor}**, el coste que muestra tu panel de energía, en la hora desde las **{when}**:\n\n- de **{recorded}** a **{value}**, un cambio de **{difference}**;\n- tu panel de energía y todos los gráficos o tarjetas que leen esta estadística mostrarán el nuevo coste para esa hora, y su total acumulado se mueve en la misma cantidad a partir de esa hora;\n- el contador de energía del que se calculó no cambia: tiene su propia reparación si la necesita.\n\nHome Assistant no guarda forma de deshacerlo. Para revertirlo más adelante, abre Herramientas para desarrolladores > Estadísticas, busca **{sensor}** y vuelve a poner la misma hora en **{recorded}**.\n\nEnvía para hacer el cambio, o cierra esto para dejar la hora como está."
+          }
+        }
+      }
+    },
     "nesting_misread": {
       "title": "{name} está anidado con un sensor que Home Energy Advisor no lee",
       "description": "El panel de Energía anida {name} con otro dispositivo, pero lo nombra con **{named}**, y Home Energy Advisor lee {name} de **{read}**. Un anidamiento solo se puede aplicar entre los sensores que lee Home Energy Advisor, así que este no se aplica: el dispositivo de dentro se cuenta dos veces, una por su cuenta y otra dentro del dispositivo que lo contiene.\n\nPara arreglarlo, elige {read} para {name} en los dispositivos individuales del panel de Energía, o reconfigura {name} aquí para que lea {named}. Esto se resuelve solo en cuanto los dos coincidan."
@@ -679,6 +715,21 @@
     "not_offered_not_energy": "{name} (su sensor no informa de energía)",
     "not_offered_house_energy": "{name} (es energía de la casa, ya contada)",
     "repair_level_left_out": "nivel no incluido: añade su capacidad",
+    "impossible_cause_counted_again": "Parece que se ha vuelto a contar todo el total del contador, como ocurre cuando un sensor marca cero un momento y luego vuelve.",
+    "impossible_cause_fell": "Las estadísticas del contador bajaron esta cantidad en una hora.",
+    "impossible_cause_jumped": "El contador saltó esta cantidad en una hora.",
+    "impossible_suggest_window": "En los cinco minutos desde las {window} el contador saltó {jump}; el resto de la hora registró {rest}, así que se sugiere {suggestion}.",
+    "impossible_suggest_days": "Durante la semana anterior y la siguiente, este contador registró de {low} a {high} a esta hora, así que se sugiere {suggestion}.",
+    "impossible_suggest_none": "No hay suficientes horas parecidas alrededor para sugerir un valor, así que indica lo que crees que debería haber sido.",
+    "impossible_partner": "El coste de esta hora en tu panel de energía, {sensor}, se calculó a partir de la misma lectura. Si también es incorrecto, tiene su propia reparación, así que puedes corregirlo allí, arreglarlo tú mismo o dejarlo.",
+    "impossible_cost_cause_counted_again": "Parece que se ha vuelto a cobrar todo el total del contador, como ocurre cuando su sensor marca cero un momento y luego vuelve.",
+    "impossible_cost_cause_fell": "El coste bajó esta cantidad en una hora.",
+    "impossible_cost_cause_jumped": "El coste saltó esta cantidad en una hora.",
+    "impossible_cost_suggest_window": "En los cinco minutos desde las {window} el coste saltó {jump}; el resto de la hora sumó {rest}, así que se sugiere {suggestion}.",
+    "impossible_cost_suggest_price": "{energy} al precio de esta hora, {price}, suman {suggestion}, así que se sugiere eso.",
+    "impossible_cost_suggest_days": "Durante la semana anterior y la siguiente, este coste fue de {low} a {high} a esta hora, así que se sugiere {suggestion}.",
+    "impossible_cost_suggest_none": "No hay suficiente información alrededor para sugerir un valor, así que indica lo que crees que debería haber costado.",
+    "impossible_cost_partner": "Este coste se calculó a partir de la lectura de {sensor} para la misma hora. Si también es incorrecta, tiene su propia reparación, así que puedes corregirla allí, arreglarla tú mismo o dejarla.",
     "plan_weekdays": "Días laborables",
     "plan_rest_days": "Fines de semana y festivos",
     "plan_every_day": "Todos los días",
@@ -785,7 +836,7 @@
     "card_plans_left_out_price": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. {sensor} no registró estadísticas entonces. Revísalo en Herramientas para desarrolladores > Estadísticas.",
     "card_plans_stretch": "{from} a {to}",
     "card_plans_stretch_kwh": "{from} a {to} ({kwh})",
-    "card_plans_left_out_impossible": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. {sensor} registró entonces más de lo que un hogar puede consumir en una hora. Corrígelo en Herramientas para desarrolladores > Estadísticas.",
+    "card_plans_left_out_impossible": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. {sensor} registró entonces más de lo que un hogar puede consumir en una hora. Corrígelo desde Ajustes > Reparaciones.",
     "card_plans_open": "Selecciona un plan para ver su total línea a línea, como lo detalla una factura.",
     "card_plans_rate": "Precio",
     "card_plans_used": "Consumo",

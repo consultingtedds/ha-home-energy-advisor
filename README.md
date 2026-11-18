@@ -466,6 +466,30 @@ response_variable: plans
 `plans.plans` then lists each plan with its `total`, `energy`, `export_credit`,
 `daily_charges` and its `breakdown`, line by line.
 
+**An hour no home could use.** A sensor that briefly reads zero, or a template
+that misfires, can leave an hour in Home Assistant's statistics recording
+hundreds or thousands of kWh. Any hour in which your grid, house, generation or
+battery meters recorded more than 100 kWh is left out of every plan, and the
+card names it. Once a day Home Energy Advisor also checks the whole history of
+those meters and of every meter in your Energy Dashboard, and raises a notice
+in **Settings** > **Repairs** for each such hour. It says what was recorded,
+what probably happened, and what the hour most likely should have been: worked
+out from the five minutes the jump happened in where Home Assistant still keeps
+them (ten days by default), otherwise from the same hour on the days either
+side. You can correct the hour from the notice. Nothing is changed until you
+confirm, and the confirmation says exactly what will change: the sensor's
+statistics for that hour, which your Energy Dashboard and every chart read too,
+while its own readings are left alone. Home Assistant keeps no undo, so the
+notice gives the value to set back in **Developer Tools** > **Statistics** should
+you want to reverse it. If the hour is right, choose **Ignore**.
+
+A glitch on a grid meter is usually priced into your Energy Dashboard's cost or
+compensation for the same hour too. That cost gets a notice of its own, found on
+its own: a cost hour above what 100 kWh could have cost at the dearest price you
+paid that week. So you choose which to correct, the meter, the cost, both or
+neither, and either can be fixed by hand instead. The cost's suggestion is the
+hour's energy, as it now stands, at that hour's price.
+
 ### Settings you can change later
 
 Everything on the house screen - the meters, how your battery charges - can be

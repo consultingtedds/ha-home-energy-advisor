@@ -1454,6 +1454,32 @@ async def test_a_grid_hour_no_home_could_import_is_left_out_for_every_plan(
 
 
 @pytest.mark.usefixtures("recorder_mock")
+async def test_an_impossible_row_after_a_short_gap_takes_the_gap_with_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - no rows at 13:00 or 14:00, a gap short enough to bridge, and the
+    # 15:00 row recording 11,041 kWh: a counter carries a gap's energy into the
+    # row after it, so that row's change covers 13:00 to 16:00
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    gap = frozenset({13, 14})
+    _record(hass, "sensor.grid_import", {7: 1.0, 15: 11041.0, 20: 1.0}, gap)
+    _record(hass, "sensor.grid_export", {12: 2.0}, gap)
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _FLAT))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the gap is left out with the row that carries it, its daily
+    # charges too, rather than bridged and priced as if nothing was used
+    assert _impossible(result) == [(_at(13), _at(16), "sensor.grid_import", 11041.0)]
+    assert result["days"] == pytest.approx(21 / 24, abs=1e-4)
+    assert _by_name(result)["Flat rate"]["energy"] == pytest.approx(2.0 * 0.234)
+
+
+@pytest.mark.usefixtures("recorder_mock")
 async def test_an_hour_at_the_ceiling_is_a_real_hour(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:

@@ -42,8 +42,9 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigSubentryFlow, SubentryFlowResult
 from homeassistant.const import CONF_NAME
-from homeassistant.helpers import selector, translation
+from homeassistant.helpers import selector
 
+from .common_strings import async_common_strings
 from .const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
@@ -72,7 +73,6 @@ from .const import (
     CONF_PLAN_IMPORT_PRICE_MULTIPLY,
     CONF_PRICES,
     DEFAULT_CURRENCY,
-    DOMAIN,
     SUBENTRY_TYPE_PLAN,
 )
 from .engine.plan_pricing import AllowancePeriod, Band, Day, Days, ExportCap, Plan
@@ -87,8 +87,6 @@ from .tariff_plans import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
-
-    from homeassistant.core import HomeAssistant
 
 _KEEP = "keep"
 _ACTION = "action"
@@ -236,7 +234,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 # current would unmark the plan the household is on.
                 self._details[CONF_PLAN_CURRENT] = False
             return await self.async_step_details()
-        labels = await _common_strings(self.hass)
+        labels = await async_common_strings(self.hass)
         options = [
             selector.SelectOptionDict(
                 value=_NOTHING,
@@ -301,7 +299,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         suggested = {**self._details}
         if self._prices:
             suggested[CONF_PRICES] = self._prices
-        labels = await _common_strings(self.hass)
+        labels = await async_common_strings(self.hass)
         return self.async_show_form(
             step_id=step_id,
             data_schema=self.add_suggested_values_to_schema(
@@ -312,7 +310,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
 
     async def _take(self, data: Mapping[str, Any]) -> None:
         """Start from what a plan's entry holds: its details, prices and bands."""
-        labels = await _common_strings(self.hass)
+        labels = await async_common_strings(self.hass)
         self._details = {key: data[key] for key in _DETAIL_KEYS if key in data}
         # Entered before export could be capped, so paid in full, which the
         # form's default for a new plan must not quietly change (HEA-258).
@@ -376,7 +374,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
     async def _band_form(
         self, suggested: dict[str, Any], errors: dict[str, str]
     ) -> SubentryFlowResult:
-        labels = await _common_strings(self.hass)
+        labels = await async_common_strings(self.hass)
         return self.async_show_form(
             step_id="band",
             data_schema=self.add_suggested_values_to_schema(
@@ -410,7 +408,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
             if not self._plan().gaps():
                 return self._save()
             errors["base"] = "plan_incomplete"
-        labels = await _common_strings(self.hass)
+        labels = await async_common_strings(self.hass)
         return self.async_show_form(
             step_id="bands",
             data_schema=self._review_schema(labels),
@@ -820,20 +818,3 @@ def _hour_ranges(hours: tuple[int, ...]) -> str:
 def _label(key_and_default: tuple[str, str], labels: dict[str, str]) -> str:
     key, default = key_and_default
     return labels.get(key, default)
-
-
-async def _common_strings(hass: HomeAssistant) -> dict[str, str]:
-    """The integration's ``common`` strings, translated, keyed by name.
-
-    A review is built from the bands entered, so its wording cannot live in the
-    step's own strings and is looked up here instead, as discovery's rows are.
-    """
-    strings = await translation.async_get_translations(
-        hass, hass.config.language, "common", {DOMAIN}
-    )
-    prefix = f"component.{DOMAIN}.common."
-    return {
-        key.removeprefix(prefix): value
-        for key, value in strings.items()
-        if key.startswith(prefix)
-    }

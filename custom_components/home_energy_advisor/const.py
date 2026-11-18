@@ -112,6 +112,11 @@ CONF_CYCLE_METERS: Final = "cycle_meters"
 # The supported reset of a household's accumulated totals (HEA-57). An action
 # rather than a button entity: rebasing is irreversible, and a button on a device
 # page is one accidental tap away with no confirmation.
+# More energy than any home could use in an hour: a large three-phase
+# connection delivers around 40 to 45 kW. A meter's statistics changing by more,
+# either way, is a fault in them (ADR-0044, ADR-0045).
+IMPOSSIBLE_KWH_PER_HOUR: Final = 100
+
 SERVICE_RESET_TOTALS: Final = "reset_totals"
 SERVICE_COMPARE_PLANS: Final = "compare_plans"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"

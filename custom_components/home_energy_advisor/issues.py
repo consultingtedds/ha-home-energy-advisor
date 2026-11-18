@@ -5,8 +5,10 @@ and clear them, so every caller uses the same translation keys and severity - th
 coordinator (runtime health of sources, the price entity, and the Untracked
 remainder) and the helper-sync modules (a native helper the user deleted, which
 HEA re-created). Almost every issue is informational (``is_fixable=False``): the
-fix is an action in Home Assistant itself. The one exception is a change in the
-Energy Dashboard, which only this integration can take (``repairs.py``).
+fix is an action in Home Assistant itself. Two are answered here
+(``repairs.py``): a change in the Energy Dashboard, which only this integration
+can take, and an impossible hour in a meter's statistics, which it offers to
+correct (ADR-0045).
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ from homeassistant.helpers import issue_registry as ir
 from .const import DOMAIN
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from homeassistant.core import HomeAssistant
 
 # Translation keys - each has a matching block under ``issues`` in strings.json.
@@ -67,6 +71,14 @@ ISSUE_ENERGY_DASHBOARD_CHANGED = "energy_dashboard_changed"
 # read here, so the nesting cannot be applied and the device is counted twice
 # (HEA-271). Keyed per device: each is its own sensor to repoint.
 ISSUE_NESTING_MISREAD = "nesting_misread"
+# An hour of a grid, house, generation or battery meter's statistics that no
+# home could use, found by the daily check (ADR-0045). Fixable: the household is
+# offered a correction, which this integration makes once they confirm it.
+ISSUE_IMPOSSIBLE_HOUR = "impossible_hour"
+# The same for the Energy Dashboard's cost or compensation for an hour: a
+# statistic of its own, with a Repair of its own, so the household chooses which
+# to correct (ADR-0045).
+ISSUE_IMPOSSIBLE_COST = "impossible_cost"
 
 
 def source_removed_issue_id(entity_id: str) -> str:
@@ -149,6 +161,17 @@ def energy_dashboard_changed_issue_id(entry_id: str) -> str:
     it.
     """
     return f"{ISSUE_ENERGY_DASHBOARD_CHANGED}_{entry_id}"
+
+
+def impossible_issue_id(
+    translation_key: str, statistic_id: str, start: datetime
+) -> str:
+    """Stable issue id for one impossible hour of one statistic (ADR-0045).
+
+    One per statistic and hour, so each is answered, or ignored, on its own:
+    a meter's hour and its Energy Dashboard cost are two.
+    """
+    return f"{translation_key}_{statistic_id}_{int(start.timestamp())}"
 
 
 def nesting_misread_issue_id(subentry_id: str) -> str:

@@ -294,6 +294,46 @@ def dashboard_meters(prefs: Any) -> dict[str, frozenset[str]]:  # noqa: ANN401 -
     return {key: frozenset(meters) for key, meters in used.items()}
 
 
+def dashboard_money(
+    prefs: Any,  # noqa: ANN401 - untyped HA prefs
+    cost_sensors: Mapping[str, str],
+) -> dict[str, str]:
+    """Each grid meter's cost or compensation statistic in the Energy Dashboard.
+
+    Keyed by the money statistic, valued by the meter it prices (ADR-0045). The
+    household's own where it chose one, otherwise the cost sensor Home Assistant
+    made for the meter, which `cost_sensors` maps from the meter. On both shapes
+    of a grid source: the flow lists before 2026.9, the source itself after.
+    """
+    money: dict[str, str] = {}
+    for source in (prefs or {}).get("energy_sources", []):
+        if source.get("type") == "grid":
+            for flows, meter_key, money_key in _MONEY_OF_GRID:
+                for flow in source.get(flows) or [source]:
+                    money |= _money_of(flow, meter_key, money_key, cost_sensors)
+    return money
+
+
+# A grid source's two sides: the list each sits in before 2026.9, its meter's
+# key, and its money's.
+_MONEY_OF_GRID = (
+    ("flow_from", "stat_energy_from", "stat_cost"),
+    ("flow_to", "stat_energy_to", "stat_compensation"),
+)
+
+
+def _money_of(
+    flow: Any,  # noqa: ANN401 - untyped Energy Dashboard preference structure
+    meter_key: str,
+    money_key: str,
+    cost_sensors: Mapping[str, str],
+) -> dict[str, str]:
+    """One flow's money statistic, keyed to its meter, where it has both."""
+    meter = flow.get(meter_key)
+    statistic = (flow.get(money_key) or cost_sensors.get(meter)) if meter else None
+    return {statistic: meter} if statistic else {}
+
+
 def _role_meters(source: Any) -> list[tuple[str, str]]:  # noqa: ANN401 - untyped Energy Dashboard preference structure
     """Each meter one Energy Dashboard source uses, with the house input it fills."""
     return [

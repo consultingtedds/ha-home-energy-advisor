@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, Platform
 
-from . import plan_comparison, reset
+from . import impossible_hours, plan_comparison, reset
 from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
@@ -103,6 +103,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     entry.async_on_unload(
         entry.add_update_listener(_reload_when_the_accounting_changes(entry))
     )
+    # An hour in a meter's statistics no home could use, raised as a Repair
+    # that offers a correction: a few minutes after setup, then daily (ADR-0045).
+    entry.async_on_unload(impossible_hours.async_start(hass, entry))
     return True
 
 

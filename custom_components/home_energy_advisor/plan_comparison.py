@@ -47,6 +47,7 @@ from .const import (
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     DOMAIN,
+    IMPOSSIBLE_KWH_PER_HOUR,
     SERVICE_COMPARE_PLANS,
     SUBENTRY_TYPE_PLAN,
 )
@@ -83,10 +84,9 @@ _FIVE_MINUTES = timedelta(minutes=5)
 _BRIDGE = timedelta(hours=2)
 # What a stretch with no grid statistics is left out for, beside a price entity.
 _GRID_METERS = "grid"
-# More than any home could use in an hour: a large three-phase connection
-# delivers around 40 to 45 kW. A change beyond it, either way, is a fault in the
-# statistics, and its interval is left out (ADR-0044).
-_CEILING_PER_HOUR = Decimal(100)
+# A change beyond it, either way, is a fault in the statistics, and its interval
+# is left out (ADR-0044).
+_CEILING_PER_HOUR = Decimal(IMPOSSIBLE_KWH_PER_HOUR)
 # Before anything the recorder can hold, for asking when a statistic begins.
 _EVER = datetime(2000, 1, 1, tzinfo=UTC)
 _ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
@@ -440,19 +440,56 @@ def _impossible(
 
     Held to the hourly ceiling's rate, so five minutes may change by a twelfth
     of it. Either way: a counter that fell by as much is as wrong.
+
+    A row after a gap short enough to bridge carries the gap's energy too
+    (ADR-0043), so it is left out from the gap's start: otherwise the gap would
+    be bridged and its hours charged daily charges for energy left out with
+    the row.
     """
     length = _FIVE_MINUTES if is_fine else _HOUR
     ceiling = _CEILING_PER_HOUR * Decimal(length.total_seconds()) / Decimal(3600)
+    return [
+        stretch
+        for meter in sorted(meters)
+        for stretch in _impossible_of(
+            meter,
+            _kept_changes(changes.get(meter, ()), kept, is_fine=is_fine),
+            length,
+            ceiling,
+        )
+    ]
+
+
+def _kept_changes(
+    rows: Iterable[Mapping[str, Any]],
+    kept: Any,  # noqa: ANN401 - the caller's choice of interval
+    *,
+    is_fine: bool,
+) -> list[tuple[datetime, Decimal]]:
+    """A meter's changes at the resolution read, in time order."""
+    changes = []
+    for row in rows:
+        moment = _moment(row["start"])
+        if row.get("change") is not None and kept(moment, is_fine=is_fine):
+            changes.append((moment, Decimal(str(row["change"]))))
+    return sorted(changes)
+
+
+def _impossible_of(
+    meter: str,
+    rows: list[tuple[datetime, Decimal]],
+    length: timedelta,
+    ceiling: Decimal,
+) -> list[_Stretch]:
+    """One meter's impossible intervals, each from the start of a gap it ends."""
     found: list[_Stretch] = []
-    for meter in sorted(meters):
-        for row in changes.get(meter, ()):
-            change = row.get("change")
-            moment = _moment(row["start"])
-            if change is None or not kept(moment, is_fine=is_fine):
-                continue
-            kwh = Decimal(str(change))
-            if abs(kwh) > ceiling:
-                found.append(_Stretch(moment, moment + length, meter, kwh))
+    recorded_to: datetime | None = None
+    for moment, kwh in rows:
+        if abs(kwh) > ceiling:
+            bridged = recorded_to is not None and moment - recorded_to <= _BRIDGE
+            start = recorded_to if bridged and recorded_to else moment
+            found.append(_Stretch(start, moment + length, meter, kwh))
+        recorded_to = moment + length
     return found
 
 

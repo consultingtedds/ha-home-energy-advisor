@@ -632,7 +632,7 @@ describe("plans priced from the market (HEA-260)", () => {
     expect(leftOut(card)).toEqual([
       `Left out of every plan, daily charges included: ${at(JUNE)} to ${clock(JUNE_EVENING)} ` +
         "(11,041 kWh). House consumption (sensor.house) recorded more than a home " +
-        "can use in an hour then. Correct it in Developer Tools > Statistics.",
+        "can use in an hour then. Correct it from Settings > Repairs.",
     ]);
   });
 
