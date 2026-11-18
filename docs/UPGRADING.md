@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 1.6.0
 
 **You may see notices in Settings > Repairs a few minutes after updating, about
 hours long past.** Home Energy Advisor now checks the whole history of your grid,
