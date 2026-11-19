@@ -157,7 +157,7 @@ _DEVICE_SCHEMA = vol.Schema(
 class HomeEnergyAdvisorConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the one-time, house-level configuration."""
 
-    VERSION = 7
+    VERSION = 8
 
     def __init__(self) -> None:
         """Start with nothing answered."""

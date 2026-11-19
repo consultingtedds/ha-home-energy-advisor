@@ -147,7 +147,7 @@ def _helper_output(  # noqa: PLR0913 - a test fixture builder; each kwarg is a d
 def _entry(hass: HomeAssistant, **house_inputs: str | list[str]) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "EUR", **house_inputs},
         subentries_data=[
             ConfigSubentryData(

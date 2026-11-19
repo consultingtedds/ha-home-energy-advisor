@@ -435,7 +435,7 @@ async def test_an_existing_battery_moves_into_its_own_entry(
     await hass.async_block_till_done()
 
     # Then - the same battery, now an entry of its own, and nothing about it lost
-    assert entry.version == 7
+    assert entry.version == 8
     (battery,) = batteries_of(entry).values()
     assert battery.name == "Battery"
     assert battery.charge == "sensor.anker_charge"
@@ -461,7 +461,7 @@ async def test_a_house_without_a_battery_gains_none(hass: HomeAssistant) -> None
     await hass.async_block_till_done()
 
     # Then
-    assert entry.version == 7
+    assert entry.version == 8
     assert batteries_of(entry) == {}
 
 

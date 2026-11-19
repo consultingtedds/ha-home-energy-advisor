@@ -75,6 +75,13 @@ from .const import (
     DEFAULT_CURRENCY,
     SUBENTRY_TYPE_PLAN,
 )
+from .current_plan import (
+    is_current_plan,
+    plan_data,
+    rules_errors,
+    rules_of,
+    rules_schema,
+)
 from .engine.plan_pricing import AllowancePeriod, Band, Day, Days, ExportCap, Plan
 from .schemas import vol
 from .tariff_plans import (
@@ -269,10 +276,39 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
-        """Edit a plan's details and prices, then review its bands."""
+        """Edit a plan's details and prices, then review its bands.
+
+        The current plan has no prices to edit: only its billing rules.
+        """
+        if is_current_plan(self._get_reconfigure_subentry()):
+            return await self.async_step_current()
         if user_input is None and not self._details:
             await self._take(self._get_reconfigure_subentry().data)
         return await self._details_step("reconfigure", user_input)
+
+    async def async_step_current(
+        self, user_input: dict[str, Any] | None = None
+    ) -> SubentryFlowResult:
+        """The current plan's daily charge and export cap (ADR-0042)."""
+        subentry = self._get_reconfigure_subentry()
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = rules_errors(user_input)
+            if not errors:
+                return self.async_update_and_abort(
+                    self._get_entry(),
+                    subentry,
+                    data=plan_data(subentry.data[CONF_NAME], user_input),
+                )
+        labels = await async_common_strings(self.hass)
+        return self.async_show_form(
+            step_id="current",
+            data_schema=self.add_suggested_values_to_schema(
+                rules_schema(self._per_day(labels)),
+                user_input or rules_of(subentry.data),
+            ),
+            errors=errors,
+        )
 
     async def _details_step(
         self, step_id: str, user_input: dict[str, Any] | None

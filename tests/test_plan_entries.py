@@ -129,7 +129,7 @@ _CURRENT_PLAN = Plan(
 def _house(hass: HomeAssistant, *plans: dict[str, Any]) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "EUR"},
         subentries_data=[
             ConfigSubentryData(

@@ -46,6 +46,7 @@ from .const import (
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_EXPORT_PRICE_MULTIPLY,
+    CONF_PLAN_FOLLOWS,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -85,11 +86,16 @@ class TariffPlan:
 
 
 def plans_of(entry: ConfigEntry) -> dict[str, TariffPlan]:
-    """Every plan the household has entered, keyed by its subentry id."""
+    """Every plan the household has entered, keyed by its subentry id.
+
+    The current plan is not one: it has no schedule, and is priced at the prices
+    Paid is priced at (ADR-0042).
+    """
     return {
         subentry_id: tariff_plan_from(subentry.title, subentry.data)
         for subentry_id, subentry in entry.subentries.items()
         if subentry.subentry_type == SUBENTRY_TYPE_PLAN
+        and not subentry.data.get(CONF_PLAN_FOLLOWS)
     }
 
 

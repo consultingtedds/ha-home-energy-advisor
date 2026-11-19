@@ -351,9 +351,25 @@
             "keep": "Franjas",
             "action": "Siguiente"
           }
+        },
+        "current": {
+          "title": "Tu tarifa actual",
+          "description": "Todas las demás tarifas se comparan con esta. Sus precios son aquellos con los que se calculan tus costes: el precio de cada contador de red y el precio de exportación de tu panel de energía. Así, un cambio de tarifa no necesita ningún cambio aquí: actualiza esos precios y esta tarifa los sigue.\n\nAquí se introduce lo que ningún precio puede contener.",
+          "data": {
+            "daily_charge": "Cargo diario",
+            "daily_charge_entity": "Cargo diario desde un sensor",
+            "plan_export_cap": "Compensación de excedentes"
+          },
+          "data_description": {
+            "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
+            "daily_charge_entity": "En lugar de escribirlo: un sensor o ayudante numérico que dé el cargo diario, como el precio al que tu panel de energía ya cobra un término fijo. Indica esto o el cargo diario, no ambos.",
+            "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan."
+          }
         }
       },
       "error": {
+        "daily_charge_needed": "Indica el cargo diario, o elige el sensor que lo da. Una tarifa sin él parecería más barata que todas las que lo tienen.",
+        "daily_charge_one": "Indica el cargo diario o elige un sensor para él, no ambos.",
         "band_hours": "Una franja cubre al menos una hora: las dos horas no pueden ser iguales.",
         "band_overlaps": "Esta franja cubre horas que otra franja ya cobra en los mismos días. Cada hora tiene un solo precio, así que cambia las horas o quita la otra franja.",
         "band_no_days": "Marca al menos un día.",
@@ -739,6 +755,7 @@
     "repair_level_left_out": "nivel no incluido: añade su capacidad",
     "impossible_cause_counted_again": "Parece que se ha vuelto a contar todo el total del contador, como ocurre cuando un sensor marca cero un momento y luego vuelve.",
     "impossible_cause_fell": "Las estadísticas del contador bajaron esta cantidad en una hora.",
+    "current_plan_name": "Tu tarifa actual",
     "impossible_cause_jumped": "El contador saltó esta cantidad en una hora.",
     "impossible_cause_restarted": "Las estadísticas del contador volvieron a empezar su total acumulado desde cero aquí, así que esta hora aparece como una caída del tamaño de todo lo registrado antes. Es un reinicio de las estadísticas, como cuando una integración se vuelve a configurar o tras un hueco en sus datos, no energía que vuelve atrás.",
     "impossible_suggest_restarted": "La energía a lo largo del reinicio no se conoce por las estadísticas, así que se sugiere 0 kWh: lo que se registró, y nada más.",

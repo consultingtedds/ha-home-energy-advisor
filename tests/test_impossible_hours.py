@@ -84,7 +84,7 @@ _GRID = {
 def _house() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "EUR"},
         subentries_data=[
             ConfigSubentryData(

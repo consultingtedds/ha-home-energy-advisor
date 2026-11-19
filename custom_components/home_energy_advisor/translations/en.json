@@ -351,9 +351,25 @@
             "keep": "Bands",
             "action": "Next"
           }
+        },
+        "current": {
+          "title": "Your current plan",
+          "description": "Every other plan is compared with this one. Its prices are the ones your costs are worked out at: each grid meter's price, and your Energy Dashboard's export price. So a change of plan needs no change here: update those prices, and this plan follows them.\n\nWhat no price can hold is entered here.",
+          "data": {
+            "daily_charge": "Daily charge",
+            "daily_charge_entity": "Daily charge from a sensor",
+            "plan_export_cap": "Export compensation"
+          },
+          "data_description": {
+            "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "daily_charge_entity": "Instead of typing it: a sensor or Number helper giving the daily charge, such as the price your Energy Dashboard already charges a standing charge at. Enter this or the daily charge, not both.",
+            "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset."
+          }
         }
       },
       "error": {
+        "daily_charge_needed": "Enter the daily charge, or choose the sensor that gives it. A plan without one would read cheaper than every plan that has one.",
+        "daily_charge_one": "Enter the daily charge or choose a sensor for it, not both.",
         "band_hours": "A band covers at least one hour: the two hours cannot be the same.",
         "band_overlaps": "This band covers hours another band already prices on the same days. Each hour has one price, so change the hours or remove the other band.",
         "band_no_days": "Tick at least one day.",
@@ -739,6 +755,7 @@
     "repair_level_left_out": "level left out: add its capacity",
     "impossible_cause_counted_again": "This looks like the meter's whole total being counted again, as happens when a sensor briefly reads zero and then comes back.",
     "impossible_cause_fell": "The meter's statistics fell by this much in one hour.",
+    "current_plan_name": "Your current plan",
     "impossible_cause_jumped": "The meter jumped by this much in one hour.",
     "impossible_cause_restarted": "The meter's statistics started their running total again from zero here, so this hour reads as a fall the size of everything recorded before it. That is the statistics restarting, as when an integration is set up again or after a gap in its data, not energy going backwards.",
     "impossible_suggest_restarted": "The energy across the restart is not known from the statistics, so 0 kWh is suggested: what was recorded, and no more.",

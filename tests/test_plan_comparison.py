@@ -129,7 +129,7 @@ _OFFER = {
 def _house(*subentries: tuple[str, dict[str, Any]]) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "EUR"},
         subentries_data=[
             ConfigSubentryData(
@@ -1307,7 +1307,7 @@ def _home_with(
     """A house whose own inputs are these, beside its grid, batteries and plans."""
     return MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "EUR", **data},
         subentries_data=[
             ConfigSubentryData(

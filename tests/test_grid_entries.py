@@ -283,7 +283,7 @@ async def _house(
 ) -> MockConfigEntry:
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data=dict(_HOUSE),
         subentries_data=[
             *(
@@ -556,7 +556,7 @@ async def test_the_existing_grid_meter_moves_into_its_own_entry(
     await hass.async_block_till_done()
 
     # Then - the same meters at the same price, now an entry of their own
-    assert entry.version == 7
+    assert entry.version == 8
     (grid,) = grid_meters_of(entry).values()
     assert (grid.name, grid.imported, grid.price_entity, grid.exported) == (
         "Grid",

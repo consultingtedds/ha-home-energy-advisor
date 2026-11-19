@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, Platform
 
-from . import impossible_hours, plan_comparison, reset
+from . import current_plan, impossible_hours, plan_comparison, reset
 from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
@@ -72,6 +72,7 @@ _SEVERAL_GENERATION_METERS = 4
 _BATTERY_CHARGING_ASKED = 5
 _BATTERIES_ARE_ENTRIES = 6
 _GRID_METERS_ARE_ENTRIES = 7
+_A_PLAN_MARKED_CURRENT = 8
 
 # The key 0.12.0 stored its answer to which the panels feed first under. Only the
 # migration below knows this name.
@@ -85,6 +86,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     reset.async_register(hass)
     plan_comparison.async_register(hass)
     await async_register_cards(hass)
+    # Every household has a current plan; one deleted is created again (ADR-0042).
+    await current_plan.async_ensure_current_plan(hass, entry)
     power_energy_entities = await async_sync_power_device_helpers(hass, entry)
     coordinator = HeaCoordinator(
         hass, entry, power_energy_entities=power_energy_entities
@@ -139,6 +142,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
 
     Version 6 held one grid meter and its price on the house screen, which now
     have an entry of their own, one per grid source (ADR-0032).
+
+    Version 7 let the household mark one of its typed plans as the one it is on.
+    The integration keeps that plan now, priced at the prices Paid is priced at
+    (ADR-0042): the marked plan's daily charge and cap move to it, and the marked
+    plan stays as an ordinary one.
     """
     if entry.version == _RENAMED_GENERATION_KEY:
         data = {**entry.data}
@@ -167,11 +175,31 @@ async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> boo
         hass.config_entries.async_update_entry(
             entry, data=data, version=_BATTERY_CHARGING_ASKED
         )
+    await _move_settings_into_entries(hass, entry)
+    return True
+
+
+async def _move_settings_into_entries(
+    hass: HomeAssistant, entry: HeaConfigEntry
+) -> None:
+    """Versions 5 to 7: settings that became entries of their own, one at a time."""
     if entry.version == _BATTERY_CHARGING_ASKED:
         _move_the_battery_into_its_own_entry(hass, entry)
     if entry.version == _BATTERIES_ARE_ENTRIES:
         _move_the_grid_into_its_own_entry(hass, entry)
-    return True
+    if entry.version == _GRID_METERS_ARE_ENTRIES:
+        await _keep_the_current_plan(hass, entry)
+
+
+async def _keep_the_current_plan(hass: HomeAssistant, entry: HeaConfigEntry) -> None:
+    """Version 7 let the household mark a typed plan current; the integration keeps it.
+
+    The marked plan's daily charge and cap move to the current plan, priced at
+    Paid's prices (ADR-0042), and the marked plan stays as an ordinary one.
+    """
+    rules = current_plan.take_the_marked_plan_s_rules(hass, entry)
+    await current_plan.async_create_current_plan(hass, entry, rules)
+    hass.config_entries.async_update_entry(entry, version=_A_PLAN_MARKED_CURRENT)
 
 
 def _move_the_battery_into_its_own_entry(

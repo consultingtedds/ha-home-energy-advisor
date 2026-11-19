@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Accepted
 
 HEA-267 (GitHub discussion 58). Replaces point 5 of ADR-0036 ("the current plan
 is a plan too", priced from its own schedule like every other). Leaves ADR-0026,
@@ -52,8 +52,14 @@ types only the billing rules that no price sensor can hold.**
    (ADR-0037). Paid and the current plan cannot disagree, and they agree with
    the Energy Dashboard as closely as the prefill already makes them.
 
-2. **Billing rules typed, price rules not.** The current plan carries a typed
-   daily charge and the monthly export cap (ADR-0040). Both act on a bill's
+2. **Billing rules typed, price rules not.** The current plan carries a daily
+   charge and the monthly export cap (ADR-0040). The daily charge is typed, or
+   followed from a sensor or Number helper giving the price per day, read from
+   its recorded statistics as an entity price is: a household that already keeps
+   its standing charge in the Energy Dashboard, as a grid source priced per day,
+   points the current plan at the same price rather than typing a second copy.
+   Such a source is not recognised automatically, since nothing tells it apart
+   from a grid meter. Both rules act on a bill's
    totals, which no price sensor holds, and without the cap the current plan
    would credit every kWh exported while the capped plans beside it did not, and
    read cheaper than it is. Allowances (ADR-0039, ADR-0041) change the price per
@@ -95,6 +101,9 @@ types only the billing rules that no price sensor can hold.**
   but until the household notices, every other plan reads dearer than it is.
 - **Asking during setup only.** Every existing household would see a current
   plan without daily charges, and nothing would tell them.
+- **Recognising a standing-charge grid source in the Energy Dashboard.** It
+  would spare the household one choice, but such a source looks like any grid
+  meter, and a wrong guess would price a real meter's energy as daily charges.
 - **Typing allowances on the current plan.** An allowance on a followed price
   means the sensor's price up to a limit and a typed price beyond it: a second
   price to keep in step with the first, which is the drift this decision avoids.

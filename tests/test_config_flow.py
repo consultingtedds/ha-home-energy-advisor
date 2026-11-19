@@ -562,7 +562,7 @@ async def test_the_solar_priority_answer_gives_way_to_the_new_question(
 
     # Then - the old key is gone and the household is on the default, which the
     # coordinator reads from the key's absence
-    assert entry.version == 7
+    assert entry.version == 8
     assert "solar_priority" not in entry.data
     assert CONF_BATTERY_CHARGING not in entry.data
 
@@ -744,7 +744,7 @@ async def test_an_existing_generation_meter_becomes_a_list_of_one(
 
     # Then - the same meter, now in the shape every reader expects, and nothing
     # else about the household touched
-    assert entry.version == 7
+    assert entry.version == 8
     assert entry.data[CONF_GENERATION_ENTITY] == ["sensor.generation"]
     (grid,) = grid_meters_of(entry).values()
     assert grid.imported == "sensor.grid_import"
@@ -761,7 +761,7 @@ async def test_an_entry_with_no_generation_gains_none(hass: HomeAssistant) -> No
     await hass.async_block_till_done()
 
     # Then - no empty list written for a meter they never had
-    assert entry.version == 7
+    assert entry.version == 8
     assert CONF_GENERATION_ENTITY not in entry.data
 
 

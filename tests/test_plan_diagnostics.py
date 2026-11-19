@@ -104,7 +104,7 @@ _WHOLESALE: dict[str, Any] = {
 def _house() -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "AUD"},
         subentries_data=[
             ConfigSubentryData(
@@ -188,6 +188,15 @@ async def test_the_download_carries_each_plan_and_what_its_market_prices_are(
                 "title": "Wholesale",
                 "settings": _WHOLESALE,
             },
+            {
+                "id": _plan_id(entry, "Your current plan"),
+                "title": "Your current plan",
+                "settings": {
+                    "name": "Your current plan",
+                    "follows_prices": True,
+                    "plan_export_cap": "none",
+                },
+            },
         ],
         "market_entities": {
             "sensor.market_feed_in_price": {
@@ -214,7 +223,7 @@ async def test_a_household_without_plans_carries_an_empty_section(
     hass.states.async_set("sensor.grid_import", "0", {"unit_of_measurement": "kWh"})
     entry = MockConfigEntry(
         domain=DOMAIN,
-        version=7,
+        version=8,
         data={CONF_CURRENCY: "AUD"},
         subentries_data=[
             ConfigSubentryData(
@@ -232,5 +241,12 @@ async def test_a_household_without_plans_carries_an_empty_section(
     # When
     result = await async_get_config_entry_diagnostics(hass, entry)
 
-    # Then - present and empty, so "no plans" is told from "not reported"
-    assert result["plans"] == {"plans": [], "market_entities": {}}
+    # Then - present, so "no plans" is told from "not reported", and holding
+    # only the current plan the integration keeps (ADR-0042)
+    (current,) = result["plans"]["plans"]
+    assert current["settings"] == {
+        "name": "Your current plan",
+        "follows_prices": True,
+        "plan_export_cap": "none",
+    }
+    assert result["plans"]["market_entities"] == {}
