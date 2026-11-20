@@ -13,8 +13,11 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.energy.data import async_get_manager
+from homeassistant.components.repairs import repairs_flow_manager
 from homeassistant.config_entries import SOURCE_USER, ConfigSubentry, ConfigSubentryData
 from homeassistant.const import CONF_NAME
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.home_energy_advisor.const import (
@@ -31,11 +34,13 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
+    CONF_PLAN_REPLACED,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
 )
 from custom_components.home_energy_advisor.engine.plan_pricing import ExportCap
+from custom_components.home_energy_advisor.issues import ISSUE_CURRENT_PLAN
 from custom_components.home_energy_advisor.tariff_plans import plans_of
 
 if TYPE_CHECKING:
@@ -131,6 +136,8 @@ async def test_the_marked_plan_s_billing_rules_move_to_the_current_plan(
         CONF_PLAN_FOLLOWS: True,
         CONF_PLAN_DAILY_CHARGE: 0.4521,
         CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
+        # So the household can be told the marked plan now duplicates it
+        CONF_PLAN_REPLACED: "Octopus Current",
     }
 
 
@@ -405,3 +412,139 @@ async def test_a_new_plan_cannot_start_from_the_current_plan(
     offered = {option["label"] for option in field.config["options"]}
     assert "Your current plan" not in offered
     assert "Naturgy" in offered
+
+
+# The Repair that asks for what it holds
+
+
+def _repair(hass: HomeAssistant) -> ir.IssueEntry | None:
+    return ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_CURRENT_PLAN)
+
+
+async def _open_repair(hass: HomeAssistant) -> Any:  # noqa: ANN401 - a flow result
+    await async_setup_component(hass, "repairs", {})
+    manager = repairs_flow_manager(hass)
+    assert manager is not None
+    return await manager.async_init(DOMAIN, data={"issue_id": ISSUE_CURRENT_PLAN})
+
+
+async def _answer_repair(
+    hass: HomeAssistant, flow_id: str, answer: dict[str, Any]
+) -> Any:  # noqa: ANN401 - a flow result
+    manager = repairs_flow_manager(hass)
+    assert manager is not None
+    result = await manager.async_configure(flow_id, answer)
+    await hass.async_block_till_done()
+    return result
+
+
+async def test_a_current_plan_without_a_daily_charge_raises_a_repair(
+    hass: HomeAssistant,
+) -> None:
+    # Given - created with nothing to carry over
+    entry = _entry(hass, _OFFER, version=8)
+
+    # When
+    await _set_up(hass, entry)
+
+    # Then - asked for, since every plan's difference from it is held until then
+    repair = _repair(hass)
+    assert repair is not None
+    assert repair.is_fixable is True
+
+
+async def test_answering_the_repair_gives_the_current_plan_its_daily_charge(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _entry(hass, _OFFER, version=8)
+    await _set_up(hass, entry)
+    form = await _open_repair(hass)
+    assert form["step_id"] == "init"
+    assert form["description_placeholders"]["replaced"] == ""
+
+    # When
+    done = await _answer_repair(
+        hass,
+        form["flow_id"],
+        {CONF_PLAN_DAILY_CHARGE: 0.38, CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value},
+    )
+
+    # Then - held, and the Repair gone
+    assert done["type"] == "create_entry"
+    (current,) = _following(entry)
+    assert current.data[CONF_PLAN_DAILY_CHARGE] == 0.38
+    assert _repair(hass) is None
+
+
+async def test_an_upgrade_is_told_its_marked_plan_now_duplicates_the_current_one(
+    hass: HomeAssistant,
+) -> None:
+    # Given - upgraded from a plan marked as the household's, its daily charge
+    # carried over
+    entry = _entry(hass, _MARKED, version=7)
+    await _set_up(hass, entry)
+
+    # When
+    form = await _open_repair(hass)
+
+    # Then - told which plan, with what was carried over filled in to check
+    assert "Octopus Current" in form["description_placeholders"]["replaced"]
+    fields = _fields(form)
+    assert fields[CONF_PLAN_DAILY_CHARGE].description == {"suggested_value": 0.4521}
+
+    # When - confirmed as it is
+    await _answer_repair(
+        hass,
+        form["flow_id"],
+        {
+            CONF_PLAN_DAILY_CHARGE: 0.4521,
+            CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
+        },
+    )
+
+    # Then - told once: the note goes with the Repair
+    (current,) = _following(entry)
+    assert CONF_PLAN_REPLACED not in current.data
+    assert _repair(hass) is None
+
+
+async def test_giving_the_daily_charge_on_the_plan_s_own_form_clears_the_repair(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _entry(hass, _OFFER, version=8)
+    await _set_up(hass, entry)
+    form = await _edit_current(hass, entry)
+
+    # When
+    await _answer(
+        hass,
+        form["flow_id"],
+        {CONF_PLAN_DAILY_CHARGE: 0.38, CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value},
+    )
+    await hass.async_block_till_done()
+
+    # Then
+    assert _repair(hass) is None
+
+
+async def test_a_current_plan_with_its_daily_charge_raises_nothing(
+    hass: HomeAssistant,
+) -> None:
+    # Given - set up once and answered
+    entry = _entry(hass, _OFFER, version=8)
+    await _set_up(hass, entry)
+    form = await _edit_current(hass, entry)
+    await _answer(
+        hass,
+        form["flow_id"],
+        {CONF_PLAN_DAILY_CHARGE: 0.38, CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value},
+    )
+
+    # When - restarted
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then
+    assert _repair(hass) is None

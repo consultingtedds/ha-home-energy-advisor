@@ -86,8 +86,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     reset.async_register(hass)
     plan_comparison.async_register(hass)
     await async_register_cards(hass)
-    # Every household has a current plan; one deleted is created again (ADR-0042).
+    # Every household has a current plan; one deleted is created again. Until it
+    # has its daily charge, a Repair asks for it, and is checked again on every
+    # change to the entry, so answering it anywhere clears it (ADR-0042).
     await current_plan.async_ensure_current_plan(hass, entry)
+    current_plan.async_check(hass, entry)
+    entry.async_on_unload(entry.add_update_listener(_check_the_current_plan))
     power_energy_entities = await async_sync_power_device_helpers(hass, entry)
     coordinator = HeaCoordinator(
         hass, entry, power_energy_entities=power_energy_entities
@@ -110,6 +114,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # that offers a correction: a few minutes after setup, then daily (ADR-0045).
     entry.async_on_unload(impossible_hours.async_start(hass, entry))
     return True
+
+
+async def _check_the_current_plan(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    current_plan.async_check(hass, entry)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:

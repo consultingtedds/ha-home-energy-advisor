@@ -79,6 +79,10 @@ ISSUE_IMPOSSIBLE_HOUR = "impossible_hour"
 # statistic of its own, with a Repair of its own, so the household chooses which
 # to correct (ADR-0045).
 ISSUE_IMPOSSIBLE_COST = "impossible_cost"
+# The current plan has no daily charge yet, or has just taken over from a typed
+# plan the household had marked as its own (ADR-0042). Fixable: the answer is its
+# daily charge and cap, which this integration saves.
+ISSUE_CURRENT_PLAN = "current_plan"
 
 
 def source_removed_issue_id(entity_id: str) -> str:

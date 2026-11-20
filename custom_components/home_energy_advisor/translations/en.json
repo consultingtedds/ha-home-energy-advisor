@@ -668,6 +668,34 @@
         }
       }
     },
+    "current_plan": {
+      "title": "Give your current plan its daily charge",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Your current plan",
+            "description": "Every other tariff plan is compared with your current plan. Its prices are the ones your costs are worked out at, so it follows them by itself, even when you change plan. What no price holds is entered here: its daily charge, typed or taken from the Energy Dashboard source that charges it, and how it pays for export. Until it has its daily charge, the comparison shows no plan's difference from it, since a plan without one would look cheaper than it is.\n\n{replaced}",
+            "data": {
+              "daily_charge": "Daily charge",
+              "daily_charge_source": "Daily charge from your Energy Dashboard",
+              "plan_export_cap": "Export compensation"
+            },
+            "data_description": {
+              "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
+              "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source. Enter this or the daily charge, not both.",
+              "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost."
+            }
+          }
+        },
+        "error": {
+          "daily_charge_needed": "Enter the daily charge, or choose the Energy Dashboard source that charges it.",
+          "daily_charge_one": "Enter the daily charge or choose a source for it, not both."
+        },
+        "abort": {
+          "entry_removed": "Home Energy Advisor is no longer set up, so there is nothing to change."
+        }
+      }
+    },
     "nesting_misread": {
       "title": "{name} is nested by a sensor Home Energy Advisor does not read",
       "description": "The Energy Dashboard nests {name} with another device, but names it by **{named}**, and Home Energy Advisor reads {name} from **{read}**. A nesting can only be applied between the sensors Home Energy Advisor reads, so this one is not: the device inside is counted twice, once on its own and again inside the device that contains it.\n\nTo fix it, either choose {read} for {name} in the Energy Dashboard's individual devices, or reconfigure {name} here to read {named}. This clears itself once the two match."
@@ -752,6 +780,7 @@
     "impossible_cause_counted_again": "This looks like the meter's whole total being counted again, as happens when a sensor briefly reads zero and then comes back.",
     "impossible_cause_fell": "The meter's statistics fell by this much in one hour.",
     "current_plan_name": "Your current plan",
+    "current_plan_replaced": "\"{name}\" was marked as the plan you are on before, and its daily charge and export compensation are filled in here from it. It stays as an ordinary plan, now duplicating this one: keep it to see where its typed prices and the prices you are charged disagree, or delete it.",
     "impossible_cause_jumped": "The meter jumped by this much in one hour.",
     "impossible_cause_restarted": "The meter's statistics started their running total again from zero here, so this hour reads as a fall the size of everything recorded before it. That is the statistics restarting, as when an integration is set up again or after a gap in its data, not energy going backwards.",
     "impossible_suggest_restarted": "The energy across the restart is not known from the statistics, so 0 kWh is suggested: what was recorded, and no more.",

@@ -18,8 +18,10 @@ from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
 from homeassistant.helpers import selector
 
+from . import issues
 from .common_strings import async_common_strings
 from .const import (
     CONF_PLAN_CURRENT,
@@ -27,6 +29,7 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
+    CONF_PLAN_REPLACED,
     SUBENTRY_TYPE_PLAN,
 )
 from .energy_dashboard import async_energy_prefs, grid_import_costs
@@ -192,7 +195,8 @@ def take_the_marked_plan_s_rules(
 
     The plan stays, prices and all, as an ordinary plan: its row beside the
     current plan's shows where its typed prices and the household's own disagree.
-    Only its daily charge and cap go to the current plan.
+    Only its daily charge and cap go to the current plan, with its name, so the
+    Repair can tell the household it now duplicates the current plan.
     """
     # Only one plan is ever marked, so nothing is read after it is changed.
     for subentry in entry.subentries.values():
@@ -204,8 +208,39 @@ def take_the_marked_plan_s_rules(
             entry, subentry, data={**subentry.data, CONF_PLAN_CURRENT: False}
         )
         return {
-            key: subentry.data[key]
-            for key in (CONF_PLAN_DAILY_CHARGE, CONF_PLAN_EXPORT_CAP)
-            if key in subentry.data
+            **{
+                key: subentry.data[key]
+                for key in (CONF_PLAN_DAILY_CHARGE, CONF_PLAN_EXPORT_CAP)
+                if key in subentry.data
+            },
+            CONF_PLAN_REPLACED: subentry.title,
         }
     return {}
+
+
+def needs_answer(plan: ConfigSubentry) -> bool:
+    """Whether the household is asked about its current plan.
+
+    Asked for its daily charge where it has none, and told once that a plan it
+    had marked as its own now duplicates it.
+    """
+    given = plan.data.get(CONF_PLAN_DAILY_CHARGE) is not None or bool(
+        plan.data.get(CONF_PLAN_DAILY_CHARGE_SOURCE)
+    )
+    return not given or bool(plan.data.get(CONF_PLAN_REPLACED))
+
+
+@callback
+def async_check(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Raise the current plan's Repair where it needs an answer, or clear it."""
+    plan = current_plan_of(entry)
+    if plan is not None and needs_answer(plan):
+        issues.async_ask(
+            hass,
+            issues.ISSUE_CURRENT_PLAN,
+            issues.ISSUE_CURRENT_PLAN,
+            {},
+            {"entry_id": entry.entry_id},
+        )
+    else:
+        issues.async_clear(hass, issues.ISSUE_CURRENT_PLAN)

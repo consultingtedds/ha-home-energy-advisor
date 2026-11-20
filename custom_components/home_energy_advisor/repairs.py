@@ -1,12 +1,13 @@
 """The Repairs this integration answers itself.
 
-Every other issue is fixed in Home Assistant. These two are answered here:
+Every other issue is fixed in Home Assistant. These are answered here:
 
 * the Energy Dashboard's house differs from the one entered here, and the
   household takes theirs or keeps their own (ADR-0030);
 * an hour of a meter's statistics no home could use, which the household is
   offered a correction for, made only once they have confirmed exactly what it
-  changes (ADR-0045).
+  changes (ADR-0045);
+* the current plan's daily charge and cap, which no price holds (ADR-0042).
 """
 
 from __future__ import annotations
@@ -24,7 +25,22 @@ from homeassistant.util import dt as dt_util
 from . import issues
 from .common_strings import async_common_strings
 from .config_flow import validate_battery, validate_grid_meter
-from .const import CONF_HOUSE_CONSUMPTION_ENTITY, DOMAIN
+from .const import (
+    CONF_CURRENCY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_PLAN_EXPORT_CAP,
+    CONF_PLAN_REPLACED,
+    DEFAULT_CURRENCY,
+    DOMAIN,
+)
+from .current_plan import (
+    async_daily_charge_sources,
+    current_plan_of,
+    plan_data,
+    rules_errors,
+    rules_of,
+    rules_schema,
+)
 from .energy_dashboard import (
     async_energy_prefs,
     async_keep,
@@ -61,12 +77,75 @@ async def async_create_fix_flow(
     issue_id: str,
     data: dict[str, str | int | float | None] | None,
 ) -> RepairsFlow:
-    """Start answering the issue: an impossible hour, or an Energy Dashboard change."""
+    """Start answering the issue: an impossible hour, the current plan, or more.
+
+    Anything else is an Energy Dashboard change.
+    """
     if issue_id.startswith(
         (f"{issues.ISSUE_IMPOSSIBLE_HOUR}_", f"{issues.ISSUE_IMPOSSIBLE_COST}_")
     ):
         return ImpossibleHourFlow(issue_id, data or {})
+    if issue_id == issues.ISSUE_CURRENT_PLAN:
+        return CurrentPlanFlow(str((data or {}).get("entry_id")))
     return EnergyDashboardChangedFlow(str((data or {}).get("entry_id")))
+
+
+class CurrentPlanFlow(RepairsFlow):
+    """Give the current plan its daily charge and cap (ADR-0042).
+
+    The same answers as the plan's own form, asked where the household is told
+    the comparison is waiting for them, and, after an upgrade, that the plan it
+    had marked as its own now duplicates the current plan.
+    """
+
+    def __init__(self, entry_id: str) -> None:
+        """Answer for one entry's current plan."""
+        self._entry_id = entry_id
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> RepairsFlowResult:
+        """Its daily charge, typed or followed, and its cap."""
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        plan = current_plan_of(entry) if entry else None
+        if entry is None or plan is None:
+            return self.async_abort(reason="entry_removed")
+        errors: dict[str, str] = {}
+        # Opened with the issue's own id rather than an answer, so only an input
+        # carrying the form's cap is one.
+        answered = (
+            user_input if user_input and CONF_PLAN_EXPORT_CAP in user_input else None
+        )
+        if answered is not None:
+            errors = rules_errors(answered)
+            if not errors:
+                self.hass.config_entries.async_update_subentry(
+                    entry, plan, data=plan_data(plan.title, answered)
+                )
+                return self.async_create_entry(data={})
+        labels = await async_common_strings(self.hass)
+        currency = str(entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY))
+        per_day = labels.get("plan_per_day", "{currency}/day").replace(
+            "{currency}", currency
+        )
+        replaced = plan.data.get(CONF_PLAN_REPLACED)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                rules_schema(
+                    per_day, await async_daily_charge_sources(self.hass, entry)
+                ),
+                answered or rules_of(plan.data),
+            ),
+            errors=errors,
+            description_placeholders={
+                "replaced": labels.get("current_plan_replaced", "").replace(
+                    "{name}", str(replaced)
+                )
+                if replaced
+                else ""
+            },
+        )
 
 
 class ImpossibleHourFlow(RepairsFlow):

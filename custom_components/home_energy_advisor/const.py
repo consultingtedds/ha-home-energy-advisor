@@ -58,6 +58,9 @@ CONF_PLAN_FOLLOWS: Final = "follows_prices"
 # grid source, the way households enter a standing charge there, named by that
 # source's meter (ADR-0042).
 CONF_PLAN_DAILY_CHARGE_SOURCE: Final = "daily_charge_source"
+# On the current plan, the name of the typed plan it took over from on upgrade,
+# until the household has been told that plan now duplicates it (ADR-0042).
+CONF_PLAN_REPLACED: Final = "replaced_plan"
 CONF_PLAN_DAILY_CHARGE: Final = "daily_charge"
 CONF_PLAN_EXPORT_PRICE: Final = "plan_export_price"
 # The kWh a day the export price pays on, and the price for the rest (ADR-0039).
