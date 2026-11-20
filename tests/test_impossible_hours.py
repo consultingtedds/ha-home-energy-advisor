@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from statistics import median
 from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -451,6 +454,110 @@ async def test_five_minutes_pin_the_jump_and_the_rest_of_the_hour(
 
 
 # The Energy Dashboard's meters, and its cost, each with a Repair of its own
+
+
+# Years of history (GitHub #64)
+
+
+def _hourly_rows(
+    start: datetime, hours: int, kwh: float, price: float, glitch_at: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """A meter's and its cost's hourly rows, as the recorder gives them.
+
+    Every hour `kwh` at `price`, but one hour `glitch_at` recording 11,000 kWh
+    and its cost at the same price.
+    """
+    meter, cost = [], []
+    meter_sum = cost_sum = 0.0
+    for hour in range(hours):
+        energy = 11000.0 if hour == glitch_at else kwh
+        meter_sum += energy
+        cost_sum += energy * price
+        moment = start + timedelta(hours=hour)
+        meter.append(
+            {"start": moment, "change": energy, "state": meter_sum, "sum": meter_sum}
+        )
+        cost.append(
+            {
+                "start": moment,
+                "change": energy * price,
+                "state": cost_sum,
+                "sum": cost_sum,
+            }
+        )
+    return meter, cost
+
+
+def test_years_of_hourly_history_are_checked_in_seconds() -> None:
+    # Given - three years of a meter and its cost, every hour, as a home that
+    # has run Home Assistant since 2023 has; one glitched hour in the middle
+    hours = 3 * 365 * 24
+    meter, cost = _hourly_rows(
+        datetime(2023, 11, 1, tzinfo=UTC), hours, 0.5, 0.2, glitch_at=hours // 2
+    )
+    checked = {
+        METER: impossible_hours.Checked(METER, impossible_hours.ENERGY, COST),
+        COST: impossible_hours.Checked(COST, impossible_hours.MONEY, METER),
+    }
+
+    # When
+    began = time.perf_counter()
+    found = impossible_hours.impossible_hours(
+        {METER: meter, COST: cost}, checked, {COST: "EUR"}
+    )
+    took = time.perf_counter() - began
+
+    # Then - found, both the meter's hour and its cost's, in seconds: a check
+    # that scanned every price for every hour took minutes, on the event loop
+    assert {(hour.statistic_id, round(hour.change, 2)) for hour in found} == {
+        (METER, 11000.0),
+        (COST, 2200.0),
+    }
+    assert took < 10
+
+
+def test_the_dearest_price_is_from_the_week_either_side_the_hour_left_out() -> None:
+    # Given - a glitched cost hour; a price of 0.50 exactly seven days before
+    # it, a dearer 0.90 just beyond the week, and the glitched hour's own
+    start = datetime(2026, 10, 1, tzinfo=UTC)
+    glitch = 14 * 24
+    meter, cost = _hourly_rows(start, 28 * 24, 1.0, 0.2, glitch_at=glitch)
+    week_before = glitch - 7 * 24
+    cost[week_before]["change"] = 0.5
+    cost[week_before - 1]["change"] = 0.9
+    checked = {COST: impossible_hours.Checked(COST, impossible_hours.MONEY, METER)}
+
+    # When
+    (hour,) = impossible_hours.impossible_hours(
+        {METER: meter, COST: cost}, checked, {COST: "EUR"}
+    )
+
+    # Then - judged against 100 kWh at the week's dearest, 0.50, the edge of the
+    # week counted and what lies beyond it not
+    assert hour.start == start + timedelta(hours=glitch)
+    assert hour.ceiling == pytest.approx(100 * 0.5)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_the_check_is_worked_out_off_the_event_loop(hass: HomeAssistant) -> None:
+    # Given - a recorded fortnight with an impossible hour
+    _record_fortnight(hass, 11041.0)
+    entry = await _set_up(hass)
+    threads: list[str] = []
+    real = impossible_hours.impossible_hours
+
+    def watched(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401 - passed through
+        threads.append(threading.current_thread().name)
+        return real(*args, **kwargs)
+
+    # When
+    with patch.object(impossible_hours, "impossible_hours", watched):
+        await impossible_hours.async_check(hass, entry)
+
+    # Then - in an executor thread, so years of history never stall Home
+    # Assistant
+    assert threads
+    assert threads[0] != threading.main_thread().name
 
 
 def test_the_energy_dashboard_costs_are_read_on_both_shapes() -> None:

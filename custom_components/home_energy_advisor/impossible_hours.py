@@ -23,6 +23,7 @@ week either side.
 from __future__ import annotations
 
 import logging
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
@@ -323,15 +324,79 @@ def _optional(value: Any) -> float | None:  # noqa: ANN401 - a recorder field
     return None if value is None else float(value)
 
 
-def _ordinary(
-    rows: list[_Row], impossible: set[datetime]
-) -> list[tuple[datetime, float]]:
+class _Hours:
+    """A statistic's hours in time order, read a week either side at a time.
+
+    Built once per statistic, so each hour's week is found by bisection rather
+    than by scanning the whole history: a home with years of statistics was
+    checked in billions of steps, on the event loop, and froze (GitHub #64).
+    """
+
+    def __init__(self, pairs: Iterable[tuple[datetime, float]]) -> None:
+        ordered = sorted(pairs)
+        self._moments = [moment for moment, _ in ordered]
+        self._values = [value for _, value in ordered]
+        self._dearest: list[list[float]] = []
+
+    def _week(self, moment: datetime) -> tuple[int, int]:
+        """The index range of the week either side of `moment`, both ends in."""
+        return (
+            bisect_left(self._moments, moment - _EITHER_SIDE),
+            bisect_right(self._moments, moment + _EITHER_SIDE),
+        )
+
+    def around(self, moment: datetime) -> list[tuple[datetime, float]]:
+        """Every hour of the week either side of `moment`, the hour itself left out."""
+        low, high = self._week(moment)
+        return [
+            (self._moments[index], self._values[index])
+            for index in range(low, high)
+            if self._moments[index] != moment
+        ]
+
+    def dearest_around(self, moment: datetime) -> float | None:
+        """The highest value in the week either side, the hour itself left out.
+
+        From a sparse table built once: each look-up is two comparisons, so the
+        whole history is checked in time linear in its hours.
+        """
+        low, high = self._week(moment)
+        own = bisect_left(self._moments, moment, low, high)
+        if own < high and self._moments[own] == moment:
+            parts = [self._max(low, own), self._max(own + 1, high)]
+        else:
+            parts = [self._max(low, high)]
+        found = [part for part in parts if part is not None]
+        return max(found) if found else None
+
+    def _max(self, low: int, high: int) -> float | None:
+        """The highest value from `low` up to, not including, `high`."""
+        if low >= high:
+            return None
+        if not self._dearest:
+            self._dearest = [self._values]
+            width = 1
+            while width * 2 <= len(self._values):
+                last = self._dearest[-1]
+                self._dearest.append(
+                    [
+                        max(last[index], last[index + width])
+                        for index in range(len(last) - width)
+                    ]
+                )
+                width *= 2
+        level = (high - low).bit_length() - 1
+        row = self._dearest[level]
+        return max(row[low], row[high - (1 << level)])
+
+
+def _ordinary(rows: list[_Row], impossible: set[datetime]) -> _Hours:
     """The hours a typical hour is read from: whole hours, none impossible."""
-    return [
+    return _Hours(
         (row.moment, row.change)
         for row in rows
         if row.hours == 1 and row.moment not in impossible
-    ]
+    )
 
 
 def _impossible_energy(
@@ -369,25 +434,20 @@ def _impossible_money(
         meter_rows,
         {row.moment for row in meter_rows if row.beyond(IMPOSSIBLE_KWH_PER_HOUR)},
     )
-    prices = {
-        row.moment: row.change / energy[row.moment].change
+    prices = _Hours(
+        (row.moment, row.change / energy[row.moment].change)
         for row in rows
         if row.hours == 1
         and row.moment in energy
         and energy[row.moment].hours == 1
         and not energy[row.moment].beyond(IMPOSSIBLE_KWH_PER_HOUR)
         and abs(energy[row.moment].change) >= _PRICED_FROM_KWH
-    }
+    )
+    kwh = {moment: each.change for moment, each in energy.items()}
+    whole_hours = _Hours((row.moment, row.change) for row in rows if row.hours == 1)
     found: list[ImpossibleHour] = []
     for row in rows:
-        dearest = max(
-            (
-                price
-                for other, price in prices.items()
-                if other != row.moment and abs(other - row.moment) <= _EITHER_SIDE
-            ),
-            default=None,
-        )
+        dearest = prices.dearest_around(row.moment)
         if dearest is None or dearest <= 0:
             continue
         ceiling = IMPOSSIBLE_KWH_PER_HOUR * dearest
@@ -399,10 +459,10 @@ def _impossible_money(
             else _suggested_cost(
                 row.moment,
                 row.change,
-                energy={moment: each.change for moment, each in energy.items()},
+                energy=kwh,
                 meter_ordinary=meter_ordinary,
                 prices=prices,
-                rows=rows,
+                ordinary=whole_hours,
             )
         )
         found.append(
@@ -427,9 +487,9 @@ def _suggested_cost(  # noqa: PLR0913 - the hour with its meter and the prices a
     change: float,
     *,
     energy: Mapping[datetime, float],
-    meter_ordinary: list[tuple[datetime, float]],
-    prices: Mapping[datetime, float],
-    rows: list[_Row],
+    meter_ordinary: _Hours,
+    prices: _Hours,
+    ordinary: _Hours,
 ) -> Suggestion | None:
     """The hour's energy as it now stands, at the hour's price (ADR-0045).
 
@@ -448,25 +508,21 @@ def _suggested_cost(  # noqa: PLR0913 - the hour with its meter and the prices a
                 value=_rounded(fixed.value * price), energy=fixed.value, price=price
             )
     elif kwh_now is not None:
+        hour = dt_util.as_local(moment).hour
         same_hour = [
             price
-            for other, price in prices.items()
-            if other != moment
-            and abs(other - moment) <= _EITHER_SIDE
-            and dt_util.as_local(other).hour == dt_util.as_local(moment).hour
+            for other, price in prices.around(moment)
+            if dt_util.as_local(other).hour == hour
         ]
         if len(same_hour) >= _FEWEST_SIMILAR_HOURS:
             price = median(same_hour)
             return Suggestion(
                 value=_rounded(kwh_now * price), energy=kwh_now, price=price
             )
-    ordinary = [(row.moment, row.change) for row in rows if row.hours == 1]
     return suggestion_from_days(moment, ordinary)
 
 
-def suggestion_from_days(
-    moment: datetime, ordinary: Iterable[tuple[datetime, float]]
-) -> Suggestion | None:
+def suggestion_from_days(moment: datetime, ordinary: _Hours) -> Suggestion | None:
     """The same hour of the day over the week either side: its median and range.
 
     In local time, so the hour is the household's own routine across a change of
@@ -475,10 +531,8 @@ def suggestion_from_days(
     local = dt_util.as_local(moment)
     similar = [
         change
-        for other, change in ordinary
-        if other != moment
-        and abs(other - moment) <= _EITHER_SIDE
-        and dt_util.as_local(other).hour == local.hour
+        for other, change in ordinary.around(moment)
+        if dt_util.as_local(other).hour == local.hour
     ]
     if len(similar) < _FEWEST_SIMILAR_HOURS:
         return None
@@ -533,8 +587,11 @@ async def async_check(hass: HomeAssistant, entry: ConfigEntry) -> list[Impossibl
     units = await recorder.async_add_executor_job(
         _money_units, hass, {s for s, what in checked.items() if what.kind == MONEY}
     )
+    # Worked out in an executor job: years of history is real work, and on the
+    # event loop it froze Home Assistant (GitHub #64).
+    hours = await hass.async_add_executor_job(impossible_hours, rows, checked, units)
     found = []
-    for hour in impossible_hours(rows, checked, units):
+    for hour in hours:
         windows = await recorder.async_add_executor_job(
             _five_minutes_of, hass, hour.statistic_id, hour.start, hour.kind
         )
