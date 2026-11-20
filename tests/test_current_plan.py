@@ -9,9 +9,11 @@ it.
 
 from __future__ import annotations
 
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.config_entries import SOURCE_USER, ConfigSubentryData
+from homeassistant.components.energy.data import async_get_manager
+from homeassistant.config_entries import SOURCE_USER, ConfigSubentry, ConfigSubentryData
 from homeassistant.const import CONF_NAME
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -22,19 +24,21 @@ from custom_components.home_energy_advisor.const import (
     CONF_BAND_START,
     CONF_BANDS,
     CONF_CURRENCY,
+    CONF_FIXED_PRICE,
+    CONF_GRID_IMPORT_ENTITY,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
-    CONF_PLAN_DAILY_CHARGE_ENTITY,
+    CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
     DOMAIN,
+    SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
 )
 from custom_components.home_energy_advisor.engine.plan_pricing import ExportCap
 from custom_components.home_energy_advisor.tariff_plans import plans_of
 
 if TYPE_CHECKING:
-    from homeassistant.config_entries import ConfigSubentry
     from homeassistant.core import HomeAssistant
 
 # A banded plan as 1.6 stored it, marked as the one the household is on.
@@ -237,17 +241,96 @@ async def test_editing_the_current_plan_asks_only_for_its_billing_rules(
     form = await _edit_current(hass, entry)
 
     # Then - its daily charge and cap, with what it holds filled in, and no
-    # prices: those are Paid's
+    # prices: those are Paid's. With no grid source in the Energy Dashboard to
+    # follow, there is nothing else to offer
     assert form["step_id"] == "current"
-    fields = {str(key): key for key in form["data_schema"].schema}
-    assert set(fields) == {
-        CONF_PLAN_DAILY_CHARGE,
-        CONF_PLAN_DAILY_CHARGE_ENTITY,
-        CONF_PLAN_EXPORT_CAP,
-    }
+    fields = _fields(form)
+    assert set(fields) == {CONF_PLAN_DAILY_CHARGE, CONF_PLAN_EXPORT_CAP}
     assert fields[CONF_PLAN_DAILY_CHARGE].description == {"suggested_value": 0.4521}
     assert fields[CONF_PLAN_EXPORT_CAP].description == {
         "suggested_value": ExportCap.MONTHLY.value
+    }
+
+
+def _fields(form: Any) -> dict[str, Any]:  # noqa: ANN401 - a flow result
+    schema = form["data_schema"]
+    assert schema is not None
+    return {str(key): key for key in schema.schema}
+
+
+# The Energy Dashboard's grid sources: the grid meter HEA prices, and a
+# standing charge entered as a source of its own, as households do, its cost
+# recorded by a statistic.
+_GRID_SOURCE = {"type": "grid", "stat_energy_from": "sensor.grid_import"}
+_STANDING_CHARGE = {
+    "type": "grid",
+    "stat_energy_from": "sensor.daily_charge",
+    "stat_cost": "sensor.daily_charge_cost",
+    "name": "Standing charge",
+}
+
+
+async def _energy_dashboard(hass: HomeAssistant, *sources: dict[str, Any]) -> None:
+    """Save the Energy Dashboard's sources, as its own editor does."""
+    manager = await async_get_manager(hass)
+    update: Any = {"energy_sources": [dict(source) for source in sources]}
+    await manager.async_update(update)
+    await hass.async_block_till_done()
+
+
+def _with_grid_meter(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {
+                    CONF_NAME: "Grid",
+                    CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+                    CONF_FIXED_PRICE: 0.2,
+                }
+            ),
+            subentry_type=SUBENTRY_TYPE_GRID,
+            title="Grid",
+            unique_id=None,
+        ),
+    )
+
+
+async def test_the_daily_charge_can_follow_a_grid_source_s_recorded_cost(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the standing charge in the Energy Dashboard beside the grid meter
+    entry = _entry(hass, _OFFER, version=8)
+    await _set_up(hass, entry)
+    _with_grid_meter(hass, entry)
+    await _energy_dashboard(hass, _GRID_SOURCE, _STANDING_CHARGE)
+
+    # When
+    form = await _edit_current(hass, entry)
+
+    # Then - the standing charge offered by its name, and never the grid meter
+    # HEA already prices, whose energy is no daily charge
+    selector = _fields(form)[CONF_PLAN_DAILY_CHARGE_SOURCE]
+    offered = form["data_schema"].schema[selector].config["options"]
+    assert offered == [{"value": "sensor.daily_charge", "label": "Standing charge"}]
+
+    # When - chosen
+    await _answer(
+        hass,
+        form["flow_id"],
+        {
+            CONF_PLAN_DAILY_CHARGE_SOURCE: "sensor.daily_charge",
+            CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value,
+        },
+    )
+
+    # Then - followed, and nothing typed beside it to fall out of step
+    (current,) = _following(entry)
+    assert dict(current.data) == {
+        CONF_NAME: "Your current plan",
+        CONF_PLAN_FOLLOWS: True,
+        CONF_PLAN_DAILY_CHARGE_SOURCE: "sensor.daily_charge",
+        CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value,
     }
 
 
@@ -275,39 +358,11 @@ async def test_a_typed_daily_charge_is_kept(hass: HomeAssistant) -> None:
     }
 
 
-async def test_a_daily_charge_can_follow_the_household_s_own_price(
-    hass: HomeAssistant,
-) -> None:
-    # Given - a typed daily charge, then the household's standing-charge price
-    # chosen instead, the one its Energy Dashboard already uses
-    entry = _entry(hass, _MARKED, version=7)
-    await _set_up(hass, entry)
-    form = await _edit_current(hass, entry)
-
-    # When
-    await _answer(
-        hass,
-        form["flow_id"],
-        {
-            CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.standing_charge_price",
-            CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value,
-        },
-    )
-
-    # Then - the sensor alone, so there is one daily charge to keep in step
-    (current,) = _following(entry)
-    assert dict(current.data) == {
-        CONF_NAME: "Your current plan",
-        CONF_PLAN_FOLLOWS: True,
-        CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.standing_charge_price",
-        CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value,
-    }
-
-
 async def test_the_daily_charge_is_one_or_the_other(hass: HomeAssistant) -> None:
     # Given
     entry = _entry(hass, _OFFER, version=8)
     await _set_up(hass, entry)
+    await _energy_dashboard(hass, _GRID_SOURCE, _STANDING_CHARGE)
     form = await _edit_current(hass, entry)
     cap = {CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value}
 
@@ -319,7 +374,7 @@ async def test_the_daily_charge_is_one_or_the_other(hass: HomeAssistant) -> None
         {
             **cap,
             CONF_PLAN_DAILY_CHARGE: 0.38,
-            CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.standing_charge_price",
+            CONF_PLAN_DAILY_CHARGE_SOURCE: "sensor.daily_charge",
         },
     )
 

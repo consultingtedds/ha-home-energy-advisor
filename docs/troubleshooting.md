@@ -353,8 +353,8 @@ issue: the figure is fixed today and can be made adjustable.
 ## A notification says a meter recorded more than a home can use in one hour
 
 This one is about the past, not the reading arriving now. Once a day Home Energy
-Advisor checks the long-term statistics of your grid, house, solar and battery
-meters, and of every meter in your Energy Dashboard, for an hour that recorded
+Advisor checks the long-term statistics of your grid, house, generation and
+battery meters, and of every meter in your Energy Dashboard, for an hour that recorded
 more than 100 kWh. That is almost always a sensor that briefly read zero, or a
 template that misfired, so Home Assistant counted its whole total as one hour's
 use. The hour is wrong everywhere that reads it, your Energy Dashboard included,

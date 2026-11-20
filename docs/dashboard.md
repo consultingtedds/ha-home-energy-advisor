@@ -229,7 +229,7 @@ lean on most:
 | Sensor | Unit | Meaning |
 | --- | --- | --- |
 | `<device> Energy Used` | kWh | Energy the device used |
-| `<device> Actual Cost` | currency | What it actually cost, after solar and battery |
+| `<device> Actual Cost` | currency | What it actually cost, after your own generation and battery |
 | `<device> Cost at Grid Price` | currency | What it would have cost bought off the meter as used |
 | `<device> Cost Savings` | currency | The difference between the two |
 

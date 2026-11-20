@@ -314,6 +314,28 @@ def dashboard_money(
     return money
 
 
+def grid_import_costs(
+    prefs: Any,  # noqa: ANN401 - untyped HA prefs
+    cost_sensors: Mapping[str, str],
+) -> dict[str, tuple[str, str | None]]:
+    """Each grid source's import meter, its cost statistic and the source's name.
+
+    Only a source whose cost is recorded: the household's own statistic, or the
+    cost sensor Home Assistant made for the meter. On both shapes of a grid
+    source, as `dashboard_money` reads them.
+    """
+    found: dict[str, tuple[str, str | None]] = {}
+    for source in (prefs or {}).get("energy_sources", []):
+        if source.get("type") != "grid":
+            continue
+        for flow in source.get("flow_from") or [source]:
+            meter = flow.get("stat_energy_from")
+            statistic = flow.get("stat_cost") or cost_sensors.get(meter)
+            if meter and statistic:
+                found[meter] = (statistic, source.get("name"))
+    return found
+
+
 # A grid source's two sides: the list each sits in before 2026.9, its meter's
 # key, and its money's.
 _MONEY_OF_GRID = (

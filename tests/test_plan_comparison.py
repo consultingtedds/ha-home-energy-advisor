@@ -49,7 +49,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_DAILY_CHARGE,
-    CONF_PLAN_DAILY_CHARGE_ENTITY,
+    CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
@@ -1751,30 +1751,95 @@ async def test_export_follows_the_energy_dashboard_s_export_price(
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
-async def test_a_daily_charge_can_follow_a_price_per_day(
+async def test_a_daily_charge_can_follow_a_grid_source_s_recorded_cost(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
-    # Given - the standing charge priced by the household's own sensor, as its
-    # Energy Dashboard already charges it
-    _record_prices(
-        hass, "sensor.standing_charge", dict.fromkeys(range(24), 0.52), unit="EUR/day"
-    )
+    # Given - the standing charge entered in the Energy Dashboard as a grid
+    # source of its own, however it is built: its cost recorded at 0.13 every
+    # six hours, 0.52 for the day
+    _record_money(hass, "sensor.daily_charge_cost", dict.fromkeys((0, 6, 12, 18), 0.13))
     await async_wait_recording_done(hass)
+    manager = await async_get_manager(hass)
+    standing: Any = {
+        "energy_sources": [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.daily_charge",
+                "stat_cost": "sensor.daily_charge_cost",
+            }
+        ]
+    }
+    await manager.async_update(standing)
     await _set_up(
         hass,
         _house(
             (SUBENTRY_TYPE_GRID, _GRID),
-            _current_plan(**{CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.standing_charge"}),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE_SOURCE: "sensor.daily_charge"}),
         ),
     )
 
     # When
     result = await _compare(hass_ws_client, hass)
 
-    # Then - one day, at that day's charge
+    # Then - exactly what Home Assistant recorded it costing that day
     current = _by_name(result)[_CURRENT]
     assert current["daily_charges"] == pytest.approx(0.52)
     assert "daily_charge_missing" not in current
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_followed_daily_charge_leaves_out_the_hours_compared_without_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the same source's cost, and the comparison asked for the morning
+    _record_money(hass, "sensor.daily_charge_cost", dict.fromkeys((0, 6, 12, 18), 0.13))
+    await async_wait_recording_done(hass)
+    manager = await async_get_manager(hass)
+    standing: Any = {
+        "energy_sources": [
+            {
+                "type": "grid",
+                "stat_energy_from": "sensor.daily_charge",
+                "stat_cost": "sensor.daily_charge_cost",
+            }
+        ]
+    }
+    await manager.async_update(standing)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE_SOURCE: "sensor.daily_charge"}),
+        ),
+    )
+
+    # When - midnight to noon
+    result = await _compare(hass_ws_client, hass, end=_at(12))
+
+    # Then - only what it cost in those hours
+    assert _by_name(result)[_CURRENT]["daily_charges"] == pytest.approx(0.26)
+
+
+def _record_money(
+    hass: HomeAssistant, statistic_id: str, hours: dict[int, float]
+) -> None:
+    """A cost statistic's running total: these amounts at these local hours."""
+    total = 0.0
+    rows = []
+    for hour in range(24):
+        total += hours.get(hour, 0.0)
+        start = (DAY_START + timedelta(hours=hour)).astimezone(UTC)
+        rows.append(StatisticData(start=start, state=total, sum=total))
+    metadata = StatisticMetaData(
+        has_sum=True,
+        mean_type=StatisticMeanType.NONE,
+        name=None,
+        source="recorder",
+        statistic_id=statistic_id,
+        unit_class=None,
+        unit_of_measurement="EUR",
+    )
+    async_import_statistics(hass, metadata, rows)
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")

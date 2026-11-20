@@ -54,9 +54,10 @@ CONF_PLAN_CURRENT: Final = "current_plan"
 # The plan the household is on, priced at the prices Paid is priced at rather
 # than a schedule of its own (ADR-0042).
 CONF_PLAN_FOLLOWS: Final = "follows_prices"
-# The current plan's daily charge as a price per day the household already
-# keeps, such as the one its Energy Dashboard prices a standing charge at.
-CONF_PLAN_DAILY_CHARGE_ENTITY: Final = "daily_charge_entity"
+# The current plan's daily charge as the recorded cost of an Energy Dashboard
+# grid source, the way households enter a standing charge there, named by that
+# source's meter (ADR-0042).
+CONF_PLAN_DAILY_CHARGE_SOURCE: Final = "daily_charge_source"
 CONF_PLAN_DAILY_CHARGE: Final = "daily_charge"
 CONF_PLAN_EXPORT_PRICE: Final = "plan_export_price"
 # The kWh a day the export price pays on, and the price for the rest (ADR-0039).

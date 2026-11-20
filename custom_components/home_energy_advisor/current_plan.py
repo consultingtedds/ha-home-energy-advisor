@@ -24,12 +24,14 @@ from .common_strings import async_common_strings
 from .const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
-    CONF_PLAN_DAILY_CHARGE_ENTITY,
+    CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
     SUBENTRY_TYPE_PLAN,
 )
+from .energy_dashboard import async_energy_prefs, grid_import_costs
 from .engine.plan_pricing import ExportCap
+from .house_inputs import grid_meters_of
 from .schemas import vol
 
 if TYPE_CHECKING:
@@ -41,15 +43,52 @@ if TYPE_CHECKING:
 # Its name where the household's language has none.
 _NAME = "Your current plan"
 # What the form asks: the billing rules no price sensor holds (ADR-0042).
-_RULES = (CONF_PLAN_DAILY_CHARGE, CONF_PLAN_DAILY_CHARGE_ENTITY, CONF_PLAN_EXPORT_CAP)
+_RULES = (CONF_PLAN_DAILY_CHARGE, CONF_PLAN_DAILY_CHARGE_SOURCE, CONF_PLAN_EXPORT_CAP)
 
 
-def rules_schema(per_day: str) -> vol.Schema:
+async def async_daily_charge_sources(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> list[selector.SelectOptionDict]:
+    """The Energy Dashboard grid sources a daily charge can follow.
+
+    Each whose cost Home Assistant records, by the source's name. Never one of
+    the grid meters this integration prices: its energy is no daily charge.
+    Which source is the standing charge is the household's to say, since
+    nothing tells it apart from a grid meter.
+    """
+    priced = {meter.imported for meter in grid_meters_of(entry).values()}
+    costs = grid_import_costs(
+        await async_energy_prefs(hass),
+        hass.data.get("energy", {}).get("cost_sensors", {}),
+    )
+    options = []
+    for meter, (_, name) in costs.items():
+        if meter in priced:
+            continue
+        state = hass.states.get(meter)
+        label = name or (state.name if state else None) or meter
+        options.append(selector.SelectOptionDict(value=meter, label=label))
+    return options
+
+
+def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.Schema:
     """The current plan's form: its daily charge, typed or followed, and its cap.
 
     Both ways of giving the daily charge are optional to the form, which checks
-    that exactly one was given (`rules_errors`).
+    that exactly one was given (`rules_errors`). A source to follow is offered
+    only where the Energy Dashboard has one.
     """
+    following = (
+        {
+            vol.Optional(CONF_PLAN_DAILY_CHARGE_SOURCE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=sources, mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
+        }
+        if sources
+        else {}
+    )
     return vol.Schema(
         {
             vol.Optional(CONF_PLAN_DAILY_CHARGE): selector.NumberSelector(
@@ -60,9 +99,7 @@ def rules_schema(per_day: str) -> vol.Schema:
                     unit_of_measurement=per_day,
                 )
             ),
-            vol.Optional(CONF_PLAN_DAILY_CHARGE_ENTITY): selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=["sensor", "input_number"])
-            ),
+            **following,
             vol.Required(
                 CONF_PLAN_EXPORT_CAP, default=ExportCap.NONE.value
             ): selector.SelectSelector(
@@ -79,7 +116,7 @@ def rules_schema(per_day: str) -> vol.Schema:
 def rules_errors(answer: Mapping[str, Any]) -> dict[str, str]:
     """A daily charge given one way: none reads cheaper, two fall out of step."""
     typed = answer.get(CONF_PLAN_DAILY_CHARGE) is not None
-    followed = bool(answer.get(CONF_PLAN_DAILY_CHARGE_ENTITY))
+    followed = bool(answer.get(CONF_PLAN_DAILY_CHARGE_SOURCE))
     if typed == followed:
         return {"base": "daily_charge_one" if typed else "daily_charge_needed"}
     return {}

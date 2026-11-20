@@ -74,6 +74,7 @@ from .const import (
     DEFAULT_CURRENCY,
 )
 from .current_plan import (
+    async_daily_charge_sources,
     is_current_plan,
     plan_data,
     rules_errors,
@@ -298,7 +299,10 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         return self.async_show_form(
             step_id="current",
             data_schema=self.add_suggested_values_to_schema(
-                rules_schema(self._per_day(labels)),
+                rules_schema(
+                    self._per_day(labels),
+                    await async_daily_charge_sources(self.hass, self._get_entry()),
+                ),
                 user_input or rules_of(subentry.data),
             ),
             errors=errors,

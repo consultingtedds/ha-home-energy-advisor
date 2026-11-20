@@ -46,7 +46,7 @@ from .const import (
     CONF_GENERATION_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_DAILY_CHARGE,
-    CONF_PLAN_DAILY_CHARGE_ENTITY,
+    CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -56,7 +56,7 @@ from .const import (
     SUBENTRY_TYPE_PLAN,
 )
 from .current_plan import current_plan_of
-from .energy_dashboard import async_energy_prefs, export_price_in
+from .energy_dashboard import async_energy_prefs, export_price_in, grid_import_costs
 from .engine.plan_pricing import (
     ExportCap,
     IntervalOfEnergy,
@@ -148,8 +148,9 @@ class _Paid:
     """The prices Paid is priced at, which the current plan follows (ADR-0042).
 
     Each grid meter's own import price, the Energy Dashboard's export price, and
-    the current plan's billing rules: its daily charge, typed or a price per day
-    the household keeps, and its export cap.
+    the current plan's billing rules: its daily charge, typed or the recorded
+    cost of the Energy Dashboard grid source the household enters it as, and its
+    export cap.
     """
 
     plan_id: str
@@ -158,34 +159,38 @@ class _Paid:
     meters: tuple[GridMeter, ...]
     export_entity: str | None
     export_number: Decimal | None
-
-    @property
-    def daily_entity(self) -> str | None:
-        return self.rules.get(CONF_PLAN_DAILY_CHARGE_ENTITY) or None
+    # The statistic the followed grid source's cost is recorded in, if it has one.
+    daily_statistic: str | None = None
 
     @property
     def entities(self) -> set[str]:
         """Every price entity it follows, each read from its statistics."""
         followed = {meter.price_entity for meter in self.meters if meter.price_entity}
-        return followed | {e for e in (self.export_entity, self.daily_entity) if e}
+        return followed | ({self.export_entity} if self.export_entity else set())
 
-    def daily_charge(
-        self,
-        prices: Mapping[str, Mapping[datetime, Decimal]],
-        start: datetime,
-        until: datetime,
-    ) -> Decimal | None:
-        """Its daily charge: as typed, or its sensor's mean over the period."""
+    async def daily_charge(self, hass: HomeAssistant, basis: _Basis) -> Decimal | None:
+        """Its daily charge: as typed, or what its source cost a day, compared.
+
+        A followed source's recorded cost in the hours compared, over the days
+        they make, so the hours left out take their share with them.
+        """
         if (typed := self.rules.get(CONF_PLAN_DAILY_CHARGE)) is not None:
             return Decimal(str(typed))
-        if self.daily_entity is None:
+        if self.daily_statistic is None or not basis.days:
             return None
-        means = [
-            price
-            for moment, price in prices.get(self.daily_entity, {}).items()
-            if start <= moment < until
+        rows = await get_instance(hass).async_add_executor_job(
+            _changes, hass, {self.daily_statistic}, basis.start, basis.end, "hour"
+        )
+        hours = {
+            interval.start.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+            for interval in basis.intervals
+        }
+        costs = [
+            Decimal(str(row["change"]))
+            for row in rows.get(self.daily_statistic, ())
+            if row.get("change") is not None and _moment(row["start"]) in hours
         ]
-        return sum(means, Decimal(0)) / len(means) if means else None
+        return sum(costs, Decimal(0)) / basis.days if costs else None
 
     def tariff(self, daily_charge: Decimal | None) -> TariffPlan:
         """The current plan as the engine prices it: every interval at its price."""
@@ -213,7 +218,12 @@ async def _paid_prices(hass: HomeAssistant, entry: ConfigEntry) -> _Paid | None:
     current = current_plan_of(entry)
     if current is None:
         return None
-    entity, number = export_price_in(await async_energy_prefs(hass))
+    prefs = await async_energy_prefs(hass)
+    entity, number = export_price_in(prefs)
+    costs = grid_import_costs(
+        prefs, hass.data.get("energy", {}).get("cost_sensors", {})
+    )
+    source = current.data.get(CONF_PLAN_DAILY_CHARGE_SOURCE)
     return _Paid(
         current.subentry_id,
         current.title,
@@ -221,6 +231,7 @@ async def _paid_prices(hass: HomeAssistant, entry: ConfigEntry) -> _Paid | None:
         tuple(grid_meters_of(entry).values()),
         entity,
         number,
+        costs[source][0] if source in costs else None,
     )
 
 
@@ -443,17 +454,17 @@ async def async_compare_plans(
     )
     period = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
     days = period - missing
+    basis = _Basis(hass, start, end, recorded, intervals, prices, used, silent, days)
     flags: dict[str, Any] = {}
     if paid:
         prices[_PAID_IMPORT] = _paid_import(recorded, paid, prices)
-        daily_charge = paid.daily_charge(prices, start, charged_until)
+        daily_charge = await paid.daily_charge(hass, basis)
         tariffs = {**tariffs, paid.plan_id: paid.tariff(daily_charge)}
         # Without a daily charge it would read cheaper than every plan with one,
         # so the card holds each plan's difference from it (ADR-0042).
         flags = {"follows_prices": True} | (
             {"daily_charge_missing": True} if daily_charge is None else {}
         )
-    basis = _Basis(hass, start, end, recorded, intervals, prices, used, silent, days)
     plans = []
     for plan_id, tariff in tariffs.items():
         is_paid = paid is not None and plan_id == paid.plan_id
@@ -1057,7 +1068,7 @@ def _without_installation(
     days: Decimal,
     holidays: frozenset[date],
 ) -> dict[str, float]:
-    """What the plan would have cost with no solar or battery, where that differs.
+    """What the plan would have cost with no generation or battery, where it differs.
 
     Everything the house used, bought at the plan's prices, with its daily
     charges: beside the plan's own total it reads as what the installation saved
@@ -1074,7 +1085,7 @@ def _without_installation(
 def _as_if_without(
     intervals: list[IntervalOfEnergy], used: Mapping[datetime, Decimal]
 ) -> list[IntervalOfEnergy]:
-    """The plan's intervals as a house with no solar or battery would have had them.
+    """The plan's intervals as a house with no generation or battery would have them.
 
     Everything used bought from the grid, nothing exported; a market plan keeps
     each interval's price.

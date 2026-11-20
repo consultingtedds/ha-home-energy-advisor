@@ -54,12 +54,15 @@ types only the billing rules that no price sensor can hold.**
 
 2. **Billing rules typed, price rules not.** The current plan carries a daily
    charge and the monthly export cap (ADR-0040). The daily charge is typed, or
-   followed from a sensor or Number helper giving the price per day, read from
-   its recorded statistics as an entity price is: a household that already keeps
-   its standing charge in the Energy Dashboard, as a grid source priced per day,
-   points the current plan at the same price rather than typing a second copy.
-   Such a source is not recognised automatically, since nothing tells it apart
-   from a grid meter. Both rules act on a bill's
+   follows the recorded cost of an Energy Dashboard grid source the household
+   chooses. The Energy Dashboard has no daily charge of its own, so households
+   enter a standing charge as a grid source of its own, built however they
+   like, and Home Assistant records what it costs. The current plan takes that
+   recorded cost over the hours compared, rather than a second, typed copy,
+   whatever the source is built from, and its history is kept as the prices'
+   is. The source is the household's to choose, never one of the grid meters
+   priced here, and it is not recognised automatically, since nothing tells it
+   apart from a grid meter. Both rules act on a bill's
    totals, which no price sensor holds, and without the cap the current plan
    would credit every kWh exported while the capped plans beside it did not, and
    read cheaper than it is. Allowances (ADR-0039, ADR-0041) change the price per
