@@ -350,7 +350,7 @@
         },
         "current": {
           "title": "Your current plan",
-          "description": "Every other plan is compared with this one. Its prices are the ones your costs are worked out at: each grid meter's price, and your Energy Dashboard's export price. So a change of plan needs no change here: update those prices, and this plan follows them.\n\nWhat no price can hold is entered here.",
+          "description": "Every other plan is compared with this one. Its prices are the ones your costs are worked out at: each grid meter's price, and your Energy Dashboard's export price. So a change of plan needs no change here: update those prices, and this plan follows them.\n\nWhat no price can hold is entered here. A daily charge taken from your Energy Dashboard keeps each day's own; a typed one applies to every period compared, the past included.",
           "data": {
             "daily_charge": "Daily charge",
             "daily_charge_source": "Daily charge from your Energy Dashboard",
@@ -674,7 +674,7 @@
         "step": {
           "init": {
             "title": "Your current plan",
-            "description": "Every other tariff plan is compared with your current plan. Its prices are the ones your costs are worked out at, so it follows them by itself, even when you change plan. What no price holds is entered here: its daily charge, typed or taken from the Energy Dashboard source that charges it, and how it pays for export. Until it has its daily charge, the comparison shows no plan's difference from it, since a plan without one would look cheaper than it is.\n\n{replaced}",
+            "description": "Every other tariff plan is compared with your current plan. Its prices are the ones your costs are worked out at, so it follows them by itself, even when you change plan. What no price holds is entered here: its daily charge, typed or taken from the Energy Dashboard source that charges it, and how it pays for export. Until it has its daily charge, the comparison shows no plan's difference from it, since a plan without one would look cheaper than it is. A daily charge taken from your Energy Dashboard keeps each day's own; a typed one applies to every period compared, the past included.\n\n{replaced}",
             "data": {
               "daily_charge": "Daily charge",
               "daily_charge_source": "Daily charge from your Energy Dashboard",

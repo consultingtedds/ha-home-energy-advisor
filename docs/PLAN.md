@@ -752,9 +752,9 @@ Carried forward rather than closed:
   Priced five minutes at a time where the recorder keeps 5-minute statistics,
   hourly means before; a gap carries the last price, and a plan is priced from
   the market's first recorded price. Released as a beta first. HEA-267
-  (ADR-0042, proposed) turns the other way: the current plan is priced at
-  Paid's prices, with only its daily charge and cap typed, so the household
-  keeps its prices once, where the Energy Dashboard reads them.
+  (ADR-0042) turns the other way: the current plan is priced at Paid's prices,
+  with only its daily charge and cap given, so the household keeps its prices
+  once, where the Energy Dashboard reads them.
 - **HEA-268** (discussion 58, ADR-0038): a band applies to any of Monday to
   Sunday and public holidays, with weekdays, weekends and holidays, and every
   day kept as shortcuts. A holiday is a day of its own only in a plan with a
@@ -867,12 +867,29 @@ Carried forward rather than closed:
   running total falling to zero is named a statistics restart and suggested 0;
   and every Repair opens on a choice to correct the hour or leave it as it is,
   since Home Assistant shows no Ignore on a Repair with a fix flow. For 1.6.1.
-- **Open after 1.6.1:** HEA-267 (ADR-0042, proposed: the current plan priced at
-  the Energy Dashboard's prices), then HEA-298 (check prices and meters against
-  a bill, which prices the bill's dates at the household's own prices, so it
-  follows HEA-267), HEA-272 (discussion 58: clear the figures for a chosen
-  period) and HEA-242 (payback). HEA-295, editing plans from the Tariffs tab, is
-  parked: a card cannot open Home Assistant's settings flow robustly.
+- **1.6.1, released 2026-11-18**, carrying HEA-303.
+- **HEA-267** (discussion 58, ADR-0042): the integration keeps the household's
+  current plan, priced at Paid's prices: each grid meter's import at its own
+  price and export at the Energy Dashboard's, all from recorded statistics, so
+  across a plan switch it shows what was charged. Only its daily charge and
+  export cap are given, the daily charge typed or following the recorded cost
+  of an Energy Dashboard grid source the household picks, since the Energy
+  Dashboard has none of its own. A Repair asks for them, and the card holds every
+  difference until it has one. A typed plan marked current on 1.6 stays as an
+  ordinary plan, its charge and cap carried over. Typed and fixed values keep no
+  history (option 1, 2026-11-20): HEA-307 answers that. Sources silent over the
+  same stretches are named in one line. For 1.7.0.
+- **Raised from discussion 58 on 2026-11-20:** HEA-306 (mark the plan a
+  household would be on without its installation; the saving is returned by the
+  action, not a sensor, ADR-0047), HEA-305 (the generation's and battery's
+  shares, parked), HEA-307 (switch to this plan: a typed plan provides the price
+  sensors), HEA-304 (the Prices column duplicates the bill), and HEA-308 (the
+  reference home's standing charge rebuilt, local).
+- **Open after 1.7.0:** HEA-307, then HEA-306, HEA-298 (check prices and meters
+  against a bill), HEA-272 (discussion 58: clear the figures for a chosen
+  period), HEA-304 and HEA-242 (payback). HEA-295, editing plans from the
+  Tariffs tab, is parked: a card cannot open Home Assistant's settings flow
+  robustly.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy

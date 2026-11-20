@@ -350,7 +350,7 @@
         },
         "current": {
           "title": "Tu tarifa actual",
-          "description": "Todas las demás tarifas se comparan con esta. Sus precios son aquellos con los que se calculan tus costes: el precio de cada contador de red y el precio de exportación de tu panel de energía. Así, un cambio de tarifa no necesita ningún cambio aquí: actualiza esos precios y esta tarifa los sigue.\n\nAquí se introduce lo que ningún precio puede contener.",
+          "description": "Todas las demás tarifas se comparan con esta. Sus precios son aquellos con los que se calculan tus costes: el precio de cada contador de red y el precio de exportación de tu panel de energía. Así, un cambio de tarifa no necesita ningún cambio aquí: actualiza esos precios y esta tarifa los sigue.\n\nAquí se introduce lo que ningún precio puede contener. Un cargo diario tomado de tu panel de energía conserva el de cada día; uno escrito se aplica a todo periodo comparado, pasado incluido.",
           "data": {
             "daily_charge": "Cargo diario",
             "daily_charge_source": "Cargo diario desde tu panel de energía",
@@ -674,7 +674,7 @@
         "step": {
           "init": {
             "title": "Tu tarifa actual",
-            "description": "Todas las demás tarifas se comparan con tu tarifa actual. Sus precios son aquellos con los que se calculan tus costes, así que los sigue sola, incluso cuando cambias de tarifa. Lo que ningún precio contiene se indica aquí: su cargo diario, escrito o tomado de la fuente del panel de energía que lo cobra, y cómo paga la exportación. Hasta que tenga su cargo diario, la comparación no muestra la diferencia de ninguna tarifa con ella, ya que una tarifa sin él parecería más barata de lo que es.\n\n{replaced}",
+            "description": "Todas las demás tarifas se comparan con tu tarifa actual. Sus precios son aquellos con los que se calculan tus costes, así que los sigue sola, incluso cuando cambias de tarifa. Lo que ningún precio contiene se indica aquí: su cargo diario, escrito o tomado de la fuente del panel de energía que lo cobra, y cómo paga la exportación. Hasta que tenga su cargo diario, la comparación no muestra la diferencia de ninguna tarifa con ella, ya que una tarifa sin él parecería más barata de lo que es. Un cargo diario tomado de tu panel de energía conserva el de cada día; uno escrito se aplica a todo periodo comparado, pasado incluido.\n\n{replaced}",
             "data": {
               "daily_charge": "Cargo diario",
               "daily_charge_source": "Cargo diario desde tu panel de energía",

@@ -173,14 +173,20 @@ you have generation or a battery. No options beyond the two every card takes.
 ### Compare tariff plans
 
 What each tariff plan you have entered would have cost over the period, cheapest
-first, as a table. For each plan:
+first, as a table, beside **your current plan**. Your current plan is kept for
+you and priced at the prices your costs are worked out at, each grid meter's and
+your Energy Dashboard's export price, so it shows what you were actually charged,
+across a change of plan too. For each plan:
 
 - **Its prices**: each of its named prices, what export pays, and its daily
-  charge.
+  charge. Your current plan's say "The prices you pay".
 - **What you pay and what you earn**: its import cost, with the average it came
   to per kWh beneath, its daily charges, and its export income.
-- **Its total**, and **the difference from your plan**. Anything you pay is -€
-  in red, anything in your favour € in green.
+- **Its total**, and **the difference from your current plan**. Anything you pay
+  is -€ in red, anything in your favour € in green. Until your current plan has
+  its daily charge, it says "Not given yet" there and the differences are held,
+  with a line pointing to the notice in **Settings** > **Repairs** that asks for
+  it.
 - **Buying everything from the grid**, where you have generation or a battery:
   what the plan would have cost with neither, and what your installation saves
   you on it.
@@ -190,19 +196,22 @@ at its cheapest, on the same scale as the device table's verdicts, so the greene
 it is, the more of your import fell in the plan's cheap hours. Select a plan to
 open its bill beneath it: the daily charges, each price with the kWh it charged
 and what they cost, the import cost, the export, and the total, each matching its
-column above. Set the period to a bill's dates to check your own plan against it.
+column above. Set the period to a bill's dates to check your current plan against
+it.
 
-Every plan, yours included, is priced the same way, at the electricity your
-meters recorded hour by hour, and over the same hours: a stretch a price sensor
-or the grid meters have no data for is left out of every plan, and a line above
-the table says which and why. So the figure for your own plan is not Paid, which
-leaves daily charges out and is worked out device by device. On a phone the table
+Every plan is priced the same way, at the electricity your meters recorded hour
+by hour, and over the same hours: a stretch a price sensor or the grid meters
+have no data for is left out of every plan, and a line above the table says which
+and why, naming once every source that recorded nothing over the same hours. So
+your current plan's total is not Paid, which leaves daily charges out and is
+worked out device by device, though both use the same prices. On a phone the table
 keeps each plan's total and difference, and the bill still opens. The README's
 *Comparing tariff plans* says how to enter a plan and what the comparison
 assumes.
 
 For the whole home, so the filter does not narrow this card. It appears on the
-generated dashboard once you have entered a plan, on a Tariffs tab of its own. No
+generated dashboard once you have entered a plan to compare, on a Tariffs tab of
+its own: your current plan alone has nothing to be compared with. No
 options beyond the two every card takes.
 
 ### Filter

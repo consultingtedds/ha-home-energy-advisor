@@ -345,15 +345,34 @@ sits empty. That is a house with no labels, not a broken filter.
 ### Comparing tariff plans
 
 If you are choosing between energy plans, Home Energy Advisor can tell you what
-each would have cost you. Enter the plan you are on and any offers you are
-weighing up, and the dashboard prices every one of them against the electricity
-you actually imported and exported, for whatever period you pick - last month,
-last winter, the last year.
+each would have cost you. Enter the offers you are weighing up, and the
+dashboard prices every one of them against the electricity you actually imported
+and exported, for whatever period you pick - last month, last winter, the last
+year - beside what your own plan cost.
 
-Add each plan with **Add tariff plan** on the Home Energy Advisor card in
+**Your current plan** is kept for you. It has no prices of its own: it is priced
+at the prices your costs are already worked out at, each grid meter's price and
+your Energy Dashboard's export price, read from their recorded history. So when
+you change plan, you update those prices as you would anyway, and your current
+plan follows them: across the switch it shows what you were actually charged on
+each side, and it can never disagree with the costs Home Energy Advisor shows.
+
+What no price holds, you give it once: its **daily charge** and how it pays for
+export. A notice in **Settings** > **Repairs** asks for them, and until then the
+card shows no plan's difference from it, since a plan without its daily charge
+would look cheaper than it is. Change them later with **Edit tariff plan** on
+"Your current plan". The Energy Dashboard has no daily charge of its own, so if
+yours charges a standing charge as a grid source of its own, choose that source
+rather than typing the figure: the plan then takes what Home Assistant recorded
+it costing, day by day. A typed daily charge, or a grid meter or export priced
+at a fixed number, has no history: changing it later changes every period the
+card compares, the past included. Prices that come from sensors keep their
+history.
+
+Add each offer with **Add tariff plan** on the Home Energy Advisor card in
 **Settings** > **Devices & services**:
 
-1. **Its details:** a name, whether it is the plan you are on, its daily charge
+1. **Its details:** a name, its daily charge
    (a standing or contracted-power charge, as a cost per day), what it pays for
    export, and its **prices**: each one named as the offer names it (peak and
    off-peak; punta, llano and valle) with its import price. A price can carry its
@@ -370,8 +389,15 @@ Add each plan with **Add tariff plan** on the Home Energy Advisor card in
 
 After each band you see the bands so far and which hours still have no price,
 and the plan can be saved once every hour of every day is covered. A price
-forgotten until then can still be added: choose **Back to the prices**. Mark
-exactly one plan as the one you are on: every other is compared with it.
+forgotten until then can still be added: choose **Back to the prices**. Every
+plan is compared with your current plan.
+
+**Typing your own plan as well.** A typed copy of the plan you are on is worth
+keeping beside your current plan: any difference between the two rows shows
+where its typed prices and the prices you are charged disagree. Before 1.7.0 you
+marked one typed plan as the one you were on; updating moves that plan's daily
+charge and export compensation to your current plan, and keeps the typed plan as
+an ordinary one, to keep or delete.
 
 **Export allowances.** Some feed-in offers pay their rate only on the first kWh
 exported each day. If the plan's export price works that way, enter how many kWh
@@ -401,8 +427,7 @@ and change only the prices. Once you have a plan, **Add tariff plan** asks what 
 start from: choose that plan and the copy keeps its prices and bands, so you only
 change the name and the figures in its list of prices. A three-period plan is
 three prices however many bands it takes. The bands are then shown as usual, and
-can still be changed before saving. The copy is never marked as the plan you are
-on unless you tick it.
+can still be changed before saving.
 
 **Market prices.** A wholesale plan, such as Amber, Localvolts or Flow Power, has
 no schedule to type: its price changes every few minutes. Choose its integration's
@@ -446,8 +471,8 @@ Daily charges are counted here only: they are never part of any device's cost.
 **Each plan's bill.** Select a plan on the card to open its total line by line,
 as a bill lists it: the daily charges, then each price with the kWh it charged
 and what they cost, the import cost they add up to, what export earned, and the
-total. Set the period to your bill's dates and you can check your own plan
-against your bill line by line. Beside the import cost is the average you paid
+total. Set the period to your bill's dates and you can check your current plan
+against your bill line by line: it is priced at what you were charged. Beside the import cost is the average you paid
 per kWh, coloured from red at the plan's dearest price to green at its cheapest:
 the greener it is, the more of your import fell in the plan's cheap hours.
 

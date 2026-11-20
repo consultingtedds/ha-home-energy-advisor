@@ -32,6 +32,22 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**Your current plan is now kept for you, and priced at what you pay.** Rather
+than a typed plan you mark as yours, the tariff comparison has a plan of its own
+called "Your current plan", priced at the prices your costs are already worked
+out at: each grid meter's price and your Energy Dashboard's export price. When
+you change plan, update those prices as you would anyway, and it follows.
+
+**A notice in Settings > Repairs asks for its daily charge.** No price holds a
+daily charge, so give it once, typed or taken from the Energy Dashboard source
+that charges your standing charge, with how your plan pays for export. Until
+then the card shows no plan's difference from it. If you had marked a plan as
+yours, its daily charge and export compensation are filled in for you to check,
+and that plan stays as an ordinary one: keep it to see where its typed prices
+and the prices you are charged disagree, or delete it.
+
 ## 1.6.1
 
 **Some notices about impossible hours in Settings > Repairs go away by
