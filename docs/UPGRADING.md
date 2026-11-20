@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 1.7.0
 
 **Your current plan is now kept for you, and priced at what you pay.** Rather
 than a typed plan you mark as yours, the tariff comparison has a plan of its own
