@@ -256,7 +256,6 @@
           "description": "A plan to compare, or the one you are on. Name its prices as the offer does, such as peak and off-peak, then enter its time bands one at a time, each at one of those prices. Every plan is priced against the electricity you actually imported and exported, so enter prices consistently: all with tax or all without.",
           "data": {
             "name": "Name",
-            "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
             "plan_export_allowance": "Export allowance (optional)",
@@ -273,7 +272,6 @@
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
-            "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on. It does not change how your costs are worked out: those still use the prices set on your grid meters.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
             "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
@@ -294,7 +292,6 @@
           "description": "Change the plan's details and prices. A price renamed keeps its bands; a price removed takes its bands with it. The bands come next.",
           "data": {
             "name": "Name",
-            "current_plan": "This is the plan I am on",
             "daily_charge": "Daily charge",
             "plan_export_price": "Export price",
             "plan_export_allowance": "Export allowance (optional)",
@@ -311,7 +308,6 @@
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
-            "current_plan": "Every other plan is compared with this one. Only one plan can be the one you are on. It does not change how your costs are worked out: those still use the prices set on your grid meters.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
             "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",

@@ -37,7 +37,6 @@ from .const import (
     CONF_BAND_PRICE,
     CONF_BAND_START,
     CONF_BANDS,
-    CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -132,7 +131,9 @@ def tariff_plan_from(name: str, data: Mapping[str, Any]) -> TariffPlan:
             # A plan entered before export could be capped was paid in full.
             export_cap=ExportCap(data.get(CONF_PLAN_EXPORT_CAP, ExportCap.NONE)),
         ),
-        current=bool(data.get(CONF_PLAN_CURRENT)),
+        # A typed plan is never the one the household is on: that one follows
+        # the prices Paid is priced at, and the integration keeps it (ADR-0042).
+        current=False,
         holidays=data.get(CONF_PLAN_HOLIDAYS) or None,
         import_entity=import_entity,
         export_entity=export_entity,

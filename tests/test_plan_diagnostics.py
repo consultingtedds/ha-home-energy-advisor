@@ -38,7 +38,6 @@ from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_FIXED_PRICE,
     CONF_GRID_IMPORT_ENTITY,
-    CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ADD,
@@ -64,10 +63,9 @@ _GRID: dict[str, Any] = {
     CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
     CONF_FIXED_PRICE: 0.45,
 }
-# The household's current plan: two named prices, by time of day.
+# A typed plan: two named prices, by time of day.
 _TIME_OF_USE: dict[str, Any] = {
     CONF_NAME: "Time of use",
-    CONF_PLAN_CURRENT: True,
     CONF_PLAN_DAILY_CHARGE: 1.1,
     CONF_PRICES: [
         {CONF_NAME: "Peak", CONF_BAND_IMPORT_PRICE: 0.45},
@@ -92,7 +90,6 @@ _TIME_OF_USE: dict[str, Any] = {
 # from a feed the recorder keeps no statistics for.
 _WHOLESALE: dict[str, Any] = {
     CONF_NAME: "Wholesale",
-    CONF_PLAN_CURRENT: False,
     CONF_PLAN_DAILY_CHARGE: 0.9,
     CONF_PLAN_IMPORT_PRICE_ENTITY: "sensor.market_import_price",
     CONF_PLAN_IMPORT_PRICE_ADD: 0.08,

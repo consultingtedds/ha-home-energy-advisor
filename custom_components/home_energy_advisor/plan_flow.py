@@ -58,7 +58,6 @@ from .const import (
     CONF_BAND_START,
     CONF_BANDS,
     CONF_CURRENCY,
-    CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -73,7 +72,6 @@ from .const import (
     CONF_PLAN_IMPORT_PRICE_MULTIPLY,
     CONF_PRICES,
     DEFAULT_CURRENCY,
-    SUBENTRY_TYPE_PLAN,
 )
 from .current_plan import (
     is_current_plan,
@@ -105,7 +103,6 @@ _START_FROM = "start_from"
 _NOTHING = "none"
 _DETAIL_KEYS = (
     CONF_NAME,
-    CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -237,9 +234,6 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
             source = user_input.get(_START_FROM, _NOTHING)
             if source in plans:
                 await self._take(self._get_entry().subentries[source].data)
-                # A copy is most often an offer being weighed up, and marking it
-                # current would unmark the plan the household is on.
-                self._details[CONF_PLAN_CURRENT] = False
             return await self.async_step_details()
         labels = await async_common_strings(self.hass)
         options = [
@@ -511,9 +505,6 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         return vol.Schema(
             {
                 vol.Required(CONF_NAME): selector.TextSelector(),
-                vol.Required(CONF_PLAN_CURRENT, default=False): (
-                    selector.BooleanSelector()
-                ),
                 vol.Required(CONF_PLAN_DAILY_CHARGE, default=0): (
                     selector.NumberSelector(
                         selector.NumberSelectorConfig(
@@ -680,24 +671,10 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         return f"{price[CONF_NAME]} ({figures})"
 
     def _save(self) -> SubentryFlowResult:
-        """Save the plan, making it the only current one if it is current."""
+        """Save the plan."""
         data = self._data()
         entry = self._get_entry()
-        reconfiguring = self.source == "reconfigure"
-        own = self._get_reconfigure_subentry().subentry_id if reconfiguring else None
-        if data.get(CONF_PLAN_CURRENT):
-            for subentry_id, subentry in entry.subentries.items():
-                if (
-                    subentry.subentry_type == SUBENTRY_TYPE_PLAN
-                    and subentry_id != own
-                    and subentry.data.get(CONF_PLAN_CURRENT)
-                ):
-                    self.hass.config_entries.async_update_subentry(
-                        entry,
-                        subentry,
-                        data={**subentry.data, CONF_PLAN_CURRENT: False},
-                    )
-        if reconfiguring:
+        if self.source == "reconfigure":
             return self.async_update_and_abort(
                 entry,
                 self._get_reconfigure_subentry(),

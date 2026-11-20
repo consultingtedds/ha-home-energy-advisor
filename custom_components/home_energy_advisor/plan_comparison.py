@@ -20,8 +20,9 @@ charges with it, and said (ADR-0043).
 
 from __future__ import annotations
 
+from bisect import bisect_right
 from collections import defaultdict
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
@@ -44,6 +45,9 @@ from homeassistant.util.unit_conversion import EnergyConverter
 from .const import (
     CONF_GENERATION_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
+    CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     DOMAIN,
@@ -51,7 +55,10 @@ from .const import (
     SERVICE_COMPARE_PLANS,
     SUBENTRY_TYPE_PLAN,
 )
+from .current_plan import current_plan_of
+from .energy_dashboard import async_energy_prefs, export_price_in
 from .engine.plan_pricing import (
+    ExportCap,
     IntervalOfEnergy,
     Plan,
     PlanCost,
@@ -59,7 +66,7 @@ from .engine.plan_pricing import (
     days_covered,
     price_plan,
 )
-from .house_inputs import batteries_of, grid_meters_of, house_entities
+from .house_inputs import GridMeter, batteries_of, grid_meters_of, house_entities
 from .schemas import vol
 from .tariff_plans import TariffPlan, plans_of
 
@@ -84,6 +91,9 @@ _FIVE_MINUTES = timedelta(minutes=5)
 _BRIDGE = timedelta(hours=2)
 # What a stretch with no grid statistics is left out for, beside a price entity.
 _GRID_METERS = "grid"
+# Not an entity: the current plan's import price per interval, every grid meter
+# at its own, worked out here (ADR-0042).
+_PAID_IMPORT = f"{DOMAIN}.paid_import"
 # A change beyond it, either way, is a fault in the statistics, and its interval
 # is left out (ADR-0044).
 _CEILING_PER_HOUR = Decimal(IMPOSSIBLE_KWH_PER_HOUR)
@@ -98,12 +108,17 @@ _Period = Literal["5minute", "hour"]
 class _Recorded:
     """The grid flows of a period, and from when they are five minutes apart.
 
-    With the intervals a grid meter recorded more than a home could use in.
+    With the intervals a grid meter recorded more than a home could use in, and
+    each import meter's own change per interval, which the current plan prices
+    at that meter's own price (ADR-0042).
     """
 
     intervals: list[IntervalOfEnergy]
     five_minute_from: datetime | None = None
     impossible: tuple[_Stretch, ...] = ()
+    imported_by_meter: Mapping[str, Mapping[datetime, Decimal]] = field(
+        default_factory=dict
+    )
 
     def length_at(self, moment: datetime) -> timedelta:
         """How long a statistic starting at `moment` covers: an hour, or 5 minutes."""
@@ -126,6 +141,144 @@ class _Stretch:
 
     def overlaps(self, start: datetime, length: timedelta) -> bool:
         return start < self.end and start + length > self.start
+
+
+@dataclass(frozen=True)
+class _Paid:
+    """The prices Paid is priced at, which the current plan follows (ADR-0042).
+
+    Each grid meter's own import price, the Energy Dashboard's export price, and
+    the current plan's billing rules: its daily charge, typed or a price per day
+    the household keeps, and its export cap.
+    """
+
+    plan_id: str
+    name: str
+    rules: Mapping[str, Any]
+    meters: tuple[GridMeter, ...]
+    export_entity: str | None
+    export_number: Decimal | None
+
+    @property
+    def daily_entity(self) -> str | None:
+        return self.rules.get(CONF_PLAN_DAILY_CHARGE_ENTITY) or None
+
+    @property
+    def entities(self) -> set[str]:
+        """Every price entity it follows, each read from its statistics."""
+        followed = {meter.price_entity for meter in self.meters if meter.price_entity}
+        return followed | {e for e in (self.export_entity, self.daily_entity) if e}
+
+    def daily_charge(
+        self,
+        prices: Mapping[str, Mapping[datetime, Decimal]],
+        start: datetime,
+        until: datetime,
+    ) -> Decimal | None:
+        """Its daily charge: as typed, or its sensor's mean over the period."""
+        if (typed := self.rules.get(CONF_PLAN_DAILY_CHARGE)) is not None:
+            return Decimal(str(typed))
+        if self.daily_entity is None:
+            return None
+        means = [
+            price
+            for moment, price in prices.get(self.daily_entity, {}).items()
+            if start <= moment < until
+        ]
+        return sum(means, Decimal(0)) / len(means) if means else None
+
+    def tariff(self, daily_charge: Decimal | None) -> TariffPlan:
+        """The current plan as the engine prices it: every interval at its price."""
+        return TariffPlan(
+            plan=Plan(
+                name=self.name,
+                bands=(),
+                daily_charge=daily_charge or Decimal(0),
+                export_price=self.export_number or Decimal(0),
+                import_per_interval=True,
+                export_per_interval=self.export_entity is not None,
+                export_cap=ExportCap(
+                    self.rules.get(CONF_PLAN_EXPORT_CAP, ExportCap.NONE)
+                ),
+            ),
+            current=True,
+            holidays=None,
+            import_entity=_PAID_IMPORT,
+            export_entity=self.export_entity,
+        )
+
+
+async def _paid_prices(hass: HomeAssistant, entry: ConfigEntry) -> _Paid | None:
+    """What the current plan follows, where the household has one."""
+    current = current_plan_of(entry)
+    if current is None:
+        return None
+    entity, number = export_price_in(await async_energy_prefs(hass))
+    return _Paid(
+        current.subentry_id,
+        current.title,
+        current.data,
+        tuple(grid_meters_of(entry).values()),
+        entity,
+        number,
+    )
+
+
+def _paid_import(
+    recorded: _Recorded,
+    paid: _Paid,
+    prices: Mapping[str, Mapping[datetime, Decimal]],
+) -> dict[datetime, Decimal]:
+    """Each interval's import price, as Paid prices it: every meter at its own.
+
+    One price per interval, the meters' own weighted by what each imported, so
+    the interval's import at it costs exactly what Paid charges. An interval a
+    price entity has no price before yet is left for the engine to refuse, as a
+    market price is.
+    """
+    if not paid.meters:
+        return {}
+    series = {entity: _Series(prices.get(entity, {})) for entity in paid.entities}
+    blended: dict[datetime, Decimal] = {}
+    for interval in recorded.intervals:
+        moment = interval.start.astimezone(UTC)
+        rates: dict[str, Decimal] = {}
+        for meter in paid.meters:
+            rate = (
+                series[meter.price_entity].at(moment)
+                if meter.price_entity
+                else meter.fixed_price
+            )
+            if rate is None:
+                break
+            rates[meter.imported] = rate
+        else:
+            kwh = {
+                meter: recorded.imported_by_meter.get(meter, {}).get(moment, Decimal(0))
+                for meter in rates
+            }
+            total = sum(kwh.values(), Decimal(0))
+            blended[moment] = (
+                sum((kwh[meter] * rate for meter, rate in rates.items()), Decimal(0))
+                / total
+                if total
+                else sum(rates.values(), Decimal(0)) / len(rates)
+            )
+    return blended
+
+
+class _Series:
+    """A price entity's prices in time order, for the last one at a moment."""
+
+    def __init__(self, prices: Mapping[datetime, Decimal]) -> None:
+        ordered = sorted(prices.items())
+        self._times = [moment for moment, _ in ordered]
+        self._prices = [price for _, price in ordered]
+
+    def at(self, moment: datetime) -> Decimal | None:
+        """The last price recorded at or before `moment`, if any."""
+        index = bisect_right(self._times, moment)
+        return self._prices[index - 1] if index else None
 
 
 def async_register(hass: HomeAssistant) -> None:
@@ -197,13 +350,19 @@ def _websocket_list_plans(
     """
     entries = hass.config_entries.async_loaded_entries(DOMAIN)
     plans = plans_of(entries[0]) if entries else {}
+    current = current_plan_of(entries[0]) if entries else None
     connection.send_result(
         msg["id"],
         {
             "plans": [
-                {"id": plan_id, "name": tariff.plan.name, "current": tariff.current}
+                {"id": plan_id, "name": tariff.plan.name, "current": False}
                 for plan_id, tariff in plans.items()
             ]
+            + (
+                [{"id": current.subentry_id, "name": current.title, "current": True}]
+                if current
+                else []
+            )
         },
     )
 
@@ -250,12 +409,13 @@ async def async_compare_plans(
     imports = {grid.imported for grid in meters}
     exports = {grid.exported for grid in meters if grid.exported}
     tariffs = plans_of(entry)
+    paid = await _paid_prices(hass, entry)
     markets = {
         entity
         for tariff in tariffs.values()
         for entity in (tariff.import_entity, tariff.export_entity)
         if entity
-    }
+    } | (paid.entities if paid else set())
     # Five minutes at a time only where a market price changes within the hour:
     # a band prices five minutes exactly as it prices their hour.
     recorded = await _recorded_flows(
@@ -283,42 +443,33 @@ async def async_compare_plans(
     )
     period = days_covered(dt_util.as_local(start), dt_util.as_local(charged_until))
     days = period - missing
+    flags: dict[str, Any] = {}
+    if paid:
+        prices[_PAID_IMPORT] = _paid_import(recorded, paid, prices)
+        daily_charge = paid.daily_charge(prices, start, charged_until)
+        tariffs = {**tariffs, paid.plan_id: paid.tariff(daily_charge)}
+        # Without a daily charge it would read cheaper than every plan with one,
+        # so the card holds each plan's difference from it (ADR-0042).
+        flags = {"follows_prices": True} | (
+            {"daily_charge_missing": True} if daily_charge is None else {}
+        )
+    basis = _Basis(hass, start, end, recorded, intervals, prices, used, silent, days)
     plans = []
     for plan_id, tariff in tariffs.items():
+        is_paid = paid is not None and plan_id == paid.plan_id
         named = {
             "id": plan_id,
             "name": tariff.plan.name,
             "current": tariff.current,
             "rates": _rates(tariff),
+            **(flags if is_paid else {}),
         }
-        holidays = (
-            await _holidays(hass, tariff.holidays, start, end)
-            if tariff.holidays
-            else frozenset()
+        followed = (
+            sorted(paid.entities)
+            if paid is not None and is_paid
+            else [e for e in (tariff.import_entity, tariff.export_entity) if e]
         )
-        followed = [e for e in (tariff.import_entity, tariff.export_entity) if e]
-        if quiet := [entity for entity in followed if entity in silent]:
-            plans.append({**named, "no_price": True, "no_price_entities": quiet})
-            continue
-        priced = _at_market_prices(recorded, intervals, tariff, prices)
-        try:
-            cost = price_plan(tariff.plan, priced, days=days, holidays=holidays)
-            without = _without_installation(
-                tariff, priced, used, days=days, holidays=holidays
-            )
-        except ValueError:
-            # Only a plan edited outside its form can leave hours unpriced; it is
-            # listed, not guessed at.
-            plans.append({**named, "incomplete": True})
-            continue
-        plans.append(
-            {
-                **named,
-                **_figures(cost),
-                **without,
-                "breakdown": _breakdown(tariff.plan, cost, days),
-            }
-        )
+        plans.append(await _plan_row(basis, tariff, named, followed))
     return {
         "hours": len(intervals),
         "days": float(days),
@@ -335,6 +486,53 @@ async def async_compare_plans(
             for stretch in left_out
         ],
         "plans": plans,
+    }
+
+
+@dataclass(frozen=True)
+class _Basis:
+    """What every plan in one comparison is priced against."""
+
+    hass: HomeAssistant
+    start: datetime
+    end: datetime
+    recorded: _Recorded
+    intervals: list[IntervalOfEnergy]
+    prices: Mapping[str, Mapping[datetime, Decimal]]
+    used: Mapping[datetime, Decimal] | None
+    silent: set[str]
+    days: Decimal
+
+
+async def _plan_row(
+    basis: _Basis,
+    tariff: TariffPlan,
+    named: dict[str, Any],
+    followed: list[str],
+) -> dict[str, Any]:
+    """One plan's row: its figures, or why it has none."""
+    if quiet := [entity for entity in followed if entity in basis.silent]:
+        return {**named, "no_price": True, "no_price_entities": quiet}
+    holidays = (
+        await _holidays(basis.hass, tariff.holidays, basis.start, basis.end)
+        if tariff.holidays
+        else frozenset()
+    )
+    priced = _at_market_prices(basis.recorded, basis.intervals, tariff, basis.prices)
+    try:
+        cost = price_plan(tariff.plan, priced, days=basis.days, holidays=holidays)
+        without = _without_installation(
+            tariff, priced, basis.used, days=basis.days, holidays=holidays
+        )
+    except ValueError:
+        # Only a plan edited outside its form can leave hours unpriced; it is
+        # listed, not guessed at.
+        return {**named, "incomplete": True}
+    return {
+        **named,
+        **_figures(cost),
+        **without,
+        "breakdown": _breakdown(tariff.plan, cost, basis.days),
     }
 
 
@@ -747,6 +945,11 @@ async def _recorded_flows(  # noqa: PLR0913 - the meters and period and how fine
             *_impossible(hourly, meters, kept, is_fine=False),
             *_impossible(fine, meters, kept, is_fine=True),
         ),
+        {
+            meter: _summed(hourly, {meter}, kept, is_fine=False)
+            | _summed(fine, {meter}, kept, is_fine=True)
+            for meter in imports
+        },
     )
 
 

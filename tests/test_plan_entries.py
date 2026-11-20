@@ -42,7 +42,6 @@ from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_FIXED_PRICE,
     CONF_GRID_IMPORT_ENTITY,
-    CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -80,7 +79,6 @@ _PEAK = {CONF_NAME: "Peak", CONF_BAND_IMPORT_PRICE: 0.31, CONF_BAND_EXPORT_PRICE
 _OFF_PEAK = {CONF_NAME: "Off-peak", CONF_BAND_IMPORT_PRICE: 0.09}
 _DETAILS = {
     CONF_NAME: "Current plan",
-    CONF_PLAN_CURRENT: True,
     CONF_PLAN_DAILY_CHARGE: 0.45,
     CONF_PLAN_EXPORT_PRICE: 0.05,
     CONF_PRICES: [_PEAK, _OFF_PEAK],
@@ -253,7 +251,6 @@ async def test_a_plan_is_entered_band_by_band_and_saved_once_every_hour_is_cover
     assert result["type"] is FlowResultType.CREATE_ENTRY
     ((plan_id, plan),) = plans_of(entry).items()
     assert entry.subentries[plan_id].title == "Current plan"
-    assert plan.current is True
     assert plan.holidays is None
     # A new plan's export is capped unless the household says otherwise (HEA-258)
     assert plan.plan == replace(_CURRENT_PLAN, export_cap=ExportCap.MONTHLY)
@@ -420,26 +417,6 @@ async def test_a_price_forgotten_until_the_bands_can_still_be_added(
     ]
 
 
-async def test_making_a_plan_current_makes_the_previous_one_not(
-    hass: HomeAssistant,
-) -> None:
-    # Given - the household's current plan already entered
-    entry = _house(hass, _CURRENT)
-
-    # When - an offer is entered as the plan it is moving to
-    result = await _enter(
-        hass,
-        entry,
-        {**_DETAILS, CONF_NAME: "New offer", CONF_PLAN_CURRENT: True},
-        _ALL_DAY,
-    )
-    await _answer(hass, result, _review(result, "save"))
-
-    # Then - one current plan, never two
-    current = {plan.plan.name: plan.current for plan in plans_of(entry).values()}
-    assert current == {"Current plan": False, "New offer": True}
-
-
 async def test_a_plan_names_the_calendar_its_holidays_come_from(
     hass: HomeAssistant,
 ) -> None:
@@ -535,7 +512,6 @@ async def test_adding_a_grid_meter_still_reloads_the_accounting(
 # An offer with the same bands at its own prices.
 _OFFER = {
     CONF_NAME: "Offer",
-    CONF_PLAN_CURRENT: False,
     CONF_PLAN_DAILY_CHARGE: 2.87,
     CONF_PLAN_EXPORT_PRICE: 0.035,
     # As the copy was offered it: the plan it came from was paid in full.
@@ -574,7 +550,6 @@ async def test_a_plan_is_edited_by_reconfiguring_it(hass: HomeAssistant) -> None
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "reconfigure_successful"
     plan = plans_of(entry)[plan_id]
-    assert plan.current is True
     assert plan.plan.daily_charge == Decimal("0.52")
     assert plan.plan.bands == _CURRENT_PLAN.bands
 
@@ -671,7 +646,6 @@ async def test_a_plan_can_start_from_a_copy_of_another(hass: HomeAssistant) -> N
     offer = next(
         plan for plan_id, plan in plans_of(entry).items() if plan_id != source_id
     )
-    assert offer.current is False
     assert offer.holidays == "calendar.public_holidays"
     assert offer.plan == Plan(
         name="Offer",
@@ -707,11 +681,9 @@ async def test_the_copy_is_filled_in_from_the_plan_it_came_from(
     # Given / When
     result = await _copy(hass, _house(hass, _CURRENT))
 
-    # Then - everything but whether it is the plan the household is on, since a
-    # copy is most often an offer being weighed up
+    # Then - everything it holds
     assert _suggested(result) == {
         CONF_NAME: "Current plan",
-        CONF_PLAN_CURRENT: False,
         CONF_PLAN_DAILY_CHARGE: 0.45,
         CONF_PLAN_EXPORT_PRICE: 0.05,
         CONF_PLAN_EXPORT_CAP: "none",
@@ -845,7 +817,6 @@ async def test_a_plan_without_named_prices_is_given_names_when_edited(
 # A wholesale plan: import at the market, a flat feed-in, and a daily charge.
 _WHOLESALE = {
     CONF_NAME: "Wholesale",
-    CONF_PLAN_CURRENT: False,
     CONF_PLAN_DAILY_CHARGE: 1.10,
     CONF_PLAN_EXPORT_PRICE: 0.05,
     CONF_PLAN_IMPORT_PRICE_ENTITY: "sensor.market_import",
@@ -1344,7 +1315,6 @@ _FREE = {
 }
 _FREE_HOURS_DETAILS = {
     CONF_NAME: "Free hours",
-    CONF_PLAN_CURRENT: False,
     CONF_PLAN_DAILY_CHARGE: 0.9,
     CONF_PLAN_EXPORT_PRICE: 0.05,
     CONF_PRICES: [_ORDINARY, _FREE],

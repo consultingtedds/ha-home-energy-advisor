@@ -48,6 +48,8 @@ SUBENTRY_TYPE_GRID: Final = "grid"
 # the CONF_BAND_* keys naming the price it charges (ADR-0036, HEA-262). Read by
 # the plan comparison only, never by the accounting.
 SUBENTRY_TYPE_PLAN: Final = "plan"
+# Where a plan was marked as the one the household is on, before the integration
+# kept that plan itself (ADR-0042). Only the migration reads it.
 CONF_PLAN_CURRENT: Final = "current_plan"
 # The plan the household is on, priced at the prices Paid is priced at rather
 # than a schedule of its own (ADR-0042).

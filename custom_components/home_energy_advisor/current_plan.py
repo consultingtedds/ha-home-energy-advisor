@@ -104,7 +104,19 @@ def is_current_plan(subentry: ConfigSubentry) -> bool:
 
 def has_current_plan(entry: ConfigEntry) -> bool:
     """Whether the household's current plan exists."""
-    return any(is_current_plan(subentry) for subentry in entry.subentries.values())
+    return current_plan_of(entry) is not None
+
+
+def current_plan_of(entry: ConfigEntry) -> ConfigSubentry | None:
+    """The household's current plan, if it has one yet."""
+    return next(
+        (
+            subentry
+            for subentry in entry.subentries.values()
+            if is_current_plan(subentry)
+        ),
+        None,
+    )
 
 
 async def async_ensure_current_plan(hass: HomeAssistant, entry: ConfigEntry) -> None:
