@@ -60,9 +60,13 @@ const GROUPS = [
 /** A plan with no figure: bands that leave hours unpriced, or no market price. */
 const unpriced = (plan) => Boolean(plan.incomplete || plan.no_price);
 
-/** A plan priced from a market price entity, which says how finely it was priced. */
+/**
+ * A plan priced from a market price entity, which says how finely it was priced.
+ * Not the current plan: it is priced at the household's own prices, hour by hour
+ * too, but those are what it pays rather than a market (ADR-0042).
+ */
 const followsTheMarket = (plan) =>
-  Boolean(plan.rates?.import_market || plan.rates?.export_market);
+  !plan.follows_prices && Boolean(plan.rates?.import_market || plan.rates?.export_market);
 
 /** What a stretch left out had no data for, when it was not a price entity. */
 const GRID_METERS = "grid";
@@ -274,14 +278,17 @@ class HeaPlansCard extends HeaCard {
     if (!this._compared?.plans) return "";
     const plans = [...this._compared.plans].sort(byTotal);
     const priced = plans.filter((plan) => !unpriced(plan));
-    const current = priced.find((plan) => plan.current);
+    const marked = priced.find((plan) => plan.current);
+    // Compared with only once it has its daily charge: without one it would
+    // read cheaper than every plan that has one (ADR-0042).
+    const current = marked?.daily_charge_missing ? undefined : marked;
     // Only worth saying where there is something it is cheaper than.
     const cheapest = priced.length > 1 ? priced[0] : undefined;
     const wide = !this._isNarrow();
     const parts = wide ? PARTS : [];
     const notes = [
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
-      current ? "" : this._labels.plans_no_current,
+      this._currentNote(marked),
       this._labels.plans_note,
       priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",
       wide ? "" : this._labels.plans_breakdown_hidden,
@@ -367,10 +374,17 @@ class HeaPlansCard extends HeaCard {
       .join(" ");
   }
 
+  /** Why no plan is compared with the current one, where none is. */
+  _currentNote(marked) {
+    if (!marked) return this._labels.plans_no_current;
+    return marked.daily_charge_missing ? this._labels.plans_current_daily_missing : "";
+  }
+
   /**
    * A plan's own prices, one to a line as an offer lists them: each named price
    * per kWh, what export pays, and the daily charge. A plan at the market says
-   * so instead of naming a price it does not have.
+   * so instead of naming a price it does not have, and the current plan that
+   * its prices are the ones the household pays.
    */
   _prices(plan, locale) {
     const rates = plan.rates;
@@ -378,6 +392,14 @@ class HeaPlansCard extends HeaCard {
     const unit = rateUnit(locale);
     const line = (label, value) =>
       `<div>${escape(label)} <span class="rate">${value}</span></div>`;
+    const daily = fill(this._labels.plans_per_day, {
+      amount: formatMoney(rates.daily_charge, locale),
+    });
+    if (plan.follows_prices) {
+      const lines = [line(this._labels.plans_your_prices, "")];
+      if (!plan.daily_charge_missing) lines.push(line(this._labels.plans_daily_rate, daily));
+      return `<td class="prices">${lines.join("")}</td>`;
+    }
     const imports = rates.import_market
       ? [line(this._labels.plans_market_price, "")]
       : rates.prices.map((price) =>
@@ -386,9 +408,6 @@ class HeaPlansCard extends HeaCard {
     const exportRate = rates.export_market
       ? this._labels.plans_market_price
       : `${formatRate(rates.export, locale)} ${unit}`;
-    const daily = fill(this._labels.plans_per_day, {
-      amount: formatMoney(rates.daily_charge, locale),
-    });
     const lines = [
       ...imports,
       line(this._labels.plans_export_rate, exportRate),
@@ -434,19 +453,47 @@ class HeaPlansCard extends HeaCard {
       cause.whens.push(this._stretch(stretch, locale));
       byCause.set(key, cause);
     }
-    return [...byCause.values()]
-      .map(({ source, impossible, whens }) => {
-        const when = whens.join(", ");
-        const sensor = source === GRID_METERS ? "" : this._sensor(source);
-        let wording = fill(this._labels.plans_left_out_price, { when, sensor });
-        if (impossible) {
-          wording = fill(this._labels.plans_left_out_impossible, { when, sensor });
-        } else if (source === GRID_METERS) {
-          wording = fill(this._labels.plans_left_out_meters, { when });
-        }
-        return `<div class="flows left-out" data-source="${escape(source)}">${wording}</div>`;
+    // Sources with nothing over exactly the same stretches are said once: a
+    // restart leaves the grid meters and every price sensor followed silent
+    // together, and saying the stretch for each was the same line repeated.
+    const bySpan = new Map();
+    for (const { source, impossible, whens } of byCause.values()) {
+      const when = whens.join(", ");
+      const key = impossible ? `impossible:${source}` : `missing:${when}`;
+      const line = bySpan.get(key) ?? { when, impossible, sources: [] };
+      line.sources.push(source);
+      bySpan.set(key, line);
+    }
+    return [...bySpan.values()]
+      .map((line) => {
+        const sources = escape(line.sources.join(" "));
+        return `<div class="flows left-out" data-source="${sources}">${this._leftOutWording(line, locale)}</div>`;
       })
       .join("");
+  }
+
+  /** What one line of what was left out says, for one source or several. */
+  _leftOutWording({ when, impossible, sources }, locale) {
+    if (impossible) {
+      return fill(this._labels.plans_left_out_impossible, {
+        when,
+        sensor: this._sensor(sources[0]),
+      });
+    }
+    if (sources.length > 1) {
+      const named = sources.map((source) =>
+        source === GRID_METERS ? this._labels.plans_your_grid_meters : this._sensor(source),
+      );
+      const label = this._labels.plans_left_out_many;
+      let listed = new Intl.ListFormat(locale, { type: "conjunction" }).format(named);
+      // Capitalised only where the label starts a sentence with it.
+      if (/(^|[.!?]\s+)\{sources\}/.test(label)) {
+        listed = listed.charAt(0).toLocaleUpperCase(locale) + listed.slice(1);
+      }
+      return fill(label, { when, sources: listed });
+    }
+    if (sources[0] === GRID_METERS) return fill(this._labels.plans_left_out_meters, { when });
+    return fill(this._labels.plans_left_out_price, { when, sensor: this._sensor(sources[0]) });
   }
 
   /**
@@ -608,12 +655,14 @@ class HeaPlansCard extends HeaCard {
   _importLines(plan, locale) {
     const { imports } = plan.breakdown;
     const verdict = this._averageVerdict(plan, locale);
+    // A line with no rate of its own is priced interval by interval: at the
+    // household's own prices on the current plan, at the market otherwise.
+    const intervalPrices =
+      this._labels[plan.follows_prices ? "plans_your_prices" : "plans_market_price"];
     const lines = imports.map((line, index) =>
       billRow(locale, {
         name:
-          line.rate === null
-            ? this._labels.plans_market_price
-            : line.name || this._labels.plans_unnamed_price,
+          line.rate === null ? intervalPrices : line.name || this._labels.plans_unnamed_price,
         rate: line.rate === null ? this._averageOf(line, locale) : this._rate(line.rate, locale),
         used: formatEnergy(line.kwh, locale),
         favour: -line.amount,
@@ -644,7 +693,7 @@ class HeaPlansCard extends HeaCard {
     const { exports } = plan.breakdown;
     const lines = exports.map((line, index) =>
       billRow(locale, {
-        name: this._exportName(line),
+        name: this._exportName(line, plan),
         rate: line.rate === null ? this._averageOf(line, locale) : this._rate(line.rate, locale),
         used: formatEnergy(line.kwh, locale),
         favour: line.amount,
@@ -671,9 +720,14 @@ class HeaPlansCard extends HeaCard {
     return lines;
   }
 
-  /** An export line's name: its price's, or the plan's own export price. */
-  _exportName(line) {
-    if (line.rate === null) return this._labels.plans_market_price;
+  /**
+   * An export line's name: its price's, or the plan's own export price. The
+   * current plan's is the household's own export price, not a market's.
+   */
+  _exportName(line, plan) {
+    if (line.rate === null) {
+      return this._labels[plan.follows_prices ? "plans_your_export_price" : "plans_market_price"];
+    }
     if (line.name) return line.name;
     return line.beyond_allowance
       ? this._labels.plans_export_beyond
@@ -769,6 +823,10 @@ class HeaPlansCard extends HeaCard {
    * plan can be the cheapest while its import timing is poor (HEA-300).
    */
   _part(plan, { key, figure = key, group }, locale, classes = "") {
+    if (key === "daily" && plan.daily_charge_missing) {
+      // Said to be missing rather than shown as nothing, which reads as free.
+      return `<td${classAttribute(classes)} data-figure="${key}:${plan.id}">${this._labels.plans_daily_missing}</td>`;
+    }
     const favour = group === "earn" ? plan[figure] : -plan[figure];
     if (key !== "energy" || !plan.breakdown) {
       return moneyCell(`${key}:${plan.id}`, favour, locale, classes);

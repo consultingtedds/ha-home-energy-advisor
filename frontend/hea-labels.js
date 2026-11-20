@@ -162,7 +162,14 @@ export const DEFAULTS = Object.freeze({
     "compared as you entered them.",
   plans_no_readings:
     "Your grid meters recorded nothing in this period, so there is nothing to compare.",
-  plans_no_current: "Mark one plan as the one you are on to see how the others compare.",
+  plans_no_current:
+    "Your current plan could not be priced for this period, so no plan is compared with it.",
+  plans_current_daily_missing:
+    "Plans are compared with your current plan once it has its daily charge: " +
+    "Settings > Repairs asks for it.",
+  plans_your_prices: "The prices you pay",
+  plans_your_export_price: "Your export price",
+  plans_daily_missing: "Not given yet",
   plans_no_price:
     "{sensors} recorded no statistics in this period, so it cannot be compared. " +
     "Check it in Developer Tools > Statistics.",
@@ -174,6 +181,10 @@ export const DEFAULTS = Object.freeze({
   plans_left_out_price:
     "Left out of every plan, daily charges included: {when}. {sensor} recorded " +
     "no statistics then. Check it in Developer Tools > Statistics.",
+  plans_left_out_many:
+    "Left out of every plan, daily charges included: {when}. {sources} recorded " +
+    "nothing then. Check any sensor named in Developer Tools > Statistics.",
+  plans_your_grid_meters: "your grid meters",
   plans_stretch: "{from} to {to}",
   plans_stretch_kwh: "{from} to {to} ({kwh})",
   plans_left_out_impossible:

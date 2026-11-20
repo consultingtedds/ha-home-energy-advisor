@@ -152,14 +152,16 @@ const nothingTracked = (hass) => ({
 const PLANS = { type: "custom:hea-plans-card" };
 
 /**
- * Whether the household has entered a plan. Asked of the integration, since a
- * plan is an entry rather than an entity; an integration from before plans
- * existed cannot say, and has none.
+ * Whether the household has entered a plan to compare. Asked of the integration,
+ * since a plan is an entry rather than an entity; an integration from before
+ * plans existed cannot say, and has none. The current plan the integration keeps
+ * is not one: every household has it, and alone it has nothing to be compared
+ * with (ADR-0042).
  */
 const hasPlans = async (hass) => {
   try {
     const listed = await hass.callWS({ type: "home_energy_advisor/list_plans" });
-    return Array.isArray(listed?.plans) && listed.plans.length > 0;
+    return Array.isArray(listed?.plans) && listed.plans.some((plan) => !plan.current);
   } catch {
     return false;
   }

@@ -315,6 +315,58 @@ describe("each plan's own prices", () => {
   });
 });
 
+describe("the current plan, priced at the prices the household pays (ADR-0042)", () => {
+  const CURRENT = {
+    ...FLAT,
+    id: "current",
+    name: "Your current plan",
+    current: true,
+    follows_prices: true,
+    rates: {
+      ...NIGHT.rates,
+      prices: [],
+      daily_charge: 0.45,
+      import_market: true,
+      export_market: true,
+    },
+  };
+  const OFFER = NIGHT;
+
+  it("says its prices are the ones the household pays, rather than listing any", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [CURRENT, OFFER] }));
+    await settled(expect, card);
+
+    // Then - its own daily charge still said
+    expect(priceLines(card, "current")).toEqual([LABELS.plans_your_prices, "Daily €0.45/day"]);
+  });
+
+  it("is not said to follow the market, though it is priced hour by hour", async () => {
+    // Given / When - the current plan beside a banded offer, no market plan
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [CURRENT, OFFER] }));
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).not.toContain(LABELS.plans_market_hourly);
+  });
+
+  it("holds every plan's difference from it until it has its daily charge", async () => {
+    // Given - created, its daily charge not given yet
+    const waiting = { ...CURRENT, daily_charge_missing: true, daily_charges: 0 };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [waiting, OFFER] }));
+    await settled(expect, card);
+
+    // Then - still marked and priced, its daily charge said to be missing
+    // rather than shown as nothing, and the reason said once
+    expect(figure(card, "difference:night")).toBeUndefined();
+    expect(figure(card, "daily:current")).toBe(LABELS.plans_daily_missing);
+    expect(text(card)).toContain(LABELS.plans_current_daily_missing);
+    expect(text(card)).not.toContain(LABELS.plans_no_current);
+  });
+});
+
 describe("each plan without solar or battery", () => {
   // The same plans, as the comparison gives them for a house with an
   // installation: what each would have cost buying everything it used.
@@ -563,6 +615,34 @@ describe("plans priced from the market (HEA-260)", () => {
   });
   const leftOut = (card) =>
     [...card.shadowRoot.querySelectorAll(".left-out")].map((line) => line.textContent);
+
+  it("says once what several sources left out over the same stretches", async () => {
+    // Given - Home Assistant was down, so the grid meters and both price
+    // sensors the current plan follows recorded nothing over the same hours
+    const hass = aHome({
+      ...COMPARED,
+      left_out: [
+        stretch(JUNE, JUNE_EVENING, "grid"),
+        stretch(JUNE, JUNE_EVENING, "sensor.day_price"),
+        stretch(JUNE, JUNE_EVENING, "sensor.export_price"),
+      ],
+      plans: [FLAT, SPOT],
+    });
+    const card = mountCard(TAG, hass);
+    await settled(expect, card);
+
+    // Then - one line naming all three, rather than the stretch three times
+    const when = fill(LABELS.plans_stretch, {
+      from: formatDateTime(JUNE, locale(card)),
+      to: formatClockTime(JUNE_EVENING, locale(card)),
+    });
+    const sources = new Intl.ListFormat(locale(card), { type: "conjunction" }).format([
+      "Your grid meters",
+      "sensor.day_price",
+      "sensor.export_price",
+    ]);
+    expect(leftOut(card)).toEqual([fill(LABELS.plans_left_out_many, { when, sources })]);
+  });
 
   it("says what every plan left out, naming the price sensor to check", async () => {
     // Given - the market price recorded nothing on two stretches (HEA-299)

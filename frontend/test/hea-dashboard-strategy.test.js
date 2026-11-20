@@ -34,7 +34,12 @@ const generateView = (hass) =>
 const withAPlan = (hass) => {
   hass.callWS = vi.fn(async ({ type }) => {
     if (type === "home_energy_advisor/list_plans") {
-      return { plans: [{ id: "flat", name: "Flat rate", current: true }] };
+      return {
+        plans: [
+          { id: "flat", name: "Flat rate", current: false },
+          { id: "current", name: "Your current plan", current: true },
+        ],
+      };
     }
     return { resources: {} };
   });
@@ -191,6 +196,22 @@ describe("the dashboard's tabs", () => {
     const { views } = await generateDashboard(hass);
 
     // Then - a tab that could only say there is nothing to compare is not offered
+    expect(views.map((view) => view.path)).not.toContain("tariffs");
+  });
+
+  it("has no tariffs tab where the only plan is the current one the integration keeps", async () => {
+    // Given - no plan typed, only the current plan every household has (ADR-0042)
+    hass.callWS = vi.fn(async ({ type }) => {
+      if (type === "home_energy_advisor/list_plans") {
+        return { plans: [{ id: "current", name: "Your current plan", current: true }] };
+      }
+      return { resources: {} };
+    });
+
+    // When
+    const { views } = await generateDashboard(hass);
+
+    // Then - nothing to compare it with yet
     expect(views.map((view) => view.path)).not.toContain("tariffs");
   });
 
