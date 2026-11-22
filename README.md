@@ -383,7 +383,12 @@ sensors from the plans I've been on** on "Your current plan", and Home Energy
 Advisor adds an **Import price** and an **Export price** sensor. Each follows the
 plan you're on today: its price for this hour, your public holidays from its
 calendar, or its market price as the plan adjusts it. Point your grid meters and
-your Energy Dashboard's export price at them once. Changing plan is then a plan
+your Energy Dashboard's export price at them once. It also adds a **Daily charge
+meter**, rising 0.001 kWh a day, and a **Daily charge cost**, the plan's daily
+charge built up hour by hour: add the meter to your Energy Dashboard as a grid
+source of its own, with the cost as the entity tracking its total costs, and
+choose that source as your current plan's daily charge. Both carry on across a
+restart, so the standing charge is never counted twice or lost. Changing plan is then a plan
 added under Plans you've been on, with the day it starts: the sensors switch at
 midnight that day, and their history keeps every price as it was charged. A plan
 with an allowance gives no price this way yet. Untick the box and the sensors go.

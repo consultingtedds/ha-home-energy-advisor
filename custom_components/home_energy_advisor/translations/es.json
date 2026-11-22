@@ -498,6 +498,12 @@
       },
       "current_plan_export_price": {
         "name": "Precio de exportación"
+      },
+      "current_plan_daily_charge_cost": {
+        "name": "Coste del cargo diario"
+      },
+      "current_plan_daily_charge_meter": {
+        "name": "Contador del cargo diario"
       }
     }
   },

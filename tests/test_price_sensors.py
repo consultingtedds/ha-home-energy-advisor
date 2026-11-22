@@ -16,11 +16,12 @@ from zoneinfo import ZoneInfo
 import pytest
 from homeassistant.config_entries import ConfigSubentryData, ConfigSubentryDataWithId
 from homeassistant.const import CONF_NAME, STATE_UNAVAILABLE
-from homeassistant.core import ServiceCall, ServiceResponse, SupportsResponse
+from homeassistant.core import ServiceCall, ServiceResponse, State, SupportsResponse
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
+    mock_restore_cache,
 )
 
 from custom_components.home_energy_advisor.const import (
@@ -430,3 +431,136 @@ async def test_the_prices_are_recorded_as_a_price_per_kwh_in_the_currency(
     assert state is not None
     assert state.attributes["unit_of_measurement"] == "EUR/kWh"
     assert state.attributes["state_class"] == "measurement"
+
+
+# The daily charge, as a cost and a meter the Energy Dashboard can carry
+
+
+def _number(hass: HomeAssistant, entry: MockConfigEntry, key: str) -> float:
+    return float(_price(hass, entry, key))
+
+
+async def test_the_daily_charge_builds_up_hour_by_hour(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - on Flat, 0.90 a day, provided from 10:00
+    entry = _house(("flat", None), plans={"flat": _FLAT})
+    await _set_up(hass, freezer, entry)
+    assert _number(hass, entry, "daily_charge_cost") == pytest.approx(0)
+
+    # When - midnight
+    await _at(hass, freezer, datetime(2026, 11, 20, 0, tzinfo=MADRID))
+
+    # Then - the 14 hours charged, and the rate in force shown
+    assert _number(hass, entry, "daily_charge_cost") == pytest.approx(0.9 * 14 / 24)
+    state = hass.states.get(str(_entity(hass, entry, "daily_charge_cost")))
+    assert state is not None
+    assert state.attributes["daily_charge"] == pytest.approx(0.9)
+
+
+async def test_a_switch_charges_each_plan_for_its_own_day_exactly(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - Three periods at 1.47 a day until Flat at 0.90 from the 20th
+    _calendar(hass, [])
+    entry = _house(
+        ("three", None),
+        ("flat", "2026-11-20"),
+        plans={"three": _THREE_PERIODS, "flat": _FLAT},
+    )
+    await _set_up(hass, freezer, entry)
+
+    # When - midnight, then the next midnight
+    await _at(hass, freezer, datetime(2026, 11, 20, 0, tzinfo=MADRID))
+    before = _number(hass, entry, "daily_charge_cost")
+    await _at(hass, freezer, datetime(2026, 11, 21, 0, tzinfo=MADRID))
+
+    # Then - the 19th's last 14 hours at 1.47, and the whole 20th at 0.90
+    assert before == pytest.approx(1.47 * 14 / 24)
+    assert _number(hass, entry, "daily_charge_cost") - before == pytest.approx(0.9)
+
+
+async def test_a_23_hour_day_charges_one_day_s_charge(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - provided from the start of 29 March 2026, when the clocks go
+    # forward and the day has 23 hours
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    entry = _house(("flat", None), plans={"flat": _FLAT})
+    freezer.move_to(datetime(2026, 3, 29, 0, tzinfo=MADRID))
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # When - the next midnight
+    await _at(hass, freezer, datetime(2026, 3, 30, 0, tzinfo=MADRID))
+
+    # Then - exactly one day's charge
+    assert _number(hass, entry, "daily_charge_cost") == pytest.approx(0.9)
+
+
+async def test_a_restart_carries_the_daily_charge_on_and_catches_up(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - 5.00 charged until midnight, and Home Assistant back at 06:00
+    entry = _house(("flat", None), plans={"flat": _FLAT})
+    unique = f"{entry.entry_id}_current_plan_daily_charge_cost"
+    er.async_get(hass).async_get_or_create(
+        "sensor", DOMAIN, unique, suggested_object_id="daily_charge_cost"
+    )
+    mock_restore_cache(
+        hass,
+        [
+            State(
+                "sensor.daily_charge_cost",
+                "5.0",
+                {"accrued_until": datetime(2026, 11, 19, 0, tzinfo=MADRID).isoformat()},
+            )
+        ],
+    )
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    freezer.move_to(datetime(2026, 11, 19, 6, tzinfo=MADRID))
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    # Then - never back to zero, and the six hours missed charged
+    assert _number(hass, entry, "daily_charge_cost") == pytest.approx(5 + 0.9 / 4)
+
+
+async def test_the_daily_charge_meter_rises_a_thousandth_of_a_kwh_a_day(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given
+    entry = _house(("flat", None), plans={"flat": _FLAT})
+    await _set_up(hass, freezer, entry)
+
+    # When - a day later
+    await _at(hass, freezer, datetime(2026, 11, 20, 10, tzinfo=MADRID))
+
+    # Then - next to nothing in the grid totals, recorded as energy that only
+    # ever rises
+    assert _number(hass, entry, "daily_charge_meter") == pytest.approx(0.001)
+    state = hass.states.get(str(_entity(hass, entry, "daily_charge_meter")))
+    assert state is not None
+    assert state.attributes["unit_of_measurement"] == "kWh"
+    assert state.attributes["state_class"] == "total_increasing"
+    assert state.attributes["device_class"] == "energy"
+
+
+async def test_the_daily_charge_cost_is_money_that_only_rises(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given
+    entry = _house(("flat", None), plans={"flat": _FLAT})
+
+    # When
+    await _set_up(hass, freezer, entry)
+
+    # Then - a running total in the currency, never reset, so no last_reset
+    state = hass.states.get(str(_entity(hass, entry, "daily_charge_cost")))
+    assert state is not None
+    assert state.attributes["unit_of_measurement"] == "EUR"
+    assert state.attributes["state_class"] == "total"
+    assert state.attributes["device_class"] == "monetary"
+    assert "last_reset" not in state.attributes

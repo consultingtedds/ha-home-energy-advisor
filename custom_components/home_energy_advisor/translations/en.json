@@ -498,6 +498,12 @@
       },
       "current_plan_export_price": {
         "name": "Export price"
+      },
+      "current_plan_daily_charge_cost": {
+        "name": "Daily charge cost"
+      },
+      "current_plan_daily_charge_meter": {
+        "name": "Daily charge meter"
       }
     }
   },

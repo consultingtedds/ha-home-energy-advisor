@@ -498,6 +498,12 @@
       },
       "current_plan_export_price": {
         "name": "Цена экспорта"
+      },
+      "current_plan_daily_charge_cost": {
+        "name": "Стоимость ежедневной платы"
+      },
+      "current_plan_daily_charge_meter": {
+        "name": "Счётчик ежедневной платы"
       }
     }
   },
