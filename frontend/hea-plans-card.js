@@ -289,6 +289,9 @@ class HeaPlansCard extends HeaCard {
     const notes = [
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       this._currentNote(marked),
+      marked?.history_from
+        ? fill(this._labels.plans_current_history_from, { plan: escape(marked.history_from) })
+        : "",
       this._labels.plans_note,
       priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",
       wide ? "" : this._labels.plans_breakdown_hidden,
@@ -534,8 +537,11 @@ class HeaPlansCard extends HeaCard {
     const leading = prices ? 2 : 1;
     const columns = leading + parts.length + 2 + (without ? 1 : 0);
     if (unpriced(plan)) {
+      // The current plan can be priced from a plan named for its price
+      // history, which no other plan can (HEA-311).
+      const noPrice = plan.follows_prices ? "plans_no_price_current" : "plans_no_price";
       const why = plan.no_price
-        ? fill(this._labels.plans_no_price, {
+        ? fill(this._labels[noPrice], {
             sensors: (plan.no_price_entities ?? []).map((id) => this._sensor(id)).join(", "),
           })
         : this._labels.plans_incomplete;

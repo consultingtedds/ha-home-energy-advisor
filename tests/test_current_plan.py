@@ -32,8 +32,11 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
+    CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_FOLLOWS,
+    CONF_PLAN_HISTORY_FROM,
     CONF_PLAN_REPLACED,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -138,7 +141,58 @@ async def test_the_marked_plan_s_billing_rules_move_to_the_current_plan(
         CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
         # So the household can be told the marked plan now duplicates it
         CONF_PLAN_REPLACED: "Octopus Current",
+        # Its prices still price the hours the household's price sensors have
+        # no statistics for, as they did before (HEA-311)
+        CONF_PLAN_HISTORY_FROM: _plans(entry)["Octopus Current"].subentry_id,
     }
+
+
+async def test_a_marked_plan_with_an_allowance_is_not_read_for_price_history(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the marked plan pays its export price on the first 8 kWh a day
+    # only, which no single hour's price can say
+    entry = _entry(
+        hass,
+        {**_MARKED, CONF_PLAN_EXPORT_ALLOWANCE: 8, CONF_PLAN_EXPORT_PRICE_AFTER: 0.01},
+        version=7,
+    )
+
+    # When
+    await _set_up(hass, entry)
+
+    # Then
+    (current,) = _following(entry)
+    assert CONF_PLAN_HISTORY_FROM not in current.data
+
+
+async def test_a_1_7_0_current_plan_is_linked_to_the_plan_it_replaced(
+    hass: HomeAssistant,
+) -> None:
+    # Given - upgraded by 1.7.0, which kept only the replaced plan's name, and
+    # the household not yet told
+    entry = _entry(
+        hass,
+        {**_MARKED, CONF_PLAN_CURRENT: False},
+        {
+            CONF_NAME: "Your current plan",
+            CONF_PLAN_FOLLOWS: True,
+            CONF_PLAN_DAILY_CHARGE: 0.4521,
+            CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
+            CONF_PLAN_REPLACED: "Octopus Current",
+        },
+        version=8,
+    )
+
+    # When
+    await _set_up(hass, entry)
+
+    # Then - its prices read where the sensors have no statistics
+    (current,) = _following(entry)
+    assert (
+        current.data[CONF_PLAN_HISTORY_FROM]
+        == _plans(entry)["Octopus Current"].subentry_id
+    )
 
 
 async def test_the_marked_plan_stays_as_an_ordinary_plan(
@@ -247,16 +301,61 @@ async def test_editing_the_current_plan_asks_only_for_its_billing_rules(
     # When
     form = await _edit_current(hass, entry)
 
-    # Then - its daily charge and cap, with what it holds filled in, and no
-    # prices: those are Paid's. With no grid source in the Energy Dashboard to
-    # follow, there is nothing else to offer
+    # Then - its daily charge and cap, with what it holds filled in, and the
+    # plan its price history is read from; no prices: those are Paid's. With no
+    # grid source in the Energy Dashboard to follow, there is nothing else
     assert form["step_id"] == "current"
     fields = _fields(form)
-    assert set(fields) == {CONF_PLAN_DAILY_CHARGE, CONF_PLAN_EXPORT_CAP}
+    assert set(fields) == {
+        CONF_PLAN_DAILY_CHARGE,
+        CONF_PLAN_EXPORT_CAP,
+        CONF_PLAN_HISTORY_FROM,
+    }
     assert fields[CONF_PLAN_DAILY_CHARGE].description == {"suggested_value": 0.4521}
     assert fields[CONF_PLAN_EXPORT_CAP].description == {
         "suggested_value": ExportCap.MONTHLY.value
     }
+    assert fields[CONF_PLAN_HISTORY_FROM].description == {
+        "suggested_value": _plans(entry)["Octopus Current"].subentry_id
+    }
+
+
+async def test_price_history_is_offered_only_from_plans_priced_by_the_clock(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a plan priced by the clock, and one with an export allowance
+    allowance = {
+        **_OFFER,
+        CONF_NAME: "Capped export",
+        CONF_PLAN_EXPORT_ALLOWANCE: 8,
+        CONF_PLAN_EXPORT_PRICE_AFTER: 0.01,
+    }
+    entry = _entry(hass, _OFFER, allowance, version=8)
+    await _set_up(hass, entry)
+
+    # When
+    form = await _edit_current(hass, entry)
+
+    # Then - only the one an hour's price can be read from, by its name
+    selector = _fields(form)[CONF_PLAN_HISTORY_FROM]
+    options = form["data_schema"].schema[selector].config["options"]
+    assert options == [
+        {"value": _plans(entry)["Naturgy"].subentry_id, "label": "Naturgy"}
+    ]
+
+
+async def test_with_no_typed_plan_no_price_history_is_offered(
+    hass: HomeAssistant,
+) -> None:
+    # Given - no plan entered beside the current one
+    entry = _entry(hass, version=8)
+    await _set_up(hass, entry)
+
+    # When
+    form = await _edit_current(hass, entry)
+
+    # Then
+    assert CONF_PLAN_HISTORY_FROM not in _fields(form)
 
 
 def _fields(form: Any) -> dict[str, Any]:  # noqa: ANN401 - a flow result
@@ -507,6 +606,35 @@ async def test_an_upgrade_is_told_its_marked_plan_now_duplicates_the_current_one
     (current,) = _following(entry)
     assert CONF_PLAN_REPLACED not in current.data
     assert _repair(hass) is None
+
+
+async def test_answering_the_repair_keeps_the_plan_price_history_is_read_from(
+    hass: HomeAssistant,
+) -> None:
+    # Given - upgraded, the marked plan reading the price history
+    entry = _entry(hass, _MARKED, version=7)
+    await _set_up(hass, entry)
+    octopus = _plans(entry)["Octopus Current"].subentry_id
+    form = await _open_repair(hass)
+
+    # When - confirmed as filled in
+    assert _fields(form)[CONF_PLAN_HISTORY_FROM].description == {
+        "suggested_value": octopus
+    }
+    await _answer_repair(
+        hass,
+        form["flow_id"],
+        {
+            CONF_PLAN_DAILY_CHARGE: 0.4521,
+            CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
+            CONF_PLAN_HISTORY_FROM: octopus,
+        },
+    )
+
+    # Then - the note gone, the price history kept (discussion 58)
+    (current,) = _following(entry)
+    assert CONF_PLAN_REPLACED not in current.data
+    assert current.data[CONF_PLAN_HISTORY_FROM] == octopus
 
 
 async def test_giving_the_daily_charge_on_the_plan_s_own_form_clears_the_repair(

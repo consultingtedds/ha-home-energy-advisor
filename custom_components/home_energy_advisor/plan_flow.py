@@ -75,6 +75,7 @@ from .const import (
 )
 from .current_plan import (
     async_daily_charge_sources,
+    history_plans,
     is_current_plan,
     plan_data,
     rules_errors,
@@ -302,6 +303,7 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 rules_schema(
                     self._per_day(labels),
                     await async_daily_charge_sources(self.hass, self._get_entry()),
+                    history_plans(self._get_entry()),
                 ),
                 user_input or rules_of(subentry.data),
             ),

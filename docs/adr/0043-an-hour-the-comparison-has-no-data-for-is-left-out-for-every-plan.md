@@ -131,3 +131,45 @@ up to two hours are bridged rather than left out.**
   ran.
 - Revisit if: price feeds start publishing less often than every two hours, or
   the recorder starts filling its own gaps.
+
+## Amendment, 2026-11-21: the current plan's own price sensors
+
+From HEA-311 (GitHub discussion 58). The decision above stands for every source a
+typed plan follows, and for the grid meters. It no longer applies to a price
+sensor only the current plan follows (ADR-0042), which 1.7.0 treated as it treats
+a market price.
+
+### What was found
+
+Two households on 1.7.0. In one, the grid meter's price sensors had no state
+class, so Home Assistant kept no statistics for them, and the current plan had no
+figures for any period. In the other, the grid meter's price sensor was months
+newer than the energy history, so every day before it was left out. Had either
+sensor's statistics begun part-way through a period, the rule above would have
+left those hours out of every plan, though no other plan needs that sensor's
+prices.
+
+### What changes
+
+- A gap in a price sensor only the current plan follows is the current plan's
+  alone. No other plan leaves its hours out.
+- Its hours are priced at the typed plan the household names under **Price
+  history from**, an hour at a time: that plan's band price at that local hour,
+  or its market price adjusted as it adjusts it. Only a plan priced by the clock
+  can be named, since an allowance depends on what was used, not the hour. The
+  card says which plan priced them.
+- With no plan named, or one that has no price for the hour either, the current
+  plan is listed as unpriced, naming the sensor and both ways to put it right.
+- A sensor a typed plan shares, and which recorded nothing in the period, is
+  priced the same way for the current plan. It already left no hour out (it is
+  "silent"), so nothing changes for the other plans. A shared sensor's gap
+  *within* the period is still left out for every plan, as above, since the
+  typed plan sharing it has no price for those hours.
+
+### Consequences
+
+- Over a period where a sensor began part-way, the other plans are now compared
+  over the whole period rather than only the hours after it. Their totals rise to
+  match.
+- A period asked for one day at a time and the same period asked at once can
+  still differ, where a shared sensor began part-way. That was already so.

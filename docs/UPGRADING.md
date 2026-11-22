@@ -32,6 +32,16 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**Your current plan is priced again where your price sensors have no history.**
+1.7.0 priced it only from your price sensors' statistics, so a sensor without the
+state class `measurement` left it with no figures at all. Now the hours a sensor
+has none are priced at the plan chosen under **Price history from**, in your
+current plan's settings. If you had marked a plan as yours before 1.7.0, it is
+chosen for you, unless you have already answered the notice in Settings >
+Repairs: then choose it yourself.
+
 ## 1.7.0
 
 **Your current plan is now kept for you, and priced at what you pay.** Rather

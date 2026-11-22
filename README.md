@@ -369,6 +369,14 @@ at a fixed number, has no history: changing it later changes every period the
 card compares, the past included. Prices that come from sensors keep their
 history.
 
+That history is only there if Home Assistant keeps statistics for the sensor,
+which needs the state class `measurement`. For any hours your price sensors have
+none, as before a sensor was added or while it had no state class, choose the
+plan you were on then under **Price history from** on "Your current plan": those
+hours are priced at that plan's prices, and the card says so. Without it, your
+current plan cannot be priced over those hours, and the card names the sensor.
+The plan you had marked as your own before 1.7.0 is chosen for you.
+
 Add each offer with **Add tariff plan** on the Home Energy Advisor card in
 **Settings** > **Devices & services**:
 

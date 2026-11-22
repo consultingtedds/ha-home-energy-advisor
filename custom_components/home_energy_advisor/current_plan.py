@@ -29,13 +29,16 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
+    CONF_PLAN_HISTORY_FROM,
     CONF_PLAN_REPLACED,
     SUBENTRY_TYPE_PLAN,
 )
 from .energy_dashboard import async_energy_prefs, grid_import_costs
 from .engine.plan_pricing import ExportCap
+from .engine.plan_schedule import follows_the_clock
 from .house_inputs import grid_meters_of
 from .schemas import vol
+from .tariff_plans import plans_of, tariff_plan_from
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -45,8 +48,14 @@ if TYPE_CHECKING:
 
 # Its name where the household's language has none.
 _NAME = "Your current plan"
-# What the form asks: the billing rules no price sensor holds (ADR-0042).
-_RULES = (CONF_PLAN_DAILY_CHARGE, CONF_PLAN_DAILY_CHARGE_SOURCE, CONF_PLAN_EXPORT_CAP)
+# What the form asks: the billing rules no price sensor holds (ADR-0042), and
+# the plan whose prices stand in where the sensors have no statistics (HEA-311).
+_RULES = (
+    CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_EXPORT_CAP,
+    CONF_PLAN_HISTORY_FROM,
+)
 
 
 async def async_daily_charge_sources(
@@ -74,12 +83,30 @@ async def async_daily_charge_sources(
     return options
 
 
-def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.Schema:
-    """The current plan's form: its daily charge, typed or followed, and its cap.
+def history_plans(entry: ConfigEntry) -> list[selector.SelectOptionDict]:
+    """The typed plans the current plan's price history can be read from.
+
+    Each priced by the clock alone, by its name: a plan with an allowance
+    charges by how much was used, which no single hour's price says (HEA-311).
+    """
+    return [
+        selector.SelectOptionDict(value=plan_id, label=tariff.plan.name)
+        for plan_id, tariff in plans_of(entry).items()
+        if follows_the_clock(tariff.plan)
+    ]
+
+
+def rules_schema(
+    per_day: str,
+    sources: list[selector.SelectOptionDict],
+    plans: list[selector.SelectOptionDict],
+) -> vol.Schema:
+    """The current plan's form: its daily charge, its cap, and its price history.
 
     Both ways of giving the daily charge are optional to the form, which checks
     that exactly one was given (`rules_errors`). A source to follow is offered
-    only where the Energy Dashboard has one.
+    only where the Energy Dashboard has one, and a plan to read price history
+    from only where one has been entered.
     """
     following = (
         {
@@ -90,6 +117,17 @@ def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.
             )
         }
         if sources
+        else {}
+    )
+    history = (
+        {
+            vol.Optional(CONF_PLAN_HISTORY_FROM): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=plans, mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
+        }
+        if plans
         else {}
     )
     return vol.Schema(
@@ -112,6 +150,7 @@ def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.
                     translation_key=CONF_PLAN_EXPORT_CAP,
                 )
             ),
+            **history,
         }
     )
 
@@ -196,7 +235,9 @@ def take_the_marked_plan_s_rules(
     The plan stays, prices and all, as an ordinary plan: its row beside the
     current plan's shows where its typed prices and the household's own disagree.
     Only its daily charge and cap go to the current plan, with its name, so the
-    Repair can tell the household it now duplicates the current plan.
+    Repair can tell the household it now duplicates the current plan. Its prices
+    still stand in where the household's price sensors have no statistics, as
+    they priced every hour before (HEA-311).
     """
     # Only one plan is ever marked, so nothing is read after it is changed.
     for subentry in entry.subentries.values():
@@ -214,8 +255,39 @@ def take_the_marked_plan_s_rules(
                 if key in subentry.data
             },
             CONF_PLAN_REPLACED: subentry.title,
+            **_history_from(subentry),
         }
     return {}
+
+
+def _history_from(plan: ConfigSubentry) -> dict[str, str]:
+    """The current plan's price history read from this plan, where it can be."""
+    if not follows_the_clock(tariff_plan_from(plan.title, plan.data).plan):
+        return {}
+    return {CONF_PLAN_HISTORY_FROM: plan.subentry_id}
+
+
+@callback
+def link_the_replaced_plan(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Read the price history from the plan the current plan replaced.
+
+    For a current plan made before it could be: 1.7.0 kept only the replaced
+    plan's name, and priced no hour its sensors had no statistics for. Only
+    until the household has answered for it, since an answer chose for itself.
+    """
+    current = current_plan_of(entry)
+    if current is None or CONF_PLAN_HISTORY_FROM in current.data:
+        return
+    replaced = current.data.get(CONF_PLAN_REPLACED)
+    if not replaced:
+        return
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type == SUBENTRY_TYPE_PLAN and subentry.title == replaced:
+            if link := _history_from(subentry):
+                hass.config_entries.async_update_subentry(
+                    entry, current, data={**current.data, **link}
+                )
+            return
 
 
 def needs_answer(plan: ConfigSubentry) -> bool:

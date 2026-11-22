@@ -36,6 +36,7 @@ from .const import (
 from .current_plan import (
     async_daily_charge_sources,
     current_plan_of,
+    history_plans,
     plan_data,
     rules_errors,
     rules_of,
@@ -133,7 +134,9 @@ class CurrentPlanFlow(RepairsFlow):
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(
                 rules_schema(
-                    per_day, await async_daily_charge_sources(self.hass, entry)
+                    per_day,
+                    await async_daily_charge_sources(self.hass, entry),
+                    history_plans(entry),
                 ),
                 answered or rules_of(plan.data),
             ),

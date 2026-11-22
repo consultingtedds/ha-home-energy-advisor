@@ -50,11 +50,15 @@ from custom_components.home_energy_advisor.const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
+    CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_FOLLOWS,
+    CONF_PLAN_HISTORY_FROM,
     CONF_PLAN_HOLIDAYS,
+    CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PRICE_ENTITY,
     CONF_PRICES,
@@ -1858,3 +1862,326 @@ async def test_without_a_daily_charge_the_current_plan_says_so(
     assert current["energy"] == pytest.approx(2.5 * 0.2)
     assert current["daily_charges"] == pytest.approx(0)
     assert current["daily_charge_missing"] is True
+
+
+# Hours the current plan's price sensors have no statistics for (HEA-311)
+
+# The grid meter priced by a sensor, as most households' is.
+_GRID_PRICED = {
+    CONF_NAME: "Grid",
+    CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+    CONF_GRID_EXPORT_ENTITY: "sensor.grid_export",
+    CONF_PRICE_ENTITY: "sensor.grid_buy_price",
+}
+
+
+def _a_price_without_statistics(hass: HomeAssistant, entity: str) -> None:
+    """A price sensor Home Assistant keeps no statistics for: no state class."""
+    hass.states.async_set(entity, "0.3", {"unit_of_measurement": "EUR/kWh"})
+
+
+async def _price_history_from(hass: HomeAssistant, title: str) -> None:
+    """Have the current plan read the prices its sensors lack from this plan."""
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    by_title = {subentry.title: subentry for subentry in entry.subentries.values()}
+    current = by_title[_CURRENT]
+    hass.config_entries.async_update_subentry(
+        entry,
+        current,
+        data={**current.data, CONF_PLAN_HISTORY_FROM: by_title[title].subentry_id},
+    )
+    await hass.async_block_till_done()
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_hours_without_the_sensor_s_statistics_are_priced_at_the_plan_named(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the grid meter's price sensor recorded from 12:00 only, at 0.30,
+    # and the current plan's price history read from the night saver
+    _calendar(hass, [])
+    await _energy_dashboard_export(hass, number=0.05)
+    _record_prices(hass, "sensor.grid_buy_price", dict.fromkeys(range(12, 24), 0.30))
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Night saver")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - 07:00's 1 kWh at the night saver's overnight 0.09, a Wednesday;
+    # 12:00's 0.5 and 20:00's 1 at the sensor's 0.30; and the card told which
+    # plan priced the hours the sensor has no statistics for
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(1.0 * 0.09 + 1.5 * 0.30)
+    assert current["history_from"] == "Night saver"
+    # Nothing left out for any plan: no other plan follows that sensor
+    assert result["left_out"] == []
+    assert result["hours"] == 24
+    assert _by_name(result)["Flat rate"]["energy"] == pytest.approx(2.5 * 0.234)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_sensor_with_no_statistics_at_all_is_priced_at_the_plan_named(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the grid meter's price sensor has no state class, so no
+    # statistics, as discussion 58 found
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Flat rate")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - every hour at the flat rate's 0.234, rather than no figures at all
+    current = _by_name(result)[_CURRENT]
+    assert "no_price" not in current
+    assert current["energy"] == pytest.approx(2.5 * 0.234)
+    assert current["export_credit"] == pytest.approx(2.0 * 0.05)
+    assert current["history_from"] == "Flat rate"
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_day_a_shared_sensor_recorded_nothing_is_priced_at_the_plan_named(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the grid meter priced by the same sensor a wholesale plan follows,
+    # with no statistics that day, as before the sensor existed (discussion 58)
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (
+                SUBENTRY_TYPE_PLAN,
+                {**_MARKET, CONF_PLAN_IMPORT_PRICE_ENTITY: "sensor.grid_buy_price"},
+            ),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Flat rate")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the current plan at the flat rate's 0.234; the wholesale plan
+    # still cannot be priced, since its price is the sensor's own
+    plans = _by_name(result)
+    assert plans[_CURRENT]["energy"] == pytest.approx(2.5 * 0.234)
+    assert plans[_CURRENT]["history_from"] == "Flat rate"
+    assert plans["Wholesale"]["no_price"] is True
+    assert result["left_out"] == []
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_shared_sensor_s_gap_within_the_period_is_left_out_for_every_plan(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the shared sensor recorded from 12:00, so the wholesale plan has
+    # no price for the morning, and a plan named for the price history
+    await _energy_dashboard_export(hass, number=0.05)
+    _record_prices(hass, "sensor.grid_buy_price", dict.fromkeys(range(12, 24), 0.30))
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (
+                SUBENTRY_TYPE_PLAN,
+                {**_MARKET, CONF_PLAN_IMPORT_PRICE_ENTITY: "sensor.grid_buy_price"},
+            ),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Flat rate")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the morning left out of every plan, so all are compared over the
+    # same hours (ADR-0043); the current plan at the sensor's price for the rest
+    assert [stretch["source"] for stretch in result["left_out"]] == [
+        "sensor.grid_buy_price"
+    ]
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(1.5 * 0.30)
+    assert "history_from" not in current
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_market_plan_named_prices_the_gap_at_its_market_price_adjusted(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the grid meter's price sensor with no statistics, and the plan
+    # named a wholesale one adding 0.05 to its market price, as discussion 58's
+    # old plan was: 0.10 before noon, 0.20 to 20:00, 0.30 after
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    _record_prices(
+        hass,
+        "sensor.market_import",
+        {
+            **dict.fromkeys(range(12), 0.10),
+            **dict.fromkeys(range(12, 20), 0.20),
+            **dict.fromkeys(range(20, 24), 0.30),
+        },
+    )
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, {**_MARKET, CONF_PLAN_IMPORT_PRICE_ADD: 0.05}),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Wholesale")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - each hour at the market's price that hour, plus the 0.05
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(1.0 * 0.15 + 0.5 * 0.25 + 1.0 * 0.35)
+    assert current["history_from"] == "Wholesale"
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_export_price_without_statistics_is_read_from_the_plan_named(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the Energy Dashboard's export price a sensor with no statistics,
+    # the grid meter at a fixed 0.20
+    _calendar(hass, [])
+    await _energy_dashboard_export(hass, entity="sensor.grid_sell_price")
+    _a_price_without_statistics(hass, "sensor.grid_sell_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Night saver")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - 12:00's 2 kWh out at the night saver's 0.04, its import at the
+    # meter's own 0.20
+    current = _by_name(result)[_CURRENT]
+    assert current["export_credit"] == pytest.approx(2.0 * 0.04)
+    assert current["energy"] == pytest.approx(2.5 * 0.2)
+    assert current["history_from"] == "Night saver"
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_with_no_plan_named_a_sensor_s_gap_leaves_only_the_current_plan_out(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the price sensor recorded from 12:00 only, and no plan named to
+    # read the morning's prices from
+    await _energy_dashboard_export(hass, number=0.05)
+    _record_prices(hass, "sensor.grid_buy_price", dict.fromkeys(range(12, 24), 0.30))
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the current plan says which sensor it lacks prices from; every
+    # other plan is still priced over the whole day, since none follows it
+    current = _by_name(result)[_CURRENT]
+    assert current["no_price"] is True
+    assert current["no_price_entities"] == ["sensor.grid_buy_price"]
+    assert result["left_out"] == []
+    assert result["hours"] == 24
+    assert _by_name(result)["Flat rate"]["energy"] == pytest.approx(2.5 * 0.234)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_plan_named_is_said_only_where_it_priced_an_hour(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the price sensor recorded all day
+    await _energy_dashboard_export(hass, number=0.05)
+    _record_prices(hass, "sensor.grid_buy_price", dict.fromkeys(range(24), 0.30))
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Flat rate")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - every hour at the sensor's own price, and nothing said
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(2.5 * 0.30)
+    assert "history_from" not in current
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_plan_with_an_allowance_cannot_price_the_hours_a_sensor_lacks(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the plan named pays its export price on the first 8 kWh a day
+    # only, which no single hour's price can say
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    allowance = {
+        **_FLAT,
+        CONF_NAME: "Capped export",
+        CONF_PLAN_EXPORT_ALLOWANCE: 8,
+        CONF_PLAN_EXPORT_PRICE_AFTER: 0.01,
+    }
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, allowance),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Capped export")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - unpriced, as with no plan named, rather than priced wrongly
+    current = _by_name(result)[_CURRENT]
+    assert current["no_price"] is True
+    assert current["no_price_entities"] == ["sensor.grid_buy_price"]

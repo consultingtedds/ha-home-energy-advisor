@@ -127,3 +127,18 @@ types only the billing rules that no price sensor can hold.**
   ran.
 - Revisit if the Energy Dashboard gains a daily charge or a cap of its own: the
   current plan would follow it as it follows the prices.
+
+## Amendment, 2026-11-21: where the prices have no history
+
+From HEA-311 (GitHub discussion 58). The decision above stands. It assumed every
+price sensor it follows keeps statistics. One that has no state class keeps
+none, and one added later has none before it was added. In either case 1.7.0
+left the current plan with no figures.
+
+The current plan also holds **Price history from**: a typed plan, priced by the
+clock, whose prices stand in for any hour the sensors have no statistics for.
+The upgrade fills it with the plan that was marked as the household's, which
+priced every hour before. A current plan made by 1.7.0 gets it on the next start,
+while the Repair is still waiting. Answering the Repair keeps it. How those hours
+are chosen, and what the other plans do with them, is ADR-0043's 2026-11-21
+amendment.

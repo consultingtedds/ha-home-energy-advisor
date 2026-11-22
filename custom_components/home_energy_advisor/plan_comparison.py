@@ -15,7 +15,10 @@ for, and hour by hour before it.
 A stretch with no data - no grid statistics, or no price for a market price a
 plan follows - is bridged where it is two hours or less, a missing price
 carrying the last one. A longer one is left out for every plan, its daily
-charges with it, and said (ADR-0043).
+charges with it, and said (ADR-0043). A price sensor only the current plan
+follows is the exception: its gaps are the current plan's alone, priced at the
+plan named for its price history, or leaving it unpriced (HEA-311). The same
+plan prices a shared sensor that recorded nothing in the period.
 """
 
 from __future__ import annotations
@@ -49,6 +52,7 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
+    CONF_PLAN_HISTORY_FROM,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     DOMAIN,
     IMPOSSIBLE_KWH_PER_HOUR,
@@ -66,6 +70,7 @@ from .engine.plan_pricing import (
     days_covered,
     price_plan,
 )
+from .engine.plan_schedule import export_price_at, follows_the_clock, import_price_at
 from .house_inputs import GridMeter, batteries_of, grid_meters_of, house_entities
 from .schemas import vol
 from .tariff_plans import TariffPlan, plans_of
@@ -94,6 +99,8 @@ _GRID_METERS = "grid"
 # Not an entity: the current plan's import price per interval, every grid meter
 # at its own, worked out here (ADR-0042).
 _PAID_IMPORT = f"{DOMAIN}.paid_import"
+# Nor this: its export price per interval, where a price sensor gives it.
+_PAID_EXPORT = f"{DOMAIN}.paid_export"
 # A change beyond it, either way, is a fault in the statistics, and its interval
 # is left out (ADR-0044).
 _CEILING_PER_HOUR = Decimal(IMPOSSIBLE_KWH_PER_HOUR)
@@ -161,6 +168,9 @@ class _Paid:
     export_number: Decimal | None
     # The statistic the followed grid source's cost is recorded in, if it has one.
     daily_statistic: str | None = None
+    # The typed plan whose prices stand in where the price sensors have no
+    # statistics, by subentry id (HEA-311).
+    history_id: str | None = None
 
     @property
     def entities(self) -> set[str]:
@@ -209,7 +219,7 @@ class _Paid:
             current=True,
             holidays=None,
             import_entity=_PAID_IMPORT,
-            export_entity=self.export_entity,
+            export_entity=_PAID_EXPORT if self.export_entity else None,
         )
 
 
@@ -232,50 +242,173 @@ async def _paid_prices(hass: HomeAssistant, entry: ConfigEntry) -> _Paid | None:
         entity,
         number,
         costs[source][0] if source in costs else None,
+        current.data.get(CONF_PLAN_HISTORY_FROM) or None,
     )
 
 
-def _paid_import(
-    recorded: _Recorded,
-    paid: _Paid,
-    prices: Mapping[str, Mapping[datetime, Decimal]],
-) -> dict[datetime, Decimal]:
-    """Each interval's import price, as Paid prices it: every meter at its own.
+@dataclass(frozen=True)
+class _History:
+    """The typed plan whose prices stand in where the price sensors have none.
 
-    One price per interval, the meters' own weighted by what each imported, so
-    the interval's import at it costs exactly what Paid charges. An interval a
-    price entity has no price before yet is left for the engine to refuse, as a
-    market price is.
+    Priced by the clock alone, so an hour's price is its band's at that local
+    hour, or its market price's, adjusted as the plan adjusts it (HEA-311).
     """
-    if not paid.meters:
-        return {}
-    series = {entity: _Series(prices.get(entity, {})) for entity in paid.entities}
-    blended: dict[datetime, Decimal] = {}
-    for interval in recorded.intervals:
-        moment = interval.start.astimezone(UTC)
-        rates: dict[str, Decimal] = {}
-        for meter in paid.meters:
-            rate = (
-                series[meter.price_entity].at(moment)
-                if meter.price_entity
-                else meter.fixed_price
-            )
-            if rate is None:
-                break
-            rates[meter.imported] = rate
-        else:
+
+    tariff: TariffPlan
+    holidays: frozenset[date]
+    prices: Mapping[str, _Series]
+
+    def import_at(self, start: datetime) -> Decimal | None:
+        plan = self.tariff.plan
+        if self.tariff.import_entity:
+            price = self.prices[self.tariff.import_entity].at(start.astimezone(UTC))
+            return None if price is None else plan.import_adjustment.apply(price)
+        return import_price_at(plan, start, self.holidays)
+
+    def export_at(self, start: datetime) -> Decimal | None:
+        plan = self.tariff.plan
+        if self.tariff.export_entity:
+            price = self.prices[self.tariff.export_entity].at(start.astimezone(UTC))
+            return None if price is None else plan.export_adjustment.apply(price)
+        return export_price_at(plan, start, self.holidays)
+
+
+async def _history_of(
+    basis: _Basis, paid: _Paid, tariffs: Mapping[str, TariffPlan]
+) -> _History | None:
+    """The plan named for the current plan's price history, where it can be read."""
+    tariff = tariffs.get(paid.history_id) if paid.history_id else None
+    if tariff is None or not follows_the_clock(tariff.plan):
+        return None
+    holidays = (
+        await _holidays(basis.hass, tariff.holidays, basis.start, basis.end)
+        if tariff.holidays
+        else frozenset()
+    )
+    entities = [e for e in (tariff.import_entity, tariff.export_entity) if e]
+    return _History(
+        tariff,
+        holidays,
+        {entity: _Series(basis.prices.get(entity, {})) for entity in entities},
+    )
+
+
+class _PaidPrices:
+    """Each interval's prices as Paid prices it, which the current plan follows.
+
+    Import at one price per interval, the meters' own weighted by what each
+    imported, so the interval's import at it costs exactly what Paid charges;
+    export at the Energy Dashboard's price sensor where it has one.
+
+    Where a price sensor no other plan follows has no statistics, its interval
+    is priced at the plan named for the price history, and `stood_in` says so;
+    with none to read, the sensor is `lacking`, and the current plan cannot be
+    priced (HEA-311). Any other price is carried as a market price is, and an
+    interval it has no price before yet is left for the engine to refuse.
+    """
+
+    def __init__(
+        self,
+        basis: _Basis,
+        paid: _Paid,
+        gaps: Mapping[str, list[_Stretch]],
+        history: _History | None,
+    ) -> None:
+        self._recorded = basis.recorded
+        self._kept = {interval.start for interval in basis.intervals}
+        self._series = {
+            entity: _Series(basis.prices.get(entity, {})) for entity in paid.entities
+        }
+        self._gaps = gaps
+        self._history = history
+        self.lacking: set[str] = set()
+        self.stood_in = False
+        self.imported = self._imported(paid)
+        self.exported = self._exported(paid.export_entity)
+
+    def _exported(self, entity: str | None) -> dict[datetime, Decimal]:
+        if entity is None:
+            return {}
+        exported: dict[datetime, Decimal] = {}
+        for interval in self._recorded.intervals:
+            rate = self._rate(entity, interval, exported=True)
+            if rate is not None:
+                exported[interval.start.astimezone(UTC)] = rate
+        return exported
+
+    def _imported(self, paid: _Paid) -> dict[datetime, Decimal]:
+        blended: dict[datetime, Decimal] = {}
+        for interval in self._recorded.intervals:
+            moment = interval.start.astimezone(UTC)
+            rates = {
+                meter.imported: (
+                    self._rate(meter.price_entity, interval, exported=False)
+                    if meter.price_entity
+                    else meter.fixed_price
+                )
+                for meter in paid.meters
+            }
+            known = {meter: rate for meter, rate in rates.items() if rate is not None}
+            if not known or len(known) < len(rates):
+                continue
             kwh = {
-                meter: recorded.imported_by_meter.get(meter, {}).get(moment, Decimal(0))
-                for meter in rates
+                meter: self._recorded.imported_by_meter.get(meter, {}).get(
+                    moment, Decimal(0)
+                )
+                for meter in known
             }
             total = sum(kwh.values(), Decimal(0))
             blended[moment] = (
-                sum((kwh[meter] * rate for meter, rate in rates.items()), Decimal(0))
+                sum((kwh[meter] * rate for meter, rate in known.items()), Decimal(0))
                 / total
                 if total
-                else sum(rates.values(), Decimal(0)) / len(rates)
+                else sum(known.values(), Decimal(0)) / len(known)
             )
-    return blended
+        return blended
+
+    def _rate(
+        self, entity: str, interval: IntervalOfEnergy, *, exported: bool
+    ) -> Decimal | None:
+        moment = interval.start.astimezone(UTC)
+        length = self._recorded.length_at(moment)
+        if not any(gap.overlaps(moment, length) for gap in self._gaps.get(entity, ())):
+            return self._series[entity].at(moment)
+        stood: Decimal | None = None
+        if self._history is not None:
+            stood = (
+                self._history.export_at(interval.start)
+                if exported
+                else self._history.import_at(interval.start)
+            )
+        if interval.start in self._kept:
+            if stood is None:
+                self.lacking.add(entity)
+            else:
+                self.stood_in = True
+        return stood
+
+
+def _gaps(
+    recorded: _Recorded,
+    prices: Mapping[str, Mapping[datetime, Decimal]],
+    entities: Iterable[str],
+    span: tuple[datetime, datetime],
+) -> dict[str, list[_Stretch]]:
+    """Each price entity's stretches with no statistics, too long to bridge."""
+    start, end = span
+    return {
+        entity: [
+            _Stretch(max(gap_start, start), gap_end, entity)
+            for gap_start, gap_end in _uncovered(
+                list(prices.get(entity, {})),
+                recorded,
+                (start - _BRIDGE, end),
+                counted=False,
+            )
+            if gap_end > start
+        ]
+        for entity in entities
+    }
 
 
 class _Series:
@@ -421,12 +554,16 @@ async def async_compare_plans(
     exports = {grid.exported for grid in meters if grid.exported}
     tariffs = plans_of(entry)
     paid = await _paid_prices(hass, entry)
-    markets = {
+    typed = {
         entity
         for tariff in tariffs.values()
         for entity in (tariff.import_entity, tariff.export_entity)
         if entity
-    } | (paid.entities if paid else set())
+    }
+    # A price sensor only the current plan follows leaves no hour out for the
+    # plans that do not: its gaps are the current plan's alone (HEA-311).
+    own = paid.entities - typed if paid else set()
+    markets = typed | own
     # Five minutes at a time only where a market price changes within the hour:
     # a band prices five minutes exactly as it prices their hour.
     recorded = await _recorded_flows(
@@ -441,7 +578,7 @@ async def async_compare_plans(
     silent = {e for e in markets if not _any_within(prices, e, start, end)}
     used, use_impossible = await _recorded_use(hass, entry, recorded, start, end)
     left_out = _with_impossible(
-        _left_out(recorded, prices, markets - silent, start, charged_until),
+        _left_out(recorded, prices, typed - silent, start, charged_until),
         [*recorded.impossible, *use_impossible],
     )
     intervals = _kept(recorded, left_out)
@@ -456,15 +593,17 @@ async def async_compare_plans(
     days = period - missing
     basis = _Basis(hass, start, end, recorded, intervals, prices, used, silent, days)
     flags: dict[str, Any] = {}
+    lacking: list[str] = []
+    # Where the plan named for the current plan's price history can stand in:
+    # a sensor only it follows, and one a typed plan shares that recorded
+    # nothing in the period, which leaves no hour out for anyone (HEA-311).
+    stand_in = own | (paid.entities & silent) if paid else set()
     if paid:
-        prices[_PAID_IMPORT] = _paid_import(recorded, paid, prices)
-        daily_charge = await paid.daily_charge(hass, basis)
-        tariffs = {**tariffs, paid.plan_id: paid.tariff(daily_charge)}
-        # Without a daily charge it would read cheaper than every plan with one,
-        # so the card holds each plan's difference from it (ADR-0042).
-        flags = {"follows_prices": True} | (
-            {"daily_charge_missing": True} if daily_charge is None else {}
+        gaps = _gaps(recorded, prices, stand_in, (start, charged_until))
+        current, flags, lacking = await _current_plan(
+            basis, paid, tariffs, gaps, prices
         )
+        tariffs = {**tariffs, paid.plan_id: current}
     plans = []
     for plan_id, tariff in tariffs.items():
         is_paid = paid is not None and plan_id == paid.plan_id
@@ -475,8 +614,11 @@ async def async_compare_plans(
             "rates": _rates(tariff),
             **(flags if is_paid else {}),
         }
+        if is_paid and lacking:
+            plans.append({**named, "no_price": True, "no_price_entities": lacking})
+            continue
         followed = (
-            sorted(paid.entities)
+            sorted(paid.entities - stand_in)
             if paid is not None and is_paid
             else [e for e in (tariff.import_entity, tariff.export_entity) if e]
         )
@@ -498,6 +640,38 @@ async def async_compare_plans(
         ],
         "plans": plans,
     }
+
+
+async def _current_plan(
+    basis: _Basis,
+    paid: _Paid,
+    tariffs: Mapping[str, TariffPlan],
+    gaps: Mapping[str, list[_Stretch]],
+    prices: dict[str, dict[datetime, Decimal]],
+) -> tuple[TariffPlan, dict[str, Any], list[str]]:
+    """The current plan as priced, what its row says, and the sensors it lacks.
+
+    Its prices per interval go into `prices`, the comparison's market prices,
+    where the engine reads them. Without a daily charge it would read cheaper
+    than every plan with one, so the card holds each plan's difference from it
+    (ADR-0042); and its row names the plan that priced the hours its sensors had
+    no statistics for (HEA-311).
+    """
+    history = await _history_of(basis, paid, tariffs)
+    paid_prices = _PaidPrices(basis, paid, gaps, history)
+    prices[_PAID_IMPORT] = paid_prices.imported
+    prices[_PAID_EXPORT] = paid_prices.exported
+    daily_charge = await paid.daily_charge(basis.hass, basis)
+    flags = (
+        {"follows_prices": True}
+        | ({"daily_charge_missing": True} if daily_charge is None else {})
+        | (
+            {"history_from": history.tariff.plan.name}
+            if history and paid_prices.stood_in
+            else {}
+        )
+    )
+    return paid.tariff(daily_charge), flags, sorted(paid_prices.lacking)
 
 
 @dataclass(frozen=True)
@@ -578,17 +752,8 @@ def _left_out(
             counted=True,
         )
     ]
-    for entity in sorted(entities):
-        stretches += [
-            _Stretch(max(gap_start, start), gap_end, entity)
-            for gap_start, gap_end in _uncovered(
-                list(prices.get(entity, {})),
-                recorded,
-                (start - _BRIDGE, end),
-                counted=False,
-            )
-            if gap_end > start
-        ]
+    for gaps in _gaps(recorded, prices, entities, (start, end)).values():
+        stretches += gaps
     return sorted(stretches, key=lambda stretch: (stretch.start, stretch.source))
 
 

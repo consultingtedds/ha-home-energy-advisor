@@ -365,6 +365,45 @@ describe("the current plan, priced at the prices the household pays (ADR-0042)",
     expect(text(card)).toContain(LABELS.plans_current_daily_missing);
     expect(text(card)).not.toContain(LABELS.plans_no_current);
   });
+
+  it("names the plan that priced the hours its price sensors have no statistics for", async () => {
+    // Given - priced at the household's own words for a plan where its price
+    // sensor has no statistics (HEA-311)
+    const filled = { ...CURRENT, history_from: "Covau <b>&</b> Co" };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [filled, OFFER] }));
+    await settled(expect, card);
+
+    // Then - said once, the name shown as text
+    expect(text(card)).toContain(
+      fill(LABELS.plans_current_history_from, { plan: "Covau <b>&</b> Co" }),
+    );
+    expect(card.shadowRoot.querySelector(".hint b")).toBeNull();
+  });
+
+  it("says how to price it where a price sensor has no statistics", async () => {
+    // Given - its price sensor without statistics for part of the period, and
+    // no plan named for its price history
+    const lacking = {
+      id: "current",
+      name: "Your current plan",
+      current: true,
+      follows_prices: true,
+      no_price: true,
+      no_price_entities: ["sensor.grid_buy_price"],
+    };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [lacking, OFFER] }));
+    await settled(expect, card);
+
+    // Then - the sensor named, with both ways to put it right
+    const row = card.shadowRoot.querySelector('[data-plan="current"]');
+    expect(row.textContent).toContain(
+      fill(LABELS.plans_no_price_current, { sensors: "sensor.grid_buy_price" }),
+    );
+  });
 });
 
 describe("each plan without solar or battery", () => {
@@ -563,7 +602,8 @@ describe("what it cannot compare", () => {
     const row = card.shadowRoot.querySelector('[data-plan="spot"]');
     expect(row.textContent).toContain(
       "sensor.spot_price recorded no statistics in this period, so it cannot be " +
-        "compared. Check it in Developer Tools > Statistics.",
+        "compared. Check it in Developer Tools > Statistics: a price sensor " +
+        "needs the state class measurement for Home Assistant to keep them.",
     );
     expect(figure(card, "total:spot")).toBeUndefined();
   });
