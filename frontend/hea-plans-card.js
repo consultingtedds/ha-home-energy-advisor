@@ -156,6 +156,15 @@ class HeaPlansCard extends HeaCard {
       color: var(--success-color, #4caf50);
     }
     td.total { font-weight: 500; }
+    /* On a phone a total in credit and the difference may break before their
+       word, "in credit" or "cheaper" under the figure, so the last column fits
+       the screen rather than running off it (HEA-314). */
+    @media (max-width: 767px) {
+      .plans td.total, .plans td.difference, .plans thead th:last-child {
+        white-space: normal;
+        min-width: 4.5em;
+      }
+    }
     .saves { font-size: 0.85em; }
     .saves:not(.gain):not(.loss) { color: var(--secondary-text-color); }
     tr.note td {
@@ -351,12 +360,14 @@ class HeaPlansCard extends HeaCard {
   /**
    * What the plan would have cost buying everything from the grid, and what the
    * installation saved on it beneath: the figure a household weighs its panels
-   * and battery by, on every plan (HEA-293). A cost, so signed as one; the
-   * saving beneath in its own favour's colour (HEA-296).
+   * and battery by, on every plan (HEA-293). A cost, so red (HEA-296) with no
+   * minus (HEA-314); the saving beneath in its own favour's colour, the words
+   * saying which.
    */
   _without(plan, locale) {
     if (!("without_installation" in plan)) return `<td class="rule"></td>`;
-    const cost = signed(-plan.without_installation, locale);
+    const cost = formatMoney(plan.without_installation, locale);
+    const costTone = savingTone(plan.without_installation, locale) ? "loss" : "";
     const saved = plan.without_installation - plan.total;
     const amount = formatMoney(Math.abs(saved), locale);
     const tone = savingTone(saved, locale);
@@ -365,8 +376,8 @@ class HeaPlansCard extends HeaCard {
         ? fill(this._labels.plans_costs_more, { amount })
         : fill(this._labels.plans_saves, { amount });
     const saves = ["saves", tone].filter(Boolean).join(" ");
-    const classes = ["rule", cost.tone].filter(Boolean).join(" ");
-    return `<td class="${classes}" data-figure="without:${plan.id}">${cost.text}<div class="${saves}">${wording}</div></td>`;
+    const classes = ["rule", costTone].filter(Boolean).join(" ");
+    return `<td class="${classes}" data-figure="without:${plan.id}">${cost}<div class="${saves}">${wording}</div></td>`;
   }
 
   /** Where a part's group starts, a rule; what is earned, a tint. */
@@ -610,8 +621,8 @@ class HeaPlansCard extends HeaCard {
    * A plan's total line by line, as a bill lists it (HEA-300): its daily
    * charges first, being charged by the day; then each price's kWh and what
    * they cost, and the import cost they add up to; then export, and what any
-   * cap did not pay of it; then the total. Every amount signed as the table
-   * signs it, so each line can be matched to a column above and to a bill.
+   * cap did not pay of it; then the total. Charges plain and export a credit,
+   * so the lines add up to the total as a bill's do (HEA-314).
    */
   _bill(plan, locale) {
     const { daily } = plan.breakdown;
@@ -623,15 +634,15 @@ class HeaPlansCard extends HeaCard {
         used: fill(daily.days === 1 ? this._labels.plans_day : this._labels.plans_days, {
           days: days.format(daily.days),
         }),
-        favour: -daily.amount,
+        amount: daily.amount,
+        side: "loss",
         key: "daily",
       }),
       ...this._importLines(plan, locale),
       ...this._exportLines(plan, locale),
       billRow(locale, {
         name: this._labels.plans_total,
-        favour: -plan.total,
-        key: "total",
+        money: totalCell("bill-total", plan.total, this._labels, locale),
         classes: "total",
       }),
     ];
@@ -671,7 +682,8 @@ class HeaPlansCard extends HeaCard {
           line.rate === null ? intervalPrices : line.name || this._labels.plans_unnamed_price,
         rate: line.rate === null ? this._averageOf(line, locale) : this._rate(line.rate, locale),
         used: formatEnergy(line.kwh, locale),
-        favour: -line.amount,
+        amount: line.amount,
+        side: "loss",
         key: "import-" + index,
       }),
     );
@@ -681,7 +693,8 @@ class HeaPlansCard extends HeaCard {
         name: this._labels.plans_energy,
         rate: this._average(plan, locale, "bill-average", verdict),
         used: formatEnergy(sum(imports, "kwh"), locale),
-        favour: -plan.energy,
+        amount: plan.energy,
+        side: "loss",
         key: "energy",
         classes: "subtotal",
         style: band,
@@ -702,7 +715,8 @@ class HeaPlansCard extends HeaCard {
         name: this._exportName(line, plan),
         rate: line.rate === null ? this._averageOf(line, locale) : this._rate(line.rate, locale),
         used: formatEnergy(line.kwh, locale),
-        favour: line.amount,
+        amount: -line.amount,
+        side: "gain",
         key: "export-" + index,
       }),
     );
@@ -711,7 +725,8 @@ class HeaPlansCard extends HeaCard {
         billRow(locale, {
           name: this._labels.plans_export,
           used: formatEnergy(sum(exports, "kwh"), locale),
-          favour: sum(exports, "amount"),
+          amount: -sum(exports, "amount"),
+          side: "gain",
           key: "export",
           classes: "subtotal",
         }),
@@ -720,7 +735,12 @@ class HeaPlansCard extends HeaCard {
     const capped = (plan.export_unpaid ?? 0) + (plan.export_carried ?? 0);
     if (capped > 0) {
       lines.push(
-        billRow(locale, { name: this._labels.plans_capped, favour: -capped, key: "capped" }),
+        billRow(locale, {
+          name: this._labels.plans_capped,
+          amount: capped,
+          side: "loss",
+          key: "capped",
+        }),
       );
     }
     return lines;
@@ -817,44 +837,48 @@ class HeaPlansCard extends HeaCard {
     return fill(this._labels.plans_market_from, { date: formatDateTime(fine, locale) });
   }
 
-  /** What the plan costs, or what it leaves in the household's favour. */
+  /** What the plan costs, or the credit it leaves the household in. */
   _total(plan, locale) {
-    return moneyCell(`total:${plan.id}`, -plan.total, locale, "total rule");
+    return totalCell(`total:${plan.id}`, plan.total, this._labels, locale, "total rule");
   }
 
   /**
-   * What is paid is against the household, what is earned in its favour. The
-   * import cost carries the plan's average rate beneath it, coloured, with no
-   * band down the row: a band would read as a verdict on the whole plan, and a
-   * plan can be the cheapest while its import timing is poor (HEA-300).
+   * What is paid red, what is earned green (HEA-296), none with a minus, under
+   * the heading that says which. The import cost carries the plan's average
+   * rate beneath it, coloured on its own scale, with no band down the row: a
+   * band would read as a verdict on the whole plan, and a plan can be the
+   * cheapest while its import timing is poor (HEA-300).
    */
   _part(plan, { key, figure = key, group }, locale, classes = "") {
     if (key === "daily" && plan.daily_charge_missing) {
       // Said to be missing rather than shown as nothing, which reads as free.
       return `<td${classAttribute(classes)} data-figure="${key}:${plan.id}">${this._labels.plans_daily_missing}</td>`;
     }
-    const favour = group === "earn" ? plan[figure] : -plan[figure];
+    const side = group === "earn" ? "gain" : "loss";
     if (key !== "energy" || !plan.breakdown) {
-      return moneyCell(`${key}:${plan.id}`, favour, locale, classes);
+      return moneyCell(`${key}:${plan.id}`, plan[figure], locale, { classes, side });
     }
-    const { text, tone } = signed(favour, locale);
+    const tone = savingTone(plan[figure], locale) ? side : "";
     const all = [classes, tone].filter(Boolean).join(" ");
     const average = this._average(plan, locale, "average:" + plan.id);
     const beneath = average ? "<div>" + average + "</div>" : "";
-    return `<td${classAttribute(all)} data-figure="${key}:${plan.id}">${text}${beneath}</td>`;
+    return `<td${classAttribute(all)} data-figure="${key}:${plan.id}">${formatMoney(plan[figure], locale)}${beneath}</td>`;
   }
 
   /**
-   * By how much the plan is cheaper or dearer than the household's own, signed
-   * the same way: cheaper is in its favour. The head says what it is against,
-   * so no word beside it doubles the sign.
+   * By how much the plan is cheaper or dearer than the household's own: the
+   * one column whose colour is a verdict, so the word says it too, and the
+   * colour is never the only sign (HEA-314).
    */
   _difference(plan, current, locale) {
     const saving = current.total - plan.total;
-    if (!savingTone(saving, locale)) {
+    const tone = savingTone(saving, locale);
+    if (!tone) {
       return `<td class="difference" data-figure="difference:${plan.id}">${this._labels.plans_same_short}</td>`;
     }
-    return moneyCell(`difference:${plan.id}`, saving, locale, "difference");
+    const wording = this._labels[tone === "gain" ? "plans_cheaper" : "plans_dearer"];
+    const text = fill(wording, { amount: formatMoney(Math.abs(saving), locale) });
+    return `<td class="difference ${tone}" data-figure="difference:${plan.id}">${text}</td>`;
   }
 }
 
@@ -868,39 +892,50 @@ const styleAttribute = (style) => (style ? ` style="${style}"` : "");
 
 /**
  * One line of a plan's bill: what it is, its rate, what was used, and the
- * money signed as the table above signs it. `name` is escaped, since a price's
- * name is the household's own words; `rate` and `used` are the card's.
+ * money as a bill shows it, or the cell `money` gives. `name` is escaped, since
+ * a price's name is the household's own words; `rate` and `used` are the
+ * card's.
  */
-const billRow = (locale, { name, rate = "", used = "", favour, key, classes = "", style = "" }) => {
-  const money = moneyCell("bill-" + key, favour, locale);
-  return `<tr${classAttribute(classes)}><th${styleAttribute(style)}>${escape(name)}</th><td>${rate}</td><td>${used}</td>${money}</tr>`;
+const billRow = (
+  locale,
+  { name, rate = "", used = "", amount, side, money, key, classes = "", style = "" },
+) => {
+  const cell = money ?? moneyCell("bill-" + key, amount, locale, { side });
+  return `<tr${classAttribute(classes)}><th${styleAttribute(style)}>${escape(name)}</th><td>${rate}</td><td>${used}</td>${cell}</tr>`;
 };
 
 /** A cell's class attribute, or nothing for a cell with no class. */
 const classAttribute = (classes) => (classes ? ` class="${classes}"` : "");
 
 /**
- * Money signed by whose favour it is in, the one rule the whole table follows
- * (HEA-296, discussion 58): what the household pays is -€ in red, what is in
- * its favour € in green, and nothing is plain. A total in credit read as a loss
- * when it carried a minus, and a saving written as a word read differently
- * from the total beside it.
+ * Money coloured by whose favour it is in (HEA-296): what the household pays
+ * red, what it earns green, nothing plain. Signed as a bill signs it
+ * (HEA-314, discussions 55 and 58): no minus on a charge, a minus on a credit
+ * in a bill's lines, so they add up to its total as an electricity bill's and
+ * the Energy Dashboard's do.
  *
- * `favour` is the amount in the household's favour, below zero for a cost. Its
- * tone is judged as `savingTone` judges every saving, on the figure as shown,
- * so a fraction of a cent is never coloured.
+ * `amount` is the figure as shown, below zero only for a credit in a bill;
+ * `side` is "loss" for money paid, "gain" for money earned. A fraction of a
+ * cent either way is shown as nothing, uncoloured, never as "-€0.00".
  */
-const signed = (favour, locale) => {
-  const tone = savingTone(favour, locale);
-  const shown = tone === "loss" ? -Math.abs(favour) : Math.abs(favour);
-  return { text: formatMoney(shown, locale), tone };
+const moneyCell = (figure, amount, locale, { classes = "", side = "" } = {}) => {
+  const shown = savingTone(amount, locale) ? amount : 0;
+  const all = [classes, shown ? side : ""].filter(Boolean).join(" ");
+  return `<td${classAttribute(all)} data-figure="${figure}">${formatMoney(shown, locale)}</td>`;
 };
 
-/** A table cell holding one signed figure, its tone among its classes. */
-const moneyCell = (figure, favour, locale, classes = "") => {
-  const { text, tone } = signed(favour, locale);
-  const all = [classes, tone].filter(Boolean).join(" ");
-  return `<td${classAttribute(all)} data-figure="${figure}">${text}</td>`;
+/**
+ * A total as a bill states it: what there is to pay, red with no minus, or
+ * where export beat the costs, the credit in words and green. A minus on good
+ * news read as a loss (HEA-296); bills say "in credit".
+ */
+const totalCell = (figure, total, labels, locale, classes = "") => {
+  if (savingTone(-total, locale) !== "gain") {
+    return moneyCell(figure, total, locale, { classes, side: "loss" });
+  }
+  const text = fill(labels.plans_in_credit, { amount: formatMoney(-total, locale) });
+  const all = [classes, "gain"].filter(Boolean).join(" ");
+  return `<td class="${all}" data-figure="${figure}">${text}</td>`;
 };
 
 /** A plan's badges on a line of their own under its name, where it has any. */

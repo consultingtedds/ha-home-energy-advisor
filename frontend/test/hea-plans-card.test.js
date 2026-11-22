@@ -148,15 +148,16 @@ describe("the comparison", () => {
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - each a cost to the household, so each -€ in red (HEA-296)
+    // Then - each a cost to the household, so red (HEA-296), with no minus, as
+    // a bill charges it (HEA-314)
     expect(order(card)).toEqual(["night", "flat", "peaky"]);
-    expect(figure(card, "total:night")).toBe("-€29.78");
-    expect(figure(card, "total:flat")).toBe("-€40.82");
-    expect(figure(card, "total:peaky")).toBe("-€45.98");
+    expect(figure(card, "total:night")).toBe("€29.78");
+    expect(figure(card, "total:flat")).toBe("€40.82");
+    expect(figure(card, "total:peaky")).toBe("€45.98");
     expect(tone(card, "total:night")).toBe("loss");
   });
 
-  it("shows a plan in credit as money in the household's favour", async () => {
+  it("says a plan in credit is in credit, in the household's favour", async () => {
     // Given - export income beat the import cost and the daily charges
     const credit = { ...NIGHT, total: -0.03 };
 
@@ -164,8 +165,8 @@ describe("the comparison", () => {
     const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, credit] }));
     await settled(expect, card);
 
-    // Then - "-€0.03" read as a loss, and it was the opposite (HEA-296)
-    expect(figure(card, "total:night")).toBe("€0.03");
+    // Then - "-€0.03" read as a loss (HEA-296); a bill says it in words (HEA-314)
+    expect(figure(card, "total:night")).toBe("€0.03 in credit");
     expect(tone(card, "total:night")).toBe("gain");
   });
 
@@ -183,16 +184,16 @@ describe("the comparison", () => {
     expect(row("night").querySelector(".tag.cheapest")).not.toBeNull();
   });
 
-  it("says by how much every other plan is cheaper or dearer, signed by whose favour", async () => {
+  it("says by how much every other plan is cheaper or dearer, in words", async () => {
     // Given / When
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - cheaper is in the household's favour, €, green; dearer -€, red;
-    // the head says what it is against, so no word doubles the sign
-    expect(figure(card, "difference:night")).toBe("€11.04");
+    // Then - the one column whose colour is a verdict, and the word carries it,
+    // so the colour is never the only sign (HEA-314)
+    expect(figure(card, "difference:night")).toBe("€11.04 cheaper");
     expect(tone(card, "difference:night")).toBe("gain");
-    expect(figure(card, "difference:peaky")).toBe("-€5.16");
+    expect(figure(card, "difference:peaky")).toBe("€5.16 dearer");
     expect(tone(card, "difference:peaky")).toBe("loss");
     expect(figure(card, "difference:flat")).toBeUndefined();
   });
@@ -202,13 +203,14 @@ describe("the comparison", () => {
     const card = mountCard(TAG, aHome());
     await settled(expect, card);
 
-    // Then - what the household pays -€ in red, the export income € in green;
-    // the total still takes the income off (HEA-277, HEA-296)
-    expect(figure(card, "energy:night")).toBe("-€24.06");
+    // Then - what the household pays in red, the export income in green
+    // (HEA-296), none of them with a minus (HEA-314); the total still takes the
+    // income off (HEA-277)
+    expect(figure(card, "energy:night")).toBe("€24.06");
     expect(tone(card, "energy:night")).toBe("loss");
     expect(figure(card, "export:night")).toBe("€3.28");
     expect(tone(card, "export:night")).toBe("gain");
-    expect(figure(card, "daily:night")).toBe("-€9.00");
+    expect(figure(card, "daily:night")).toBe("€9.00");
     expect(tone(card, "daily:night")).toBe("loss");
   });
 
@@ -442,9 +444,10 @@ describe("each plan without solar or battery", () => {
     );
     expect(groups).toEqual(["", "What you pay", "What you earn", "", "Buying everything", ""]);
     const night = card.shadowRoot.querySelector('[data-figure="without:night"]');
-    // A cost, so -€ in red; what the installation saved, in green (HEA-296),
-    // saying whose saving it is so it never reads as a saving without it
-    expect(night.firstChild.textContent).toBe("-€61.40");
+    // A cost, so red (HEA-296) with no minus (HEA-314); what the installation
+    // saved, in green, saying whose saving it is so it never reads as a saving
+    // without it
+    expect(night.firstChild.textContent).toBe("€61.40");
     expect(night.classList.contains("loss")).toBe(true);
     expect(night.querySelector(".saves").textContent).toBe(
       "your installation saves you €31.62",
@@ -959,18 +962,24 @@ describe("each plan's bill (HEA-300)", () => {
     open(card, "bill");
 
     // Then - the daily charge first, then each price's kWh and cost, the import
-    // cost they add up to, the export, and the total, each matching its column
-    // in the table above
+    // cost they add up to, the export, and the total: charges with no minus and
+    // the export a credit, so the lines add up as a bill's do (HEA-314)
     expect(billRows(card, "bill")).toEqual([
       ["", "Rate", "Used", "Amount"],
-      ["Daily charges", "€0.30/day", "30 days", "-€9.00"],
-      ["Punta", "24.5 c/kWh", "120 kWh", "-€29.40"],
-      ["Llano", "18.0 c/kWh", "95 kWh", "-€17.10"],
-      ["Valle", "9.8 c/kWh", "460 kWh", "-€45.08"],
-      ["Import cost", "average 13.57 c/kWh", "675 kWh", "-€91.58"],
-      ["Export", "5.0 c/kWh", "82 kWh", "€4.10"],
-      ["Total", "", "", "-€96.48"],
+      ["Daily charges", "€0.30/day", "30 days", "€9.00"],
+      ["Punta", "24.5 c/kWh", "120 kWh", "€29.40"],
+      ["Llano", "18.0 c/kWh", "95 kWh", "€17.10"],
+      ["Valle", "9.8 c/kWh", "460 kWh", "€45.08"],
+      ["Import cost", "average 13.57 c/kWh", "675 kWh", "€91.58"],
+      ["Export", "5.0 c/kWh", "82 kWh", "-€4.10"],
+      ["Total", "", "", "€96.48"],
     ]);
+    // Each coloured as its column in the table is: paid red, earned green
+    // (HEA-296)
+    const tones = [...bill(card, "bill").querySelectorAll("td[data-figure^='bill-']")].map(
+      (cell) => ["gain", "loss"].find((name) => cell.classList.contains(name)),
+    );
+    expect(tones).toEqual(["loss", "loss", "loss", "loss", "loss", "gain", "loss"]);
     expect(text(card)).toContain(LABELS.plans_average_note);
   });
 
@@ -1073,9 +1082,9 @@ describe("each plan's bill (HEA-300)", () => {
 
     // Then
     expect(billRows(card, "bill").slice(-3)).toEqual([
-      ["Export", "10.0 c/kWh", "50 kWh", "€5.00"],
-      ["Not paid under the export cap", "", "", "-€3.00"],
-      ["Total", "", "", "-€98.58"],
+      ["Export", "10.0 c/kWh", "50 kWh", "-€5.00"],
+      ["Not paid under the export cap", "", "", "€3.00"],
+      ["Total", "", "", "€98.58"],
     ]);
   });
 
@@ -1102,12 +1111,26 @@ describe("each plan's bill (HEA-300)", () => {
 
     // Then
     expect(billRows(card, "bill").slice(-5)).toEqual([
-      ["Evening", "10.0 c/kWh", "15 kWh", "€1.50"],
-      ["Export", "4.0 c/kWh", "3 kWh", "€0.12"],
-      ["Export beyond its allowance", "2.0 c/kWh", "4 kWh", "€0.08"],
-      ["Export income", "", "22 kWh", "€1.70"],
-      ["Total", "", "", "-€98.88"],
+      ["Evening", "10.0 c/kWh", "15 kWh", "-€1.50"],
+      ["Export", "4.0 c/kWh", "3 kWh", "-€0.12"],
+      ["Export beyond its allowance", "2.0 c/kWh", "4 kWh", "-€0.08"],
+      ["Export income", "", "22 kWh", "-€1.70"],
+      ["Total", "", "", "€98.88"],
     ]);
+  });
+
+  it("says a total in credit in words on the bill too", async () => {
+    // Given - export income beat the costs
+    const credit = { ...BILL, total: -0.03 };
+    const card = await mounted({ ...COMPARED, plans: [FLAT, credit] });
+
+    // When
+    open(card, "bill");
+
+    // Then - as the table above says it (HEA-314)
+    const total = bill(card, "bill").querySelector("[data-figure='bill-total']");
+    expect(total.textContent).toBe("€0.03 in credit");
+    expect(total.classList.contains("gain")).toBe(true);
   });
 
   it("gives a market price one line, at the average it worked out to", async () => {
@@ -1129,7 +1152,7 @@ describe("each plan's bill (HEA-300)", () => {
 
     // Then
     const rows = billRows(card, "bill");
-    expect(rows[2]).toEqual(["Market price", "average 13.57 c/kWh", "675 kWh", "-€91.58"]);
+    expect(rows[2]).toEqual(["Market price", "average 13.57 c/kWh", "675 kWh", "€91.58"]);
     const average = bill(card, "bill").querySelector("[data-figure='bill-average']");
     expect(average.title).toBe(
       "13.57 c/kWh on average: the cheapest hour you imported in was 6.0 c/kWh, and the dearest 32.0 c/kWh.",
@@ -1149,7 +1172,7 @@ describe("each plan's bill (HEA-300)", () => {
       "Import cost",
       "average 13.57 c/kWh",
       "675 kWh",
-      "-€91.58",
+      "€91.58",
     ]);
   });
 

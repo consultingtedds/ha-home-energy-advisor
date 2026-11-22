@@ -149,6 +149,9 @@ export const DEFAULTS = Object.freeze({
   plans_costs_more: "your installation costs you {amount} more",
   plans_vs_current: "vs current plan",
   plans_same_short: "The same",
+  plans_in_credit: "{amount} in credit",
+  plans_cheaper: "{amount} cheaper",
+  plans_dearer: "{amount} dearer",
   plans_flows: "Imported {imported} and exported {exported} in this period.",
   plans_flows_compared: "Imported {imported} and exported {exported} in the hours compared.",
   plans_breakdown_hidden:
