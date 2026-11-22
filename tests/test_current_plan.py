@@ -29,6 +29,8 @@ from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_FIXED_PRICE,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_PERIOD_FROM,
+    CONF_PERIOD_PLAN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
@@ -36,7 +38,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_FOLLOWS,
-    CONF_PLAN_HISTORY_FROM,
+    CONF_PLAN_PERIODS,
     CONF_PLAN_REPLACED,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -142,8 +144,11 @@ async def test_the_marked_plan_s_billing_rules_move_to_the_current_plan(
         # So the household can be told the marked plan now duplicates it
         CONF_PLAN_REPLACED: "Octopus Current",
         # Its prices still price the hours the household's price sensors have
-        # no statistics for, as they did before (HEA-311)
-        CONF_PLAN_HISTORY_FROM: _plans(entry)["Octopus Current"].subentry_id,
+        # no statistics for, as they did before (HEA-311): the plan the
+        # household has been on, from always (HEA-307)
+        CONF_PLAN_PERIODS: [
+            {CONF_PERIOD_PLAN: _plans(entry)["Octopus Current"].subentry_id}
+        ],
     }
 
 
@@ -163,7 +168,7 @@ async def test_a_marked_plan_with_an_allowance_is_not_read_for_price_history(
 
     # Then
     (current,) = _following(entry)
-    assert CONF_PLAN_HISTORY_FROM not in current.data
+    assert CONF_PLAN_PERIODS not in current.data
 
 
 async def test_a_1_7_0_current_plan_is_linked_to_the_plan_it_replaced(
@@ -189,10 +194,49 @@ async def test_a_1_7_0_current_plan_is_linked_to_the_plan_it_replaced(
 
     # Then - its prices read where the sensors have no statistics
     (current,) = _following(entry)
-    assert (
-        current.data[CONF_PLAN_HISTORY_FROM]
-        == _plans(entry)["Octopus Current"].subentry_id
+    assert current.data[CONF_PLAN_PERIODS] == [
+        {CONF_PERIOD_PLAN: _plans(entry)["Octopus Current"].subentry_id}
+    ]
+
+
+async def test_1_7_1_s_price_history_plan_becomes_the_first_period(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the reference home's current plan as 1.7.1 left it, its Repair
+    # answered: a daily charge, a carried cap, and one plan for its price
+    # history
+    entry = _entry(hass, {**_MARKED, CONF_PLAN_CURRENT: False}, version=8)
+    octopus = _plans(entry)["Octopus Current"].subentry_id
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {
+                    CONF_NAME: "Your current plan",
+                    CONF_PLAN_FOLLOWS: True,
+                    CONF_PLAN_DAILY_CHARGE: 1.4736,
+                    CONF_PLAN_EXPORT_CAP: ExportCap.CARRIED.value,
+                    "price_history_from": octopus,
+                }
+            ),
+            subentry_type=SUBENTRY_TYPE_PLAN,
+            title="Your current plan",
+            unique_id=None,
+        ),
     )
+
+    # When
+    await _set_up(hass, entry)
+
+    # Then - that plan from always, entered once, and the old setting gone
+    (current,) = _following(entry)
+    assert dict(current.data) == {
+        CONF_NAME: "Your current plan",
+        CONF_PLAN_FOLLOWS: True,
+        CONF_PLAN_DAILY_CHARGE: 1.4736,
+        CONF_PLAN_EXPORT_CAP: ExportCap.CARRIED.value,
+        CONF_PLAN_PERIODS: [{CONF_PERIOD_PLAN: octopus}],
+    }
 
 
 async def test_the_marked_plan_stays_as_an_ordinary_plan(
@@ -287,11 +331,23 @@ async def _edit_current(hass: HomeAssistant, entry: MockConfigEntry) -> Any:  # 
     )
 
 
-async def _answer(hass: HomeAssistant, flow_id: str, answer: dict[str, Any]) -> Any:  # noqa: ANN401 - a flow result
-    return await hass.config_entries.subentries.async_configure(flow_id, answer)
+async def _answer(
+    hass: HomeAssistant,
+    flow_id: str,
+    answer: dict[str, Any],
+    *,
+    through: bool = True,
+) -> Any:  # noqa: ANN401 - a flow result
+    """Answer a step; `through` saves the plans been on as they stand."""
+    result = await hass.config_entries.subentries.async_configure(flow_id, answer)
+    if through and result.get("step_id") == "periods":
+        result = await hass.config_entries.subentries.async_configure(
+            flow_id, {"action": "save"}
+        )
+    return result
 
 
-async def test_editing_the_current_plan_asks_only_for_its_billing_rules(
+async def test_editing_the_current_plan_asks_first_for_its_billing_rules(
     hass: HomeAssistant,
 ) -> None:
     # Given - upgraded, the marked plan's daily charge carried over
@@ -301,26 +357,157 @@ async def test_editing_the_current_plan_asks_only_for_its_billing_rules(
     # When
     form = await _edit_current(hass, entry)
 
-    # Then - its daily charge and cap, with what it holds filled in, and the
-    # plan its price history is read from; no prices: those are Paid's. With no
-    # grid source in the Energy Dashboard to follow, there is nothing else
+    # Then - its daily charge and cap, with what it holds filled in; no prices:
+    # those are Paid's. With no grid source in the Energy Dashboard to follow,
+    # there is nothing else
     assert form["step_id"] == "current"
     fields = _fields(form)
-    assert set(fields) == {
-        CONF_PLAN_DAILY_CHARGE,
-        CONF_PLAN_EXPORT_CAP,
-        CONF_PLAN_HISTORY_FROM,
-    }
+    assert set(fields) == {CONF_PLAN_DAILY_CHARGE, CONF_PLAN_EXPORT_CAP}
     assert fields[CONF_PLAN_DAILY_CHARGE].description == {"suggested_value": 0.4521}
     assert fields[CONF_PLAN_EXPORT_CAP].description == {
         "suggested_value": ExportCap.MONTHLY.value
     }
-    assert fields[CONF_PLAN_HISTORY_FROM].description == {
-        "suggested_value": _plans(entry)["Octopus Current"].subentry_id
-    }
 
 
-async def test_price_history_is_offered_only_from_plans_priced_by_the_clock(
+_RULES_ANSWER = {
+    CONF_PLAN_DAILY_CHARGE: 0.4521,
+    CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
+}
+
+
+async def _at_the_plans_been_on(hass: HomeAssistant, entry: MockConfigEntry) -> Any:  # noqa: ANN401 - a flow result
+    form = await _edit_current(hass, entry)
+    return await _answer(hass, form["flow_id"], _RULES_ANSWER, through=False)
+
+
+def _kept(form: Any) -> list[str]:  # noqa: ANN401 - a flow result
+    """The plans been on a review step lists, by their words."""
+    selector = _fields(form)["keep"]
+    return [
+        option["label"]
+        for option in form["data_schema"].schema[selector].config["options"]
+    ]
+
+
+async def test_then_it_lists_the_plans_been_on_in_words(
+    hass: HomeAssistant,
+) -> None:
+    # Given - upgraded, the marked plan the one the household has always been on
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+
+    # When
+    form = await _at_the_plans_been_on(hass, entry)
+
+    # Then - by name, never by the id it is kept as
+    assert form["step_id"] == "periods"
+    assert _kept(form) == ["Octopus Current, before any other"]
+
+
+async def test_a_plan_been_on_is_added_from_its_day_and_kept_in_order(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    octopus = _plans(entry)["Octopus Current"].subentry_id
+    naturgy = _plans(entry)["Naturgy"].subentry_id
+    form = await _at_the_plans_been_on(hass, entry)
+
+    # When - Naturgy from 1 March 2025, then saved
+    form = await _answer(hass, form["flow_id"], {"action": "add_period"})
+    assert form["step_id"] == "period"
+    form = await _answer(
+        hass,
+        form["flow_id"],
+        {CONF_PERIOD_PLAN: naturgy, CONF_PERIOD_FROM: "2025-03-01"},
+        through=False,
+    )
+    assert _kept(form) == [
+        "Octopus Current, before any other",
+        "Naturgy, from 2025-03-01",
+    ]
+    done = await _answer(hass, form["flow_id"], {"action": "save"})
+
+    # Then - kept from the one before any other on, with the rules answered
+    assert done["reason"] == "reconfigure_successful"
+    (current,) = _following(entry)
+    assert current.data[CONF_PLAN_PERIODS] == [
+        {CONF_PERIOD_PLAN: octopus},
+        {CONF_PERIOD_PLAN: naturgy, CONF_PERIOD_FROM: "2025-03-01"},
+    ]
+    assert current.data[CONF_PLAN_DAILY_CHARGE] == 0.4521
+
+
+async def test_a_plan_been_on_unticked_is_removed(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    form = await _at_the_plans_been_on(hass, entry)
+
+    # When - nothing kept
+    await _answer(hass, form["flow_id"], {"keep": [], "action": "save"})
+
+    # Then
+    (current,) = _following(entry)
+    assert CONF_PLAN_PERIODS not in current.data
+
+
+async def test_only_one_plan_been_on_can_go_back_before_any_other(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the marked plan already before any other
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    form = await _at_the_plans_been_on(hass, entry)
+    form = await _answer(hass, form["flow_id"], {"action": "add_period"})
+
+    # When - another with no date
+    result = await _answer(
+        hass,
+        form["flow_id"],
+        {CONF_PERIOD_PLAN: _plans(entry)["Naturgy"].subentry_id},
+        through=False,
+    )
+
+    # Then - one of them would never price an hour
+    assert result["step_id"] == "period"
+    assert result["errors"] == {"base": "periods_one_always"}
+
+
+async def test_two_plans_been_on_cannot_start_the_same_day(
+    hass: HomeAssistant,
+) -> None:
+    # Given - Naturgy from 1 March 2025
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    naturgy = _plans(entry)["Naturgy"].subentry_id
+    octopus = _plans(entry)["Octopus Current"].subentry_id
+    form = await _at_the_plans_been_on(hass, entry)
+    form = await _answer(hass, form["flow_id"], {"action": "add_period"})
+    form = await _answer(
+        hass,
+        form["flow_id"],
+        {CONF_PERIOD_PLAN: naturgy, CONF_PERIOD_FROM: "2025-03-01"},
+        through=False,
+    )
+    form = await _answer(hass, form["flow_id"], {"action": "add_period"})
+
+    # When - another from the same day
+    result = await _answer(
+        hass,
+        form["flow_id"],
+        {CONF_PERIOD_PLAN: octopus, CONF_PERIOD_FROM: "2025-03-01"},
+        through=False,
+    )
+
+    # Then
+    assert result["errors"] == {"base": "periods_same_day"}
+
+
+async def test_only_plans_priced_by_the_clock_can_be_added(
     hass: HomeAssistant,
 ) -> None:
     # Given - a plan priced by the clock, and one with an export allowance
@@ -332,19 +519,20 @@ async def test_price_history_is_offered_only_from_plans_priced_by_the_clock(
     }
     entry = _entry(hass, _OFFER, allowance, version=8)
     await _set_up(hass, entry)
+    form = await _at_the_plans_been_on(hass, entry)
 
     # When
-    form = await _edit_current(hass, entry)
+    form = await _answer(hass, form["flow_id"], {"action": "add_period"})
 
     # Then - only the one an hour's price can be read from, by its name
-    selector = _fields(form)[CONF_PLAN_HISTORY_FROM]
+    selector = _fields(form)[CONF_PERIOD_PLAN]
     options = form["data_schema"].schema[selector].config["options"]
     assert options == [
         {"value": _plans(entry)["Naturgy"].subentry_id, "label": "Naturgy"}
     ]
 
 
-async def test_with_no_typed_plan_no_price_history_is_offered(
+async def test_with_no_typed_plan_the_rules_are_saved_at_once(
     hass: HomeAssistant,
 ) -> None:
     # Given - no plan entered beside the current one
@@ -353,9 +541,10 @@ async def test_with_no_typed_plan_no_price_history_is_offered(
 
     # When
     form = await _edit_current(hass, entry)
+    done = await _answer(hass, form["flow_id"], _RULES_ANSWER, through=False)
 
-    # Then
-    assert CONF_PLAN_HISTORY_FROM not in _fields(form)
+    # Then - nothing to ask about the plans been on
+    assert done["reason"] == "reconfigure_successful"
 
 
 def _fields(form: Any) -> dict[str, Any]:  # noqa: ANN401 - a flow result
@@ -528,11 +717,18 @@ async def _open_repair(hass: HomeAssistant) -> Any:  # noqa: ANN401 - a flow res
 
 
 async def _answer_repair(
-    hass: HomeAssistant, flow_id: str, answer: dict[str, Any]
+    hass: HomeAssistant,
+    flow_id: str,
+    answer: dict[str, Any],
+    *,
+    through: bool = True,
 ) -> Any:  # noqa: ANN401 - a flow result
+    """Answer the Repair; `through` saves the plans been on as they stand."""
     manager = repairs_flow_manager(hass)
     assert manager is not None
     result = await manager.async_configure(flow_id, answer)
+    if through and result.get("step_id") == "periods":
+        result = await manager.async_configure(flow_id, {"action": "save"})
     await hass.async_block_till_done()
     return result
 
@@ -617,24 +813,16 @@ async def test_answering_the_repair_keeps_the_plan_price_history_is_read_from(
     octopus = _plans(entry)["Octopus Current"].subentry_id
     form = await _open_repair(hass)
 
-    # When - confirmed as filled in
-    assert _fields(form)[CONF_PLAN_HISTORY_FROM].description == {
-        "suggested_value": octopus
-    }
-    await _answer_repair(
-        hass,
-        form["flow_id"],
-        {
-            CONF_PLAN_DAILY_CHARGE: 0.4521,
-            CONF_PLAN_EXPORT_CAP: ExportCap.MONTHLY.value,
-            CONF_PLAN_HISTORY_FROM: octopus,
-        },
-    )
+    # When - the rules confirmed as filled in, then the plans been on, listed
+    form = await _answer_repair(hass, form["flow_id"], _RULES_ANSWER, through=False)
+    assert form["step_id"] == "periods"
+    assert _kept(form) == ["Octopus Current, before any other"]
+    await _answer_repair(hass, form["flow_id"], {"action": "save"})
 
     # Then - the note gone, the price history kept (discussion 58)
     (current,) = _following(entry)
     assert CONF_PLAN_REPLACED not in current.data
-    assert current.data[CONF_PLAN_HISTORY_FROM] == octopus
+    assert current.data[CONF_PLAN_PERIODS] == [{CONF_PERIOD_PLAN: octopus}]
 
 
 async def test_giving_the_daily_charge_on_the_plan_s_own_form_clears_the_repair(

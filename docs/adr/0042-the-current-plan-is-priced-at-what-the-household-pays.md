@@ -142,3 +142,9 @@ priced every hour before. A current plan made by 1.7.0 gets it on the next start
 while the Repair is still waiting. Answering the Repair keeps it. How those hours
 are chosen, and what the other plans do with them, is ADR-0043's 2026-11-21
 amendment.
+
+## Amendment, 2026-11-22: Price history from becomes a list
+
+Price history from, above, becomes the first of a list of the plans the
+household has been on, each from the day it started, and each gap hour is priced
+at the plan of its day. See ADR-0048's 2026-11-22 amendment.

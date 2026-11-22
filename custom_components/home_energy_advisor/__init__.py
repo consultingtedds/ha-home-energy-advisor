@@ -90,9 +90,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # has its daily charge, a Repair asks for it, and is checked again on every
     # change to the entry, so answering it anywhere clears it (ADR-0042).
     await current_plan.async_ensure_current_plan(hass, entry)
-    # One made by 1.7.0 reads its price history from the plan it replaced, as
-    # one made now does (HEA-311).
-    current_plan.link_the_replaced_plan(hass, entry)
+    # One made before the list of plans been on existed is given its first
+    # period (HEA-311, HEA-307).
+    current_plan.fill_the_plans_been_on(hass, entry)
     current_plan.async_check(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_check_the_current_plan))
     power_energy_entities = await async_sync_power_device_helpers(hass, entry)

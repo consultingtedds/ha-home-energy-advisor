@@ -173,3 +173,9 @@ prices.
   match.
 - A period asked for one day at a time and the same period asked at once can
   still differ, where a shared sensor began part-way. That was already so.
+
+## Amendment, 2026-11-22: the plan of each hour's day
+
+The hours above are priced at the plan the household was on that local day,
+from the list in ADR-0048's 2026-11-22 amendment, rather than at one plan named
+under Price history from. Everything else above stands.

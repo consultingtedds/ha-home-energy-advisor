@@ -203,9 +203,9 @@ Every plan is priced the same way, at the electricity your meters recorded hour
 by hour, and over the same hours: a stretch a price sensor or the grid meters
 have no data for is left out of every plan, and a line above the table says which
 and why, naming once every source that recorded nothing over the same hours. A
-price sensor only your current plan follows is the exception: its gaps are priced
-at the plan chosen under **Price history from**, and a note beneath the table
-names it. So
+price sensor only your current plan follows is the exception: each hour of its
+gaps is priced at the plan you were on that day, from **Plans you've been on**,
+and a note beneath the table names them. So
 your current plan's total is not Paid, which leaves daily charges out and is
 worked out device by device, though both use the same prices. On a phone the table
 keeps each plan's total and difference, and the bill still opens. The README's

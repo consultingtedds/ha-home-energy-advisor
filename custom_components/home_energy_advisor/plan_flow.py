@@ -74,8 +74,8 @@ from .const import (
     DEFAULT_CURRENCY,
 )
 from .current_plan import (
+    PlansBeenOnSteps,
     async_daily_charge_sources,
-    history_plans,
     is_current_plan,
     plan_data,
     rules_errors,
@@ -94,6 +94,8 @@ from .tariff_plans import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
+
+    from homeassistant.config_entries import ConfigEntry
 
 _KEEP = "keep"
 _ACTION = "action"
@@ -210,8 +212,12 @@ _NAMED_DAYS = {
 }
 
 
-class PlanSubentryFlowHandler(ConfigSubentryFlow):
-    """Add or edit one tariff plan: its prices, then its bands one at a time."""
+class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
+    """Add or edit one tariff plan: its prices, then its bands one at a time.
+
+    The current plan is edited instead as its rules, then the plans it has been
+    on (`PlansBeenOnSteps`).
+    """
 
     def __init__(self) -> None:
         """Start with no details, no prices and no bands."""
@@ -291,11 +297,10 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             errors = rules_errors(user_input)
             if not errors:
-                return self.async_update_and_abort(
-                    self._get_entry(),
-                    subentry,
-                    data=plan_data(subentry.data[CONF_NAME], user_input),
+                result: SubentryFlowResult = await self._after_rules(
+                    user_input, subentry.data
                 )
+                return result
         labels = await async_common_strings(self.hass)
         return self.async_show_form(
             step_id="current",
@@ -303,11 +308,26 @@ class PlanSubentryFlowHandler(ConfigSubentryFlow):
                 rules_schema(
                     self._per_day(labels),
                     await async_daily_charge_sources(self.hass, self._get_entry()),
-                    history_plans(self._get_entry()),
                 ),
                 user_input or rules_of(subentry.data),
             ),
             errors=errors,
+        )
+
+    def _periods_entry(self) -> ConfigEntry:
+        return self._get_entry()
+
+    def _periods_show(
+        self, step_id: str, schema: vol.Schema, errors: dict[str, str]
+    ) -> SubentryFlowResult:
+        return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
+
+    def _periods_save(self, answer: dict[str, Any]) -> SubentryFlowResult:
+        subentry = self._get_reconfigure_subentry()
+        return self.async_update_and_abort(
+            self._get_entry(),
+            subentry,
+            data=plan_data(subentry.data[CONF_NAME], answer),
         )
 
     async def _details_step(

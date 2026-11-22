@@ -121,3 +121,32 @@ switch.**
 - The reference home moves once, from its old standing charge and price sensors
   straight to these, carrying the history. The helpers built for HEA-308 are a
   rehearsal only, and are deleted afterwards.
+
+## Amendment, 2026-11-22: one list of the plans the household has been on
+
+From HEA-307, after HEA-311 (1.7.1) and GitHub discussions 58 and 63. The
+decision above stands. Point 5's record of each switch becomes the one list of
+which plan the household was on from which day, and it also prices the history
+of a household that never uses these sensors.
+
+- **One list of periods**, each a typed plan and the day it started, held by the
+  current plan. The first has no start: it covers everything before the next. A
+  switch made here adds a period from its day; a household gives past periods by
+  hand. The badges (point 6), which plan feeds the sensors today, and the
+  history below all read this list. There is never a second one.
+- **Past periods fill gaps only.** Where the current plan's price sensors, ours
+  or the household's own, have no statistics for an hour (ADR-0043's 2026-11-21
+  amendment), that hour is priced at the plan of the period it falls in, on its
+  local day, with that plan's holidays. Where the sensors have statistics, they
+  win: that is what was charged. The sensors themselves are never backdated
+  (point 5 stands).
+- **Only a plan priced by the clock** can be a period's plan, as before. A period
+  whose plan cannot price an hour, or no longer exists, leaves the current plan
+  unpriced for that hour, naming its sensor.
+- **It replaces Price history from.** 1.7.1's one plan becomes the first period,
+  on the next start, so nothing is entered twice.
+- **Whatever feeds the prices.** A household that keeps its own sensors, or uses
+  another integration's, gives the same list; nothing here assumes this
+  integration's sensors.
+- **Built first,** before the sensors, as it is useful to every household and
+  everything else in this decision reads it.

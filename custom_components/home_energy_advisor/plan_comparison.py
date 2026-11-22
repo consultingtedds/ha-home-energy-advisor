@@ -16,9 +16,10 @@ A stretch with no data - no grid statistics, or no price for a market price a
 plan follows - is bridged where it is two hours or less, a missing price
 carrying the last one. A longer one is left out for every plan, its daily
 charges with it, and said (ADR-0043). A price sensor only the current plan
-follows is the exception: its gaps are the current plan's alone, priced at the
-plan named for its price history, or leaving it unpriced (HEA-311). The same
-plan prices a shared sensor that recorded nothing in the period.
+follows is the exception: its gaps are the current plan's alone, each hour
+priced at the plan the household was on that day, or leaving it unpriced
+(HEA-311, HEA-307). The same plans price a shared sensor that recorded nothing
+in the period.
 """
 
 from __future__ import annotations
@@ -48,12 +49,14 @@ from homeassistant.util.unit_conversion import EnergyConverter
 from .const import (
     CONF_GENERATION_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_PERIOD_FROM,
+    CONF_PERIOD_PLAN,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
-    CONF_PLAN_HISTORY_FROM,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PLAN_PERIODS,
     DOMAIN,
     IMPOSSIBLE_KWH_PER_HOUR,
     SERVICE_COMPARE_PLANS,
@@ -168,9 +171,10 @@ class _Paid:
     export_number: Decimal | None
     # The statistic the followed grid source's cost is recorded in, if it has one.
     daily_statistic: str | None = None
-    # The typed plan whose prices stand in where the price sensors have no
-    # statistics, by subentry id (HEA-311).
-    history_id: str | None = None
+    # The plans the household has been on, whose prices stand in where the
+    # price sensors have no statistics: each from its local day, or from always,
+    # by subentry id, earliest first (HEA-311, HEA-307).
+    periods: tuple[tuple[date | None, str], ...] = ()
 
     @property
     def entities(self) -> set[str]:
@@ -242,53 +246,100 @@ async def _paid_prices(hass: HomeAssistant, entry: ConfigEntry) -> _Paid | None:
         entity,
         number,
         costs[source][0] if source in costs else None,
-        current.data.get(CONF_PLAN_HISTORY_FROM) or None,
+        tuple(
+            (
+                date.fromisoformat(start)
+                if (start := period.get(CONF_PERIOD_FROM))
+                else None,
+                period[CONF_PERIOD_PLAN],
+            )
+            for period in current.data.get(CONF_PLAN_PERIODS) or ()
+        ),
     )
+
+
+# Told apart by identity: two periods on the same plan are two stands.
+@dataclass(frozen=True, eq=False)
+class _Stand:
+    """A plan the household was on, from its day, priced as it priced an hour.
+
+    By the clock alone, so an hour's price is its band's at that local hour, or
+    its market price's, adjusted as the plan adjusts it (HEA-311). With no
+    tariff, the plan is gone or cannot price an hour, and its days go unpriced.
+    """
+
+    start: date | None
+    tariff: TariffPlan | None
+    holidays: frozenset[date]
+
+    def import_at(
+        self, start: datetime, prices: Mapping[str, _Series]
+    ) -> Decimal | None:
+        if self.tariff is None:
+            return None
+        plan = self.tariff.plan
+        if self.tariff.import_entity:
+            price = prices[self.tariff.import_entity].at(start.astimezone(UTC))
+            return None if price is None else plan.import_adjustment.apply(price)
+        return import_price_at(plan, start, self.holidays)
+
+    def export_at(
+        self, start: datetime, prices: Mapping[str, _Series]
+    ) -> Decimal | None:
+        if self.tariff is None:
+            return None
+        plan = self.tariff.plan
+        if self.tariff.export_entity:
+            price = prices[self.tariff.export_entity].at(start.astimezone(UTC))
+            return None if price is None else plan.export_adjustment.apply(price)
+        return export_price_at(plan, start, self.holidays)
 
 
 @dataclass(frozen=True)
 class _History:
-    """The typed plan whose prices stand in where the price sensors have none.
+    """The plans the household has been on, which stand in for the price sensors.
 
-    Priced by the clock alone, so an hour's price is its band's at that local
-    hour, or its market price's, adjusted as the plan adjusts it (HEA-311).
+    An hour is priced at the plan of the period its local day falls in; an hour
+    before the first dated period, with none from always, at none (HEA-307).
     """
 
-    tariff: TariffPlan
-    holidays: frozenset[date]
+    stands: tuple[_Stand, ...]
     prices: Mapping[str, _Series]
 
-    def import_at(self, start: datetime) -> Decimal | None:
-        plan = self.tariff.plan
-        if self.tariff.import_entity:
-            price = self.prices[self.tariff.import_entity].at(start.astimezone(UTC))
-            return None if price is None else plan.import_adjustment.apply(price)
-        return import_price_at(plan, start, self.holidays)
-
-    def export_at(self, start: datetime) -> Decimal | None:
-        plan = self.tariff.plan
-        if self.tariff.export_entity:
-            price = self.prices[self.tariff.export_entity].at(start.astimezone(UTC))
-            return None if price is None else plan.export_adjustment.apply(price)
-        return export_price_at(plan, start, self.holidays)
+    def stand_at(self, start: datetime) -> _Stand | None:
+        day = dt_util.as_local(start).date()
+        return next(
+            (
+                stand
+                for stand in reversed(self.stands)
+                if stand.start is None or stand.start <= day
+            ),
+            None,
+        )
 
 
 async def _history_of(
     basis: _Basis, paid: _Paid, tariffs: Mapping[str, TariffPlan]
 ) -> _History | None:
-    """The plan named for the current plan's price history, where it can be read."""
-    tariff = tariffs.get(paid.history_id) if paid.history_id else None
-    if tariff is None or not follows_the_clock(tariff.plan):
+    """The plans the household has been on, as each prices an hour."""
+    stands = []
+    entities: set[str] = set()
+    for start, plan_id in paid.periods:
+        tariff = tariffs.get(plan_id)
+        if tariff is None or not follows_the_clock(tariff.plan):
+            stands.append(_Stand(start, None, frozenset()))
+            continue
+        holidays = (
+            await _holidays(basis.hass, tariff.holidays, basis.start, basis.end)
+            if tariff.holidays
+            else frozenset()
+        )
+        stands.append(_Stand(start, tariff, holidays))
+        entities |= {e for e in (tariff.import_entity, tariff.export_entity) if e}
+    if not stands:
         return None
-    holidays = (
-        await _holidays(basis.hass, tariff.holidays, basis.start, basis.end)
-        if tariff.holidays
-        else frozenset()
-    )
-    entities = [e for e in (tariff.import_entity, tariff.export_entity) if e]
     return _History(
-        tariff,
-        holidays,
+        tuple(stands),
         {entity: _Series(basis.prices.get(entity, {})) for entity in entities},
     )
 
@@ -301,10 +352,11 @@ class _PaidPrices:
     export at the Energy Dashboard's price sensor where it has one.
 
     Where a price sensor no other plan follows has no statistics, its interval
-    is priced at the plan named for the price history, and `stood_in` says so;
-    with none to read, the sensor is `lacking`, and the current plan cannot be
-    priced (HEA-311). Any other price is carried as a market price is, and an
-    interval it has no price before yet is left for the engine to refuse.
+    is priced at the plan the household was on that day, and `stood_in` names
+    each plan that did; with none to read, the sensor is `lacking`, and the
+    current plan cannot be priced (HEA-311, HEA-307). Any other price is carried
+    as a market price is, and an interval it has no price before yet is left for
+    the engine to refuse.
     """
 
     def __init__(
@@ -322,7 +374,7 @@ class _PaidPrices:
         self._gaps = gaps
         self._history = history
         self.lacking: set[str] = set()
-        self.stood_in = False
+        self.stood_in: set[_Stand] = set()
         self.imported = self._imported(paid)
         self.exported = self._exported(paid.export_entity)
 
@@ -373,18 +425,20 @@ class _PaidPrices:
         length = self._recorded.length_at(moment)
         if not any(gap.overlaps(moment, length) for gap in self._gaps.get(entity, ())):
             return self._series[entity].at(moment)
+        stand = self._history.stand_at(interval.start) if self._history else None
         stood: Decimal | None = None
-        if self._history is not None:
+        if stand is not None and self._history is not None:
+            prices = self._history.prices
             stood = (
-                self._history.export_at(interval.start)
+                stand.export_at(interval.start, prices)
                 if exported
-                else self._history.import_at(interval.start)
+                else stand.import_at(interval.start, prices)
             )
         if interval.start in self._kept:
-            if stood is None:
+            if stood is None or stand is None:
                 self.lacking.add(entity)
             else:
-                self.stood_in = True
+                self.stood_in.add(stand)
         return stood
 
 
@@ -654,22 +708,23 @@ async def _current_plan(
     Its prices per interval go into `prices`, the comparison's market prices,
     where the engine reads them. Without a daily charge it would read cheaper
     than every plan with one, so the card holds each plan's difference from it
-    (ADR-0042); and its row names the plan that priced the hours its sensors had
-    no statistics for (HEA-311).
+    (ADR-0042); and its row names the plans that priced the hours its sensors
+    had no statistics for, in the order the household was on them (HEA-311).
     """
     history = await _history_of(basis, paid, tariffs)
     paid_prices = _PaidPrices(basis, paid, gaps, history)
     prices[_PAID_IMPORT] = paid_prices.imported
     prices[_PAID_EXPORT] = paid_prices.exported
     daily_charge = await paid.daily_charge(basis.hass, basis)
+    stood = [
+        stand.tariff.plan.name
+        for stand in (history.stands if history else ())
+        if stand in paid_prices.stood_in and stand.tariff is not None
+    ]
     flags = (
         {"follows_prices": True}
         | ({"daily_charge_missing": True} if daily_charge is None else {})
-        | (
-            {"history_from": history.tariff.plan.name}
-            if history and paid_prices.stood_in
-            else {}
-        )
+        | ({"history_from": stood} if stood else {})
     )
     return paid.tariff(daily_charge), flags, sorted(paid_prices.lacking)
 

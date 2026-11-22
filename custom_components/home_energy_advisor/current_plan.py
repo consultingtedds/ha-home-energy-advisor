@@ -24,12 +24,14 @@ from homeassistant.helpers import selector
 from . import issues
 from .common_strings import async_common_strings
 from .const import (
+    CONF_PERIOD_FROM,
+    CONF_PERIOD_PLAN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
-    CONF_PLAN_HISTORY_FROM,
+    CONF_PLAN_PERIODS,
     CONF_PLAN_REPLACED,
     SUBENTRY_TYPE_PLAN,
 )
@@ -49,13 +51,16 @@ if TYPE_CHECKING:
 # Its name where the household's language has none.
 _NAME = "Your current plan"
 # What the form asks: the billing rules no price sensor holds (ADR-0042), and
-# the plan whose prices stand in where the sensors have no statistics (HEA-311).
+# the plans the household has been on, whose prices stand in where the sensors
+# have no statistics (HEA-311, HEA-307).
 _RULES = (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
-    CONF_PLAN_HISTORY_FROM,
+    CONF_PLAN_PERIODS,
 )
+# Where 1.7.1 kept the one plan its price history was read from.
+_HISTORY_FROM = "price_history_from"
 
 
 async def async_daily_charge_sources(
@@ -96,17 +101,13 @@ def history_plans(entry: ConfigEntry) -> list[selector.SelectOptionDict]:
     ]
 
 
-def rules_schema(
-    per_day: str,
-    sources: list[selector.SelectOptionDict],
-    plans: list[selector.SelectOptionDict],
-) -> vol.Schema:
-    """The current plan's form: its daily charge, its cap, and its price history.
+def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.Schema:
+    """The current plan's form: its daily charge and its cap.
 
     Both ways of giving the daily charge are optional to the form, which checks
     that exactly one was given (`rules_errors`). A source to follow is offered
-    only where the Energy Dashboard has one, and a plan to read price history
-    from only where one has been entered.
+    only where the Energy Dashboard has one. The plans the household has been on
+    follow in steps of their own (`PlansBeenOnSteps`).
     """
     following = (
         {
@@ -117,17 +118,6 @@ def rules_schema(
             )
         }
         if sources
-        else {}
-    )
-    history = (
-        {
-            vol.Optional(CONF_PLAN_HISTORY_FROM): selector.SelectSelector(
-                selector.SelectSelectorConfig(
-                    options=plans, mode=selector.SelectSelectorMode.DROPDOWN
-                )
-            )
-        }
-        if plans
         else {}
     )
     return vol.Schema(
@@ -150,7 +140,6 @@ def rules_schema(
                     translation_key=CONF_PLAN_EXPORT_CAP,
                 )
             ),
-            **history,
         }
     )
 
@@ -164,14 +153,180 @@ def rules_errors(answer: Mapping[str, Any]) -> dict[str, str]:
     return {}
 
 
+def period_errors(
+    periods: list[dict[str, str]], added: Mapping[str, Any]
+) -> dict[str, str]:
+    """Why a plan cannot join the plans been on, if it cannot.
+
+    Only one can go back before any other, and no two can start the same day:
+    the other would never price an hour.
+    """
+    start = added.get(CONF_PERIOD_FROM) or None
+    if any(period.get(CONF_PERIOD_FROM) == start for period in periods):
+        return {"base": "periods_one_always" if start is None else "periods_same_day"}
+    return {}
+
+
+def _periods_in(answer: Mapping[str, Any]) -> list[dict[str, str]]:
+    """The plans been on in an answer, each its plan and any start, earliest first.
+
+    The one going back to always comes first; a start left empty is none.
+    """
+    periods = [
+        {CONF_PERIOD_PLAN: period[CONF_PERIOD_PLAN]}
+        | ({CONF_PERIOD_FROM: start} if (start := period.get(CONF_PERIOD_FROM)) else {})
+        for period in answer.get(CONF_PLAN_PERIODS) or ()
+        if period.get(CONF_PERIOD_PLAN)
+    ]
+    return sorted(periods, key=lambda period: period.get(CONF_PERIOD_FROM, ""))
+
+
 def rules_of(data: Mapping[str, Any]) -> dict[str, Any]:
     """The billing rules a current plan or an answer holds, and nothing else."""
-    return {key: data[key] for key in _RULES if data.get(key) not in (None, "")}
+    rules = {key: data[key] for key in _RULES if data.get(key) not in (None, "")}
+    if periods := _periods_in(data):
+        rules[CONF_PLAN_PERIODS] = periods
+    else:
+        rules.pop(CONF_PLAN_PERIODS, None)
+    return rules
 
 
 def plan_data(name: str, answer: Mapping[str, Any]) -> dict[str, Any]:
     """What the current plan's entry holds after this answer."""
     return {CONF_NAME: name, CONF_PLAN_FOLLOWS: True, **rules_of(answer)}
+
+
+_KEEP = "keep"
+_ACTION = "action"
+_ADD_PERIOD = "add_period"
+_SAVE = "save"
+
+
+class PlansBeenOnSteps:
+    """The steps after the current plan's rules: the plans it has been on.
+
+    One lists them in words, to untick any or add one; the other adds a plan
+    from a day, or from before any other. Shared by the current plan's own form
+    and its Repair (HEA-307). The flow gives `hass`, how to show a form, which
+    entry the plans are in, and how to save.
+    """
+
+    hass: HomeAssistant
+    _rules: dict[str, Any]
+    _periods: list[dict[str, str]]
+
+    def _periods_entry(self) -> ConfigEntry:
+        raise NotImplementedError
+
+    def _periods_show(
+        self, step_id: str, schema: vol.Schema, errors: dict[str, str]
+    ) -> Any:  # noqa: ANN401 - each flow's own result type
+        raise NotImplementedError
+
+    def _periods_save(self, answer: dict[str, Any]) -> Any:  # noqa: ANN401 - as _periods_show
+        raise NotImplementedError
+
+    async def _after_rules(
+        self, rules: Mapping[str, Any], held: Mapping[str, Any]
+    ) -> Any:  # noqa: ANN401 - as _periods_show
+        """On to the plans been on, where a plan could be one; else saved."""
+        self._rules = dict(rules)
+        self._periods = _periods_in(held)
+        if not history_plans(self._periods_entry()) and not self._periods:
+            return self._periods_save(self._rules)
+        return await self.async_step_periods()
+
+    async def async_step_periods(self, user_input: dict[str, Any] | None = None) -> Any:  # noqa: ANN401 - as _periods_show
+        """The plans been on, in words: untick any, add one, or save."""
+        if user_input is not None:
+            kept = set(user_input.get(_KEEP, ()))
+            self._periods = [
+                period
+                for index, period in enumerate(self._periods)
+                if str(index) in kept
+            ]
+            if user_input[_ACTION] == _ADD_PERIOD:
+                return await self.async_step_period()
+            return self._periods_save({**self._rules, CONF_PLAN_PERIODS: self._periods})
+        labels = await async_common_strings(self.hass)
+        names = {
+            option["value"]: option["label"]
+            for option in history_plans(self._periods_entry())
+        }
+        options = [
+            selector.SelectOptionDict(
+                value=str(index), label=_period_label(period, names, labels)
+            )
+            for index, period in enumerate(self._periods)
+        ]
+        return self._periods_show(
+            "periods",
+            vol.Schema(
+                {
+                    vol.Optional(
+                        _KEEP, default=[option["value"] for option in options]
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=options,
+                            multiple=True,
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
+                    vol.Required(_ACTION, default=_SAVE): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[_ADD_PERIOD, _SAVE],
+                            mode=selector.SelectSelectorMode.LIST,
+                            translation_key="period_action",
+                        )
+                    ),
+                }
+            ),
+            {},
+        )
+
+    async def async_step_period(self, user_input: dict[str, Any] | None = None) -> Any:  # noqa: ANN401 - as _periods_show
+        """A plan the household has been on, and the day it started, if any."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            errors = period_errors(self._periods, user_input)
+            if not errors:
+                self._periods = _periods_in(
+                    {CONF_PLAN_PERIODS: [*self._periods, user_input]}
+                )
+                return await self.async_step_periods()
+        return self._periods_show(
+            "period",
+            vol.Schema(
+                {
+                    vol.Required(CONF_PERIOD_PLAN): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=history_plans(self._periods_entry()),
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    vol.Optional(CONF_PERIOD_FROM): selector.DateSelector(),
+                }
+            ),
+            errors,
+        )
+
+
+def _period_label(
+    period: Mapping[str, str], names: Mapping[str, str], labels: Mapping[str, str]
+) -> str:
+    """A plan been on, in words: "Naturgy, from 2025-03-01", or before any other."""
+    name = names.get(period[CONF_PERIOD_PLAN]) or labels.get(
+        "plan_period_gone", "A plan no longer entered"
+    )
+    if start := period.get(CONF_PERIOD_FROM):
+        return (
+            labels.get("plan_period_from", "{plan}, from {date}")
+            .replace("{plan}", name)
+            .replace("{date}", start)
+        )
+    return labels.get("plan_period_first", "{plan}, before any other").replace(
+        "{plan}", name
+    )
 
 
 def is_current_plan(subentry: ConfigSubentry) -> bool:
@@ -255,39 +410,44 @@ def take_the_marked_plan_s_rules(
                 if key in subentry.data
             },
             CONF_PLAN_REPLACED: subentry.title,
-            **_history_from(subentry),
+            **_been_on_always(subentry),
         }
     return {}
 
 
-def _history_from(plan: ConfigSubentry) -> dict[str, str]:
-    """The current plan's price history read from this plan, where it can be."""
+def _been_on_always(plan: ConfigSubentry) -> dict[str, list[dict[str, str]]]:
+    """This plan as the one the household has always been on, where it can be."""
     if not follows_the_clock(tariff_plan_from(plan.title, plan.data).plan):
         return {}
-    return {CONF_PLAN_HISTORY_FROM: plan.subentry_id}
+    return {CONF_PLAN_PERIODS: [{CONF_PERIOD_PLAN: plan.subentry_id}]}
 
 
 @callback
-def link_the_replaced_plan(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Read the price history from the plan the current plan replaced.
+def fill_the_plans_been_on(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Give a current plan made before the list existed the plans it has been on.
 
-    For a current plan made before it could be: 1.7.0 kept only the replaced
-    plan's name, and priced no hour its sensors had no statistics for. Only
-    until the household has answered for it, since an answer chose for itself.
+    1.7.1 kept one plan for the price history, which becomes the first period.
+    1.7.0 kept only the replaced plan's name, which is linked until the
+    household has answered for it, since an answer chose for itself.
     """
     current = current_plan_of(entry)
-    if current is None or CONF_PLAN_HISTORY_FROM in current.data:
+    if current is None or CONF_PLAN_PERIODS in current.data:
         return
-    replaced = current.data.get(CONF_PLAN_REPLACED)
-    if not replaced:
-        return
-    for subentry in entry.subentries.values():
-        if subentry.subentry_type == SUBENTRY_TYPE_PLAN and subentry.title == replaced:
-            if link := _history_from(subentry):
-                hass.config_entries.async_update_subentry(
-                    entry, current, data={**current.data, **link}
-                )
-            return
+    data = {key: value for key, value in current.data.items() if key != _HISTORY_FROM}
+    if history := current.data.get(_HISTORY_FROM):
+        data[CONF_PLAN_PERIODS] = [{CONF_PERIOD_PLAN: history}]
+    elif replaced := current.data.get(CONF_PLAN_REPLACED):
+        data |= next(
+            (
+                _been_on_always(subentry)
+                for subentry in entry.subentries.values()
+                if subentry.subentry_type == SUBENTRY_TYPE_PLAN
+                and subentry.title == replaced
+            ),
+            {},
+        )
+    if data != dict(current.data):
+        hass.config_entries.async_update_subentry(entry, current, data=data)
 
 
 def needs_answer(plan: ConfigSubentry) -> bool:

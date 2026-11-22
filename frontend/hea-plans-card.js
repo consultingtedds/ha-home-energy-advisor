@@ -298,8 +298,14 @@ class HeaPlansCard extends HeaCard {
     const notes = [
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       this._currentNote(marked),
-      marked?.history_from
-        ? fill(this._labels.plans_current_history_from, { plan: escape(marked.history_from) })
+      marked?.history_from?.length
+        ? fill(this._labels.plans_current_history_from, {
+            plans: escape(
+              new Intl.ListFormat(locale.language, { type: "conjunction" }).format(
+                marked.history_from,
+              ),
+            ),
+          })
         : "",
       this._labels.plans_note,
       priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",

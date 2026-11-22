@@ -354,14 +354,31 @@
           "data": {
             "daily_charge": "Cargo diario",
             "daily_charge_source": "Cargo diario desde tu panel de energía",
-            "plan_export_cap": "Compensación de excedentes",
-            "price_history_from": "Historial de precios de"
+            "plan_export_cap": "Compensación de excedentes"
           },
           "data_description": {
             "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
             "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente, y el cargo diario de esta tarifa es lo que Home Assistant registró que costó. Indica esto o el cargo diario, no ambos.",
-            "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan.",
-            "price_history_from": "Para las horas en que tus sensores de precio no tienen estadísticas, como antes de añadir un sensor o mientras no tenía clase de estado, se usan los precios de esta tarifa. Elige la tarifa que tenías entonces."
+            "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan."
+          }
+        },
+        "periods": {
+          "title": "Tarifas que has tenido",
+          "description": "Donde tus sensores de precio no tienen estadísticas, como antes de añadir un sensor o mientras no tenía clase de estado, cada hora se calcula con la tarifa que tenías ese día. Donde las tienen, son lo que pagaste, y se usan en su lugar.\n\nAñade cada tarifa que has tenido con el día en que empezó. Desmarca cualquiera para quitarla.",
+          "data": {
+            "keep": "Tarifas",
+            "action": "Siguiente"
+          }
+        },
+        "period": {
+          "title": "Añadir una tarifa que has tenido",
+          "description": "Solo se ofrecen tarifas con precios por horario: una tarifa con un límite cobra según lo consumido, y eso no lo dice el precio de una hora.",
+          "data": {
+            "plan": "Tarifa",
+            "from": "Desde"
+          },
+          "data_description": {
+            "from": "El día en que empezaste con ella. Déjalo vacío para la tarifa que tenías antes que ninguna otra: cubre todo lo anterior a la siguiente."
           }
         }
       },
@@ -378,7 +395,9 @@
         "price_allowance": "El cupo de exportación de un precio limita su propio precio de exportación, así que dale también un precio de exportación a ese precio, o deja su cupo vacío.",
         "import_allowance": "Un cupo de importación y el precio que se cobra pasado el cupo van juntos: indica los dos, o ninguno.",
         "import_price_after": "Pasado un cupo de importación, indica otro de los precios de este plan tal como aparece en la lista.",
-        "market_adjustment": "Esto ajusta un precio de mercado, así que necesita la entidad de precio de mercado que ajusta. Elige una, o deja el ajuste vacío."
+        "market_adjustment": "Esto ajusta un precio de mercado, así que necesita la entidad de precio de mercado que ajusta. Elige una, o deja el ajuste vacío.",
+        "periods_one_always": "Solo una tarifa puede quedar sin fecha de inicio: cubre todo lo anterior a la siguiente.",
+        "periods_same_day": "Dos tarifas no pueden empezar el mismo día. Cambia una de las fechas."
       }
     },
     "device": {
@@ -557,6 +576,12 @@
           "name": "Pasado el cupo de importación, cobrar el precio con este nombre (opcional)"
         }
       }
+    },
+    "period_action": {
+      "options": {
+        "add_period": "Añadir una tarifa que has tenido",
+        "save": "Guardar"
+      }
     }
   },
   "issues": {
@@ -680,20 +705,39 @@
             "data": {
               "daily_charge": "Cargo diario",
               "daily_charge_source": "Cargo diario desde tu panel de energía",
-              "plan_export_cap": "Compensación de excedentes",
-              "price_history_from": "Historial de precios de"
+              "plan_export_cap": "Compensación de excedentes"
             },
             "data_description": {
               "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
               "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente. Indica esto o el cargo diario, no ambos.",
-              "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes.",
-              "price_history_from": "Para las horas en que tus sensores de precio no tienen estadísticas, como antes de añadir un sensor o mientras no tenía clase de estado, se usan los precios de esta tarifa. Elige la tarifa que tenías entonces."
+              "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes."
+            }
+          },
+          "periods": {
+            "title": "Tarifas que has tenido",
+            "description": "Donde tus sensores de precio no tienen estadísticas, como antes de añadir un sensor o mientras no tenía clase de estado, cada hora se calcula con la tarifa que tenías ese día. Donde las tienen, son lo que pagaste, y se usan en su lugar.\n\nAñade cada tarifa que has tenido con el día en que empezó. Desmarca cualquiera para quitarla.",
+            "data": {
+              "keep": "Tarifas",
+              "action": "Siguiente"
+            }
+          },
+          "period": {
+            "title": "Añadir una tarifa que has tenido",
+            "description": "Solo se ofrecen tarifas con precios por horario: una tarifa con un límite cobra según lo consumido, y eso no lo dice el precio de una hora.",
+            "data": {
+              "plan": "Tarifa",
+              "from": "Desde"
+            },
+            "data_description": {
+              "from": "El día en que empezaste con ella. Déjalo vacío para la tarifa que tenías antes que ninguna otra: cubre todo lo anterior a la siguiente."
             }
           }
         },
         "error": {
           "daily_charge_needed": "Indica el cargo diario, o elige la fuente del panel de energía que lo cobra.",
-          "daily_charge_one": "Indica el cargo diario o elige una fuente para él, no ambos."
+          "daily_charge_one": "Indica el cargo diario o elige una fuente para él, no ambos.",
+          "periods_one_always": "Solo una tarifa puede quedar sin fecha de inicio: cubre todo lo anterior a la siguiente.",
+          "periods_same_day": "Dos tarifas no pueden empezar el mismo día. Cambia una de las fechas."
         },
         "abort": {
           "entry_removed": "Home Energy Advisor ya no está configurado, así que no hay nada que cambiar."
@@ -909,8 +953,8 @@
     "card_plans_your_export_price": "Tu precio de exportación",
     "card_plans_daily_missing": "Sin indicar todavía",
     "card_plans_no_price": "{sensors} no registró estadísticas en este periodo, así que no se puede comparar. Revísalo en Herramientas para desarrolladores > Estadísticas: un sensor de precio necesita la clase de estado measurement para que Home Assistant las guarde.",
-    "card_plans_no_price_current": "{sensors} no tiene estadísticas de parte de este periodo, así que tu tarifa actual no se puede calcular. Para calcular esas horas, elige la tarifa que tenías en Historial de precios de, en los ajustes de tu tarifa actual. Para guardar sus estadísticas a partir de ahora, dale al sensor la clase de estado measurement.",
-    "card_plans_current_history_from": "Las horas en que tus sensores de precio no tienen estadísticas se calculan con {plan}.",
+    "card_plans_no_price_current": "{sensors} no tiene estadísticas de parte de este periodo, así que tu tarifa actual no se puede calcular. Para calcular esas horas, añade las tarifas que has tenido, cada una con el día en que empezó, en Tarifas que has tenido, en los ajustes de tu tarifa actual. Para guardar sus estadísticas a partir de ahora, dale al sensor la clase de estado measurement.",
+    "card_plans_current_history_from": "Las horas en que tus sensores de precio no tienen estadísticas se calculan con la tarifa que tenías ese día: {plans}.",
     "card_plans_export_unpaid": "{amount} de exportación sin pagar: limitada al coste de la energía de cada mes.",
     "card_plans_export_carried": "{amount} de exportación acumulada y aún sin usar.",
     "card_plans_left_out_meters": "Excluido de todas las tarifas, cargos diarios incluidos: {when}. Tus contadores de red no registraron nada entonces.",
@@ -977,6 +1021,9 @@
     "card_still_accruing": "El último intervalo aún se está contando, así que su barra crecerá. Las cifras están completas unos veinte minutos por detrás del reloj, que es el tiempo que se da a los contadores para informar.",
     "plan_start_nothing": "Nada: introducir sus franjas una a una",
     "plan_price_name": "Precio {number}",
-    "plan_per_day": "{currency}/día"
+    "plan_per_day": "{currency}/día",
+    "plan_period_first": "{plan}, antes que ninguna otra",
+    "plan_period_from": "{plan}, desde {date}",
+    "plan_period_gone": "Una tarifa que ya no está"
   }
 }

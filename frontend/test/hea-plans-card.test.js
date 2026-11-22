@@ -371,7 +371,7 @@ describe("the current plan, priced at the prices the household pays (ADR-0042)",
   it("names the plan that priced the hours its price sensors have no statistics for", async () => {
     // Given - priced at the household's own words for a plan where its price
     // sensor has no statistics (HEA-311)
-    const filled = { ...CURRENT, history_from: "Covau <b>&</b> Co" };
+    const filled = { ...CURRENT, history_from: ["Covau <b>&</b> Co"] };
 
     // When
     const card = mountCard(TAG, aHome({ ...COMPARED, plans: [filled, OFFER] }));
@@ -379,9 +379,23 @@ describe("the current plan, priced at the prices the household pays (ADR-0042)",
 
     // Then - said once, the name shown as text
     expect(text(card)).toContain(
-      fill(LABELS.plans_current_history_from, { plan: "Covau <b>&</b> Co" }),
+      fill(LABELS.plans_current_history_from, { plans: "Covau <b>&</b> Co" }),
     );
     expect(card.shadowRoot.querySelector(".hint b")).toBeNull();
+  });
+
+  it("names every plan the household was on that priced them, in order", async () => {
+    // Given - two periods' plans stood in (HEA-307)
+    const filled = { ...CURRENT, history_from: ["Covau", "Synergy Home"] };
+
+    // When
+    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [filled, OFFER] }));
+    await settled(expect, card);
+
+    // Then - listed as the household's language lists them
+    expect(text(card)).toContain(
+      fill(LABELS.plans_current_history_from, { plans: "Covau and Synergy Home" }),
+    );
   });
 
   it("says how to price it where a price sensor has no statistics", async () => {

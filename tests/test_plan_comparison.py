@@ -48,6 +48,8 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_HOUSE_CONSUMPTION_ENTITY,
+    CONF_PERIOD_FROM,
+    CONF_PERIOD_PLAN,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_ALLOWANCE,
@@ -56,10 +58,10 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_FOLLOWS,
-    CONF_PLAN_HISTORY_FROM,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
+    CONF_PLAN_PERIODS,
     CONF_PRICE_ENTITY,
     CONF_PRICES,
     DOMAIN,
@@ -1882,15 +1884,134 @@ def _a_price_without_statistics(hass: HomeAssistant, entity: str) -> None:
 
 async def _price_history_from(hass: HomeAssistant, title: str) -> None:
     """Have the current plan read the prices its sensors lack from this plan."""
+    await _plans_been_on(hass, (title, None))
+
+
+async def _plans_been_on(hass: HomeAssistant, *periods: tuple[str, str | None]) -> None:
+    """The plans the household has been on, each by title from a day or from always."""
     entry = hass.config_entries.async_entries(DOMAIN)[0]
     by_title = {subentry.title: subentry for subentry in entry.subentries.values()}
     current = by_title[_CURRENT]
+    listed = [
+        {CONF_PERIOD_PLAN: by_title[title].subentry_id}
+        | ({CONF_PERIOD_FROM: day} if day else {})
+        for title, day in periods
+    ]
     hass.config_entries.async_update_subentry(
-        entry,
-        current,
-        data={**current.data, CONF_PLAN_HISTORY_FROM: by_title[title].subentry_id},
+        entry, current, data={**current.data, CONF_PLAN_PERIODS: listed}
     )
     await hass.async_block_till_done()
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_each_gap_hour_is_priced_at_the_plan_the_household_was_on_that_day(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - 1 kWh in at 07:00 on Tuesday 13 and on Wednesday 14 October, the
+    # price sensor with no statistics, and the household on the night saver
+    # until it switched to the flat rate on the 14th
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    before = DAY_START - timedelta(days=1)
+    rows = [
+        StatisticData(
+            start=(before + timedelta(hours=hour)).astimezone(UTC),
+            state=total,
+            sum=total,
+        )
+        for hour, total in ((h, float(h >= 7) + float(h >= 31)) for h in range(48))
+    ]
+    async_import_statistics(
+        hass,
+        StatisticMetaData(
+            has_sum=True,
+            mean_type=StatisticMeanType.NONE,
+            name=None,
+            source="recorder",
+            statistic_id="sensor.grid_import",
+            unit_class="energy",
+            unit_of_measurement="kWh",
+        ),
+        rows,
+    )
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _plans_been_on(hass, ("Night saver", None), ("Flat rate", "2026-10-14"))
+
+    # When - both days at once
+    result = await _compare(hass_ws_client, hass, start=before)
+
+    # Then - the 13th's 07:00 at the night saver's overnight 0.09, the 14th's at
+    # the flat rate's 0.234, from its first hour; both plans named, in order
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(0.09 + 0.234)
+    assert current["history_from"] == ["Night saver", "Flat rate"]
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_period_starting_later_does_not_price_the_days_before_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the switch to the flat rate the day after the one compared
+    _calendar(hass, [])
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _plans_been_on(hass, ("Night saver", None), ("Flat rate", "2026-10-15"))
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the whole day at the night saver: 07:00 overnight, 12:00 and 20:00
+    # in its day band; the flat rate not named, as it priced nothing
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(1.0 * 0.09 + 1.5 * 0.31)
+    assert current["history_from"] == ["Night saver"]
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_hours_before_the_first_dated_period_cannot_be_priced(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - only a period from the 15th: nothing says what the household was
+    # on before it
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _plans_been_on(hass, ("Flat rate", "2026-10-15"))
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - listed unpriced, naming the sensor
+    current = _by_name(result)[_CURRENT]
+    assert current["no_price"] is True
+    assert current["no_price_entities"] == ["sensor.grid_buy_price"]
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
@@ -1922,7 +2043,7 @@ async def test_hours_without_the_sensor_s_statistics_are_priced_at_the_plan_name
     # plan priced the hours the sensor has no statistics for
     current = _by_name(result)[_CURRENT]
     assert current["energy"] == pytest.approx(1.0 * 0.09 + 1.5 * 0.30)
-    assert current["history_from"] == "Night saver"
+    assert current["history_from"] == ["Night saver"]
     # Nothing left out for any plan: no other plan follows that sensor
     assert result["left_out"] == []
     assert result["hours"] == 24
@@ -1955,7 +2076,7 @@ async def test_a_sensor_with_no_statistics_at_all_is_priced_at_the_plan_named(
     assert "no_price" not in current
     assert current["energy"] == pytest.approx(2.5 * 0.234)
     assert current["export_credit"] == pytest.approx(2.0 * 0.05)
-    assert current["history_from"] == "Flat rate"
+    assert current["history_from"] == ["Flat rate"]
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
@@ -1987,7 +2108,7 @@ async def test_a_day_a_shared_sensor_recorded_nothing_is_priced_at_the_plan_name
     # still cannot be priced, since its price is the sensor's own
     plans = _by_name(result)
     assert plans[_CURRENT]["energy"] == pytest.approx(2.5 * 0.234)
-    assert plans[_CURRENT]["history_from"] == "Flat rate"
+    assert plans[_CURRENT]["history_from"] == ["Flat rate"]
     assert plans["Wholesale"]["no_price"] is True
     assert result["left_out"] == []
 
@@ -2063,7 +2184,7 @@ async def test_a_market_plan_named_prices_the_gap_at_its_market_price_adjusted(
     # Then - each hour at the market's price that hour, plus the 0.05
     current = _by_name(result)[_CURRENT]
     assert current["energy"] == pytest.approx(1.0 * 0.15 + 0.5 * 0.25 + 1.0 * 0.35)
-    assert current["history_from"] == "Wholesale"
+    assert current["history_from"] == ["Wholesale"]
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
@@ -2093,7 +2214,7 @@ async def test_an_export_price_without_statistics_is_read_from_the_plan_named(
     current = _by_name(result)[_CURRENT]
     assert current["export_credit"] == pytest.approx(2.0 * 0.04)
     assert current["energy"] == pytest.approx(2.5 * 0.2)
-    assert current["history_from"] == "Night saver"
+    assert current["history_from"] == ["Night saver"]
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")

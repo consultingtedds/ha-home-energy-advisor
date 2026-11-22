@@ -34,9 +34,9 @@ from .const import (
     DOMAIN,
 )
 from .current_plan import (
+    PlansBeenOnSteps,
     async_daily_charge_sources,
     current_plan_of,
-    history_plans,
     plan_data,
     rules_errors,
     rules_of,
@@ -91,13 +91,17 @@ async def async_create_fix_flow(
     return EnergyDashboardChangedFlow(str((data or {}).get("entry_id")))
 
 
-class CurrentPlanFlow(RepairsFlow):
+class CurrentPlanFlow(PlansBeenOnSteps, RepairsFlow):
     """Give the current plan its daily charge and cap (ADR-0042).
 
     The same answers as the plan's own form, asked where the household is told
     the comparison is waiting for them, and, after an upgrade, that the plan it
-    had marked as its own now duplicates the current plan.
+    had marked as its own now duplicates the current plan. Then the plans it
+    has been on, as there (HEA-307).
     """
+
+    # Found by the first step, before any other is shown.
+    _entry: ConfigEntry
 
     def __init__(self, entry_id: str) -> None:
         """Answer for one entry's current plan."""
@@ -111,6 +115,7 @@ class CurrentPlanFlow(RepairsFlow):
         plan = current_plan_of(entry) if entry else None
         if entry is None or plan is None:
             return self.async_abort(reason="entry_removed")
+        self._entry = entry
         errors: dict[str, str] = {}
         # Opened with the issue's own id rather than an answer, so only an input
         # carrying the form's cap is one.
@@ -120,10 +125,8 @@ class CurrentPlanFlow(RepairsFlow):
         if answered is not None:
             errors = rules_errors(answered)
             if not errors:
-                self.hass.config_entries.async_update_subentry(
-                    entry, plan, data=plan_data(plan.title, answered)
-                )
-                return self.async_create_entry(data={})
+                result: RepairsFlowResult = await self._after_rules(answered, plan.data)
+                return result
         labels = await async_common_strings(self.hass)
         currency = str(entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY))
         per_day = labels.get("plan_per_day", "{currency}/day").replace(
@@ -136,7 +139,6 @@ class CurrentPlanFlow(RepairsFlow):
                 rules_schema(
                     per_day,
                     await async_daily_charge_sources(self.hass, entry),
-                    history_plans(entry),
                 ),
                 answered or rules_of(plan.data),
             ),
@@ -149,6 +151,24 @@ class CurrentPlanFlow(RepairsFlow):
                 else ""
             },
         )
+
+    def _periods_entry(self) -> ConfigEntry:
+        return self._entry
+
+    def _periods_show(
+        self, step_id: str, schema: vol.Schema, errors: dict[str, str]
+    ) -> RepairsFlowResult:
+        return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
+
+    def _periods_save(self, answer: dict[str, Any]) -> RepairsFlowResult:
+        entry = self._periods_entry()
+        plan = current_plan_of(entry)
+        if plan is None:
+            return self.async_abort(reason="entry_removed")
+        self.hass.config_entries.async_update_subentry(
+            entry, plan, data=plan_data(plan.title, answer)
+        )
+        return self.async_create_entry(data={})
 
 
 class ImpossibleHourFlow(RepairsFlow):

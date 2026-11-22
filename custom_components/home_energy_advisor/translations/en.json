@@ -354,14 +354,31 @@
           "data": {
             "daily_charge": "Daily charge",
             "daily_charge_source": "Daily charge from your Energy Dashboard",
-            "plan_export_cap": "Export compensation",
-            "price_history_from": "Price history from"
+            "plan_export_cap": "Export compensation"
           },
           "data_description": {
             "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source, and this plan's daily charge is what Home Assistant recorded it costing. Enter this or the daily charge, not both.",
-            "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset.",
-            "price_history_from": "For any hours your price sensors have no statistics for, such as before a sensor was added or while it had no state class, this plan's prices are used instead. Choose the plan you were on then."
+            "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset."
+          }
+        },
+        "periods": {
+          "title": "Plans you've been on",
+          "description": "Where your price sensors have no statistics, such as before a sensor was added or while it had no state class, each hour is priced at the plan you were on that day. Where they have statistics, those are what you paid, and are used instead.\n\nAdd each plan you were on with the day it started. Untick any to remove it.",
+          "data": {
+            "keep": "Plans",
+            "action": "Next"
+          }
+        },
+        "period": {
+          "title": "Add a plan you've been on",
+          "description": "Only plans priced by the clock are offered: a plan with an allowance charges by how much was used, which no single hour's price can say.",
+          "data": {
+            "plan": "Plan",
+            "from": "From"
+          },
+          "data_description": {
+            "from": "The day you started on it. Leave it empty for the plan you were on before any other: it covers everything before the next."
           }
         }
       },
@@ -378,7 +395,9 @@
         "price_allowance": "A price's export allowance limits its own export price, so give that price an export price too, or leave its allowance empty.",
         "import_allowance": "An import allowance and the price charged beyond it go together: enter both, or neither.",
         "import_price_after": "Beyond an import allowance, name another of this plan's prices exactly as it appears in the list.",
-        "market_adjustment": "This adjusts a market price, so it needs the market price entity it adjusts. Choose one, or leave the adjustment empty."
+        "market_adjustment": "This adjusts a market price, so it needs the market price entity it adjusts. Choose one, or leave the adjustment empty.",
+        "periods_one_always": "Only one plan can be left without a start date: it covers everything before the next.",
+        "periods_same_day": "Two plans can't start on the same day. Change one of the dates."
       }
     },
     "device": {
@@ -557,6 +576,12 @@
           "name": "Beyond the import allowance, charge the price named (optional)"
         }
       }
+    },
+    "period_action": {
+      "options": {
+        "add_period": "Add a plan you've been on",
+        "save": "Save"
+      }
     }
   },
   "issues": {
@@ -680,20 +705,39 @@
             "data": {
               "daily_charge": "Daily charge",
               "daily_charge_source": "Daily charge from your Energy Dashboard",
-              "plan_export_cap": "Export compensation",
-              "price_history_from": "Price history from"
+              "plan_export_cap": "Export compensation"
             },
             "data_description": {
               "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
               "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source. Enter this or the daily charge, not both.",
-              "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost.",
-              "price_history_from": "For any hours your price sensors have no statistics for, such as before a sensor was added or while it had no state class, this plan's prices are used instead. Choose the plan you were on then."
+              "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost."
+            }
+          },
+          "periods": {
+            "title": "Plans you've been on",
+            "description": "Where your price sensors have no statistics, such as before a sensor was added or while it had no state class, each hour is priced at the plan you were on that day. Where they have statistics, those are what you paid, and are used instead.\n\nAdd each plan you were on with the day it started. Untick any to remove it.",
+            "data": {
+              "keep": "Plans",
+              "action": "Next"
+            }
+          },
+          "period": {
+            "title": "Add a plan you've been on",
+            "description": "Only plans priced by the clock are offered: a plan with an allowance charges by how much was used, which no single hour's price can say.",
+            "data": {
+              "plan": "Plan",
+              "from": "From"
+            },
+            "data_description": {
+              "from": "The day you started on it. Leave it empty for the plan you were on before any other: it covers everything before the next."
             }
           }
         },
         "error": {
           "daily_charge_needed": "Enter the daily charge, or choose the Energy Dashboard source that charges it.",
-          "daily_charge_one": "Enter the daily charge or choose a source for it, not both."
+          "daily_charge_one": "Enter the daily charge or choose a source for it, not both.",
+          "periods_one_always": "Only one plan can be left without a start date: it covers everything before the next.",
+          "periods_same_day": "Two plans can't start on the same day. Change one of the dates."
         },
         "abort": {
           "entry_removed": "Home Energy Advisor is no longer set up, so there is nothing to change."
@@ -909,8 +953,8 @@
     "card_plans_your_export_price": "Your export price",
     "card_plans_daily_missing": "Not given yet",
     "card_plans_no_price": "{sensors} recorded no statistics in this period, so it cannot be compared. Check it in Developer Tools > Statistics: a price sensor needs the state class measurement for Home Assistant to keep them.",
-    "card_plans_no_price_current": "{sensors} has no statistics for some of this period, so your current plan cannot be priced. To price those hours, choose the plan you were on under Price history from, in your current plan's settings. To keep its statistics from now on, give the sensor the state class measurement.",
-    "card_plans_current_history_from": "Hours your price sensors have no statistics for are priced at {plan}.",
+    "card_plans_no_price_current": "{sensors} has no statistics for some of this period, so your current plan cannot be priced. To price those hours, add the plans you were on, each with the day it started, under Plans you've been on, in your current plan's settings. To keep its statistics from now on, give the sensor the state class measurement.",
+    "card_plans_current_history_from": "Hours your price sensors have no statistics for are priced at the plan you were on that day: {plans}.",
     "card_plans_export_unpaid": "{amount} of export not paid: capped at each month's energy cost.",
     "card_plans_export_carried": "{amount} of export carried forward and not yet used.",
     "card_plans_left_out_meters": "Left out of every plan, daily charges included: {when}. Your grid meters recorded nothing then.",
@@ -977,6 +1021,9 @@
     "card_still_accruing": "The last interval is still being counted, so its bar will grow. Figures are complete about twenty minutes behind the clock, which is how long meters are given to report.",
     "plan_start_nothing": "Nothing: enter its bands one at a time",
     "plan_price_name": "Price {number}",
-    "plan_per_day": "{currency}/day"
+    "plan_per_day": "{currency}/day",
+    "plan_period_first": "{plan}, before any other",
+    "plan_period_from": "{plan}, from {date}",
+    "plan_period_gone": "A plan no longer entered"
   }
 }

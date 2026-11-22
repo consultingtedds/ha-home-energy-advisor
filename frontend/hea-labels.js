@@ -179,11 +179,13 @@ export const DEFAULTS = Object.freeze({
     "class measurement for Home Assistant to keep them.",
   plans_no_price_current:
     "{sensors} has no statistics for some of this period, so your current plan " +
-    "cannot be priced. To price those hours, choose the plan you were on under " +
-    "Price history from, in your current plan's settings. To keep its statistics " +
-    "from now on, give the sensor the state class measurement.",
+    "cannot be priced. To price those hours, add the plans you were on, each " +
+    "with the day it started, under Plans you've been on, in your current " +
+    "plan's settings. To keep its statistics from now on, give the sensor the " +
+    "state class measurement.",
   plans_current_history_from:
-    "Hours your price sensors have no statistics for are priced at {plan}.",
+    "Hours your price sensors have no statistics for are priced at the plan " +
+    "you were on that day: {plans}.",
   plans_export_unpaid: "{amount} of export not paid: capped at each month's energy cost.",
   plans_export_carried: "{amount} of export carried forward and not yet used.",
   plans_left_out_meters:
