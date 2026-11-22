@@ -330,7 +330,7 @@ async def _history_of(
             stands.append(_Stand(start, None, frozenset()))
             continue
         holidays = (
-            await _holidays(basis.hass, tariff.holidays, basis.start, basis.end)
+            await async_holidays(basis.hass, tariff.holidays, basis.start, basis.end)
             if tariff.holidays
             else frozenset()
         )
@@ -754,7 +754,7 @@ async def _plan_row(
     if quiet := [entity for entity in followed if entity in basis.silent]:
         return {**named, "no_price": True, "no_price_entities": quiet}
     holidays = (
-        await _holidays(basis.hass, tariff.holidays, basis.start, basis.end)
+        await async_holidays(basis.hass, tariff.holidays, basis.start, basis.end)
         if tariff.holidays
         else frozenset()
     )
@@ -1398,7 +1398,7 @@ async def _market_prices(
     )
     prices: dict[str, dict[datetime, Decimal]] = {}
     for entity in entities:
-        per_kwh = _per_kwh(hass, entity)
+        per_kwh = price_per_kwh(hass, entity)
         prices[entity] = {
             _moment(row["start"]): Decimal(str(row["mean"])) * per_kwh
             for rows in (hourly.get(entity, ()), fine.get(entity, ()))
@@ -1427,7 +1427,7 @@ def _means(
     )
 
 
-def _per_kwh(hass: HomeAssistant, entity: str) -> Decimal:
+def price_per_kwh(hass: HomeAssistant, entity: str) -> Decimal:
     """What a price entity's figure is multiplied by to be per kWh.
 
     As the Energy Dashboard reads a price: the unit after the `/` is the energy
@@ -1504,7 +1504,7 @@ def _moment(start: float | datetime) -> datetime:
     return datetime.fromtimestamp(start, UTC)
 
 
-async def _holidays(
+async def async_holidays(
     hass: HomeAssistant, calendar: str, start: datetime, end: datetime
 ) -> frozenset[date]:
     """Every date an all-day event in `calendar` covers within the period.

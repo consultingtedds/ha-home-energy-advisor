@@ -40,6 +40,12 @@ day it started, and each of those hours is priced at the plan you were on that
 day. The plan you chose under Price history from is already there as the first,
 so nothing changes until you add another.
 
+**Home Energy Advisor can now provide your price sensors.** It's off unless you
+tick **Provide my price sensors from the plans I've been on** on "Your current
+plan": then an Import price and an Export price sensor follow the plan you're on,
+ready to point your grid meters and Energy Dashboard at. Nothing is added or
+changed for anyone who leaves it unticked.
+
 ## 1.7.1
 
 **Your current plan is priced again where your price sensors have no history.**

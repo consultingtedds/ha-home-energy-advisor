@@ -66,6 +66,9 @@ CONF_PLAN_REPLACED: Final = "replaced_plan"
 # price sensors it follows have no statistics, an hour is priced at the plan of
 # its day (HEA-311, HEA-307, ADR-0048).
 CONF_PLAN_PERIODS: Final = "price_periods"
+# On the current plan: whether this integration provides the household's price
+# sensors, fed by the plan of the period in force today (ADR-0048).
+CONF_PLAN_PROVIDES_PRICES: Final = "provides_prices"
 CONF_PERIOD_PLAN: Final = "plan"
 CONF_PERIOD_FROM: Final = "from"
 CONF_PLAN_DAILY_CHARGE: Final = "daily_charge"

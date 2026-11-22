@@ -354,12 +354,14 @@
           "data": {
             "daily_charge": "Cargo diario",
             "daily_charge_source": "Cargo diario desde tu panel de energía",
-            "plan_export_cap": "Compensación de excedentes"
+            "plan_export_cap": "Compensación de excedentes",
+            "provides_prices": "Crear mis sensores de precio a partir de las tarifas que he tenido"
           },
           "data_description": {
             "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
             "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente, y el cargo diario de esta tarifa es lo que Home Assistant registró que costó. Indica esto o el cargo diario, no ambos.",
-            "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan."
+            "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan.",
+            "provides_prices": "Home Energy Advisor te da un precio de importación, uno de exportación y su historial, siguiendo cada tarifa que has tenido desde el día en que empezó. Apunta a ellos tu Panel de energía y tus contadores una vez, y un cambio de tarifa es solo añadir la tarifa con su día de inicio."
           }
         },
         "periods": {
@@ -490,6 +492,12 @@
       },
       "highest_possible_cost": {
         "name": "Coste máximo posible"
+      },
+      "current_plan_import_price": {
+        "name": "Precio de importación"
+      },
+      "current_plan_export_price": {
+        "name": "Precio de exportación"
       }
     }
   },
@@ -705,12 +713,14 @@
             "data": {
               "daily_charge": "Cargo diario",
               "daily_charge_source": "Cargo diario desde tu panel de energía",
-              "plan_export_cap": "Compensación de excedentes"
+              "plan_export_cap": "Compensación de excedentes",
+              "provides_prices": "Crear mis sensores de precio a partir de las tarifas que he tenido"
             },
             "data_description": {
               "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
               "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente. Indica esto o el cargo diario, no ambos.",
-              "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes."
+              "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes.",
+              "provides_prices": "Home Energy Advisor te da un precio de importación, uno de exportación y su historial, siguiendo cada tarifa que has tenido desde el día en que empezó. Apunta a ellos tu Panel de energía y tus contadores una vez, y un cambio de tarifa es solo añadir la tarifa con su día de inicio."
             }
           },
           "periods": {

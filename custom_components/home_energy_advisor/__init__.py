@@ -384,7 +384,11 @@ def _reload_when_the_accounting_changes(
 
 
 def _accounting_inputs(entry: ConfigEntry) -> tuple[object, ...]:
-    """Everything in an entry but its tariff plans."""
+    """Everything in an entry but its tariff plans.
+
+    And whether the price sensors are provided, which creates or removes them;
+    once they exist they read the plans live, so editing one reloads nothing.
+    """
     return (
         dict(entry.data),
         dict(entry.options),
@@ -393,4 +397,5 @@ def _accounting_inputs(entry: ConfigEntry) -> tuple[object, ...]:
             for subentry_id, subentry in entry.subentries.items()
             if subentry.subentry_type != SUBENTRY_TYPE_PLAN
         },
+        current_plan.provides_prices(entry),
     )

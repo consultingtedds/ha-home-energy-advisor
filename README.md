@@ -378,6 +378,18 @@ plan you were on that day, and the card says which. Without them, your current
 plan cannot be priced over those hours, and the card names the sensor. The plan
 you had marked as your own before 1.7.0 is added for you, as the first.
 
+You don't have to build those price sensors yourself. Tick **Provide my price
+sensors from the plans I've been on** on "Your current plan", and Home Energy
+Advisor adds an **Import price** and an **Export price** sensor. Each follows the
+plan you're on today: its price for this hour, your public holidays from its
+calendar, or its market price as the plan adjusts it. Point your grid meters and
+your Energy Dashboard's export price at them once. Changing plan is then a plan
+added under Plans you've been on, with the day it starts: the sensors switch at
+midnight that day, and their history keeps every price as it was charged. A plan
+with an allowance gives no price this way yet. Untick the box and the sensors go.
+Your own sensors, or another integration's, work just as well: the box is only
+there if you want it.
+
 Add each offer with **Add tariff plan** on the Home Energy Advisor card in
 **Settings** > **Devices & services**:
 

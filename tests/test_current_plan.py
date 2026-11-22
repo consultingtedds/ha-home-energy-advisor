@@ -39,6 +39,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_FOLLOWS,
     CONF_PLAN_PERIODS,
+    CONF_PLAN_PROVIDES_PRICES,
     CONF_PLAN_REPLACED,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -357,12 +358,16 @@ async def test_editing_the_current_plan_asks_first_for_its_billing_rules(
     # When
     form = await _edit_current(hass, entry)
 
-    # Then - its daily charge and cap, with what it holds filled in; no prices:
-    # those are Paid's. With no grid source in the Energy Dashboard to follow,
-    # there is nothing else
+    # Then - its daily charge and cap, with what it holds filled in, and whether
+    # to provide its price sensors; no prices: those are Paid's. With no grid
+    # source in the Energy Dashboard to follow, there is nothing else
     assert form["step_id"] == "current"
     fields = _fields(form)
-    assert set(fields) == {CONF_PLAN_DAILY_CHARGE, CONF_PLAN_EXPORT_CAP}
+    assert set(fields) == {
+        CONF_PLAN_DAILY_CHARGE,
+        CONF_PLAN_EXPORT_CAP,
+        CONF_PLAN_PROVIDES_PRICES,
+    }
     assert fields[CONF_PLAN_DAILY_CHARGE].description == {"suggested_value": 0.4521}
     assert fields[CONF_PLAN_EXPORT_CAP].description == {
         "suggested_value": ExportCap.MONTHLY.value

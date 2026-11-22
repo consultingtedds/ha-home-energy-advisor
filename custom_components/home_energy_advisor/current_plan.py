@@ -13,6 +13,7 @@ to give.
 
 from __future__ import annotations
 
+from datetime import date
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +33,7 @@ from .const import (
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
     CONF_PLAN_PERIODS,
+    CONF_PLAN_PROVIDES_PRICES,
     CONF_PLAN_REPLACED,
     SUBENTRY_TYPE_PLAN,
 )
@@ -48,15 +50,19 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
+    from .tariff_plans import TariffPlan
+
 # Its name where the household's language has none.
 _NAME = "Your current plan"
-# What the form asks: the billing rules no price sensor holds (ADR-0042), and
-# the plans the household has been on, whose prices stand in where the sensors
-# have no statistics (HEA-311, HEA-307).
+# What the form asks: the billing rules no price sensor holds (ADR-0042),
+# whether this integration provides the price sensors, and the plans the
+# household has been on, whose prices stand in where the sensors have no
+# statistics and feed them where provided (HEA-311, HEA-307).
 _RULES = (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
+    CONF_PLAN_PROVIDES_PRICES,
     CONF_PLAN_PERIODS,
 )
 # Where 1.7.1 kept the one plan its price history was read from.
@@ -102,12 +108,13 @@ def history_plans(entry: ConfigEntry) -> list[selector.SelectOptionDict]:
 
 
 def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.Schema:
-    """The current plan's form: its daily charge and its cap.
+    """The current plan's form: its daily charge, its cap, and its price sensors.
 
     Both ways of giving the daily charge are optional to the form, which checks
     that exactly one was given (`rules_errors`). A source to follow is offered
-    only where the Energy Dashboard has one. The plans the household has been on
-    follow in steps of their own (`PlansBeenOnSteps`).
+    only where the Energy Dashboard has one. Ticked, this integration provides
+    the household's price sensors (ADR-0048). The plans the household has been
+    on follow in steps of their own (`PlansBeenOnSteps`).
     """
     following = (
         {
@@ -140,6 +147,9 @@ def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.
                     translation_key=CONF_PLAN_EXPORT_CAP,
                 )
             ),
+            vol.Optional(
+                CONF_PLAN_PROVIDES_PRICES, default=False
+            ): selector.BooleanSelector(),
         }
     )
 
@@ -188,7 +198,36 @@ def rules_of(data: Mapping[str, Any]) -> dict[str, Any]:
         rules[CONF_PLAN_PERIODS] = periods
     else:
         rules.pop(CONF_PLAN_PERIODS, None)
+    if not rules.get(CONF_PLAN_PROVIDES_PRICES):
+        rules.pop(CONF_PLAN_PROVIDES_PRICES, None)
     return rules
+
+
+def provides_prices(entry: ConfigEntry) -> bool:
+    """Whether this integration provides the household's price sensors."""
+    current = current_plan_of(entry)
+    return current is not None and bool(current.data.get(CONF_PLAN_PROVIDES_PRICES))
+
+
+def plan_on(entry: ConfigEntry, day: date) -> TariffPlan | None:
+    """The typed plan of the period the household is in on `day`, if any.
+
+    The last period started by then; the one before any other counts as started
+    from always. None before the first dated period with none before it, or
+    where that period's plan is gone.
+    """
+    current = current_plan_of(entry)
+    if current is None:
+        return None
+    started = [
+        period
+        for period in _periods_in(current.data)
+        if CONF_PERIOD_FROM not in period
+        or date.fromisoformat(period[CONF_PERIOD_FROM]) <= day
+    ]
+    if not started:
+        return None
+    return plans_of(entry).get(started[-1][CONF_PERIOD_PLAN])
 
 
 def plan_data(name: str, answer: Mapping[str, Any]) -> dict[str, Any]:

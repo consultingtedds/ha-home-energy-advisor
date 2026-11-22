@@ -64,7 +64,9 @@ from .const import (
     SUBENTRY_TYPE_DEVICE,
     WHOLE_HOME_KEY,
 )
+from .current_plan import provides_prices
 from .house_inputs import batteries_of, grid_meters
+from .price_sensors import forget_price_sensors, price_sensors
 from .recorded_baseline import async_last_recorded
 
 if TYPE_CHECKING:
@@ -505,7 +507,7 @@ def _share_key(battery_id: str) -> str:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001 - HA platform signature; state is on the entry
+    hass: HomeAssistant,
     entry: HeaConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
@@ -553,6 +555,12 @@ async def async_setup_entry(
             HeaUnreconciledSensor(coordinator, device_info=hub_info),
         ]
     )
+    # The household's price sensors, where it asks this integration to provide
+    # them; otherwise any left from before are removed (ADR-0048).
+    if provides_prices(entry):
+        add(price_sensors(entry, currency, hub_info))
+    else:
+        forget_price_sensors(hass, entry)
 
     # A normal device (like the real tracked devices) whose display name is set by
     # the "untracked" translation key. It reads as a genuine entry rather than a

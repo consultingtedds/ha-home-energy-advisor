@@ -354,12 +354,14 @@
           "data": {
             "daily_charge": "Daily charge",
             "daily_charge_source": "Daily charge from your Energy Dashboard",
-            "plan_export_cap": "Export compensation"
+            "plan_export_cap": "Export compensation",
+            "provides_prices": "Provide my price sensors from the plans I've been on"
           },
           "data_description": {
             "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source, and this plan's daily charge is what Home Assistant recorded it costing. Enter this or the daily charge, not both.",
-            "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset."
+            "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset.",
+            "provides_prices": "Home Energy Advisor gives you an import price, an export price and their history, following each plan you've been on from the day it started. Point your Energy Dashboard and grid meters at them once, and a change of plan is then just a plan added with its start day."
           }
         },
         "periods": {
@@ -490,6 +492,12 @@
       },
       "highest_possible_cost": {
         "name": "Highest Possible Cost"
+      },
+      "current_plan_import_price": {
+        "name": "Import price"
+      },
+      "current_plan_export_price": {
+        "name": "Export price"
       }
     }
   },
@@ -705,12 +713,14 @@
             "data": {
               "daily_charge": "Daily charge",
               "daily_charge_source": "Daily charge from your Energy Dashboard",
-              "plan_export_cap": "Export compensation"
+              "plan_export_cap": "Export compensation",
+              "provides_prices": "Provide my price sensors from the plans I've been on"
             },
             "data_description": {
               "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
               "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source. Enter this or the daily charge, not both.",
-              "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost."
+              "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost.",
+              "provides_prices": "Home Energy Advisor gives you an import price, an export price and their history, following each plan you've been on from the day it started. Point your Energy Dashboard and grid meters at them once, and a change of plan is then just a plan added with its start day."
             }
           },
           "periods": {
