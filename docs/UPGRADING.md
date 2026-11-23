@@ -44,8 +44,14 @@ so nothing changes until you add another.
 tick **Provide my price sensors from the plans I've been on** on "Your current
 plan": then an Import price and an Export price sensor follow the plan you're on,
 ready to point your grid meters and Energy Dashboard at, with a daily charge cost
-and meter the Energy Dashboard can carry your standing charge on. Nothing is added or
-changed for anyone who leaves it unticked.
+and meter the Energy Dashboard can carry your standing charge on. When you tick
+it, you're offered to carry your old price sensors' history in, so the past stays
+priced; the **Carry in price history** action does the same at any time. Nothing
+is added or changed for anyone who leaves it unticked.
+
+**The tariff comparison badges the plans you've been on**, "Your plan since 20
+Nov" and the like, and a plan you're no longer weighing can be ticked
+**Archived** in its settings to leave the table.
 
 ## 1.7.1
 
