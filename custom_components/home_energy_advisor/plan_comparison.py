@@ -659,6 +659,12 @@ async def async_compare_plans(
         )
         tariffs = {**tariffs, paid.plan_id: current}
     plans = []
+    # What each row says beyond its prices: when the household was on a typed
+    # plan, and the current plan's own flags.
+    said: dict[str, dict[str, Any]] = {
+        plan_id: {"been_on": periods}
+        for plan_id, periods in (_been_on(paid.periods) if paid else {}).items()
+    } | ({paid.plan_id: flags} if paid else {})
     for plan_id, tariff in tariffs.items():
         is_paid = paid is not None and plan_id == paid.plan_id
         named = {
@@ -666,7 +672,7 @@ async def async_compare_plans(
             "name": tariff.plan.name,
             "current": tariff.current,
             "rates": _rates(tariff),
-            **(flags if is_paid else {}),
+            **said.get(plan_id, {}),
         }
         if is_paid and lacking:
             plans.append({**named, "no_price": True, "no_price_entities": lacking})
@@ -694,6 +700,30 @@ async def async_compare_plans(
         ],
         "plans": plans,
     }
+
+
+def _been_on(
+    periods: tuple[tuple[date | None, str], ...],
+) -> dict[str, list[dict[str, str | None]]]:
+    """When the household was on each plan, by plan (HEA-307).
+
+    Each period's first and last local day, None for before any other or for
+    still on it, so the card can badge a plan "Your plan since", "until" or
+    "from".
+    """
+    ordered = sorted(periods, key=lambda period: period[0] or date.min)
+    been_on: dict[str, list[dict[str, str | None]]] = defaultdict(list)
+    for index, (start, plan_id) in enumerate(ordered):
+        following = ordered[index + 1][0] if index + 1 < len(ordered) else None
+        been_on[plan_id].append(
+            {
+                "from": start.isoformat() if start else None,
+                "until": (following - timedelta(days=1)).isoformat()
+                if following
+                else None,
+            }
+        )
+    return dict(been_on)
 
 
 async def _current_plan(

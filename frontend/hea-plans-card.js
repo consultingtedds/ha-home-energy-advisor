@@ -549,7 +549,7 @@ class HeaPlansCard extends HeaCard {
    */
   _plan(plan, { current, cheapest, parts, prices, without }, locale) {
     const opened = this._opened.has(plan.id);
-    const name = this._name(plan, cheapest, opened);
+    const name = this._name(plan, cheapest, opened, locale);
     const rates = prices ? this._prices(plan, locale) : "";
     const leading = prices ? 2 : 1;
     const columns = leading + parts.length + 2 + (without ? 1 : 0);
@@ -585,9 +585,11 @@ class HeaPlansCard extends HeaCard {
    * A plan's name and its badges. A plan with a bill to open names itself on
    * the button that opens it, which says whether it is open (HEA-300).
    */
-  _name(plan, cheapest, opened) {
+  _name(plan, cheapest, opened, locale) {
+    const beenOn = this._beenOn(plan, locale);
     const tags = [
       plan.current ? ["current", this._labels.plans_your_plan] : undefined,
+      beenOn ? ["been-on", beenOn] : undefined,
       plan === cheapest ? ["cheapest", this._labels.plans_cheapest] : undefined,
     ]
       .filter(Boolean)
@@ -598,6 +600,38 @@ class HeaPlansCard extends HeaCard {
         ? `<button class="open" type="button" aria-expanded="${opened}">${escape(plan.name)}</button>`
         : escape(plan.name);
     return `<th>${title}${tagLine(tags)}</th>`;
+  }
+
+  /**
+   * When the household was on this plan, said against today (HEA-307): "Your
+   * plan since 24 Nov" for the period holding today, or just "Your plan" where
+   * it has no start; "Your plan from 30 Nov" for one still to come; else "Your
+   * plan until 23 Nov" for the last one past.
+   */
+  _beenOn(plan, locale) {
+    const periods = plan.been_on ?? [];
+    if (!periods.length) return "";
+    const now = today(locale);
+    const day = (value) => escape(shortDay(value, locale));
+    const holding = periods.find(
+      (period) => (!period.from || period.from <= now) && (!period.until || period.until >= now),
+    );
+    if (holding) {
+      return holding.from
+        ? fill(this._labels.plans_since, { date: day(holding.from) })
+        : this._labels.plans_on_now;
+    }
+    const coming = periods
+      .filter((period) => period.from && period.from > now)
+      .map((period) => period.from)
+      .sort()[0];
+    if (coming) return fill(this._labels.plans_from, { date: day(coming) });
+    const past = periods
+      .map((period) => period.until)
+      .filter(Boolean)
+      .sort()
+      .at(-1);
+    return past ? fill(this._labels.plans_until, { date: day(past) }) : "";
   }
 
   /** The plans whose bills are open, kept across a redraw or a new fetch. */
@@ -889,6 +923,23 @@ class HeaPlansCard extends HeaCard {
 }
 
 const hint = (note) => `<div class="hint">${note}</div>`;
+
+/** Today as a local day, "2026-11-25", in the household's zone. */
+const today = (locale) =>
+  new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: locale.timeZone,
+  }).format(new Date());
+
+/** A local day as a badge says it, in the household's language: "24 Nov". */
+const shortDay = (day, locale) =>
+  new Intl.DateTimeFormat(locale.language, {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${day}T12:00:00Z`));
 
 /** The sum of one field over a bill's lines. */
 const sum = (lines, field) => lines.reduce((total, line) => total + line[field], 0);

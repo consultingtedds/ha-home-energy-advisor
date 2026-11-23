@@ -1217,3 +1217,67 @@ describe("each plan's bill (HEA-300)", () => {
     expect(bill(card, "bill")).not.toBeNull();
   });
 });
+
+describe("the plans the household has been on (HEA-307)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // Wednesday 25 November 2026, the middle of the day everywhere it matters
+    vi.setSystemTime(new Date("2026-11-25T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** The badge a plan wears for when the household was on it, if any. */
+  const beenOn = async (periods) => {
+    const card = mountCard(
+      TAG,
+      aHome({ ...COMPARED, plans: [FLAT, { ...NIGHT, been_on: periods }] }),
+    );
+    await settled(expect, card);
+    return card.shadowRoot.querySelector('[data-plan="night"] .tag.been-on')?.textContent;
+  };
+
+  it("badges the plan the household is on since the day it started", async () => {
+    expect(await beenOn([{ from: "2026-11-24", until: null }])).toBe(
+      fill(LABELS.plans_since, { date: "24 Nov" }),
+    );
+  });
+
+  it("badges the plan it has always been on without a date", async () => {
+    expect(await beenOn([{ from: null, until: null }])).toBe(LABELS.plans_on_now);
+  });
+
+  it("badges a plan it was on until the day before the next began", async () => {
+    expect(await beenOn([{ from: null, until: "2026-11-23" }])).toBe(
+      fill(LABELS.plans_until, { date: "23 Nov" }),
+    );
+  });
+
+  it("badges a plan switched to from a day still to come", async () => {
+    expect(await beenOn([{ from: "2026-11-30", until: null }])).toBe(
+      fill(LABELS.plans_from, { date: "30 Nov" }),
+    );
+  });
+
+  it("says the period that holds today, of a plan been on more than once", async () => {
+    // Given - on it before any other until the 10th, and again since the 20th
+    const periods = [
+      { from: null, until: "2026-11-10" },
+      { from: "2026-11-20", until: null },
+    ];
+
+    // When / Then
+    expect(await beenOn(periods)).toBe(fill(LABELS.plans_since, { date: "20 Nov" }));
+  });
+
+  it("badges no plan the household has never been on", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then
+    expect(card.shadowRoot.querySelector(".tag.been-on")).toBeNull();
+  });
+});

@@ -1081,6 +1081,10 @@
     "plan_per_day": "{currency}/день",
     "plan_period_first": "{plan}, раньше всех остальных",
     "plan_period_from": "{plan}, с {date}",
-    "plan_period_gone": "Тариф, которого больше нет"
+    "plan_period_gone": "Тариф, которого больше нет",
+    "card_plans_on_now": "Ваш тариф",
+    "card_plans_since": "Ваш тариф с {date}",
+    "card_plans_until": "Ваш тариф до {date}",
+    "card_plans_from": "Ваш тариф начиная с {date}"
   }
 }

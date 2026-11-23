@@ -1081,6 +1081,10 @@
     "plan_per_day": "{currency}/día",
     "plan_period_first": "{plan}, antes que ninguna otra",
     "plan_period_from": "{plan}, desde {date}",
-    "plan_period_gone": "Una tarifa que ya no está"
+    "plan_period_gone": "Una tarifa que ya no está",
+    "card_plans_on_now": "Tu tarifa",
+    "card_plans_since": "Tu tarifa desde el {date}",
+    "card_plans_until": "Tu tarifa hasta el {date}",
+    "card_plans_from": "Tu tarifa a partir del {date}"
   }
 }

@@ -1081,6 +1081,10 @@
     "plan_per_day": "{currency}/day",
     "plan_period_first": "{plan}, before any other",
     "plan_period_from": "{plan}, from {date}",
-    "plan_period_gone": "A plan no longer entered"
+    "plan_period_gone": "A plan no longer entered",
+    "card_plans_on_now": "Your plan",
+    "card_plans_since": "Your plan since {date}",
+    "card_plans_until": "Your plan until {date}",
+    "card_plans_from": "Your plan from {date}"
   }
 }

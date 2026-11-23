@@ -2306,3 +2306,32 @@ async def test_a_plan_with_an_allowance_cannot_price_the_hours_a_sensor_lacks(
     current = _by_name(result)[_CURRENT]
     assert current["no_price"] is True
     assert current["no_price_entities"] == ["sensor.grid_buy_price"]
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_each_plan_says_when_the_household_was_on_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the night saver before any other, until the flat rate from the
+    # 14th (HEA-307)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _plans_been_on(hass, ("Night saver", None), ("Flat rate", "2026-10-14"))
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - each period as local days, the last one open; a plan never on has
+    # none, and the current plan none of its own
+    plans = _by_name(result)
+    assert plans["Night saver"]["been_on"] == [{"from": None, "until": "2026-10-13"}]
+    assert plans["Flat rate"]["been_on"] == [{"from": "2026-10-14", "until": None}]
+    assert "been_on" not in plans[_CURRENT]
