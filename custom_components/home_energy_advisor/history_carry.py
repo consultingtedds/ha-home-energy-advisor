@@ -18,9 +18,11 @@ rehearse, and run again for a source that was missed.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.recorder.const import DOMAIN as RECORDER_DOMAIN
 from homeassistant.components.recorder.models import (
     StatisticData,
     StatisticMeanType,
@@ -30,14 +32,26 @@ from homeassistant.components.recorder.statistics import (
     async_import_statistics,
     statistics_during_period,
 )
-from homeassistant.core import ServiceCall, ServiceResponse, SupportsResponse
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.core import (
+    ServiceCall,
+    ServiceResponse,
+    SupportsResponse,
+    callback,
+)
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.recorder import get_instance
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_CURRENCY, DEFAULT_CURRENCY, DOMAIN, SERVICE_CARRY_IN_HISTORY
+from .const import (
+    CONF_CURRENCY,
+    CONF_PLAN_CARRY_IN,
+    DEFAULT_CURRENCY,
+    DOMAIN,
+    SERVICE_CARRY_IN_HISTORY,
+)
+from .current_plan import current_plan_of, provides_prices
 from .plan_comparison import price_per_kwh
 from .price_sensors import (
     DAILY_CHARGE_COST,
@@ -48,9 +62,12 @@ from .price_sensors import (
 from .schemas import vol
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
+_LOGGER = logging.getLogger(__name__)
 _REGISTERED = f"{DOMAIN}_carry_in_registered"
 # Before any statistic Home Assistant could have kept.
 _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
@@ -87,13 +104,33 @@ async def _async_handle(call: ServiceCall) -> ServiceResponse:
     hass = call.hass
     entries = hass.config_entries.async_loaded_entries(DOMAIN)
     entry = entries[0] if entries else None
+    sources = {
+        key: call.data[f"{key}_from"] for key in _KEYS if call.data.get(f"{key}_from")
+    }
+    targets = {
+        key: call.data[f"{key}_to"] for key in _KEYS if call.data.get(f"{key}_to")
+    }
+    return await async_carry(hass, entry, sources, targets)
+
+
+async def async_carry(
+    hass: HomeAssistant,
+    entry: ConfigEntry | None,
+    sources: Mapping[str, str],
+    targets: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    """Carry each source into its target, or this integration's own sensor.
+
+    Answers how many hours were written for each. Refused where a source has
+    nothing to be written behind.
+    """
     currency = str(entry.data.get(CONF_CURRENCY, DEFAULT_CURRENCY)) if entry else ""
     answer: dict[str, Any] = {}
     for key in _KEYS:
-        source = call.data.get(f"{key}_from")
+        source = sources.get(key)
         if not source:
             continue
-        target = call.data.get(f"{key}_to") or _ours(hass, entry, key)
+        target = (targets or {}).get(key) or _ours(hass, entry, key)
         if target is None:
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="carry_in_no_target"
@@ -103,6 +140,44 @@ async def _async_handle(call: ServiceCall) -> ServiceResponse:
         else:
             answer[key] = await _carry_costs(hass, source, target, currency)
     return answer
+
+
+@callback
+def async_carry_pending(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Run the carry-in chosen when the price sensors were asked for, once.
+
+    Chosen in the current plan's form, before the sensors existed; run on the
+    setup that made them, in the background so years of statistics never hold
+    up Home Assistant's start, then forgotten, so it never runs twice. A
+    carry-in that fails is logged, and can be run again with the action.
+    """
+    current = current_plan_of(entry)
+    pending = current.data.get(CONF_PLAN_CARRY_IN) if current else None
+    if current is None or not pending:
+        return
+    hass.config_entries.async_update_subentry(
+        entry,
+        current,
+        data={k: v for k, v in current.data.items() if k != CONF_PLAN_CARRY_IN},
+    )
+    if provides_prices(entry):
+        entry.async_create_background_task(
+            hass, _carry_logged(hass, entry, dict(pending)), "carry in price history"
+        )
+
+
+async def _carry_logged(
+    hass: HomeAssistant, entry: ConfigEntry, pending: Mapping[str, str]
+) -> None:
+    if RECORDER_DOMAIN not in hass.config.components:
+        _LOGGER.warning("No recorder, so no price history to carry in")
+        return
+    try:
+        written = await async_carry(hass, entry, pending)
+    except HomeAssistantError:
+        _LOGGER.exception("Carrying the old price history in failed")
+        return
+    _LOGGER.info("Carried the old price history in: %s hours", written)
 
 
 def _ours(hass: HomeAssistant, entry: ConfigEntry | None, key: str) -> str | None:

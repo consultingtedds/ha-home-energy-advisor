@@ -41,6 +41,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_BANDS,
     CONF_CURRENCY,
     CONF_PERIOD_PLAN,
+    CONF_PLAN_CARRY_IN,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_FOLLOWS,
@@ -74,7 +75,9 @@ _FLAT = {
 }
 
 
-def _house(*, provides: bool = True) -> MockConfigEntry:
+def _house(
+    *, provides: bool = True, carry_in: dict[str, str] | None = None
+) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         version=8,
@@ -97,6 +100,7 @@ def _house(*, provides: bool = True) -> MockConfigEntry:
                     CONF_PLAN_DAILY_CHARGE: 0.9,
                     CONF_PLAN_PERIODS: [{CONF_PERIOD_PLAN: "flat"}],
                     **({CONF_PLAN_PROVIDES_PRICES: True} if provides else {}),
+                    **({CONF_PLAN_CARRY_IN: carry_in} if carry_in else {}),
                 },
                 unique_id=None,
             ),
@@ -343,3 +347,28 @@ async def test_with_no_sensor_of_ours_and_no_target_it_is_refused(
     # When / Then - there is nothing to write behind
     with pytest.raises(ServiceValidationError):
         await _carry(hass, import_price_from="sensor.old_price")
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_carry_in_chosen_in_the_form_runs_once_the_sensors_exist(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory
+) -> None:
+    # Given - the old price recorded, and the carry-in chosen when the box was
+    # ticked, waiting for the sensors the reload makes
+    day = _hours(datetime(2026, 11, 18, tzinfo=MADRID), JOIN)
+    entry = _house(carry_in={"import_price": "sensor.old_price"})
+    await hass.config.async_set_time_zone("Europe/Madrid")
+    freezer.move_to(NOW)
+    _record_means(hass, "sensor.old_price", dict.fromkeys(day, 0.22), "EUR/kWh")
+    await async_wait_recording_done(hass)
+
+    # When
+    entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    await async_wait_recording_done(hass)
+
+    # Then - carried into the new import price, and not waiting any more
+    means = await _read(hass, _ours(hass, entry, "import_price"), "mean")
+    assert len(means) == len(day)
+    assert CONF_PLAN_CARRY_IN not in entry.subentries["current"].data

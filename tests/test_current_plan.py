@@ -32,6 +32,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PERIOD_FROM,
     CONF_PERIOD_GONE_KNOWN,
     CONF_PERIOD_PLAN,
+    CONF_PLAN_CARRY_IN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
@@ -42,6 +43,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_PERIODS,
     CONF_PLAN_PROVIDES_PRICES,
     CONF_PLAN_REPLACED,
+    CONF_PRICE_ENTITY,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
     SUBENTRY_TYPE_PLAN,
@@ -972,3 +974,88 @@ async def test_the_repair_opens_the_plans_been_on_to_put_it_right(
     assert CONF_PLAN_PERIODS not in current.data
     assert current.data[CONF_PLAN_DAILY_CHARGE] == 0.4521
     assert _gone_repair(hass) is None
+
+
+# Offering to carry the old price history in, once (HEA-307, ADR-0048)
+
+
+def _with_priced_grid_meter(hass: HomeAssistant, entry: MockConfigEntry) -> None:
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {
+                    CONF_NAME: "Grid",
+                    CONF_GRID_IMPORT_ENTITY: "sensor.grid_import",
+                    CONF_PRICE_ENTITY: "sensor.old_buy_price",
+                }
+            ),
+            subentry_type=SUBENTRY_TYPE_GRID,
+            title="Grid",
+            unique_id=None,
+        ),
+    )
+
+
+async def test_ticking_provide_my_price_sensors_offers_to_carry_the_history_in(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the grid meter priced by the household's own sensor
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    _with_priced_grid_meter(hass, entry)
+    await _set_up(hass, entry)
+    form = await _edit_current(hass, entry)
+
+    # When - ticked for the first time, the plans been on saved as they are
+    form = await _answer(
+        hass,
+        form["flow_id"],
+        {**_RULES_ANSWER, CONF_PLAN_PROVIDES_PRICES: True},
+        through=False,
+    )
+    form = await _answer(hass, form["flow_id"], {"action": "save"}, through=False)
+
+    # Then - asked once, with the sensor it prices by now filled in
+    assert form["step_id"] == "carry_in"
+    assert _fields(form)["import_price_from"].description == {
+        "suggested_value": "sensor.old_buy_price"
+    }
+
+    # When - carried in
+    done = await _answer(
+        hass, form["flow_id"], {"import_price_from": "sensor.old_buy_price"}
+    )
+    await hass.async_block_till_done()
+
+    # Then - saved, provided, and the carry-in done on the reload that made the
+    # sensors, so nothing is left waiting
+    assert done["reason"] == "reconfigure_successful"
+    (current,) = _following(entry)
+    assert current.data[CONF_PLAN_PROVIDES_PRICES] is True
+    assert CONF_PLAN_CARRY_IN not in current.data
+
+
+async def test_already_providing_is_not_offered_the_history_again(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the price sensors already provided
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    (current,) = _following(entry)
+    hass.config_entries.async_update_subentry(
+        entry, current, data={**current.data, CONF_PLAN_PROVIDES_PRICES: True}
+    )
+    await hass.async_block_till_done()
+    form = await _edit_current(hass, entry)
+
+    # When
+    form = await _answer(
+        hass,
+        form["flow_id"],
+        {**_RULES_ANSWER, CONF_PLAN_PROVIDES_PRICES: True},
+        through=False,
+    )
+    done = await _answer(hass, form["flow_id"], {"action": "save"}, through=False)
+
+    # Then - saved straight away
+    assert done["reason"] == "reconfigure_successful"

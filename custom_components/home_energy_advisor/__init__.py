@@ -103,6 +103,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     await coordinator.async_start()
     entry.runtime_data = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # A carry-in chosen when the price sensors were asked for, now they exist.
+    history_carry.async_carry_pending(hass, entry)
     # After the sensors exist, reconcile the utility_meter cycle totals over them
     # (daily/monthly + opt-in longer cycles), creating and cleaning up as needed.
     await async_sync_cycle_meters(hass, entry)

@@ -72,6 +72,10 @@ CONF_PLAN_PROVIDES_PRICES: Final = "provides_prices"
 # On a typed plan: left out of the comparison's table and action, and counted;
 # still read for the days the household was on it (HEA-307).
 CONF_PLAN_ARCHIVED: Final = "archived"
+# On the current plan, for one reload: the old sources the household chose to
+# carry the price history in from when it ticked "Provide my price sensors",
+# by sensor key, run once those sensors exist (ADR-0048 decision 4).
+CONF_PLAN_CARRY_IN: Final = "carry_in"
 CONF_PERIOD_PLAN: Final = "plan"
 CONF_PERIOD_FROM: Final = "from"
 # On a period whose plan was deleted: the household said it deleted it on

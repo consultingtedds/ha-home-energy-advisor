@@ -386,6 +386,15 @@
           "data_description": {
             "from": "El día en que empezaste con ella. Déjalo vacío para la tarifa que tenías antes que ninguna otra: cubre todo lo anterior a la siguiente."
           }
+        },
+        "carry_in": {
+          "title": "Traer tu historial de precios anterior",
+          "description": "Tus nuevos sensores de precio empiezan hoy. Para conservar el pasado, elige los sensores de precio y el cargo fijo que usabas antes: su historial registrado se escribe detrás de los nuevos en cuanto existan, solo para las horas anteriores a su inicio. Deja cualquiera vacío para omitirlo. También puedes hacerlo más tarde con la acción Traer el historial de precios.",
+          "data": {
+            "import_price_from": "Precio de importación desde",
+            "export_price_from": "Precio de exportación desde",
+            "daily_charge_cost_from": "Coste del cargo diario desde"
+          }
         }
       },
       "error": {
@@ -751,6 +760,15 @@
             },
             "data_description": {
               "from": "El día en que empezaste con ella. Déjalo vacío para la tarifa que tenías antes que ninguna otra: cubre todo lo anterior a la siguiente."
+            }
+          },
+          "carry_in": {
+            "title": "Traer tu historial de precios anterior",
+            "description": "Tus nuevos sensores de precio empiezan hoy. Para conservar el pasado, elige los sensores de precio y el cargo fijo que usabas antes: su historial registrado se escribe detrás de los nuevos en cuanto existan, solo para las horas anteriores a su inicio. Deja cualquiera vacío para omitirlo. También puedes hacerlo más tarde con la acción Traer el historial de precios.",
+            "data": {
+              "import_price_from": "Precio de importación desde",
+              "export_price_from": "Precio de exportación desde",
+              "daily_charge_cost_from": "Coste del cargo diario desde"
             }
           }
         },

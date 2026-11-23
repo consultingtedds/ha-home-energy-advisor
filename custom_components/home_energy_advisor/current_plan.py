@@ -28,6 +28,7 @@ from .const import (
     CONF_PERIOD_FROM,
     CONF_PERIOD_GONE_KNOWN,
     CONF_PERIOD_PLAN,
+    CONF_PLAN_CARRY_IN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
@@ -38,7 +39,7 @@ from .const import (
     CONF_PLAN_REPLACED,
     SUBENTRY_TYPE_PLAN,
 )
-from .energy_dashboard import async_energy_prefs, grid_import_costs
+from .energy_dashboard import async_energy_prefs, export_price_in, grid_import_costs
 from .engine.plan_pricing import ExportCap
 from .engine.plan_schedule import follows_the_clock
 from .house_inputs import grid_meters_of
@@ -65,6 +66,7 @@ _RULES = (
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_PROVIDES_PRICES,
     CONF_PLAN_PERIODS,
+    CONF_PLAN_CARRY_IN,
 )
 # Where 1.7.1 kept the one plan its price history was read from.
 _HISTORY_FROM = "price_history_from"
@@ -278,6 +280,41 @@ _KEEP = "keep"
 _ACTION = "action"
 _ADD_PERIOD = "add_period"
 _SAVE = "save"
+# The sensors whose history can be carried in, as the action names them.
+CARRY_IN_KEYS = ("import_price", "export_price", "daily_charge_cost")
+
+
+async def _carry_in_suggestions(
+    hass: HomeAssistant, entry: ConfigEntry, answer: Mapping[str, Any]
+) -> dict[str, str]:
+    """What the household prices by now, to carry in from.
+
+    Its grid meter's price sensor, the Energy Dashboard's export price, and the
+    daily charge source it chose.
+    """
+    prefs = await async_energy_prefs(hass)
+    suggested: dict[str, str] = {}
+    priced = [meter.price_entity for meter in grid_meters_of(entry).values()]
+    if first := next((entity for entity in priced if entity), None):
+        suggested["import_price_from"] = first
+    if export := export_price_in(prefs)[0]:
+        suggested["export_price_from"] = export
+    costs = grid_import_costs(
+        prefs, hass.data.get("energy", {}).get("cost_sensors", {})
+    )
+    if (source := answer.get(CONF_PLAN_DAILY_CHARGE_SOURCE)) in costs:
+        suggested["daily_charge_cost_from"] = costs[source][0]
+    return suggested
+
+
+def _with_suggestions(schema: vol.Schema, suggested: Mapping[str, Any]) -> vol.Schema:
+    """The schema with these values filled in, as a flow's own helper does."""
+    fields = {}
+    for marker, value in schema.schema.items():
+        if str(marker) in suggested:
+            marker.description = {"suggested_value": suggested[str(marker)]}
+        fields[marker] = value
+    return vol.Schema(fields)
 
 
 class PlansBeenOnSteps:
@@ -292,6 +329,8 @@ class PlansBeenOnSteps:
     hass: HomeAssistant
     _rules: dict[str, Any]
     _periods: list[dict[str, Any]]
+    _was_providing: bool
+    _final: dict[str, Any]
 
     def _periods_entry(self) -> ConfigEntry:
         raise NotImplementedError
@@ -310,9 +349,44 @@ class PlansBeenOnSteps:
         """On to the plans been on, where a plan could be one; else saved."""
         self._rules = dict(rules)
         self._periods = _periods_in(held)
+        self._was_providing = bool(held.get(CONF_PLAN_PROVIDES_PRICES))
         if not history_plans(self._periods_entry()) and not self._periods:
-            return self._periods_save(self._rules)
+            return await self._finish(self._rules)
         return await self.async_step_periods()
+
+    async def _finish(self, answer: dict[str, Any]) -> Any:  # noqa: ANN401 - as _periods_show
+        """Saved, after offering once to carry the old price history in."""
+        if answer.get(CONF_PLAN_PROVIDES_PRICES) and not self._was_providing:
+            self._final = answer
+            return await self.async_step_carry_in()
+        return self._periods_save(answer)
+
+    async def async_step_carry_in(
+        self, user_input: dict[str, Any] | None = None
+    ) -> Any:  # noqa: ANN401 - as _periods_show
+        """The household's old price sensors and standing charge, to carry in.
+
+        Offered when the price sensors are first asked for, filled in with what
+        prices the household now. Each left empty is not carried; the rest are
+        carried once the reload has made the sensors (ADR-0048 decision 4).
+        """
+        if user_input is not None:
+            sources = {
+                key: user_input[f"{key}_from"]
+                for key in CARRY_IN_KEYS
+                if user_input.get(f"{key}_from")
+            }
+            return self._periods_save(
+                {**self._final, **({CONF_PLAN_CARRY_IN: sources} if sources else {})}
+            )
+        sensor = selector.EntitySelector(selector.EntitySelectorConfig(domain="sensor"))
+        schema = vol.Schema(
+            {vol.Optional(f"{key}_from"): sensor for key in CARRY_IN_KEYS}
+        )
+        suggested = await _carry_in_suggestions(
+            self.hass, self._periods_entry(), self._final
+        )
+        return self._periods_show("carry_in", _with_suggestions(schema, suggested), {})
 
     async def async_step_periods(self, user_input: dict[str, Any] | None = None) -> Any:  # noqa: ANN401 - as _periods_show
         """The plans been on, in words: untick any, add one, or save."""
@@ -325,7 +399,7 @@ class PlansBeenOnSteps:
             ]
             if user_input[_ACTION] == _ADD_PERIOD:
                 return await self.async_step_period()
-            return self._periods_save({**self._rules, CONF_PLAN_PERIODS: self._periods})
+            return await self._finish({**self._rules, CONF_PLAN_PERIODS: self._periods})
         labels = await async_common_strings(self.hass)
         names = {
             option["value"]: option["label"]
