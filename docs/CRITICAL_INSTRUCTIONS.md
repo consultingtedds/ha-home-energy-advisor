@@ -47,6 +47,7 @@ documents. `CONTRIBUTING.md` is the friendlier way in.
 | --- | --- |
 | Blocking I/O in the event loop (`time.sleep`, sync HTTP, file I/O in callbacks) | async APIs; `hass.async_add_executor_job` for blocking libraries |
 | I/O or heavy computation in entity properties | Compute in the update path; properties return stored values |
+| Reading or writing a household's statistics or history in one go | Windows of bounded size (a month at a time), in the executor or the recorder's own thread, with a test over years of statistics. A home with years of history froze Home Assistant once (HEA-310); size is checked on anything long-running, not assumed (HEA-316) |
 | `device_id` where `entity_id` works | `entity_id` |
 | Editing `.storage`, or YAML instructions for UI-managed config | Config flow / options flow / HA APIs |
 | Auto-onboarding devices that merely match `device_class` | Explicit user selection (false friends: cycling FTP watts, phone battery power) |
@@ -130,6 +131,8 @@ deliberately made otherwise - treat it that way by default.
 ### Tests
 - Write tests **before** implementation - TDD, no exceptions
 - `# Given`, `# When`, `# Then` comments in every test (combine `# When / Then` for a single fluent expression)
+- Test every change against each **known home** (`tests/known_homes.py`), not only the reference home: its setup, its upgrade from the last release's stored shape, and what it should see. Each is invented, with the shape of a home met in a discussion and none of its data. Code right for one home and wrong for another shaped differently broke real installs twice (HEA-310, HEA-311, HEA-316)
+- Before a release, name what every install runs on load or upgrade, and confirm it is small
 - Full patterns: `docs/TESTING_STANDARDS.md`
 
 ### i18n
