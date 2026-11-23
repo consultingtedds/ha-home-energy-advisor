@@ -268,7 +268,8 @@
             "import_price_entity": "Market import price (optional)",
             "import_price_add": "Added to the market import price (optional)",
             "import_price_multiply": "Market import price multiplied by (optional)",
-            "prices": "Prices"
+            "prices": "Prices",
+            "archived": "Archived"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
@@ -284,7 +285,8 @@
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
             "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
             "import_price_multiply": "For a wholesale price: what the price and the amount added are multiplied by, such as 1.21 for 21% VAT.",
-            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price."
+            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price.",
+            "archived": "Leave this plan out of the comparison, to keep the table to the offers you're weighing. It still prices the days you were on it."
           }
         },
         "reconfigure": {
@@ -304,7 +306,8 @@
             "import_price_entity": "Market import price (optional)",
             "import_price_add": "Added to the market import price (optional)",
             "import_price_multiply": "Market import price multiplied by (optional)",
-            "prices": "Prices"
+            "prices": "Prices",
+            "archived": "Archived"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
@@ -320,7 +323,8 @@
             "import_price_entity": "A sensor giving the market price per kWh, such as one from Amber, Localvolts or Flow Power. With one, every interval is charged at the market price, so the plan needs no prices or bands of its own.",
             "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
             "import_price_multiply": "For a wholesale price: what the price and the amount added are multiplied by, such as 1.21 for 21% VAT.",
-            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price."
+            "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price.",
+            "archived": "Leave this plan out of the comparison, to keep the table to the offers you're weighing. It still prices the days you were on it."
           }
         },
         "band": {
@@ -399,7 +403,8 @@
         "import_price_after": "Beyond an import allowance, name another of this plan's prices exactly as it appears in the list.",
         "market_adjustment": "This adjusts a market price, so it needs the market price entity it adjusts. Choose one, or leave the adjustment empty.",
         "periods_one_always": "Only one plan can be left without a start date: it covers everything before the next.",
-        "periods_same_day": "Two plans can't start on the same day. Change one of the dates."
+        "periods_same_day": "Two plans can't start on the same day. Change one of the dates.",
+        "archived_feeds_prices": "This is the plan feeding your price sensors today, so it can't be archived. Switch to another plan first, under Plans you've been on in your current plan's settings."
       }
     },
     "device": {
@@ -1085,6 +1090,8 @@
     "card_plans_on_now": "Your plan",
     "card_plans_since": "Your plan since {date}",
     "card_plans_until": "Your plan until {date}",
-    "card_plans_from": "Your plan from {date}"
+    "card_plans_from": "Your plan from {date}",
+    "card_plans_archived_one": "{count} plan is archived and not shown. To bring it back, untick Archived in its settings.",
+    "card_plans_archived_many": "{count} plans are archived and not shown. To bring one back, untick Archived in its settings."
   }
 }

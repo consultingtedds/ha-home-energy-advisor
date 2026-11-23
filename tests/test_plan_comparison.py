@@ -50,6 +50,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PERIOD_FROM,
     CONF_PERIOD_PLAN,
+    CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_ALLOWANCE,
@@ -2335,3 +2336,66 @@ async def test_each_plan_says_when_the_household_was_on_it(
     assert plans["Night saver"]["been_on"] == [{"from": None, "until": "2026-10-13"}]
     assert plans["Flat rate"]["been_on"] == [{"from": "2026-10-14", "until": None}]
     assert "been_on" not in plans[_CURRENT]
+
+
+async def _archive(hass: HomeAssistant, title: str) -> None:
+    entry = hass.config_entries.async_entries(DOMAIN)[0]
+    plan = next(s for s in entry.subentries.values() if s.title == title)
+    hass.config_entries.async_update_subentry(
+        entry, plan, data={**plan.data, CONF_PLAN_ARCHIVED: True}
+    )
+    await hass.async_block_till_done()
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_archived_plan_is_left_out_and_counted(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the night saver archived
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+        ),
+    )
+    await _archive(hass, "Night saver")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - not compared, and the card told how many are not shown
+    assert "Night saver" not in _by_name(result)
+    assert "Flat rate" in _by_name(result)
+    assert result["archived"] == 1
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_archived_plan_still_prices_the_days_the_household_was_on_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the price sensor without statistics, and the flat rate, the plan
+    # the household has always been on, archived
+    await _energy_dashboard_export(hass, number=0.05)
+    _a_price_without_statistics(hass, "sensor.grid_buy_price")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID_PRICED),
+            (SUBENTRY_TYPE_PLAN, _FLAT),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.45}),
+        ),
+    )
+    await _price_history_from(hass, "Flat rate")
+    await _archive(hass, "Flat rate")
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - its prices still stand in, though it is no longer a row
+    current = _by_name(result)[_CURRENT]
+    assert current["energy"] == pytest.approx(2.5 * 0.234)
+    assert current["history_from"] == ["Flat rate"]
+    assert "Flat rate" not in _by_name(result)

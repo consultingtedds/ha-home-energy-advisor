@@ -268,7 +268,8 @@
             "import_price_entity": "Precio de importación de mercado (opcional)",
             "import_price_add": "Sumado al precio de importación de mercado (opcional)",
             "import_price_multiply": "Precio de importación de mercado multiplicado por (opcional)",
-            "prices": "Precios"
+            "prices": "Precios",
+            "archived": "Archivada"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
@@ -284,7 +285,8 @@
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
             "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
             "import_price_multiply": "Para un precio mayorista: por cuánto se multiplican el precio y lo sumado, como 1,21 para un IVA del 21 %.",
-            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado."
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado.",
+            "archived": "Deja esta tarifa fuera de la comparación, para que la tabla muestre solo las ofertas que estás valorando. Sigue calculando los días en que la tuviste."
           }
         },
         "reconfigure": {
@@ -304,7 +306,8 @@
             "import_price_entity": "Precio de importación de mercado (opcional)",
             "import_price_add": "Sumado al precio de importación de mercado (opcional)",
             "import_price_multiply": "Precio de importación de mercado multiplicado por (opcional)",
-            "prices": "Precios"
+            "prices": "Precios",
+            "archived": "Archivada"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
@@ -320,7 +323,8 @@
             "import_price_entity": "Un sensor con el precio de mercado por kWh, como el de Amber, Localvolts o Flow Power. Con uno, cada intervalo se cobra al precio de mercado, así que la tarifa no necesita precios ni franjas propios.",
             "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
             "import_price_multiply": "Para un precio mayorista: por cuánto se multiplican el precio y lo sumado, como 1,21 para un IVA del 21 %.",
-            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado."
+            "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado.",
+            "archived": "Deja esta tarifa fuera de la comparación, para que la tabla muestre solo las ofertas que estás valorando. Sigue calculando los días en que la tuviste."
           }
         },
         "band": {
@@ -399,7 +403,8 @@
         "import_price_after": "Pasado un cupo de importación, indica otro de los precios de este plan tal como aparece en la lista.",
         "market_adjustment": "Esto ajusta un precio de mercado, así que necesita la entidad de precio de mercado que ajusta. Elige una, o deja el ajuste vacío.",
         "periods_one_always": "Solo una tarifa puede quedar sin fecha de inicio: cubre todo lo anterior a la siguiente.",
-        "periods_same_day": "Dos tarifas no pueden empezar el mismo día. Cambia una de las fechas."
+        "periods_same_day": "Dos tarifas no pueden empezar el mismo día. Cambia una de las fechas.",
+        "archived_feeds_prices": "Esta es la tarifa que alimenta tus sensores de precio hoy, así que no se puede archivar. Cambia antes a otra tarifa, en Tarifas que has tenido, en los ajustes de tu tarifa actual."
       }
     },
     "device": {
@@ -1085,6 +1090,8 @@
     "card_plans_on_now": "Tu tarifa",
     "card_plans_since": "Tu tarifa desde el {date}",
     "card_plans_until": "Tu tarifa hasta el {date}",
-    "card_plans_from": "Tu tarifa a partir del {date}"
+    "card_plans_from": "Tu tarifa a partir del {date}",
+    "card_plans_archived_one": "{count} tarifa está archivada y no se muestra. Para recuperarla, desmarca Archivada en sus ajustes.",
+    "card_plans_archived_many": "{count} tarifas están archivadas y no se muestran. Para recuperar una, desmarca Archivada en sus ajustes."
   }
 }

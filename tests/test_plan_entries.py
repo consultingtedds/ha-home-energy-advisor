@@ -42,6 +42,8 @@ from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_FIXED_PRICE,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_PERIOD_PLAN,
+    CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -50,10 +52,13 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_EXPORT_PRICE_AFTER,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_EXPORT_PRICE_MULTIPLY,
+    CONF_PLAN_FOLLOWS,
     CONF_PLAN_HOLIDAYS,
     CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_MULTIPLY,
+    CONF_PLAN_PERIODS,
+    CONF_PLAN_PROVIDES_PRICES,
     CONF_PRICES,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -1441,3 +1446,57 @@ async def test_the_price_beyond_an_allowance_is_another_of_the_plans_prices(
     # Then
     for result in results:
         assert result["errors"] == {CONF_PRICES: "import_price_after"}
+
+
+# Archiving a plan (HEA-307)
+
+
+async def test_a_plan_is_archived_from_its_own_form(hass: HomeAssistant) -> None:
+    # Given - a plan no longer worth weighing
+    entry = _house(hass, _CURRENT)
+    (plan_id,) = plans_of(entry)
+
+    # When - archived, its bands kept
+    result = await _edit(hass, entry, plan_id)
+    result = await _answer(
+        hass, result, {**_as_edited(_CURRENT), CONF_PLAN_ARCHIVED: True}
+    )
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - kept, and marked archived
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.subentries[plan_id].data[CONF_PLAN_ARCHIVED] is True
+
+
+async def test_the_plan_feeding_the_price_sensors_cannot_be_archived(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the plan the household is on, feeding its price sensors
+    entry = _house(hass, _CURRENT)
+    (plan_id,) = plans_of(entry)
+    hass.config_entries.async_add_subentry(
+        entry,
+        ConfigSubentry(
+            data=MappingProxyType(
+                {
+                    CONF_NAME: "Your current plan",
+                    CONF_PLAN_FOLLOWS: True,
+                    CONF_PLAN_PROVIDES_PRICES: True,
+                    CONF_PLAN_PERIODS: [{CONF_PERIOD_PLAN: plan_id}],
+                }
+            ),
+            subentry_type=SUBENTRY_TYPE_PLAN,
+            title="Your current plan",
+            unique_id=None,
+        ),
+    )
+
+    # When
+    result = await _edit(hass, entry, plan_id)
+    result = await _answer(
+        hass, result, {**_as_edited(_CURRENT), CONF_PLAN_ARCHIVED: True}
+    )
+
+    # Then - refused: the sensors would follow a plan the card hides
+    assert result["step_id"] == "reconfigure"
+    assert result["errors"] == {CONF_PLAN_ARCHIVED: "archived_feeds_prices"}

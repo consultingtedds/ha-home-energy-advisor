@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigSubentryFlow, SubentryFlowResult
 from homeassistant.const import CONF_NAME
 from homeassistant.helpers import selector
+from homeassistant.util import dt as dt_util
 
 from .common_strings import async_common_strings
 from .const import (
@@ -58,6 +59,7 @@ from .const import (
     CONF_BAND_START,
     CONF_BANDS,
     CONF_CURRENCY,
+    CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -76,6 +78,7 @@ from .const import (
 from .current_plan import (
     PlansBeenOnSteps,
     async_daily_charge_sources,
+    feeds_the_prices,
     is_current_plan,
     plan_data,
     rules_errors,
@@ -107,6 +110,7 @@ _START_FROM = "start_from"
 _NOTHING = "none"
 _DETAIL_KEYS = (
     CONF_NAME,
+    CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -314,6 +318,26 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
             errors=errors,
         )
 
+    def _archive_errors(self, answers: Mapping[str, Any]) -> dict[str, str]:
+        """Why the plan cannot be archived, if it cannot.
+
+        Not the plan feeding the price sensors: they would follow a plan the
+        card no longer shows.
+        """
+        if answers.get(CONF_PLAN_ARCHIVED) and self._feeds_the_prices():
+            return {CONF_PLAN_ARCHIVED: "archived_feeds_prices"}
+        return {}
+
+    def _feeds_the_prices(self) -> bool:
+        """Whether the plan being edited feeds the price sensors today."""
+        if self.source != "reconfigure":
+            return False
+        return feeds_the_prices(
+            self._get_entry(),
+            self._get_reconfigure_subentry().subentry_id,
+            dt_util.now().date(),
+        )
+
     def _periods_entry(self) -> ConfigEntry:
         return self._get_entry()
 
@@ -337,11 +361,11 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
         if user_input is not None:
             prices = [dict(price) for price in user_input.get(CONF_PRICES) or ()]
             at_market = bool(user_input.get(CONF_PLAN_IMPORT_PRICE_ENTITY))
-            errors = _details_errors(user_input, prices, at_market=at_market)
+            errors = _details_errors(
+                user_input, prices, at_market=at_market
+            ) | self._archive_errors(user_input)
             if not errors:
-                self._details = {
-                    key: user_input[key] for key in _DETAIL_KEYS if key in user_input
-                }
+                self._details = _details_of(user_input)
                 if at_market:
                     # Every interval is charged at the market, so the plan has
                     # no prices or bands of its own and nothing more to ask.
@@ -602,6 +626,11 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
                         translation_key="plan_price",
                     )
                 ),
+                # Left out of the comparison, and still read for the days the
+                # household was on it (HEA-307).
+                vol.Optional(CONF_PLAN_ARCHIVED, default=False): (
+                    selector.BooleanSelector()
+                ),
             }
         )
 
@@ -708,6 +737,14 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
                 data=data,
             )
         return self.async_create_entry(title=data[CONF_NAME], data=data)
+
+
+def _details_of(answers: Mapping[str, Any]) -> dict[str, Any]:
+    """A plan's details from the form's answers; Archived only where ticked."""
+    details = {key: answers[key] for key in _DETAIL_KEYS if key in answers}
+    if not details.get(CONF_PLAN_ARCHIVED):
+        details.pop(CONF_PLAN_ARCHIVED, None)
+    return details
 
 
 def _details_errors(

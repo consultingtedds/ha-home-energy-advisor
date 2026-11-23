@@ -1281,3 +1281,32 @@ describe("the plans the household has been on (HEA-307)", () => {
     expect(card.shadowRoot.querySelector(".tag.been-on")).toBeNull();
   });
 });
+
+describe("archived plans (HEA-307)", () => {
+  it("says how many plans are archived and not shown", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome({ ...COMPARED, archived: 1 }));
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(fill(LABELS.plans_archived_one, { count: "1" }));
+  });
+
+  it("says it for more than one", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome({ ...COMPARED, archived: 3 }));
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(fill(LABELS.plans_archived_many, { count: "3" }));
+  });
+
+  it("says nothing where none is archived", async () => {
+    // Given / When
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).not.toContain("archived");
+  });
+});

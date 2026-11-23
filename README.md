@@ -388,12 +388,19 @@ meter**, rising 0.001 kWh a day, and a **Daily charge cost**, the plan's daily
 charge built up hour by hour: add the meter to your Energy Dashboard as a grid
 source of its own, with the cost as the entity tracking its total costs, and
 choose that source as your current plan's daily charge. Both carry on across a
-restart, so the standing charge is never counted twice or lost. Changing plan is then a plan
-added under Plans you've been on, with the day it starts: the sensors switch at
-midnight that day, and their history keeps every price as it was charged. A plan
+restart, so the standing charge is never counted twice or lost. Changing plan is
+then a plan added under Plans you've been on, with the day it starts: the sensors
+switch at midnight that day, and their history keeps every price as it was
+charged. A plan
 with an allowance gives no price this way yet. Untick the box and the sensors go.
 Your own sensors, or another integration's, work just as well: the box is only
 there if you want it.
+
+Each plan you've been on carries a badge on the card: "Your plan since 20 Nov",
+"Your plan until 19 Nov", or "Your plan from 30 Nov" for a switch still to come.
+An offer you're no longer weighing can be ticked **Archived** in its settings: it
+leaves the table, the card says how many are hidden, and it still prices the days
+you were on it. The plan feeding your price sensors can't be archived.
 
 Add each offer with **Add tariff plan** on the Home Energy Advisor card in
 **Settings** > **Devices & services**:

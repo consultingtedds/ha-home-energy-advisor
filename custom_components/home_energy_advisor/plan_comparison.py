@@ -51,6 +51,7 @@ from .const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PERIOD_FROM,
     CONF_PERIOD_PLAN,
+    CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
@@ -547,7 +548,12 @@ def _websocket_list_plans(
     dashboard need not be.
     """
     entries = hass.config_entries.async_loaded_entries(DOMAIN)
-    plans = plans_of(entries[0]) if entries else {}
+    archived = _archived(entries[0]) if entries else set()
+    plans = {
+        plan_id: tariff
+        for plan_id, tariff in (plans_of(entries[0]) if entries else {}).items()
+        if plan_id not in archived
+    }
     current = current_plan_of(entries[0]) if entries else None
     connection.send_result(
         msg["id"],
@@ -606,18 +612,17 @@ async def async_compare_plans(
     meters = grid_meters_of(entry).values()
     imports = {grid.imported for grid in meters}
     exports = {grid.exported for grid in meters if grid.exported}
-    tariffs = plans_of(entry)
+    # Every plan entered, archived ones included, which still price the days
+    # the household was on them; only the rest are compared (HEA-307).
+    everything = plans_of(entry)
+    archived = _archived(entry)
+    tariffs = {key: plan for key, plan in everything.items() if key not in archived}
     paid = await _paid_prices(hass, entry)
-    typed = {
-        entity
-        for tariff in tariffs.values()
-        for entity in (tariff.import_entity, tariff.export_entity)
-        if entity
-    }
+    typed = _market_entities(tariffs.values())
     # A price sensor only the current plan follows leaves no hour out for the
     # plans that do not: its gaps are the current plan's alone (HEA-311).
     own = paid.entities - typed if paid else set()
-    markets = typed | own
+    markets = typed | own | _market_entities(everything.values())
     # Five minutes at a time only where a market price changes within the hour:
     # a band prices five minutes exactly as it prices their hour.
     recorded = await _recorded_flows(
@@ -655,7 +660,7 @@ async def async_compare_plans(
     if paid:
         gaps = _gaps(recorded, prices, stand_in, (start, charged_until))
         current, flags, lacking = await _current_plan(
-            basis, paid, tariffs, gaps, prices
+            basis, paid, everything, gaps, prices
         )
         tariffs = {**tariffs, paid.plan_id: current}
     plans = []
@@ -685,6 +690,7 @@ async def async_compare_plans(
         plans.append(await _plan_row(basis, tariff, named, followed))
     return {
         "hours": len(intervals),
+        "archived": len(archived),
         "days": float(days),
         "imported_kwh": _number(sum((i.imported_kwh for i in intervals), Decimal(0))),
         "exported_kwh": _number(sum((i.exported_kwh for i in intervals), Decimal(0))),
@@ -699,6 +705,25 @@ async def async_compare_plans(
             for stretch in left_out
         ],
         "plans": plans,
+    }
+
+
+def _archived(entry: ConfigEntry) -> set[str]:
+    """The plans the household archived, by subentry id (HEA-307)."""
+    return {
+        subentry_id
+        for subentry_id, subentry in entry.subentries.items()
+        if subentry.data.get(CONF_PLAN_ARCHIVED)
+    }
+
+
+def _market_entities(tariffs: Iterable[TariffPlan]) -> set[str]:
+    """The market price entities these plans import or export at."""
+    return {
+        entity
+        for tariff in tariffs
+        for entity in (tariff.import_entity, tariff.export_entity)
+        if entity
     }
 
 

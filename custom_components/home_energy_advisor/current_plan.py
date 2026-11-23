@@ -237,12 +237,11 @@ def provides_prices(entry: ConfigEntry) -> bool:
     return current is not None and bool(current.data.get(CONF_PLAN_PROVIDES_PRICES))
 
 
-def plan_on(entry: ConfigEntry, day: date) -> TariffPlan | None:
-    """The typed plan of the period the household is in on `day`, if any.
+def plan_id_on(entry: ConfigEntry, day: date) -> str | None:
+    """The subentry id of the plan of the period the household is in on `day`.
 
     The last period started by then; the one before any other counts as started
-    from always. None before the first dated period with none before it, or
-    where that period's plan is gone.
+    from always. None before the first dated period with none before it.
     """
     current = current_plan_of(entry)
     if current is None:
@@ -253,9 +252,21 @@ def plan_on(entry: ConfigEntry, day: date) -> TariffPlan | None:
         if CONF_PERIOD_FROM not in period
         or date.fromisoformat(period[CONF_PERIOD_FROM]) <= day
     ]
-    if not started:
-        return None
-    return plans_of(entry).get(started[-1][CONF_PERIOD_PLAN])
+    return str(started[-1][CONF_PERIOD_PLAN]) if started else None
+
+
+def plan_on(entry: ConfigEntry, day: date) -> TariffPlan | None:
+    """The typed plan of the period the household is in on `day`, if any.
+
+    None also where that period's plan is gone.
+    """
+    plan_id = plan_id_on(entry, day)
+    return plans_of(entry).get(plan_id) if plan_id else None
+
+
+def feeds_the_prices(entry: ConfigEntry, plan_id: str, day: date) -> bool:
+    """Whether this plan feeds the price sensors this integration provides."""
+    return provides_prices(entry) and plan_id_on(entry, day) == plan_id
 
 
 def plan_data(name: str, answer: Mapping[str, Any]) -> dict[str, Any]:

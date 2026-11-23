@@ -308,6 +308,7 @@ class HeaPlansCard extends HeaCard {
           })
         : "",
       this._labels.plans_note,
+      this._archivedNote(),
       priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",
       wide ? "" : this._labels.plans_breakdown_hidden,
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
@@ -632,6 +633,14 @@ class HeaPlansCard extends HeaCard {
       .sort()
       .at(-1);
     return past ? fill(this._labels.plans_until, { date: day(past) }) : "";
+  }
+
+  /** How many plans are archived and not shown, where any is (HEA-307). */
+  _archivedNote() {
+    const count = this._compared.archived ?? 0;
+    if (!count) return "";
+    const wording = count === 1 ? this._labels.plans_archived_one : this._labels.plans_archived_many;
+    return fill(wording, { count: String(count) });
   }
 
   /** The plans whose bills are open, kept across a redraw or a new fetch. */

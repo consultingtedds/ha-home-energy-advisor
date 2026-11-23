@@ -135,6 +135,10 @@ export const DEFAULTS = Object.freeze({
   plans_since: "Your plan since {date}",
   plans_until: "Your plan until {date}",
   plans_from: "Your plan from {date}",
+  plans_archived_one:
+    "{count} plan is archived and not shown. To bring it back, untick Archived in its settings.",
+  plans_archived_many:
+    "{count} plans are archived and not shown. To bring one back, untick Archived in its settings.",
   plans_energy: "Import cost",
   plans_export: "Export income",
   plans_daily: "Daily charges",
