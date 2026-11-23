@@ -19,8 +19,8 @@ rehearse, and run again for a source that was missed.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Literal
 
 from homeassistant.components.recorder.const import DOMAIN as RECORDER_DOMAIN
 from homeassistant.components.recorder.models import (
@@ -62,7 +62,7 @@ from .price_sensors import (
 from .schemas import vol
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import AsyncIterator, Mapping
 
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
@@ -71,6 +71,8 @@ _LOGGER = logging.getLogger(__name__)
 _REGISTERED = f"{DOMAIN}_carry_in_registered"
 # Before any statistic Home Assistant could have kept.
 _EPOCH = datetime(2000, 1, 1, tzinfo=UTC)
+# How much history is read and written at once (HEA-316).
+_WINDOW = timedelta(days=31)
 _PRICES = (IMPORT_PRICE, EXPORT_PRICE)
 _KEYS = (*_PRICES, DAILY_CHARGE_COST)
 
@@ -190,26 +192,65 @@ def _ours(hass: HomeAssistant, entry: ConfigEntry | None, key: str) -> str | Non
 
 
 async def _rows(
-    hass: HomeAssistant, statistic_id: str, end: datetime, kind: str
+    hass: HomeAssistant,
+    statistic_id: str,
+    span: tuple[datetime, datetime],
+    kind: str,
+    period: Literal["hour", "month"] = "hour",
 ) -> list[dict[str, Any]]:
+    """One statistic's rows over a span, read in the recorder's executor."""
     rows = await get_instance(hass).async_add_executor_job(
         statistics_during_period,
         hass,
-        _EPOCH,
-        end,
+        span[0],
+        span[1],
         {statistic_id},
-        "hour",
+        period,
         None,
         {kind},
     )
     return [dict(row) for row in rows.get(statistic_id, [])]
 
 
-async def _join(hass: HomeAssistant, target: str, kind: str) -> datetime:
-    """The target's first recorded hour, or this hour where it has none yet."""
-    now = dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
-    rows = await _rows(hass, target, now, kind)
-    return _start(rows[0]) if rows else now
+async def _first(
+    hass: HomeAssistant, statistic_id: str, end: datetime, kind: str
+) -> datetime | None:
+    """A statistic's first recorded hour before `end`, if it has one.
+
+    Found by its months first, a few dozen rows however many years it holds,
+    then the hours of its first month alone: never every row it has.
+    """
+    months = await _rows(hass, statistic_id, (_EPOCH, end), kind, "month")
+    if not months:
+        return None
+    start = _start(months[0])
+    # Through that month, and a little past it in case the month row is
+    # labelled by a zone other than the hours', a window at a time.
+    last = min(start + timedelta(days=32), end)
+    while start < last:
+        stop = min(start + _WINDOW, last)
+        if hours := await _rows(hass, statistic_id, (start, stop), kind):
+            return _start(hours[0])
+        start = stop
+    return None
+
+
+async def _windows(
+    hass: HomeAssistant, statistic_id: str, end: datetime, kind: str
+) -> AsyncIterator[list[dict[str, Any]]]:
+    """A statistic's hourly rows before `end`, a window at a time.
+
+    So years of history are never held, read or written at once (HEA-316).
+    """
+    start = await _first(hass, statistic_id, end, kind)
+    while start is not None and start < end:
+        stop = min(start + _WINDOW, end)
+        yield await _rows(hass, statistic_id, (start, stop), kind)
+        start = stop
+
+
+def _this_hour() -> datetime:
+    return dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
 
 
 def _start(row: dict[str, Any]) -> datetime:
@@ -220,33 +261,33 @@ async def _carry_means(
     hass: HomeAssistant, source: str, target: str, currency: str
 ) -> int:
     """Each hour's mean price before the target's first, per kWh, as it keeps it."""
-    join = await _join(hass, target, "mean")
+    join = await _first(hass, target, _this_hour(), "mean") or _this_hour()
     per_kwh = float(price_per_kwh(hass, source))
-    rows = [
-        StatisticData(
-            start=_start(row),
-            mean=row["mean"] * per_kwh,
-            min=row["mean"] * per_kwh,
-            max=row["mean"] * per_kwh,
-        )
-        for row in await _rows(hass, source, join, "mean")
-        if row.get("mean") is not None
-    ]
-    if rows:
-        async_import_statistics(
-            hass,
-            StatisticMetaData(
-                has_sum=False,
-                mean_type=StatisticMeanType.ARITHMETIC,
-                name=None,
-                source="recorder",
-                statistic_id=target,
-                unit_class=None,
-                unit_of_measurement=f"{currency}/kWh",
-            ),
-            rows,
-        )
-    return len(rows)
+    metadata = StatisticMetaData(
+        has_sum=False,
+        mean_type=StatisticMeanType.ARITHMETIC,
+        name=None,
+        source="recorder",
+        statistic_id=target,
+        unit_class=None,
+        unit_of_measurement=f"{currency}/kWh",
+    )
+    written = 0
+    async for window in _windows(hass, source, join, "mean"):
+        rows = [
+            StatisticData(
+                start=_start(row),
+                mean=row["mean"] * per_kwh,
+                min=row["mean"] * per_kwh,
+                max=row["mean"] * per_kwh,
+            )
+            for row in window
+            if row.get("mean") is not None
+        ]
+        if rows:
+            async_import_statistics(hass, metadata, rows)
+        written += len(rows)
+    return written
 
 
 async def _carry_costs(
@@ -260,38 +301,34 @@ async def _carry_costs(
     found. Rows carry no state, so a sensor recording on from them carries on
     from their total rather than counting its own value as a change.
     """
-    target_rows = await _rows(hass, target, dt_util.utcnow(), "sum")
-    join = (
-        _start(target_rows[0])
-        if target_rows
-        else dt_util.utcnow().replace(minute=0, second=0, microsecond=0)
+    # The join, fixed before anything is written: once history exists, the
+    # target's first row no longer finds it.
+    recorded = await _first(hass, target, dt_util.utcnow(), "sum")
+    join = recorded or _this_hour()
+    metadata = StatisticMetaData(
+        has_sum=True,
+        mean_type=StatisticMeanType.NONE,
+        name=None,
+        source="recorder",
+        statistic_id=target,
+        unit_class=None,
+        unit_of_measurement=currency,
     )
-    sums = [
-        (_start(row), row["sum"])
-        for row in await _rows(hass, source, join, "sum")
-        if row.get("sum") is not None
-    ]
     total = 0.0
-    rows = []
-    for index, (start, running) in enumerate(sums):
-        if index:
-            total += max(running - sums[index - 1][1], 0.0)
-        rows.append(StatisticData(start=start, sum=total))
-    if not rows:
-        return 0
-    async_import_statistics(
-        hass,
-        StatisticMetaData(
-            has_sum=True,
-            mean_type=StatisticMeanType.NONE,
-            name=None,
-            source="recorder",
-            statistic_id=target,
-            unit_class=None,
-            unit_of_measurement=currency,
-        ),
-        rows,
-    )
-    if target_rows and total:
+    before: float | None = None
+    written = 0
+    async for window in _windows(hass, source, join, "sum"):
+        rows = []
+        for row in window:
+            if row.get("sum") is None:
+                continue
+            if before is not None:
+                total += max(row["sum"] - before, 0.0)
+            before = row["sum"]
+            rows.append(StatisticData(start=_start(row), sum=total))
+        if rows:
+            async_import_statistics(hass, metadata, rows)
+        written += len(rows)
+    if recorded is not None and total:
         get_instance(hass).async_adjust_statistics(target, join, total, currency)
-    return len(rows)
+    return written

@@ -33,6 +33,7 @@ from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
 )
 
+from custom_components.home_energy_advisor import history_carry
 from custom_components.home_energy_advisor.const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
@@ -372,3 +373,41 @@ async def test_a_carry_in_chosen_in_the_form_runs_once_the_sensors_exist(
     means = await _read(hass, _ours(hass, entry, "import_price"), "mean")
     assert len(means) == len(day)
     assert CONF_PLAN_CARRY_IN not in entry.subentries["current"].data
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_history_is_carried_a_window_at_a_time_and_joins_up(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given - windows of ten hours, so two days of the old standing charge
+    # cross several of them, as years would cross many months (HEA-316)
+    monkeypatch.setattr(history_carry, "_WINDOW", timedelta(hours=10))
+    entry = _house()
+    await _set_up(hass, freezer, entry)
+    ours = _ours(hass, entry, "daily_charge_cost")
+    before = _hours(datetime(2026, 11, 17, tzinfo=MADRID), JOIN)
+    _record_sums(
+        hass,
+        "sensor.old_standing_charge",
+        {at: 1000 + (index + 1) / 24 for index, at in enumerate(before)},
+    )
+    after = _hours(JOIN, NOW)
+    _record_sums(
+        hass, ours, {at: (index + 1) * 0.0375 for index, at in enumerate(after)}
+    )
+    await async_wait_recording_done(hass)
+
+    # When
+    answer = await _carry(hass, daily_charge_cost_from="sensor.old_standing_charge")
+
+    # Then - every hour written once, one running total across the windows, and
+    # the live rows lifted by it, exactly as read in one go
+    carried = 47 / 24
+    sums = await _read(hass, ours, "sum")
+    assert answer == {"daily_charge_cost": len(before)}
+    assert [sums[at.astimezone(UTC)] for at in before] == pytest.approx(
+        [index / 24 for index in range(len(before))]
+    )
+    assert sums[JOIN.astimezone(UTC)] == pytest.approx(carried + 0.0375)
