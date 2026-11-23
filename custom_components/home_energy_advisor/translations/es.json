@@ -787,6 +787,47 @@
           "entry_removed": "Home Energy Advisor ya no está configurado, así que no hay nada que cambiar."
         }
       }
+    },
+    "period_plan_gone": {
+      "title": "Se borró una tarifa que has tenido",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Se borró una tarifa que has tenido",
+            "description": "Se borró una tarifa de Tarifas que has tenido, en tu tarifa actual, así que las horas que cubría no se pueden calcular donde tus sensores de precio no tienen historial.\n\nVuelve a elegir las tarifas que has tenido, o di que la borraste a propósito: entonces sigue faltando, sus horas se muestran sin calcular y no se te volverá a preguntar.",
+            "menu_options": {
+              "choose": "Elegir las tarifas que he tenido",
+              "keep": "La borré a propósito"
+            }
+          },
+          "periods": {
+            "title": "Tarifas que has tenido",
+            "description": "Donde tus sensores de precio no tienen estadísticas, como antes de añadir un sensor o mientras no tenía clase de estado, cada hora se calcula con la tarifa que tenías ese día. Donde las tienen, son lo que pagaste, y se usan en su lugar.\n\nAñade cada tarifa que has tenido con el día en que empezó. Desmarca cualquiera para quitarla.",
+            "data": {
+              "keep": "Tarifas",
+              "action": "Siguiente"
+            }
+          },
+          "period": {
+            "title": "Añadir una tarifa que has tenido",
+            "description": "Solo se ofrecen tarifas con precios por horario: una tarifa con un límite cobra según lo consumido, y eso no lo dice el precio de una hora.",
+            "data": {
+              "plan": "Tarifa",
+              "from": "Desde"
+            },
+            "data_description": {
+              "from": "El día en que empezaste con ella. Déjalo vacío para la tarifa que tenías antes que ninguna otra: cubre todo lo anterior a la siguiente."
+            }
+          }
+        },
+        "error": {
+          "periods_one_always": "Solo una tarifa puede quedar sin fecha de inicio: cubre todo lo anterior a la siguiente.",
+          "periods_same_day": "Dos tarifas no pueden empezar el mismo día. Cambia una de las fechas."
+        },
+        "abort": {
+          "entry_removed": "Home Energy Advisor ya no está configurado, así que no hay nada que cambiar."
+        }
+      }
     }
   },
   "services": {

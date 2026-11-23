@@ -30,6 +30,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_FIXED_PRICE,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PERIOD_FROM,
+    CONF_PERIOD_GONE_KNOWN,
     CONF_PERIOD_PLAN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
@@ -46,7 +47,10 @@ from custom_components.home_energy_advisor.const import (
     SUBENTRY_TYPE_PLAN,
 )
 from custom_components.home_energy_advisor.engine.plan_pricing import ExportCap
-from custom_components.home_energy_advisor.issues import ISSUE_CURRENT_PLAN
+from custom_components.home_energy_advisor.issues import (
+    ISSUE_CURRENT_PLAN,
+    ISSUE_PERIOD_PLAN_GONE,
+)
 from custom_components.home_energy_advisor.tariff_plans import plans_of
 
 if TYPE_CHECKING:
@@ -869,3 +873,102 @@ async def test_a_current_plan_with_its_daily_charge_raises_nothing(
 
     # Then
     assert _repair(hass) is None
+
+
+# A plan named in a period, deleted
+
+
+def _gone_repair(hass: HomeAssistant) -> ir.IssueEntry | None:
+    return ir.async_get(hass).async_get_issue(DOMAIN, ISSUE_PERIOD_PLAN_GONE)
+
+
+async def _delete(hass: HomeAssistant, entry: MockConfigEntry, title: str) -> None:
+    hass.config_entries.async_remove_subentry(entry, _plans(entry)[title].subentry_id)
+    await hass.async_block_till_done()
+
+
+async def _open_gone_repair(hass: HomeAssistant) -> Any:  # noqa: ANN401 - a flow result
+    await async_setup_component(hass, "repairs", {})
+    manager = repairs_flow_manager(hass)
+    assert manager is not None
+    return await manager.async_init(DOMAIN, data={"issue_id": ISSUE_PERIOD_PLAN_GONE})
+
+
+async def test_deleting_a_plan_been_on_raises_a_repair(hass: HomeAssistant) -> None:
+    # Given - upgraded, Octopus Current the plan before any other
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+
+    # When - deleted
+    await _delete(hass, entry, "Octopus Current")
+
+    # Then - asked about, since the hours it covered can no longer be priced
+    issue = _gone_repair(hass)
+    assert issue is not None
+    assert issue.is_fixable
+
+
+async def test_deleting_a_plan_no_period_names_raises_nothing(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+
+    # When - Naturgy, in no period, deleted
+    await _delete(hass, entry, "Naturgy")
+
+    # Then
+    assert _gone_repair(hass) is None
+
+
+async def test_a_plan_deleted_on_purpose_is_left_missing_and_not_asked_again(
+    hass: HomeAssistant,
+) -> None:
+    # Given - Octopus Current deleted, and asked about
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    octopus = _plans(entry)["Octopus Current"].subentry_id
+    await _delete(hass, entry, "Octopus Current")
+    menu = await _open_gone_repair(hass)
+    assert menu["type"] == "menu"
+
+    # When - deleted on purpose
+    manager = repairs_flow_manager(hass)
+    assert manager is not None
+    await manager.async_configure(menu["flow_id"], {"next_step_id": "keep"})
+    await hass.async_block_till_done()
+
+    # Then - the period kept as missing, the Repair gone, and not raised again
+    (current,) = _following(entry)
+    assert current.data[CONF_PLAN_PERIODS] == [
+        {CONF_PERIOD_PLAN: octopus, CONF_PERIOD_GONE_KNOWN: True}
+    ]
+    assert _gone_repair(hass) is None
+    await _delete(hass, entry, "Naturgy")
+    assert _gone_repair(hass) is None
+
+
+async def test_the_repair_opens_the_plans_been_on_to_put_it_right(
+    hass: HomeAssistant,
+) -> None:
+    # Given - Octopus Current deleted, and asked about
+    entry = _entry(hass, _MARKED, _OFFER, version=7)
+    await _set_up(hass, entry)
+    await _delete(hass, entry, "Octopus Current")
+    menu = await _open_gone_repair(hass)
+    manager = repairs_flow_manager(hass)
+    assert manager is not None
+
+    # When - choosing the plans been on, which list the missing one in words
+    form = await manager.async_configure(menu["flow_id"], {"next_step_id": "choose"})
+    assert form["step_id"] == "periods"
+    assert _kept(form) == ["A plan no longer entered, before any other"]
+    await manager.async_configure(form["flow_id"], {"keep": [], "action": "save"})
+    await hass.async_block_till_done()
+
+    # Then - removed, the daily charge kept, and nothing left to ask
+    (current,) = _following(entry)
+    assert CONF_PLAN_PERIODS not in current.data
+    assert current.data[CONF_PLAN_DAILY_CHARGE] == 0.4521
+    assert _gone_repair(hass) is None

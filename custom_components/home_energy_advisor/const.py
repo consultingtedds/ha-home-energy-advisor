@@ -71,6 +71,9 @@ CONF_PLAN_PERIODS: Final = "price_periods"
 CONF_PLAN_PROVIDES_PRICES: Final = "provides_prices"
 CONF_PERIOD_PLAN: Final = "plan"
 CONF_PERIOD_FROM: Final = "from"
+# On a period whose plan was deleted: the household said it deleted it on
+# purpose, so the period stays missing and is not asked about again.
+CONF_PERIOD_GONE_KNOWN: Final = "deleted_on_purpose"
 CONF_PLAN_DAILY_CHARGE: Final = "daily_charge"
 CONF_PLAN_EXPORT_PRICE: Final = "plan_export_price"
 # The kWh a day the export price pays on, and the price for the rest (ADR-0039).

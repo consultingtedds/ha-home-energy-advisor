@@ -26,6 +26,7 @@ from . import issues
 from .common_strings import async_common_strings
 from .const import (
     CONF_PERIOD_FROM,
+    CONF_PERIOD_GONE_KNOWN,
     CONF_PERIOD_PLAN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
@@ -164,7 +165,7 @@ def rules_errors(answer: Mapping[str, Any]) -> dict[str, str]:
 
 
 def period_errors(
-    periods: list[dict[str, str]], added: Mapping[str, Any]
+    periods: list[dict[str, Any]], added: Mapping[str, Any]
 ) -> dict[str, str]:
     """Why a plan cannot join the plans been on, if it cannot.
 
@@ -177,18 +178,45 @@ def period_errors(
     return {}
 
 
-def _periods_in(answer: Mapping[str, Any]) -> list[dict[str, str]]:
+def _periods_in(answer: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The plans been on in an answer, each its plan and any start, earliest first.
 
-    The one going back to always comes first; a start left empty is none.
+    The one going back to always comes first; a start left empty is none. A
+    period whose plan the household deleted on purpose keeps saying so.
     """
     periods = [
         {CONF_PERIOD_PLAN: period[CONF_PERIOD_PLAN]}
         | ({CONF_PERIOD_FROM: start} if (start := period.get(CONF_PERIOD_FROM)) else {})
+        | ({CONF_PERIOD_GONE_KNOWN: True} if period.get(CONF_PERIOD_GONE_KNOWN) else {})
         for period in answer.get(CONF_PLAN_PERIODS) or ()
         if period.get(CONF_PERIOD_PLAN)
     ]
     return sorted(periods, key=lambda period: period.get(CONF_PERIOD_FROM, ""))
+
+
+def _gone(entry: ConfigEntry, periods: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The periods whose plan is deleted, and not known to be on purpose."""
+    plans = plans_of(entry)
+    return [
+        period
+        for period in periods
+        if period[CONF_PERIOD_PLAN] not in plans
+        and not period.get(CONF_PERIOD_GONE_KNOWN)
+    ]
+
+
+def deleted_on_purpose(entry: ConfigEntry) -> dict[str, Any] | None:
+    """The current plan's data with each period whose plan is gone marked as known.
+
+    None where there is no current plan.
+    """
+    current = current_plan_of(entry)
+    if current is None:
+        return None
+    periods = _periods_in(current.data)
+    for period in _gone(entry, periods):
+        period[CONF_PERIOD_GONE_KNOWN] = True
+    return {**current.data, CONF_PLAN_PERIODS: periods}
 
 
 def rules_of(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -252,7 +280,7 @@ class PlansBeenOnSteps:
 
     hass: HomeAssistant
     _rules: dict[str, Any]
-    _periods: list[dict[str, str]]
+    _periods: list[dict[str, Any]]
 
     def _periods_entry(self) -> ConfigEntry:
         raise NotImplementedError
@@ -503,15 +531,20 @@ def needs_answer(plan: ConfigSubentry) -> bool:
 
 @callback
 def async_check(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Raise the current plan's Repair where it needs an answer, or clear it."""
+    """Raise the current plan's Repairs where they need an answer, or clear them.
+
+    One for its daily charge (ADR-0042), one for a plan named in its periods
+    that was deleted without the household saying it meant to (HEA-307).
+    """
     plan = current_plan_of(entry)
-    if plan is not None and needs_answer(plan):
-        issues.async_ask(
-            hass,
-            issues.ISSUE_CURRENT_PLAN,
-            issues.ISSUE_CURRENT_PLAN,
-            {},
-            {"entry_id": entry.entry_id},
-        )
-    else:
-        issues.async_clear(hass, issues.ISSUE_CURRENT_PLAN)
+    for issue_id, needed in (
+        (issues.ISSUE_CURRENT_PLAN, plan is not None and needs_answer(plan)),
+        (
+            issues.ISSUE_PERIOD_PLAN_GONE,
+            plan is not None and bool(_gone(entry, _periods_in(plan.data))),
+        ),
+    ):
+        if needed:
+            issues.async_ask(hass, issue_id, issue_id, {}, {"entry_id": entry.entry_id})
+        else:
+            issues.async_clear(hass, issue_id)

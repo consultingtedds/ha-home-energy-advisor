@@ -787,6 +787,47 @@
           "entry_removed": "Home Energy Advisor is no longer set up, so there is nothing to change."
         }
       }
+    },
+    "period_plan_gone": {
+      "title": "A plan you've been on was deleted",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "A plan you've been on was deleted",
+            "description": "A plan in your current plan's Plans you've been on was deleted, so the hours it covered can't be priced where your price sensors have no history.\n\nChoose the plans you've been on again, or say you deleted it on purpose: then it stays missing, its hours are shown as unpriced, and you won't be asked again.",
+            "menu_options": {
+              "choose": "Choose the plans I've been on",
+              "keep": "I deleted it on purpose"
+            }
+          },
+          "periods": {
+            "title": "Plans you've been on",
+            "description": "Where your price sensors have no statistics, such as before a sensor was added or while it had no state class, each hour is priced at the plan you were on that day. Where they have statistics, those are what you paid, and are used instead.\n\nAdd each plan you were on with the day it started. Untick any to remove it.",
+            "data": {
+              "keep": "Plans",
+              "action": "Next"
+            }
+          },
+          "period": {
+            "title": "Add a plan you've been on",
+            "description": "Only plans priced by the clock are offered: a plan with an allowance charges by how much was used, which no single hour's price can say.",
+            "data": {
+              "plan": "Plan",
+              "from": "From"
+            },
+            "data_description": {
+              "from": "The day you started on it. Leave it empty for the plan you were on before any other: it covers everything before the next."
+            }
+          }
+        },
+        "error": {
+          "periods_one_always": "Only one plan can be left without a start date: it covers everything before the next.",
+          "periods_same_day": "Two plans can't start on the same day. Change one of the dates."
+        },
+        "abort": {
+          "entry_removed": "Home Energy Advisor is no longer set up, so there is nothing to change."
+        }
+      }
     }
   },
   "services": {

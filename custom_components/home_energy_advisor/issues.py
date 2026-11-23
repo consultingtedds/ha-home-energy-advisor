@@ -83,6 +83,10 @@ ISSUE_IMPOSSIBLE_COST = "impossible_cost"
 # plan the household had marked as its own (ADR-0042). Fixable: the answer is its
 # daily charge and cap, which this integration saves.
 ISSUE_CURRENT_PLAN = "current_plan"
+# A plan named in the current plan's periods was deleted, so the hours it
+# covered cannot be priced (HEA-307). Fixable: the household chooses the plans
+# it has been on again, or says it deleted the plan on purpose.
+ISSUE_PERIOD_PLAN_GONE = "period_plan_gone"
 
 
 def source_removed_issue_id(entity_id: str) -> str:

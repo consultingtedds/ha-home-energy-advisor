@@ -37,6 +37,7 @@ from .current_plan import (
     PlansBeenOnSteps,
     async_daily_charge_sources,
     current_plan_of,
+    deleted_on_purpose,
     plan_data,
     rules_errors,
     rules_of,
@@ -88,6 +89,8 @@ async def async_create_fix_flow(
         return ImpossibleHourFlow(issue_id, data or {})
     if issue_id == issues.ISSUE_CURRENT_PLAN:
         return CurrentPlanFlow(str((data or {}).get("entry_id")))
+    if issue_id == issues.ISSUE_PERIOD_PLAN_GONE:
+        return PlanGoneFlow(str((data or {}).get("entry_id")))
     return EnergyDashboardChangedFlow(str((data or {}).get("entry_id")))
 
 
@@ -167,6 +170,74 @@ class CurrentPlanFlow(PlansBeenOnSteps, RepairsFlow):
             return self.async_abort(reason="entry_removed")
         self.hass.config_entries.async_update_subentry(
             entry, plan, data=plan_data(plan.title, answer)
+        )
+        return self.async_create_entry(data={})
+
+
+class PlanGoneFlow(PlansBeenOnSteps, RepairsFlow):
+    """A plan named in the current plan's periods was deleted (HEA-307).
+
+    The household chooses the plans it has been on again, or says it deleted
+    the plan on purpose: then the period stays missing, its hours unpriced and
+    said so, and it is not asked about again.
+    """
+
+    _entry: ConfigEntry
+
+    def __init__(self, entry_id: str) -> None:
+        """Answer for one entry's current plan."""
+        self._entry_id = entry_id
+
+    async def async_step_init(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA signature
+    ) -> RepairsFlowResult:
+        """Choose the plans been on again, or keep the deleted one missing."""
+        entry = self.hass.config_entries.async_get_entry(self._entry_id)
+        if entry is None or current_plan_of(entry) is None:
+            return self.async_abort(reason="entry_removed")
+        self._entry = entry
+        return self.async_show_menu(step_id="init", menu_options=["choose", "keep"])
+
+    async def async_step_choose(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA signature
+    ) -> RepairsFlowResult:
+        """The plans been on, as the current plan's own settings show them."""
+        plan = current_plan_of(self._entry)
+        if plan is None:
+            return self.async_abort(reason="entry_removed")
+        result: RepairsFlowResult = await self._after_rules(
+            rules_of(plan.data), plan.data
+        )
+        return result
+
+    async def async_step_keep(
+        self,
+        user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA signature
+    ) -> RepairsFlowResult:
+        """Deleted on purpose: kept missing, and not asked about again."""
+        plan = current_plan_of(self._entry)
+        data = deleted_on_purpose(self._entry)
+        if plan is None or data is None:
+            return self.async_abort(reason="entry_removed")
+        self.hass.config_entries.async_update_subentry(self._entry, plan, data=data)
+        return self.async_create_entry(data={})
+
+    def _periods_entry(self) -> ConfigEntry:
+        return self._entry
+
+    def _periods_show(
+        self, step_id: str, schema: vol.Schema, errors: dict[str, str]
+    ) -> RepairsFlowResult:
+        return self.async_show_form(step_id=step_id, data_schema=schema, errors=errors)
+
+    def _periods_save(self, answer: dict[str, Any]) -> RepairsFlowResult:
+        plan = current_plan_of(self._entry)
+        if plan is None:
+            return self.async_abort(reason="entry_removed")
+        self.hass.config_entries.async_update_subentry(
+            self._entry, plan, data=plan_data(plan.title, answer)
         )
         return self.async_create_entry(data={})
 
