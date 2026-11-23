@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, Platform
 
-from . import current_plan, impossible_hours, plan_comparison, reset
+from . import current_plan, history_carry, impossible_hours, plan_comparison, reset
 from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
@@ -85,6 +85,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # entry to act on, and re-registering the same handler is a no-op (HEA-57).
     reset.async_register(hass)
     plan_comparison.async_register(hass)
+    history_carry.async_register(hass)
     await async_register_cards(hass)
     # Every household has a current plan; one deleted is created again. Until it
     # has its daily charge, a Repair asks for it, and is checked again on every

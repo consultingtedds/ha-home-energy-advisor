@@ -62,7 +62,8 @@ _METER_KWH_A_DAY = Decimal("0.001")
 _ACCRUED_UNTIL = "accrued_until"
 
 
-def _unique_id(entry: ConfigEntry, key: str) -> str:
+def price_sensor_unique_id(entry: ConfigEntry, key: str) -> str:
+    """The unique id of one of the current plan's sensors, by its key."""
     return f"{entry.entry_id}_current_plan_{key}"
 
 
@@ -87,7 +88,7 @@ def forget_price_sensors(hass: HomeAssistant, entry: ConfigEntry) -> None:
     registry = er.async_get(hass)
     for key in _KEYS:
         if entity_id := registry.async_get_entity_id(
-            "sensor", DOMAIN, _unique_id(entry, key)
+            "sensor", DOMAIN, price_sensor_unique_id(entry, key)
         ):
             registry.async_remove(entity_id)
 
@@ -111,7 +112,7 @@ class CurrentPlanPrice(SensorEntity):
         self._entry = entry
         self._key = key
         self._attr_translation_key = f"current_plan_{key}"
-        self._attr_unique_id = _unique_id(entry, key)
+        self._attr_unique_id = price_sensor_unique_id(entry, key)
         self._attr_native_unit_of_measurement = f"{currency}/kWh"
         self._attr_device_info = device_info
         self._attr_available = False
@@ -234,7 +235,7 @@ class _DailyAccrual(RestoreSensor):
         """One of the daily charge's running totals."""
         self._entry = entry
         self._attr_translation_key = f"current_plan_{key}"
-        self._attr_unique_id = _unique_id(entry, key)
+        self._attr_unique_id = price_sensor_unique_id(entry, key)
         self._attr_device_info = device_info
         self._total = Decimal(0)
         self._until: datetime | None = None

@@ -393,6 +393,11 @@ then a plan added under Plans you've been on, with the day it starts: the sensor
 switch at midnight that day, and their history keeps every price as it was
 charged. A plan
 with an allowance gives no price this way yet. Untick the box and the sensors go.
+To keep the past with them, run the **Carry in price history** action
+(`home_energy_advisor.carry_in_history`) naming the price sensors and standing
+charge you used before: their recorded history is written behind the new
+sensors, only for hours before the new ones began, and the running cost joins on
+without a step. You can aim it at a spare sensor first to see what it writes.
 Your own sensors, or another integration's, work just as well: the box is only
 there if you want it.
 

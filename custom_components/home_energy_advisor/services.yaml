@@ -17,3 +17,29 @@ reset_totals:
       selector:
         config_entry:
           integration: home_energy_advisor
+carry_in_history:
+  fields:
+    import_price_from:
+      selector:
+        entity:
+          domain: sensor
+    export_price_from:
+      selector:
+        entity:
+          domain: sensor
+    daily_charge_cost_from:
+      selector:
+        entity:
+          domain: sensor
+    import_price_to:
+      selector:
+        entity:
+          domain: sensor
+    export_price_to:
+      selector:
+        entity:
+          domain: sensor
+    daily_charge_cost_to:
+      selector:
+        entity:
+          domain: sensor

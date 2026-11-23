@@ -859,6 +859,36 @@
           "description": "Cuándo termina el periodo. Un periodo que llega más allá de ahora se compara hasta ahora."
         }
       }
+    },
+    "carry_in_history": {
+      "name": "Traer el historial de precios",
+      "description": "Escribe el historial registrado de los sensores de precio y del cargo fijo que usabas antes detrás de los de Home Energy Advisor, para que la comparación y tus costes conserven su pasado. Solo se escriben las horas anteriores a la primera de cada sensor, y un coste acumulado continúa sin saltos.",
+      "fields": {
+        "import_price_from": {
+          "name": "Precio de importación desde",
+          "description": "El sensor de precio que usaban antes tus contadores de red."
+        },
+        "export_price_from": {
+          "name": "Precio de exportación desde",
+          "description": "El sensor de precio de exportación que usaba antes tu Panel de energía."
+        },
+        "daily_charge_cost_from": {
+          "name": "Coste del cargo diario desde",
+          "description": "El coste acumulado con que se registraba antes tu cargo fijo."
+        },
+        "import_price_to": {
+          "name": "Precio de importación hacia",
+          "description": "Déjalo vacío para el Precio de importación de Home Energy Advisor. Indica un sensor de prueba para probarlo antes."
+        },
+        "export_price_to": {
+          "name": "Precio de exportación hacia",
+          "description": "Déjalo vacío para el Precio de exportación de Home Energy Advisor. Indica un sensor de prueba para probarlo antes."
+        },
+        "daily_charge_cost_to": {
+          "name": "Coste del cargo diario hacia",
+          "description": "Déjalo vacío para el Coste del cargo diario de Home Energy Advisor. Indica un sensor de prueba para probarlo antes."
+        }
+      }
     }
   },
   "exceptions": {
@@ -876,6 +906,9 @@
     },
     "compare_not_loaded": {
       "message": "Home Energy Advisor no está cargado, así que no se pueden comparar las tarifas. Inténtalo de nuevo cuando haya arrancado."
+    },
+    "carry_in_no_target": {
+      "message": "No hay ningún sensor al que traer el historial. Marca antes Crear mis sensores de precio en tu tarifa actual, o indica un sensor al que traerlo."
     }
   },
   "common": {

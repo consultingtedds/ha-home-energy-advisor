@@ -147,6 +147,7 @@ IMPOSSIBLE_KWH_PER_HOUR: Final = 100
 
 SERVICE_RESET_TOTALS: Final = "reset_totals"
 SERVICE_COMPARE_PLANS: Final = "compare_plans"
+SERVICE_CARRY_IN_HISTORY: Final = "carry_in_history"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
 
 # Dispatcher signal telling a household's sensors to drop the restore baseline

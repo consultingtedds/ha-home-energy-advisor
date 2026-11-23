@@ -859,6 +859,36 @@
           "description": "When the period ends. A period running past now is compared up to now."
         }
       }
+    },
+    "carry_in_history": {
+      "name": "Carry in price history",
+      "description": "Writes the recorded history of the price sensors and standing charge you used before behind Home Energy Advisor's own, so the comparison and your costs keep their past. Only hours before a sensor's own first are written, and a running cost joins on without a step.",
+      "fields": {
+        "import_price_from": {
+          "name": "Import price from",
+          "description": "The price sensor your grid meters used before."
+        },
+        "export_price_from": {
+          "name": "Export price from",
+          "description": "The export price sensor your Energy Dashboard used before."
+        },
+        "daily_charge_cost_from": {
+          "name": "Daily charge cost from",
+          "description": "The running cost your standing charge was recorded as before."
+        },
+        "import_price_to": {
+          "name": "Import price to",
+          "description": "Leave empty for Home Energy Advisor's Import price. Name a spare sensor to try it first."
+        },
+        "export_price_to": {
+          "name": "Export price to",
+          "description": "Leave empty for Home Energy Advisor's Export price. Name a spare sensor to try it first."
+        },
+        "daily_charge_cost_to": {
+          "name": "Daily charge cost to",
+          "description": "Leave empty for Home Energy Advisor's Daily charge cost. Name a spare sensor to try it first."
+        }
+      }
     }
   },
   "exceptions": {
@@ -876,6 +906,9 @@
     },
     "compare_not_loaded": {
       "message": "Home Energy Advisor is not loaded, so the plans cannot be compared. Try again once it has started."
+    },
+    "carry_in_no_target": {
+      "message": "There is no sensor to carry the history into. Tick Provide my price sensors on your current plan first, or name a sensor to carry it into."
     }
   },
   "common": {
