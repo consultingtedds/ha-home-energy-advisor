@@ -110,9 +110,11 @@ _PAID_EXPORT = f"{DOMAIN}.paid_export"
 _CEILING_PER_HOUR = Decimal(IMPOSSIBLE_KWH_PER_HOUR)
 # Before anything the recorder can hold, for asking when a statistic begins.
 _EVER = datetime(2000, 1, 1, tzinfo=UTC)
+# Longer than any month, so its hours are all read from its start.
+_A_MONTH_AND_MORE = timedelta(days=32)
 _ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
 # The two resolutions the recorder keeps that a comparison reads.
-_Period = Literal["5minute", "hour"]
+_Period = Literal["5minute", "hour", "month"]
 
 
 @dataclass(frozen=True)
@@ -1081,13 +1083,30 @@ def _market_entity(
 
 
 async def _first_means(hass: HomeAssistant, entities: set[str]) -> dict[str, datetime]:
-    """The first hour each entity's mean was recorded at, where it ever was."""
+    """The first hour each entity's mean was recorded at, where it ever was.
+
+    Found from its monthly means, then the hours of its first month alone:
+    years of hourly means read at once is the kind of run that froze Home
+    Assistant (GitHub #64).
+    """
     if RECORDER_DOMAIN not in hass.config.components or not entities:
         return {}
-    means = await get_instance(hass).async_add_executor_job(
-        _means, hass, entities, _EVER, dt_util.utcnow(), "hour"
+    recorder = get_instance(hass)
+    now = dt_util.utcnow()
+    months = await recorder.async_add_executor_job(
+        _means, hass, entities, _EVER, now, "month"
     )
-    return {entity: _moment(rows[0]["start"]) for entity, rows in means.items() if rows}
+    first: dict[str, datetime] = {}
+    for entity, rows in months.items():
+        if not rows:
+            continue
+        month = _moment(rows[0]["start"])
+        hours = await recorder.async_add_executor_job(
+            _means, hass, {entity}, month, min(month + _A_MONTH_AND_MORE, now), "hour"
+        )
+        if found := hours.get(entity):
+            first[entity] = _moment(found[0]["start"])
+    return first
 
 
 def _rates(tariff: TariffPlan) -> dict[str, Any]:

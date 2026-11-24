@@ -560,6 +560,85 @@ async def test_the_check_is_worked_out_off_the_event_loop(hass: HomeAssistant) -
     assert threads[0] != threading.main_thread().name
 
 
+# Three months of a meter, checked ten days at a time: a glitch on the edge of a
+# window, and a row ending a nine-day gap that began in the window before.
+_MONTHS_FROM = datetime(2026, 7, 1, tzinfo=LOCAL)
+_ON_THE_EDGE = datetime(2026, 7, 11, tzinfo=LOCAL)
+_GAP_FROM = datetime(2026, 8, 1, tzinfo=LOCAL)
+_GAP_ENDS = datetime(2026, 8, 10, tzinfo=LOCAL)
+
+
+def _record_months(hass: HomeAssistant) -> None:
+    total = 1000.0
+    rows = []
+    start = _MONTHS_FROM
+    while start < datetime(2026, 10, 1, tzinfo=LOCAL):
+        if not _GAP_FROM <= start < _GAP_ENDS:
+            change = {_ON_THE_EDGE: 11000.0, _GAP_ENDS: 30000.0}.get(start, 0.5)
+            total += change
+            rows.append(
+                StatisticData(start=start.astimezone(UTC), state=total, sum=total)
+            )
+        start += timedelta(hours=1)
+    async_import_statistics(hass, _metadata(METER), rows)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_all_the_history_is_read_a_window_at_a_time(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given - three months, checked ten days at a time
+    _record_months(hass)
+    entry = await _set_up(hass)
+    monkeypatch.setattr(impossible_hours, "_WINDOW", timedelta(days=10))
+    spans: list[timedelta] = []
+
+    def watched(
+        hass: HomeAssistant,
+        start: datetime,
+        end: datetime,
+        *args: Any,  # noqa: ANN401 - passed through
+    ) -> Any:  # noqa: ANN401 - passed through
+        if args[1] == "hour":
+            spans.append(end - start)
+        return statistics_during_period(hass, start, end, *args)
+
+    # When
+    with patch.object(impossible_hours, "statistics_during_period", watched):
+        found = await impossible_hours.async_check(hass, entry)
+
+    # Then - the glitch on the edge of a window found once, and the row ending
+    # the gap judged by the 217 hours since the row before it, which was read
+    # in an earlier window: 30,000 kWh is more than 100 kWh an hour over them
+    assert sorted((hour.start, hour.change) for hour in found) == [
+        (_ON_THE_EDGE.astimezone(UTC), 11000.0),
+        (_GAP_ENDS.astimezone(UTC), 30000.0),
+    ]
+    # and never more read at once than a window and the week either side
+    assert spans
+    assert max(spans) <= timedelta(days=10 + 14)
+
+
+@pytest.mark.usefixtures("recorder_mock")
+async def test_a_long_gap_s_row_within_the_ceiling_is_not_raised(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Given - the same, checked ten days at a time, but the gap's row recording
+    # 20,000 kWh: less than 100 kWh an hour over its 217 hours
+    _record_months(hass)
+    get_instance(hass).async_adjust_statistics(
+        METER, _GAP_ENDS.astimezone(UTC), -10000.0, "kWh"
+    )
+    entry = await _set_up(hass)
+    monkeypatch.setattr(impossible_hours, "_WINDOW", timedelta(days=10))
+
+    # When
+    found = await impossible_hours.async_check(hass, entry)
+
+    # Then - only the glitch: the gap's row is not judged as a single hour
+    assert [hour.start for hour in found] == [_ON_THE_EDGE.astimezone(UTC)]
+
+
 def test_the_energy_dashboard_costs_are_read_on_both_shapes() -> None:
     # Given - a cost the household chose on the source itself, and Home
     # Assistant's own cost and compensation sensors on the older flow lists

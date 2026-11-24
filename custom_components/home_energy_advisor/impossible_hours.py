@@ -73,6 +73,8 @@ _FIRST_CHECK = timedelta(minutes=5)
 _EVERY = timedelta(days=1)
 # Before anything the recorder can hold.
 _EVER = datetime(2000, 1, 1, tzinfo=UTC)
+# How much history is worked out at a time, besides the week either side.
+_WINDOW = timedelta(days=31)
 _IN_KWH = {"energy": "kWh"}
 _KWH = "kWh"
 
@@ -583,15 +585,11 @@ async def async_check(hass: HomeAssistant, entry: ConfigEntry) -> list[Impossibl
     cost_sensors = hass.data.get("energy", {}).get("cost_sensors", {})
     checked = checked_statistics(entry, prefs, cost_sensors)
     recorder = get_instance(hass)
-    rows = await recorder.async_add_executor_job(_hourly_history, hass, set(checked))
     units = await recorder.async_add_executor_job(
         _money_units, hass, {s for s, what in checked.items() if what.kind == MONEY}
     )
-    # Worked out in an executor job: years of history is real work, and on the
-    # event loop it froze Home Assistant (GitHub #64).
-    hours = await hass.async_add_executor_job(impossible_hours, rows, checked, units)
     found = []
-    for hour in hours:
+    for hour in await _found_month_by_month(hass, checked, units):
         windows = await recorder.async_add_executor_job(
             _five_minutes_of, hass, hour.statistic_id, hour.start, hour.kind
         )
@@ -611,6 +609,60 @@ async def async_check(hass: HomeAssistant, entry: ConfigEntry) -> list[Impossibl
             hour.fix_data(),
         )
     return found
+
+
+async def _found_month_by_month(
+    hass: HomeAssistant, checked: Mapping[str, Checked], units: Mapping[str, str]
+) -> list[ImpossibleHour]:
+    """Every impossible hour in all the history, read and worked out a month at a time.
+
+    Each month is read with the week either side its suggestions look at, and
+    only its own hours are kept, so each hour is found once. Each statistic's
+    last row before a read is carried into it, so the row ending a long gap
+    still knows how long the gap was (ADR-0046). Years of statistics read at
+    once is the kind of run that froze Home Assistant (GitHub #64); worked out
+    in executor jobs for the same reason.
+    """
+    recorder = get_instance(hass)
+    statistics = set(checked)
+    now = dt_util.utcnow()
+    start = await recorder.async_add_executor_job(_first_month, hass, statistics, now)
+    found: list[ImpossibleHour] = []
+    carried: dict[str, Mapping[str, Any]] = {}
+    while start is not None and start < now:
+        end = min(start + _WINDOW, now)
+        span = (start - _EITHER_SIDE, end + _EITHER_SIDE)
+        read = await recorder.async_add_executor_job(
+            _hourly_history, hass, statistics, span
+        )
+        rows = {
+            statistic: [
+                *([carried[statistic]] if statistic in carried else []),
+                *read.get(statistic, ()),
+            ]
+            for statistic in statistics
+        }
+        hours = await hass.async_add_executor_job(
+            impossible_hours, rows, checked, units
+        )
+        found += [hour for hour in hours if start <= hour.start < end]
+        carried = _last_rows_before(rows, end - _EITHER_SIDE, carried)
+        start = end
+    return found
+
+
+def _last_rows_before(
+    rows: Mapping[str, list[Mapping[str, Any]]],
+    moment: datetime,
+    carried: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Mapping[str, Any]]:
+    """Each statistic's last row before `moment`, or the one carried until now."""
+    last = dict(carried)
+    for statistic, each in rows.items():
+        before = [row for row in each if _moment(row["start"]) < moment]
+        if before:
+            last[statistic] = max(before, key=lambda row: _moment(row["start"]))
+    return last
 
 
 def _clear_answered(hass: HomeAssistant, raised: set[str]) -> None:
@@ -674,12 +726,31 @@ def _rounded(value: float) -> float:
     return max(0.0, round(value, 3))
 
 
-def _hourly_history(hass: HomeAssistant, statistics: set[str]) -> Mapping[str, Any]:
-    """Each statistic's hourly change and reading over all its history. A read."""
+def _first_month(
+    hass: HomeAssistant, statistics: set[str], now: datetime
+) -> datetime | None:
+    """When the earliest of these statistics' months began, if any has one. A read.
+
+    Monthly rows: a few dozen for years of history, where hourly ones would be
+    tens of thousands.
+    """
+    if not statistics:
+        return None
+    months = statistics_during_period(
+        hass, _EVER, now, statistics, "month", None, {"change"}
+    )
+    starts = [_moment(row["start"]) for rows in months.values() for row in rows]
+    return min(starts, default=None)
+
+
+def _hourly_history(
+    hass: HomeAssistant, statistics: set[str], span: tuple[datetime, datetime]
+) -> Mapping[str, Any]:
+    """Each statistic's hourly change, reading and total within `span`. A read."""
     return statistics_during_period(
         hass,
-        _EVER,
-        dt_util.utcnow(),
+        span[0],
+        span[1],
         statistics,
         "hour",
         _IN_KWH,
