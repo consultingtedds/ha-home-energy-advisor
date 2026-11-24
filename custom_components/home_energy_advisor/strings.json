@@ -391,7 +391,7 @@
         },
         "carry_in": {
           "title": "Carry in your old price history",
-          "description": "Your new price sensors begin today. To keep the past with them, choose the price sensors and the standing charge you used before: their recorded history is written behind the new ones once they exist, only for hours before the new ones began. Leave any empty to skip it. You can also do this later with the Carry in price history action.",
+          "description": "Your new price sensors begin today. To keep the past with them, choose the price sensors and the standing charge you used before: their recorded history is written behind the new ones once they exist, only for hours before the new ones began. Each is filled in with what you price by now, so saving as it is carries them all in: clear any you want to skip. You can also do this later with the Carry in price history action.",
           "data": {
             "import_price_from": "Import price from",
             "export_price_from": "Export price from",
@@ -768,7 +768,7 @@
           },
           "carry_in": {
             "title": "Carry in your old price history",
-            "description": "Your new price sensors begin today. To keep the past with them, choose the price sensors and the standing charge you used before: their recorded history is written behind the new ones once they exist, only for hours before the new ones began. Leave any empty to skip it. You can also do this later with the Carry in price history action.",
+            "description": "Your new price sensors begin today. To keep the past with them, choose the price sensors and the standing charge you used before: their recorded history is written behind the new ones once they exist, only for hours before the new ones began. Each is filled in with what you price by now, so saving as it is carries them all in: clear any you want to skip. You can also do this later with the Carry in price history action.",
             "data": {
               "import_price_from": "Import price from",
               "export_price_from": "Export price from",

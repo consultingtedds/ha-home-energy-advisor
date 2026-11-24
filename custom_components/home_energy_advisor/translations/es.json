@@ -391,7 +391,7 @@
         },
         "carry_in": {
           "title": "Traer tu historial de precios anterior",
-          "description": "Tus nuevos sensores de precio empiezan hoy. Para conservar el pasado, elige los sensores de precio y el cargo fijo que usabas antes: su historial registrado se escribe detrás de los nuevos en cuanto existan, solo para las horas anteriores a su inicio. Deja cualquiera vacío para omitirlo. También puedes hacerlo más tarde con la acción Traer el historial de precios.",
+          "description": "Tus nuevos sensores de precio empiezan hoy. Para conservar el pasado, elige los sensores de precio y el cargo fijo que usabas antes: su historial registrado se escribe detrás de los nuevos en cuanto existan, solo para las horas anteriores a su inicio. Cada uno viene relleno con lo que usas ahora, así que guardar tal cual los trae todos: vacía el que quieras omitir. También puedes hacerlo más tarde con la acción Traer el historial de precios.",
           "data": {
             "import_price_from": "Precio de importación desde",
             "export_price_from": "Precio de exportación desde",
@@ -768,7 +768,7 @@
           },
           "carry_in": {
             "title": "Traer tu historial de precios anterior",
-            "description": "Tus nuevos sensores de precio empiezan hoy. Para conservar el pasado, elige los sensores de precio y el cargo fijo que usabas antes: su historial registrado se escribe detrás de los nuevos en cuanto existan, solo para las horas anteriores a su inicio. Deja cualquiera vacío para omitirlo. También puedes hacerlo más tarde con la acción Traer el historial de precios.",
+            "description": "Tus nuevos sensores de precio empiezan hoy. Para conservar el pasado, elige los sensores de precio y el cargo fijo que usabas antes: su historial registrado se escribe detrás de los nuevos en cuanto existan, solo para las horas anteriores a su inicio. Cada uno viene relleno con lo que usas ahora, así que guardar tal cual los trae todos: vacía el que quieras omitir. También puedes hacerlo más tarde con la acción Traer el historial de precios.",
             "data": {
               "import_price_from": "Precio de importación desde",
               "export_price_from": "Precio de exportación desde",

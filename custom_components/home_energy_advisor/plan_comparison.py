@@ -1508,7 +1508,8 @@ async def _market_prices(
 
     Hourly means before `five_minute_from` (from `_BRIDGE` before the period, so
     a short gap at its start carries the price before it) and 5-minute means
-    from it.
+    from it. An hour from it with an hourly mean but no 5-minute ones takes its
+    hourly mean, as history carried in behind a new sensor has (HEA-320).
     """
     if RECORDER_DOMAIN not in hass.config.components or not entities:
         return {}
@@ -1516,23 +1517,41 @@ async def _market_prices(
     hourly = await recorder.async_add_executor_job(
         _means, hass, entities, start - _BRIDGE, five_minute_from or end, "hour"
     )
-    fine = (
-        await recorder.async_add_executor_job(
+    fine: Mapping[str, list[Any]] = {}
+    hours_since: Mapping[str, list[Any]] = {}
+    if five_minute_from is not None:
+        fine = await recorder.async_add_executor_job(
             _means, hass, entities, five_minute_from, end, "5minute"
         )
-        if five_minute_from is not None
-        else {}
-    )
+        hours_since = await recorder.async_add_executor_job(
+            _means, hass, entities, five_minute_from, end, "hour"
+        )
     prices: dict[str, dict[datetime, Decimal]] = {}
     for entity in entities:
         per_kwh = price_per_kwh(hass, entity)
+        fine_rows = _with_means(fine.get(entity, ()))
+        finely = {_hour_of(_moment(row["start"])) for row in fine_rows}
+        unmatched = [
+            row
+            for row in _with_means(hours_since.get(entity, ()))
+            if _moment(row["start"]) not in finely
+        ]
         prices[entity] = {
             _moment(row["start"]): Decimal(str(row["mean"])) * per_kwh
-            for rows in (hourly.get(entity, ()), fine.get(entity, ()))
+            for rows in (_with_means(hourly.get(entity, ())), unmatched, fine_rows)
             for row in rows
-            if row.get("mean") is not None
         }
     return prices
+
+
+def _with_means(rows: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
+    """The statistics rows that have a mean."""
+    return [row for row in rows if row.get("mean") is not None]
+
+
+def _hour_of(moment: datetime) -> datetime:
+    """The UTC hour a moment falls in."""
+    return moment.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
 
 
 def _means(

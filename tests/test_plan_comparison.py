@@ -1190,6 +1190,43 @@ async def test_where_five_minute_statistics_are_kept_each_is_priced_on_its_own(
 
 
 @pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_hour_with_no_five_minute_prices_takes_its_hourly_mean(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - 5-minute meters from 12:00, but the price entity's history only
+    # hourly, as when it was carried in behind a new sensor (HEA-320): 0.25 all
+    # day, 0.30 at 12:00 and 0.22 at 20:00
+    _record_prices(
+        hass,
+        "sensor.market_import",
+        dict.fromkeys(range(24), 0.25) | {12: 0.30, 20: 0.22},
+    )
+    _record_five_minute_meter(
+        hass,
+        "sensor.grid_import",
+        12,
+        total_before=1.0,
+        kwh={(12, 0): 0.1, (12, 5): 0.4, (20, 0): 1.0},
+    )
+    _record_five_minute_meter(
+        hass, "sensor.grid_export", 12, total_before=0.0, kwh={(12, 10): 2.0}
+    )
+    await async_wait_recording_done(hass)
+    await _set_up(
+        hass, _house((SUBENTRY_TYPE_GRID, _GRID), (SUBENTRY_TYPE_PLAN, _MARKET))
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - every hour priced at its hourly mean, nothing left out
+    assert result["left_out"] == []
+    market = _by_name(result)["Wholesale"]
+    assert market["energy"] == pytest.approx(1 * 0.25 + 0.5 * 0.30 + 1 * 0.22)
+    assert "no_price" not in market
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
 async def test_every_plan_is_compared_from_when_all_of_them_can_be_priced(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator
 ) -> None:
