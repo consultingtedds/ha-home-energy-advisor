@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 1.8.0
 
 **Price history from is now Plans you've been on.** If you changed plan during the
 years your price sensors have no history for, you can now add each plan with the
