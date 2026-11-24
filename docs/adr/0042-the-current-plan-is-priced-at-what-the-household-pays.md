@@ -148,3 +148,20 @@ amendment.
 Price history from, above, becomes the first of a list of the plans the
 household has been on, each from the day it started, and each gap hour is priced
 at the plan of its day. See ADR-0048's 2026-11-22 amendment.
+
+## Amendment, 2026-11-24: a daily charge from a sensor
+
+From HEA-317 (GitHub discussion 65). Point 2 gave the daily charge two ways,
+typed or a grid source's recorded cost. Some suppliers' integrations publish the
+daily charge itself as a sensor, in money per day, and the household then had to
+build a grid source around it to follow it. It is now a third way, and still
+exactly one is given.
+
+The sensor is read as a price entity is (ADR-0037): each hour compared takes its
+recorded mean, carrying the last one; where it has none yet, its state now. The
+plan's daily charge is the mean over the hours compared, so a charge that changed
+part-way is counted for the hours it held. An unavailable sensor with no history
+leaves the daily charge missing, never zero.
+
+Typed plans keep a typed daily charge (ADR-0037 point 1): nobody has asked for
+more.

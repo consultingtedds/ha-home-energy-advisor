@@ -357,12 +357,14 @@
           "description": "Todas las demás tarifas se comparan con esta. Sus precios son aquellos con los que se calculan tus costes: el precio de cada contador de red y el precio de exportación de tu panel de energía. Así, un cambio de tarifa no necesita ningún cambio aquí: actualiza esos precios y esta tarifa los sigue.\n\nAquí se introduce lo que ningún precio puede contener. Un cargo diario tomado de tu panel de energía conserva el de cada día; uno escrito se aplica a todo periodo comparado, pasado incluido.",
           "data": {
             "daily_charge": "Cargo diario",
+            "daily_charge_entity": "Cargo diario desde un sensor",
             "daily_charge_source": "Cargo diario desde tu panel de energía",
             "plan_export_cap": "Compensación de excedentes",
             "provides_prices": "Crear mis sensores de precio a partir de las tarifas que he tenido"
           },
           "data_description": {
             "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
+            "daily_charge_entity": "En lugar de escribirlo: un sensor que da tu cargo diario por día, como hacen las integraciones de algunas comercializadoras. Cada día se cobra lo que marcaba. Indica el cargo diario de una sola forma.",
             "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente, y el cargo diario de esta tarifa es lo que Home Assistant registró que costó. Indica esto o el cargo diario, no ambos.",
             "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan.",
             "provides_prices": "Home Energy Advisor te da un precio de importación, uno de exportación y su historial, siguiendo cada tarifa que has tenido desde el día en que empezó. Apunta a ellos tu Panel de energía y tus contadores una vez, y un cambio de tarifa es solo añadir la tarifa con su día de inicio."
@@ -398,8 +400,8 @@
         }
       },
       "error": {
-        "daily_charge_needed": "Indica el cargo diario, o elige la fuente del panel de energía que lo cobra. Una tarifa sin él parecería más barata que todas las que lo tienen.",
-        "daily_charge_one": "Indica el cargo diario o elige una fuente para él, no ambos.",
+        "daily_charge_needed": "Indica el cargo diario, elige un sensor que lo dé, o elige la fuente del panel de energía que lo cobra. Una tarifa sin él parecería más barata que todas las que lo tienen.",
+        "daily_charge_one": "Indica el cargo diario de una sola forma: escrito, desde un sensor o desde una fuente del panel de energía.",
         "band_hours": "Una franja cubre al menos una hora: las dos horas no pueden ser iguales.",
         "band_overlaps": "Esta franja cubre horas que otra franja ya cobra en los mismos días. Cada hora tiene un solo precio, así que cambia las horas o quita la otra franja.",
         "band_no_days": "Marca al menos un día.",
@@ -732,12 +734,14 @@
             "description": "Todas las demás tarifas se comparan con tu tarifa actual. Sus precios son aquellos con los que se calculan tus costes, así que los sigue sola, incluso cuando cambias de tarifa. Lo que ningún precio contiene se indica aquí: su cargo diario, escrito o tomado de la fuente del panel de energía que lo cobra, y cómo paga la exportación. Hasta que tenga su cargo diario, la comparación no muestra la diferencia de ninguna tarifa con ella, ya que una tarifa sin él parecería más barata de lo que es. Un cargo diario tomado de tu panel de energía conserva el de cada día; uno escrito se aplica a todo periodo comparado, pasado incluido.\n\n{replaced}",
             "data": {
               "daily_charge": "Cargo diario",
+              "daily_charge_entity": "Cargo diario desde un sensor",
               "daily_charge_source": "Cargo diario desde tu panel de energía",
               "plan_export_cap": "Compensación de excedentes",
               "provides_prices": "Crear mis sensores de precio a partir de las tarifas que he tenido"
             },
             "data_description": {
               "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
+              "daily_charge_entity": "En lugar de escribirlo: un sensor que da tu cargo diario por día, como hacen las integraciones de algunas comercializadoras. Indica el cargo diario de una sola forma.",
               "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente. Indica esto o el cargo diario, no ambos.",
               "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes.",
               "provides_prices": "Home Energy Advisor te da un precio de importación, uno de exportación y su historial, siguiendo cada tarifa que has tenido desde el día en que empezó. Apunta a ellos tu Panel de energía y tus contadores una vez, y un cambio de tarifa es solo añadir la tarifa con su día de inicio."
@@ -773,8 +777,8 @@
           }
         },
         "error": {
-          "daily_charge_needed": "Indica el cargo diario, o elige la fuente del panel de energía que lo cobra.",
-          "daily_charge_one": "Indica el cargo diario o elige una fuente para él, no ambos.",
+          "daily_charge_needed": "Indica el cargo diario, elige un sensor que lo dé, o elige la fuente del panel de energía que lo cobra.",
+          "daily_charge_one": "Indica el cargo diario de una sola forma: escrito, desde un sensor o desde una fuente del panel de energía.",
           "periods_one_always": "Solo una tarifa puede quedar sin fecha de inicio: cubre todo lo anterior a la siguiente.",
           "periods_same_day": "Dos tarifas no pueden empezar el mismo día. Cambia una de las fechas."
         },

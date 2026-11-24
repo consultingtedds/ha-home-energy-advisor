@@ -52,6 +52,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PERIOD_PLAN,
     CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -1865,6 +1866,55 @@ async def test_without_a_daily_charge_the_current_plan_says_so(
     assert current["energy"] == pytest.approx(2.5 * 0.2)
     assert current["daily_charges"] == pytest.approx(0)
     assert current["daily_charge_missing"] is True
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_daily_charge_sensor_with_no_statistics_charges_what_it_reads(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - a supplier's daily charge sensor with no state class, so Home
+    # Assistant keeps no statistics for it, reading 0.45 now (HEA-317)
+    hass.states.async_set("sensor.supplier_daily_charge", "0.45")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            _current_plan(
+                **{CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.supplier_daily_charge"}
+            ),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the day charged what it reads
+    current = _by_name(result)[_CURRENT]
+    assert current["daily_charges"] == pytest.approx(0.45)
+    assert "daily_charge_missing" not in current
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_unavailable_daily_charge_sensor_with_no_statistics_is_missing(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the same sensor, unavailable and never recorded
+    hass.states.async_set("sensor.supplier_daily_charge", "unavailable")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            _current_plan(
+                **{CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.supplier_daily_charge"}
+            ),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - said to be missing, never charged as nothing
+    assert _by_name(result)[_CURRENT]["daily_charge_missing"] is True
 
 
 # Hours the current plan's price sensors have no statistics for (HEA-311)

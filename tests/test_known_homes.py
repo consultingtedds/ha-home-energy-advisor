@@ -92,6 +92,11 @@ async def test_it_compares_its_recorded_day(
     else:
         assert "no_price" not in current
         assert current["energy"] > 0
+    if home.current_daily_rate is not None:
+        # each hour's daily charge, the morning's and the afternoon's
+        assert current["breakdown"]["daily"]["rate"] == pytest.approx(
+            home.current_daily_rate
+        )
     assert bool(result["left_out"]) is home.left_out
 
 

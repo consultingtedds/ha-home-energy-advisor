@@ -20,6 +20,7 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.home_energy_advisor import current_plan
 from custom_components.home_energy_advisor.const import (
     CONF_BAND_DAYS,
     CONF_BAND_END,
@@ -35,6 +36,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_CARRY_IN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
@@ -364,13 +366,15 @@ async def test_editing_the_current_plan_asks_first_for_its_billing_rules(
     # When
     form = await _edit_current(hass, entry)
 
-    # Then - its daily charge and cap, with what it holds filled in, and whether
-    # to provide its price sensors; no prices: those are Paid's. With no grid
-    # source in the Energy Dashboard to follow, there is nothing else
+    # Then - its daily charge, typed or from a sensor, and cap, with what it
+    # holds filled in, and whether to provide its price sensors; no prices:
+    # those are Paid's. With no grid source in the Energy Dashboard to follow,
+    # there is nothing else
     assert form["step_id"] == "current"
     fields = _fields(form)
     assert set(fields) == {
         CONF_PLAN_DAILY_CHARGE,
+        CONF_PLAN_DAILY_CHARGE_ENTITY,
         CONF_PLAN_EXPORT_CAP,
         CONF_PLAN_PROVIDES_PRICES,
     }
@@ -690,6 +694,36 @@ async def test_the_daily_charge_is_one_or_the_other(hass: HomeAssistant) -> None
     assert both["errors"] == {"base": "daily_charge_one"}
     (current,) = _following(entry)
     assert CONF_PLAN_DAILY_CHARGE not in current.data
+
+
+async def test_a_daily_charge_from_a_sensor_is_kept_and_is_one_way_of_three(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a supplier's integration publishing the daily charge (HEA-317)
+    entry = _entry(hass, _OFFER, version=8)
+    await _set_up(hass, entry)
+    hass.states.async_set("sensor.supplier_daily_charge", "2.86")
+    form = await _edit_current(hass, entry)
+    cap = {CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value}
+    sensor = {CONF_PLAN_DAILY_CHARGE_ENTITY: "sensor.supplier_daily_charge"}
+
+    # When - with a typed one too, then alone
+    both = await _answer(
+        hass, form["flow_id"], {**cap, **sensor, CONF_PLAN_DAILY_CHARGE: 2.86}
+    )
+    done = await _answer(hass, both["flow_id"], {**cap, **sensor})
+
+    # Then - two would fall out of step; the sensor alone is the plan's
+    assert both["errors"] == {"base": "daily_charge_one"}
+    assert done["reason"] == "reconfigure_successful"
+    (current,) = _following(entry)
+    assert dict(current.data) == {
+        CONF_NAME: "Your current plan",
+        CONF_PLAN_FOLLOWS: True,
+        **sensor,
+        **cap,
+    }
+    assert not current_plan.needs_answer(current)
 
 
 async def test_a_new_plan_cannot_start_from_the_current_plan(

@@ -28,7 +28,7 @@ from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Literal
 
 from homeassistant.components.recorder.const import DOMAIN as RECORDER_DOMAIN
@@ -53,6 +53,7 @@ from .const import (
     CONF_PERIOD_PLAN,
     CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
@@ -112,6 +113,8 @@ _CEILING_PER_HOUR = Decimal(IMPOSSIBLE_KWH_PER_HOUR)
 _EVER = datetime(2000, 1, 1, tzinfo=UTC)
 # Longer than any month, so its hours are all read from its start.
 _A_MONTH_AND_MORE = timedelta(days=32)
+# How far back a daily charge entity's last recorded figure is carried from.
+_RATE_CARRIED = timedelta(days=31)
 _ENERGY_UNITS = {str(unit) for unit in UnitOfEnergy}
 # The two resolutions the recorder keeps that a comparison reads.
 _Period = Literal["5minute", "hour", "month"]
@@ -193,6 +196,8 @@ class _Paid:
         """
         if (typed := self.rules.get(CONF_PLAN_DAILY_CHARGE)) is not None:
             return Decimal(str(typed))
+        if entity := self.rules.get(CONF_PLAN_DAILY_CHARGE_ENTITY):
+            return await _daily_rate(hass, entity, basis)
         if self.daily_statistic is None or not basis.days:
             return None
         rows = await get_instance(hass).async_add_executor_job(
@@ -228,6 +233,54 @@ class _Paid:
             import_entity=_PAID_IMPORT,
             export_entity=_PAID_EXPORT if self.export_entity else None,
         )
+
+
+async def _daily_rate(
+    hass: HomeAssistant, entity: str, basis: _Basis
+) -> Decimal | None:
+    """An entity's daily charge over the hours compared (HEA-317).
+
+    Each hour's from its recorded mean, carrying the last one, as a price
+    entity's is (ADR-0037); where it has none yet, its state now. The mean of
+    those, so a charge that changed part-way is counted for the hours it held.
+    """
+    hours = sorted(
+        {
+            interval.start.astimezone(UTC).replace(minute=0, second=0, microsecond=0)
+            for interval in basis.intervals
+        }
+    )
+    if not hours:
+        return None
+    recorded: dict[datetime, Decimal] = {}
+    if RECORDER_DOMAIN in hass.config.components:
+        means = await get_instance(hass).async_add_executor_job(
+            _means, hass, {entity}, hours[0] - _RATE_CARRIED, basis.end, "hour"
+        )
+        recorded = {
+            _moment(row["start"]): Decimal(str(row["mean"]))
+            for row in means.get(entity, ())
+            if row.get("mean") is not None
+        }
+    series = _Series(recorded)
+    now = _number_of(hass, entity)
+    rates = [
+        rate
+        for hour in hours
+        if (rate := (found if (found := series.at(hour)) is not None else now))
+        is not None
+    ]
+    return sum(rates, Decimal(0)) / len(rates) if rates else None
+
+
+def _number_of(hass: HomeAssistant, entity: str) -> Decimal | None:
+    """An entity's state as a number, where it is one."""
+    state = hass.states.get(entity)
+    try:
+        number = Decimal(state.state) if state else None
+    except InvalidOperation:
+        return None
+    return number if number is not None and number.is_finite() else None
 
 
 async def _paid_prices(hass: HomeAssistant, entry: ConfigEntry) -> _Paid | None:

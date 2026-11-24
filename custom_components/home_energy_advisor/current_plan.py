@@ -31,6 +31,7 @@ from .const import (
     CONF_PLAN_CARRY_IN,
     CONF_PLAN_CURRENT,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
@@ -62,6 +63,7 @@ _NAME = "Your current plan"
 # statistics and feed them where provided (HEA-311, HEA-307).
 _RULES = (
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_PROVIDES_PRICES,
@@ -113,9 +115,10 @@ def history_plans(entry: ConfigEntry) -> list[selector.SelectOptionDict]:
 def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.Schema:
     """The current plan's form: its daily charge, its cap, and its price sensors.
 
-    Both ways of giving the daily charge are optional to the form, which checks
-    that exactly one was given (`rules_errors`). A source to follow is offered
-    only where the Energy Dashboard has one. Ticked, this integration provides
+    Every way of giving the daily charge is optional to the form, which checks
+    that exactly one was given (`rules_errors`): typed, an entity giving it per
+    day (HEA-317), or a source to follow, offered only where the Energy
+    Dashboard has one. Ticked, this integration provides
     the household's price sensors (ADR-0048). The plans the household has been
     on follow in steps of their own (`PlansBeenOnSteps`).
     """
@@ -140,6 +143,11 @@ def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.
                     unit_of_measurement=per_day,
                 )
             ),
+            vol.Optional(CONF_PLAN_DAILY_CHARGE_ENTITY): selector.EntitySelector(
+                selector.EntitySelectorConfig(
+                    domain=["sensor", "input_number", "number"]
+                )
+            ),
             **following,
             vol.Required(
                 CONF_PLAN_EXPORT_CAP, default=ExportCap.NONE.value
@@ -159,10 +167,15 @@ def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.
 
 def rules_errors(answer: Mapping[str, Any]) -> dict[str, str]:
     """A daily charge given one way: none reads cheaper, two fall out of step."""
-    typed = answer.get(CONF_PLAN_DAILY_CHARGE) is not None
-    followed = bool(answer.get(CONF_PLAN_DAILY_CHARGE_SOURCE))
-    if typed == followed:
-        return {"base": "daily_charge_one" if typed else "daily_charge_needed"}
+    ways = sum(
+        (
+            answer.get(CONF_PLAN_DAILY_CHARGE) is not None,
+            bool(answer.get(CONF_PLAN_DAILY_CHARGE_ENTITY)),
+            bool(answer.get(CONF_PLAN_DAILY_CHARGE_SOURCE)),
+        )
+    )
+    if ways != 1:
+        return {"base": "daily_charge_one" if ways else "daily_charge_needed"}
     return {}
 
 
@@ -608,8 +621,9 @@ def needs_answer(plan: ConfigSubentry) -> bool:
     Asked for its daily charge where it has none, and told once that a plan it
     had marked as its own now duplicates it.
     """
-    given = plan.data.get(CONF_PLAN_DAILY_CHARGE) is not None or bool(
-        plan.data.get(CONF_PLAN_DAILY_CHARGE_SOURCE)
+    given = plan.data.get(CONF_PLAN_DAILY_CHARGE) is not None or any(
+        plan.data.get(key)
+        for key in (CONF_PLAN_DAILY_CHARGE_ENTITY, CONF_PLAN_DAILY_CHARGE_SOURCE)
     )
     return not given or bool(plan.data.get(CONF_PLAN_REPLACED))
 

@@ -39,6 +39,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
@@ -81,10 +82,13 @@ class KnownHome:
     prices: dict[str, dict[int, float]] = field(default_factory=dict)
     without_statistics: tuple[str, ...] = ()
     export_price_entity: str | None = None
+    # A sensor giving the daily charge per day, each hour's mean by local hour.
+    daily_charges: dict[int, float] = field(default_factory=dict)
     # What the home should see.
     periods_after_upgrade: list[dict[str, str]] = field(default_factory=list)
     current_lacks: list[str] = field(default_factory=list)
     left_out: bool = False
+    current_daily_rate: float | None = None
 
     @property
     def day(self) -> datetime:
@@ -280,11 +284,33 @@ GRID_ONLY = KnownHome(
     prices={"sensor.power_price": _all_day(0.27)},
 )
 
+# Discussion 65's home: the same, its daily charge followed from a sensor its
+# supplier's integration publishes, which changed at midday (HEA-317).
+DAILY_CHARGE_SENSOR = "sensor.daily_charge"
+GRID_ONLY_DAILY_CHARGE_SENSOR = KnownHome(
+    name="grid_only_daily_charge_sensor",
+    time_zone="Pacific/Auckland",
+    currency="NZD",
+    grid=GRID_ONLY.grid,
+    plans={},
+    current={
+        CONF_NAME: "Your current plan",
+        CONF_PLAN_FOLLOWS: True,
+        CONF_PLAN_DAILY_CHARGE_ENTITY: DAILY_CHARGE_SENSOR,
+        CONF_PLAN_EXPORT_CAP: "none",
+    },
+    imported=GRID_ONLY.imported,
+    prices=GRID_ONLY.prices,
+    daily_charges={hour: 2.70 if hour < 12 else 3.02 for hour in range(24)},
+    current_daily_rate=2.86,
+)
+
 KNOWN_HOMES = (
     SPANISH_TIME_OF_USE,
     AUSTRALIAN_MARKET,
     AUSTRALIAN_SHARED_SENSOR,
     GRID_ONLY,
+    GRID_ONLY_DAILY_CHARGE_SENSOR,
 )
 
 
@@ -333,6 +359,10 @@ async def record(hass: HomeAssistant, home: KnownHome) -> None:
     unit = f"{home.currency}/kWh"
     for entity, hours in home.prices.items():
         _record_prices(hass, home, entity, hours, unit)
+    if home.daily_charges:
+        _record_prices(
+            hass, home, DAILY_CHARGE_SENSOR, home.daily_charges, f"{home.currency}/day"
+        )
     for entity in home.without_statistics:
         # No state class: Home Assistant keeps no statistics for it.
         hass.states.async_set(entity, "0.3", {"unit_of_measurement": unit})

@@ -357,12 +357,14 @@
           "description": "Every other plan is compared with this one. Its prices are the ones your costs are worked out at: each grid meter's price, and your Energy Dashboard's export price. So a change of plan needs no change here: update those prices, and this plan follows them.\n\nWhat no price can hold is entered here. A daily charge taken from your Energy Dashboard keeps each day's own; a typed one applies to every period compared, the past included.",
           "data": {
             "daily_charge": "Daily charge",
+            "daily_charge_entity": "Daily charge from a sensor",
             "daily_charge_source": "Daily charge from your Energy Dashboard",
             "plan_export_cap": "Export compensation",
             "provides_prices": "Provide my price sensors from the plans I've been on"
           },
           "data_description": {
             "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "daily_charge_entity": "Instead of typing it: a sensor that gives your daily charge per day, as some suppliers' integrations do. Each day is charged what it read. Give the daily charge one way only.",
             "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source, and this plan's daily charge is what Home Assistant recorded it costing. Enter this or the daily charge, not both.",
             "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset.",
             "provides_prices": "Home Energy Advisor gives you an import price, an export price and their history, following each plan you've been on from the day it started. Point your Energy Dashboard and grid meters at them once, and a change of plan is then just a plan added with its start day."
@@ -398,8 +400,8 @@
         }
       },
       "error": {
-        "daily_charge_needed": "Enter the daily charge, or choose the Energy Dashboard source that charges it. A plan without one would read cheaper than every plan that has one.",
-        "daily_charge_one": "Enter the daily charge or choose a source for it, not both.",
+        "daily_charge_needed": "Enter the daily charge, choose a sensor that gives it, or choose the Energy Dashboard source that charges it. A plan without one would read cheaper than every plan that has one.",
+        "daily_charge_one": "Give the daily charge one way only: typed, from a sensor, or from an Energy Dashboard source.",
         "band_hours": "A band covers at least one hour: the two hours cannot be the same.",
         "band_overlaps": "This band covers hours another band already prices on the same days. Each hour has one price, so change the hours or remove the other band.",
         "band_no_days": "Tick at least one day.",
@@ -732,12 +734,14 @@
             "description": "Every other tariff plan is compared with your current plan. Its prices are the ones your costs are worked out at, so it follows them by itself, even when you change plan. What no price holds is entered here: its daily charge, typed or taken from the Energy Dashboard source that charges it, and how it pays for export. Until it has its daily charge, the comparison shows no plan's difference from it, since a plan without one would look cheaper than it is. A daily charge taken from your Energy Dashboard keeps each day's own; a typed one applies to every period compared, the past included.\n\n{replaced}",
             "data": {
               "daily_charge": "Daily charge",
+              "daily_charge_entity": "Daily charge from a sensor",
               "daily_charge_source": "Daily charge from your Energy Dashboard",
               "plan_export_cap": "Export compensation",
               "provides_prices": "Provide my price sensors from the plans I've been on"
             },
             "data_description": {
               "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
+              "daily_charge_entity": "Instead of typing it: a sensor that gives your daily charge per day, as some suppliers' integrations do. Give the daily charge one way only.",
               "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source. Enter this or the daily charge, not both.",
               "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost.",
               "provides_prices": "Home Energy Advisor gives you an import price, an export price and their history, following each plan you've been on from the day it started. Point your Energy Dashboard and grid meters at them once, and a change of plan is then just a plan added with its start day."
@@ -773,8 +777,8 @@
           }
         },
         "error": {
-          "daily_charge_needed": "Enter the daily charge, or choose the Energy Dashboard source that charges it.",
-          "daily_charge_one": "Enter the daily charge or choose a source for it, not both.",
+          "daily_charge_needed": "Enter the daily charge, choose a sensor that gives it, or choose the Energy Dashboard source that charges it.",
+          "daily_charge_one": "Give the daily charge one way only: typed, from a sensor, or from an Energy Dashboard source.",
           "periods_one_always": "Only one plan can be left without a start date: it covers everything before the next.",
           "periods_same_day": "Two plans can't start on the same day. Change one of the dates."
         },

@@ -364,7 +364,9 @@ would look cheaper than it is. Change them later with **Edit tariff plan** on
 "Your current plan". The Energy Dashboard has no daily charge of its own, so if
 yours charges a standing charge as a grid source of its own, choose that source
 rather than typing the figure: the plan then takes what Home Assistant recorded
-it costing, day by day. A typed daily charge, or a grid meter or export priced
+it costing, day by day. If your supplier's integration publishes the daily
+charge as a sensor, choose that sensor instead: each day is charged what it
+read, from its statistics where Home Assistant keeps them. A typed daily charge, or a grid meter or export priced
 at a fixed number, has no history: changing it later changes every period the
 card compares, the past included. Prices that come from sensors keep their
 history.

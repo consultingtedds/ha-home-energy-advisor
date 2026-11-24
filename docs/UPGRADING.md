@@ -53,6 +53,11 @@ is added or changed for anyone who leaves it unticked.
 Nov" and the like, and a plan you're no longer weighing can be ticked
 **Archived** in its settings to leave the table.
 
+**Your current plan's daily charge can come from a sensor.** If your supplier's
+integration publishes the daily charge, choose it under **Daily charge from a
+sensor** on "Your current plan" instead of typing the figure, and it stays up to
+date by itself.
+
 ## 1.7.1
 
 **Your current plan is priced again where your price sensors have no history.**
