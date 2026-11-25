@@ -123,14 +123,6 @@ class HeaPlansCard extends HeaCard {
         var(--secondary-background-color)
       );
     }
-    th.prices { text-align: left; }
-    td.prices {
-      text-align: left;
-      color: var(--secondary-text-color);
-      font-size: 0.85em;
-      line-height: 1.6;
-    }
-    td.prices .rate { color: var(--primary-text-color); }
     .plans tbody td, .plans tbody th { border-bottom: none; vertical-align: top; }
     .plans tbody + tbody tr:first-child > * {
       border-top: 1px solid var(--divider-color, #e0e0e0);
@@ -322,7 +314,7 @@ class HeaPlansCard extends HeaCard {
     // Only for a house with an installation, which is the only kind the
     // comparison gives the figure for (HEA-293).
     const without = wide && plans.some((plan) => "without_installation" in plan);
-    const layout = { current, cheapest, parts, prices: wide, without };
+    const layout = { current, cheapest, parts, without };
     return `
       ${this._flows(locale)}
       ${this._leftOut(locale)}
@@ -339,8 +331,7 @@ class HeaPlansCard extends HeaCard {
    * The column heads, under a heading for each group where the breakdown is
    * shown: what the household would pay, and what it would earn.
    */
-  _head({ parts, prices, without }) {
-    const leading = [this._labels.plans_plan, ...(prices ? [this._labels.plans_prices] : [])];
+  _head({ parts, without }) {
     const cell = (label, classes = "") => `<th${classAttribute(classes)}>${label}</th>`;
     const trailing = [
       cell(this._labels.plans_total, "rule"),
@@ -349,7 +340,6 @@ class HeaPlansCard extends HeaCard {
     ];
     const columns = [
       cell(this._labels.plans_plan),
-      ...(prices ? [cell(this._labels.plans_prices, "prices")] : []),
       ...parts.map((part, index) =>
         cell(this._labels[part.label], this._partClasses(part, index)),
       ),
@@ -367,7 +357,7 @@ class HeaPlansCard extends HeaCard {
     const after = without
       ? `<th class="rule"></th><th class="rule without">${this._labels.plans_without_group}</th><th></th>`
       : `<th colspan="${trailing.length}" class="rule"></th>`;
-    return `<tr class="groups"><th colspan="${leading.length}"></th>${groups}${after}</tr>
+    return `<tr class="groups"><th></th>${groups}${after}</tr>
       <tr>${columns}</tr>`;
   }
 
@@ -406,42 +396,6 @@ class HeaPlansCard extends HeaCard {
   _currentNote(marked) {
     if (!marked) return this._labels.plans_no_current;
     return marked.daily_charge_missing ? this._labels.plans_current_daily_missing : "";
-  }
-
-  /**
-   * A plan's own prices, one to a line as an offer lists them: each named price
-   * per kWh, what export pays, and the daily charge. A plan at the market says
-   * so instead of naming a price it does not have, and the current plan that
-   * its prices are the ones the household pays.
-   */
-  _prices(plan, locale) {
-    const rates = plan.rates;
-    if (!rates) return "<td></td>";
-    const unit = rateUnit(locale);
-    const line = (label, value) =>
-      `<div>${escape(label)} <span class="rate">${value}</span></div>`;
-    const daily = fill(this._labels.plans_per_day, {
-      amount: formatMoney(rates.daily_charge, locale),
-    });
-    if (plan.follows_prices) {
-      const lines = [line(this._labels.plans_your_prices, "")];
-      if (!plan.daily_charge_missing) lines.push(line(this._labels.plans_daily_rate, daily));
-      return `<td class="prices">${lines.join("")}</td>`;
-    }
-    const imports = rates.import_market
-      ? [line(this._labels.plans_market_price, "")]
-      : rates.prices.map((price) =>
-          line(price.name, `${formatRate(price.import, locale)} ${unit}`),
-        );
-    const exportRate = rates.export_market
-      ? this._labels.plans_market_price
-      : `${formatRate(rates.export, locale)} ${unit}`;
-    const lines = [
-      ...imports,
-      ...(this._gridOnly ? [] : [line(this._labels.plans_export_rate, exportRate)]),
-      line(this._labels.plans_daily_rate, daily),
-    ];
-    return `<td class="prices">${lines.join("")}</td>`;
   }
 
   /**
@@ -563,12 +517,10 @@ class HeaPlansCard extends HeaCard {
    * One plan: a row of its figures, and any notes on it beneath, together in a
    * group of their own so a note is never read as the next plan's.
    */
-  _plan(plan, { current, cheapest, parts, prices, without }, locale) {
+  _plan(plan, { current, cheapest, parts, without }, locale) {
     const opened = this._opened.has(plan.id);
     const name = this._name(plan, cheapest, opened, locale);
-    const rates = prices ? this._prices(plan, locale) : "";
-    const leading = prices ? 2 : 1;
-    const columns = leading + parts.length + 2 + (without ? 1 : 0);
+    const columns = 1 + parts.length + 2 + (without ? 1 : 0);
     if (unpriced(plan)) {
       // The current plan can be priced from a plan named for its price
       // history, which no other plan can (HEA-311).
@@ -578,8 +530,8 @@ class HeaPlansCard extends HeaCard {
             sensors: (plan.no_price_entities ?? []).map((id) => this._sensor(id)).join(", "),
           })
         : this._labels.plans_incomplete;
-      return `<tbody data-plan="${plan.id}"><tr>${name}${rates}
-        <td class="incomplete rule" colspan="${columns - leading}">${why}</td></tr></tbody>`;
+      return `<tbody data-plan="${plan.id}"><tr>${name}
+        <td class="incomplete rule" colspan="${columns - 1}">${why}</td></tr></tbody>`;
     }
     const figures = parts
       .map((part, index) => this._part(plan, part, locale, this._partClasses(part, index)))
@@ -591,7 +543,7 @@ class HeaPlansCard extends HeaCard {
         ? `<tr class="bill-row"><td colspan="${columns}">${this._bill(plan, locale)}</td></tr>`
         : "";
     return `<tbody data-plan="${plan.id}">
-      <tr class="figures">${name}${rates}${figures}${this._total(plan, locale)}${without ? this._without(plan, locale) : ""}${difference}</tr>
+      <tr class="figures">${name}${figures}${this._total(plan, locale)}${without ? this._without(plan, locale) : ""}${difference}</tr>
       ${notes ? `<tr class="note"><td colspan="${columns}">${notes}</td></tr>` : ""}
       ${bill}
     </tbody>`;

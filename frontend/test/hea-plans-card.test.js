@@ -95,12 +95,6 @@ const heads = (card) =>
     (cell) => cell.textContent,
   );
 
-/** Each line of a plan's Prices cell. */
-const priceLines = (card, id) =>
-  [...card.shadowRoot.querySelectorAll(`[data-plan="${id}"] td.prices > div`)].map(
-    (line) => line.textContent.replaceAll(/\s+/g, " ").trim(),
-  );
-
 /** A screen of the width asked for, as the cards ask `matchMedia` for it. */
 const onScreen = (narrow) =>
   vi.stubGlobal(
@@ -233,10 +227,11 @@ describe("the comparison", () => {
     await settled(expect, card);
 
     // Then - each part named for the money it is (HEA-277), in the order a bill
-    // reads: what is paid, then what is earned, then the total (HEA-280)
+    // reads: what is paid, then what is earned, then the total (HEA-280). No
+    // column of prices: they are in each plan's bill, beside what they charged
+    // (HEA-304)
     expect(heads(card)).toEqual([
       "Plan",
-      "Prices",
       "Import cost",
       "Daily charges",
       "Export income",
@@ -258,7 +253,7 @@ describe("the comparison", () => {
       (cell) => [cell.textContent, cell.colSpan],
     );
     expect(groups).toEqual([
-      ["", 2],
+      ["", 1],
       ["What you pay", 2],
       ["What you earn", 1],
       ["", 2],
@@ -279,41 +274,21 @@ describe("the comparison", () => {
   });
 });
 
-describe("each plan's own prices", () => {
-  it("lists each named price, then what export pays and the daily charge", async () => {
-    // Given / When
-    const card = mountCard(TAG, aHome());
-    await settled(expect, card);
+describe("each plan's own prices (HEA-304)", () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-    // Then - one to a line, as an offer lists its periods, in the minor unit a
-    // tariff is quoted in
-    expect(priceLines(card, "night")).toEqual([
-      "Peak 31.0 c/kWh",
-      "Off-peak 9.0 c/kWh",
-      "Export 4.0 c/kWh",
-      "Daily €0.30/day",
-    ]);
-  });
+  it("are not listed in a column of their own, on a wide screen or a phone", async () => {
+    // Given / When - each plan's rates are in its bill, beside the kWh they
+    // priced; a column repeated them, and the daily charge a third time
+    for (const narrow of [false, true]) {
+      onScreen(narrow);
+      const card = mountCard(TAG, aHome());
+      await settled(expect, card);
 
-  it("says a plan at the market is at the market, rather than naming a price", async () => {
-    // Given - a plan importing and exporting at market price entities
-    const market = {
-      ...NIGHT,
-      id: "market",
-      name: "Wholesale",
-      rates: { ...NIGHT.rates, prices: [], import_market: true, export_market: true },
-    };
-
-    // When
-    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [FLAT, market] }));
-    await settled(expect, card);
-
-    // Then
-    expect(priceLines(card, "market")).toEqual([
-      "Market price",
-      "Export Market price",
-      "Daily €0.30/day",
-    ]);
+      // Then
+      expect(card.shadowRoot.querySelector("td.prices")).toBeNull();
+      expect(heads(card)).not.toContain("Prices");
+    }
   });
 });
 
@@ -333,15 +308,6 @@ describe("the current plan, priced at the prices the household pays (ADR-0042)",
     },
   };
   const OFFER = NIGHT;
-
-  it("says its prices are the ones the household pays, rather than listing any", async () => {
-    // Given / When
-    const card = mountCard(TAG, aHome({ ...COMPARED, plans: [CURRENT, OFFER] }));
-    await settled(expect, card);
-
-    // Then - its own daily charge still said
-    expect(priceLines(card, "current")).toEqual([LABELS.plans_your_prices, "Daily €0.45/day"]);
-  });
 
   it("is not said to follow the market, though it is priced hour by hour", async () => {
     // Given / When - the current plan beside a banded offer, no market plan
@@ -445,7 +411,6 @@ describe("each plan without solar or battery", () => {
     // over two head rows as the groups beside it are (HEA-300)
     expect(heads(card)).toEqual([
       "Plan",
-      "Prices",
       "Import cost",
       "Daily charges",
       "Export income",
@@ -975,11 +940,6 @@ describe("a home on the grid alone (HEA-313)", () => {
     // Then - what is paid alone, with no heading over nothing earned
     expect(heads(card)).not.toContain(LABELS.plans_export);
     expect(heads(card)).not.toContain(LABELS.plans_you_earn);
-    expect(priceLines(card, "night")).toEqual([
-      "Peak 31.0 c/kWh",
-      "Off-peak 9.0 c/kWh",
-      "Daily €0.30/day",
-    ]);
     expect(billLines(card, "night")).toEqual([
       "",
       LABELS.plans_daily,
@@ -1015,7 +975,6 @@ describe("a home on the grid alone (HEA-313)", () => {
       "Imported 134.3 kWh and exported 0 kWh in this period.",
     );
     expect(heads(card)).toContain(LABELS.plans_export);
-    expect(priceLines(card, "night")).toContain("Export 4.0 c/kWh");
     expect(billLines(card, "night")).toContain(LABELS.plans_export_rate);
   });
 });
@@ -1276,6 +1235,30 @@ describe("each plan's bill (HEA-300)", () => {
     expect(average.title).toBe(
       "13.57 c/kWh on average: the cheapest hour you imported in was 6.0 c/kWh, and the dearest 32.0 c/kWh.",
     );
+  });
+
+  it("names the current plan's line for the prices the household pays, not a market", async () => {
+    // Given - the current plan, priced at the household's own prices interval
+    // by interval (ADR-0042, HEA-312)
+    const current = {
+      ...BILL,
+      follows_prices: true,
+      breakdown: {
+        ...BILL.breakdown,
+        imports: [{ name: "", rate: null, kwh: 675, amount: 91.58 }],
+        exports: [{ name: "", rate: null, kwh: 82, amount: 4.1, beyond_allowance: false }],
+      },
+    };
+    const card = await mounted({ ...COMPARED, plans: [FLAT, current] });
+
+    // When
+    open(card, "bill");
+
+    // Then
+    const names = billRows(card, "bill").map((row) => row[0]);
+    expect(names).toContain(LABELS.plans_your_prices);
+    expect(names).toContain(LABELS.plans_your_export_price);
+    expect(names).not.toContain(LABELS.plans_market_price);
   });
 
   it("opens on a phone too, where the table leaves the parts out", async () => {
