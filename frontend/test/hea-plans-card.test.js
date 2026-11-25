@@ -19,7 +19,7 @@ import {
 import { DEFAULTS as LABELS, fill, resetLabels } from "../hea-labels.js";
 import { TAG, register } from "../hea-plans-card.js";
 import { verdictColour } from "../hea-verdict-scale.js";
-import { JULY, MAY, aHass, mountCard, settled, text } from "./doubles.js";
+import { JULY, MAY, aDeviceRow, aHass, mountCard, settled, text } from "./doubles.js";
 
 const FLAT = {
   id: "flat",
@@ -912,6 +912,111 @@ describe("export a capped plan did not pay (HEA-258)", () => {
     for (const id of ["flat", "night"]) {
       expect(row(card, id).querySelector('[data-figure^="export-"]')).toBe(null);
     }
+  });
+});
+
+describe("a home on the grid alone (HEA-313)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A grid-only home publishes no source split (HEA-253), so nothing it could
+  // export: its comparison still carries an export of nothing for every plan.
+  const GRID_ONLY_BILL = {
+    ...NIGHT,
+    export_credit: 0,
+    breakdown: {
+      daily: { rate: 0.3, days: 30, amount: 9 },
+      imports: [{ name: "Peak", rate: 0.31, kwh: 77.6, amount: 24.06 }],
+      exports: [{ name: "", rate: 0.04, kwh: 0, amount: 0, beyond_allowance: false }],
+      average_import_rate: 0.31,
+      cheapest_import_rate: 0.31,
+      dearest_import_rate: 0.31,
+    },
+  };
+  const NOTHING_EXPORTED = {
+    ...COMPARED,
+    exported_kwh: 0,
+    plans: [{ ...FLAT, export_credit: 0 }, GRID_ONLY_BILL],
+  };
+  const gridOnly = () =>
+    aHass({
+      callWS: answering(NOTHING_EXPORTED),
+      devices: [
+        aDeviceRow("aircon", "Aircon", false, {
+          energy_used: "sensor.aircon_energy_used",
+          actual_cost: "sensor.aircon_actual_cost",
+        }),
+      ],
+    });
+  const billLines = (card, id) =>
+    [...card.shadowRoot.querySelectorAll(`[data-plan="${id}"] .bill tr`)].map(
+      (row) => row.children[0].textContent.trim(),
+    );
+
+  it("says what was imported and nothing of export", async () => {
+    // Given / When
+    const card = mountCard(TAG, gridOnly());
+    await settled(expect, card);
+
+    // Then
+    expect(card.shadowRoot.querySelector(".flows").textContent).toBe(
+      "Imported 134.3 kWh in this period.",
+    );
+  });
+
+  it("has no export column, no export price and no export line in a bill", async () => {
+    // Given
+    onScreen(false);
+    const card = mountCard(TAG, gridOnly());
+    await settled(expect, card);
+
+    // When
+    card.shadowRoot.querySelector('[data-plan="night"] tr.figures').click();
+
+    // Then - what is paid alone, with no heading over nothing earned
+    expect(heads(card)).not.toContain(LABELS.plans_export);
+    expect(heads(card)).not.toContain(LABELS.plans_you_earn);
+    expect(priceLines(card, "night")).toEqual([
+      "Peak 31.0 c/kWh",
+      "Off-peak 9.0 c/kWh",
+      "Daily €0.30/day",
+    ]);
+    expect(billLines(card, "night")).toEqual([
+      "",
+      LABELS.plans_daily,
+      "Peak",
+      LABELS.plans_energy,
+      LABELS.plans_total,
+    ]);
+  });
+
+  it("says on a phone that the breakdown is on a wider screen, without export", async () => {
+    // Given / When
+    onScreen(true);
+    const card = mountCard(TAG, gridOnly());
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(LABELS.plans_breakdown_hidden_import);
+    expect(text(card)).not.toContain(LABELS.plans_breakdown_hidden);
+  });
+
+  it("keeps export on a home that can export, though it exported nothing", async () => {
+    // Given - the same period on a home with generation: nothing exported that
+    // month, but it could have
+    onScreen(false);
+    const card = mountCard(TAG, aHome(NOTHING_EXPORTED));
+    await settled(expect, card);
+
+    // When
+    card.shadowRoot.querySelector('[data-plan="night"] tr.figures').click();
+
+    // Then
+    expect(card.shadowRoot.querySelector(".flows").textContent).toBe(
+      "Imported 134.3 kWh and exported 0 kWh in this period.",
+    );
+    expect(heads(card)).toContain(LABELS.plans_export);
+    expect(priceLines(card, "night")).toContain("Export 4.0 c/kWh");
+    expect(billLines(card, "night")).toContain(LABELS.plans_export_rate);
   });
 });
 

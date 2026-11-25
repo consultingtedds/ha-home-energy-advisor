@@ -27,6 +27,7 @@ import {
   savingTone,
 } from "./hea-format.js";
 import { fill, loadLabels } from "./hea-labels.js";
+import { isAGridOnlyHome } from "./hea-statistics.js";
 import { TABLE_STYLE } from "./hea-table-card.js";
 import { verdictColour } from "./hea-verdict-scale.js";
 
@@ -294,7 +295,12 @@ class HeaPlansCard extends HeaCard {
     // Only worth saying where there is something it is cheaper than.
     const cheapest = priced.length > 1 ? priced[0] : undefined;
     const wide = !this._isNarrow();
-    const parts = wide ? PARTS : [];
+    // A home on the grid alone has nothing to export, so it is shown none, as
+    // the other cards leave out what such a home can never use (HEA-313).
+    this._gridOnly = isAGridOnlyHome(this._hass);
+    const parts = wide
+      ? PARTS.filter((part) => !this._gridOnly || part.group !== "earn")
+      : [];
     const notes = [
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       this._currentNote(marked),
@@ -310,7 +316,7 @@ class HeaPlansCard extends HeaCard {
       this._labels.plans_note,
       this._archivedNote(),
       priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",
-      wide ? "" : this._labels.plans_breakdown_hidden,
+      wide ? "" : this._breakdownHidden(),
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
     ].filter(Boolean);
     // Only for a house with an installation, which is the only kind the
@@ -352,6 +358,7 @@ class HeaPlansCard extends HeaCard {
     if (!parts.length) return `<tr>${columns}</tr>`;
     const groups = GROUPS.map((group) => {
       const span = parts.filter((part) => part.group === group.key).length;
+      if (!span) return "";
       const classes = group.key === "earn" ? "rule earn" : "rule";
       return `<th class="${classes}" colspan="${span}">${this._labels[group.label]}</th>`;
     }).join("");
@@ -431,7 +438,7 @@ class HeaPlansCard extends HeaCard {
       : `${formatRate(rates.export, locale)} ${unit}`;
     const lines = [
       ...imports,
-      line(this._labels.plans_export_rate, exportRate),
+      ...(this._gridOnly ? [] : [line(this._labels.plans_export_rate, exportRate)]),
       line(this._labels.plans_daily_rate, daily),
     ];
     return `<td class="prices">${lines.join("")}</td>`;
@@ -443,11 +450,19 @@ class HeaPlansCard extends HeaCard {
    * the hours compared are counted, so with any left out it says so, and the kWh
    * read against the costs beneath them (HEA-299).
    */
+  /** Where the breakdown is on a phone, naming export only where there is any. */
+  _breakdownHidden() {
+    return this._gridOnly
+      ? this._labels.plans_breakdown_hidden_import
+      : this._labels.plans_breakdown_hidden;
+  }
+
   _flows(locale) {
     if (!this._compared.hours) return "";
-    const wording = this._compared.left_out?.length
-      ? this._labels.plans_flows_compared
-      : this._labels.plans_flows;
+    // On the grid alone, what was imported only (HEA-313).
+    const what = this._gridOnly ? "plans_flows_import" : "plans_flows";
+    const key = this._compared.left_out?.length ? `${what}_compared` : what;
+    const wording = this._labels[key];
     return `<div class="flows">${fill(wording, {
       imported: formatEnergy(this._compared.imported_kwh, locale),
       exported: formatEnergy(this._compared.exported_kwh, locale),
@@ -688,7 +703,7 @@ class HeaPlansCard extends HeaCard {
         key: "daily",
       }),
       ...this._importLines(plan, locale),
-      ...this._exportLines(plan, locale),
+      ...(this._gridOnly ? [] : this._exportLines(plan, locale)),
       billRow(locale, {
         name: this._labels.plans_total,
         money: totalCell("bill-total", plan.total, this._labels, locale),

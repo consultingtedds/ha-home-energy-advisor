@@ -162,8 +162,11 @@ export const DEFAULTS = Object.freeze({
   plans_dearer: "{amount} dearer",
   plans_flows: "Imported {imported} and exported {exported} in this period.",
   plans_flows_compared: "Imported {imported} and exported {exported} in the hours compared.",
+  plans_flows_import: "Imported {imported} in this period.",
+  plans_flows_import_compared: "Imported {imported} in the hours compared.",
   plans_breakdown_hidden:
     "Import cost, export income and daily charges are shown on a wider screen.",
+  plans_breakdown_hidden_import: "Import cost and daily charges are shown on a wider screen.",
   plans_incomplete:
     "Not every hour has a price, so it cannot be compared. Edit the plan to " +
     "finish its bands.",
