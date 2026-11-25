@@ -126,3 +126,25 @@ the household's real flows.**
   spot-price entity; payback (HEA-242) measured against the baseline.
 - Revisit if: offers start to price in sub-hour bands, or households need
   per-device plan figures.
+
+## Amendment, 2026-11-25: a demand charge from a sensor
+
+From HEA-322 (GitHub discussion 67). Charges on a measured peak in kW, such as
+Flanders' capacity tariff or an Australian demand tariff, were left out. For some
+households such a charge is the largest line on the bill.
+
+Each plan, the current plan included, can now name a sensor giving that charge's
+cost per day. It is read as a daily charge sensor is (ADR-0042, 2026-11-24
+amendment), and becomes a fourth part of the plan's total, listed apart from the
+daily charge. A sensor that reads nothing leaves the part missing, never zero. A
+plan without one has no such part.
+
+Home Assistant keeps long-term statistics by the hour, which cannot give a
+15-minute or 30-minute peak, so the integration does not measure the peak
+itself: the household builds the sensor, or takes one from another integration.
+Pricing a measured peak inside the integration stays a follow-up (HEA-263).
+
+Pricing a plan as if the house had no installation carries the same demand charge
+as the plan, so it cancels out of what the installation saves. That saving then
+leaves out what the battery saved by lowering the peak, which cannot be measured
+here, and the card says so.

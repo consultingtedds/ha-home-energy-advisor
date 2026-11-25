@@ -41,6 +41,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
@@ -85,6 +86,8 @@ class KnownHome:
     export_price_entity: str | None = None
     # A sensor giving the daily charge per day, each hour's mean by local hour.
     daily_charges: dict[int, float] = field(default_factory=dict)
+    # A sensor giving a demand or capacity charge per day, the same way.
+    demand_charges: dict[int, float] = field(default_factory=dict)
     # The house's own settings, beside its currency: its house meter, say.
     house: dict[str, Any] = field(default_factory=dict)
     # What the home should see.
@@ -92,6 +95,7 @@ class KnownHome:
     current_lacks: list[str] = field(default_factory=list)
     left_out: bool = False
     current_daily_rate: float | None = None
+    demand_rate: float | None = None
 
     @property
     def day(self) -> datetime:
@@ -322,6 +326,41 @@ GRID_ONLY_HOUSE_IS_GRID = KnownHome(
     house={CONF_HOUSE_CONSUMPTION_ENTITY: _GRID_IMPORT},
 )
 
+# Discussion 67's home: a capacity charge on the measured monthly peak, worked
+# out per day by the household's own template, on its current plan and on one
+# offer but not the other; export priced by the Energy Dashboard (HEA-322).
+DEMAND_CHARGE_SENSOR = "sensor.capacity_charge_per_day"
+CAPACITY_CHARGE = KnownHome(
+    name="capacity_charge",
+    time_zone="Europe/Brussels",
+    currency="EUR",
+    grid={
+        CONF_NAME: "Grid",
+        CONF_GRID_IMPORT_ENTITY: _GRID_IMPORT,
+        CONF_GRID_EXPORT_ENTITY: _GRID_EXPORT,
+        CONF_PRICE_ENTITY: "sensor.dynamic_price",
+    },
+    plans={
+        "fixed_offer": {
+            **_flat("Fixed offer", 0.29, 0.31, 0.03),
+            CONF_PLAN_DEMAND_CHARGE_ENTITY: DEMAND_CHARGE_SENSOR,
+        },
+        "offer_without_it": _flat("Offer without it", 0.27, 0.31, 0.02),
+    },
+    current={
+        CONF_NAME: "Your current plan",
+        CONF_PLAN_FOLLOWS: True,
+        CONF_PLAN_DAILY_CHARGE: 0.31,
+        CONF_PLAN_DEMAND_CHARGE_ENTITY: DEMAND_CHARGE_SENSOR,
+        CONF_PLAN_EXPORT_CAP: "none",
+    },
+    imported={7: 0.8, 18: 1.6, 21: 0.6},
+    exported={13: 2.4},
+    prices={"sensor.dynamic_price": _all_day(0.26)},
+    demand_charges=_all_day(0.47),
+    demand_rate=0.47,
+)
+
 KNOWN_HOMES = (
     SPANISH_TIME_OF_USE,
     AUSTRALIAN_MARKET,
@@ -329,6 +368,7 @@ KNOWN_HOMES = (
     GRID_ONLY,
     GRID_ONLY_DAILY_CHARGE_SENSOR,
     GRID_ONLY_HOUSE_IS_GRID,
+    CAPACITY_CHARGE,
 )
 
 
@@ -381,6 +421,9 @@ async def record(hass: HomeAssistant, home: KnownHome) -> None:
         _record_prices(
             hass, home, DAILY_CHARGE_SENSOR, home.daily_charges, f"{home.currency}/day"
         )
+    if home.demand_charges:
+        per_day = f"{home.currency}/day"
+        _record_prices(hass, home, DEMAND_CHARGE_SENSOR, home.demand_charges, per_day)
     for entity in home.without_statistics:
         # No state class: Home Assistant keeps no statistics for it.
         hass.states.async_set(entity, "0.3", {"unit_of_measurement": unit})

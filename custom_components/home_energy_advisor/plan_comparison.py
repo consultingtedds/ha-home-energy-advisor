@@ -55,6 +55,7 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
@@ -232,6 +233,7 @@ class _Paid:
             holidays=None,
             import_entity=_PAID_IMPORT,
             export_entity=_PAID_EXPORT if self.export_entity else None,
+            demand_entity=self.rules.get(CONF_PLAN_DEMAND_CHARGE_ENTITY) or None,
         )
 
 
@@ -878,12 +880,49 @@ async def _plan_row(
         # Only a plan edited outside its form can leave hours unpriced; it is
         # listed, not guessed at.
         return {**named, "incomplete": True}
-    return {
+    row = {
         **named,
         **_figures(cost),
         **without,
         "breakdown": _breakdown(tariff.plan, cost, basis.days),
     }
+    if tariff.demand_entity:
+        row = _with_demand(
+            row, await _daily_rate(basis.hass, tariff.demand_entity, basis), basis.days
+        )
+    return row
+
+
+def _with_demand(
+    row: dict[str, Any], rate: Decimal | None, days: Decimal
+) -> dict[str, Any]:
+    """A plan's row with its demand or capacity charge, read per day (HEA-322).
+
+    Its own line, apart from the daily charge, and in the total. Buying
+    everything from the grid carries the same charge, so what the installation
+    saves is not cut by it; a peak the battery lowered is not counted. A sensor
+    that reads nothing is said to be missing, never charged as nothing.
+    """
+    if rate is None:
+        return {**row, "demand_charge_missing": True}
+    amount = rate * days
+    added = {
+        "demand_charges": _number(amount),
+        "total": _number(Decimal(str(row["total"])) + amount),
+        "breakdown": {
+            **row["breakdown"],
+            "demand": {
+                "rate": _number(rate),
+                "days": _number(days),
+                "amount": _number(amount),
+            },
+        },
+    }
+    if "without_installation" in row:
+        added["without_installation"] = _number(
+            Decimal(str(row["without_installation"])) + amount
+        )
+    return {**row, **added}
 
 
 def _left_out(

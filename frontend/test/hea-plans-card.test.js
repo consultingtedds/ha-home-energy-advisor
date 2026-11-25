@@ -1398,3 +1398,132 @@ describe("archived plans (HEA-307)", () => {
     expect(text(card)).not.toContain("archived");
   });
 });
+
+describe("a demand charge from a sensor (HEA-322)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // A capacity charge of 0.47 a day over 30 days on the current plan and on
+  // one offer; the other offer was given no sensor for it.
+  const DEMAND = { rate: 0.47, days: 30, amount: 14.1 };
+  const withDemand = (plan) => ({
+    ...plan,
+    demand_charges: 14.1,
+    total: plan.total + 14.1,
+    breakdown: {
+      daily: { rate: 0.3, days: 30, amount: plan.daily_charges },
+      demand: DEMAND,
+      imports: [],
+      exports: [],
+      average_import_rate: null,
+    },
+  });
+  const CHARGED = { ...COMPARED, plans: [withDemand(FLAT), withDemand(NIGHT), PEAKY] };
+
+  it("adds its own column after the daily charges, blank on a plan without one", async () => {
+    // Given / When
+    onScreen(false);
+    const card = mountCard(TAG, aHome(CHARGED));
+    await settled(expect, card);
+
+    // Then - apart from the daily charge, as a bill lists it, under what is
+    // paid; nothing shown for a plan never given one, rather than nothing charged
+    expect(heads(card)).toEqual([
+      "Plan",
+      "Import cost",
+      "Daily charges",
+      "Demand charges",
+      "Export income",
+      "Total",
+      "vs current plan",
+    ]);
+    expect(figure(card, "demand:night")).toBe("€14.10");
+    expect(tone(card, "demand:night")).toBe("loss");
+    expect(card.shadowRoot.querySelector('[data-figure="demand:peaky"]').textContent).toBe("");
+    const groups = card.shadowRoot.querySelectorAll("thead tr.groups th");
+    expect(groups[1].getAttribute("colspan")).toBe("3");
+  });
+
+  it("has no such column where no plan has one", async () => {
+    // Given / When
+    onScreen(false);
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then - nothing changes for a home without one
+    expect(heads(card)).not.toContain(LABELS.plans_demand);
+  });
+
+  it("says a sensor that read nothing has no reading, never a charge of nothing", async () => {
+    // Given
+    onScreen(false);
+    const unread = {
+      ...COMPARED,
+      plans: [FLAT, { ...NIGHT, demand_charge_missing: true }, PEAKY],
+    };
+
+    // When
+    const card = mountCard(TAG, aHome(unread));
+    await settled(expect, card);
+
+    // Then
+    expect(card.shadowRoot.querySelector('[data-figure="demand:night"]').textContent).toBe(
+      LABELS.plans_demand_missing,
+    );
+  });
+
+  it("lists it in the bill on its own line, after the daily charges", async () => {
+    // Given
+    onScreen(false);
+    const card = mountCard(TAG, aHome(CHARGED));
+    await settled(expect, card);
+
+    // When
+    card.shadowRoot.querySelector('[data-plan="night"] tr.figures').click();
+
+    // Then
+    const rows = [...card.shadowRoot.querySelectorAll('[data-plan="night"] .bill tr')].map(
+      (row) => [...row.children].map((cell) => cell.textContent.replaceAll(/\s+/g, " ").trim()),
+    );
+    expect(rows[1]).toEqual(["Daily charges", "€0.30/day", "30 days", "€9.00"]);
+    expect(rows[2]).toEqual(["Demand charges", "€0.47/day", "30 days", "€14.10"]);
+  });
+
+  it("says buying everything from the grid carries it too, where that column is shown", async () => {
+    // Given - a house with an installation
+    onScreen(false);
+    const installed = {
+      ...CHARGED,
+      plans: CHARGED.plans.map((plan) => ({
+        ...plan,
+        without_installation: plan.total + 30,
+      })),
+    };
+
+    // When
+    const card = mountCard(TAG, aHome(installed));
+    await settled(expect, card);
+
+    // Then - so the saving is read knowing what it leaves out
+    expect(text(card)).toContain(LABELS.plans_demand_note);
+  });
+
+  it("names demand charges among what a phone leaves to a wider screen", async () => {
+    // Given / When
+    onScreen(true);
+    const card = mountCard(TAG, aHome(CHARGED));
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).toContain(LABELS.plans_breakdown_hidden_demand);
+  });
+
+  it("says nothing of it for a house without an installation", async () => {
+    // Given / When
+    onScreen(false);
+    const card = mountCard(TAG, aHome(CHARGED));
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).not.toContain(LABELS.plans_demand_note);
+  });
+});

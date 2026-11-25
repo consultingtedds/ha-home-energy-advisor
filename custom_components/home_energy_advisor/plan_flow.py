@@ -61,6 +61,7 @@ from .const import (
     CONF_CURRENCY,
     CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
@@ -76,6 +77,7 @@ from .const import (
     DEFAULT_CURRENCY,
 )
 from .current_plan import (
+    DEMAND_CHARGE,
     PlansBeenOnSteps,
     async_daily_charge_sources,
     feeds_the_prices,
@@ -112,6 +114,7 @@ _DETAIL_KEYS = (
     CONF_NAME,
     CONF_PLAN_ARCHIVED,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
@@ -565,6 +568,7 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
                         )
                     )
                 ),
+                vol.Optional(CONF_PLAN_DEMAND_CHARGE_ENTITY): DEMAND_CHARGE,
                 vol.Required(CONF_PLAN_EXPORT_PRICE, default=0): per_kwh,
                 vol.Optional(CONF_PLAN_EXPORT_ALLOWANCE): _ALLOWANCE,
                 vol.Optional(CONF_PLAN_EXPORT_PRICE_AFTER): per_kwh,

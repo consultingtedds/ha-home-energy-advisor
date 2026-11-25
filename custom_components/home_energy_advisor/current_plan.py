@@ -33,6 +33,7 @@ from .const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_FOLLOWS,
     CONF_PLAN_PERIODS,
@@ -65,10 +66,15 @@ _RULES = (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_PROVIDES_PRICES,
     CONF_PLAN_PERIODS,
     CONF_PLAN_CARRY_IN,
+)
+# A demand or capacity charge's cost per day, from whatever gives it (HEA-322).
+DEMAND_CHARGE = selector.EntitySelector(
+    selector.EntitySelectorConfig(domain=["sensor", "input_number", "number"])
 )
 # Where 1.7.1 kept the one plan its price history was read from.
 _HISTORY_FROM = "price_history_from"
@@ -149,6 +155,7 @@ def rules_schema(per_day: str, sources: list[selector.SelectOptionDict]) -> vol.
                 )
             ),
             **following,
+            vol.Optional(CONF_PLAN_DEMAND_CHARGE_ENTITY): DEMAND_CHARGE,
             vol.Required(
                 CONF_PLAN_EXPORT_CAP, default=ExportCap.NONE.value
             ): selector.SelectSelector(

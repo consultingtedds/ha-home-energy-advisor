@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import CONF_NAME, STATE_UNAVAILABLE
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.components.recorder.common import (
     async_wait_recording_done,
@@ -21,7 +21,9 @@ from tests.known_homes import CURRENT, KNOWN_HOMES, KnownHome, entry_of, record
 
 from custom_components.home_energy_advisor.const import (
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
+    CONF_PLAN_FOLLOWS,
     CONF_PLAN_PERIODS,
     CONF_PLAN_PROVIDES_PRICES,
     DOMAIN,
@@ -96,6 +98,18 @@ async def test_it_compares_its_recorded_day(
         # each hour's daily charge, the morning's and the afternoon's
         assert current["breakdown"]["daily"]["rate"] == pytest.approx(
             home.current_daily_rate
+        )
+    # a demand charge on each plan that names a sensor for it, and only there
+    plans = [*home.plans.values(), home.current]
+    named = {
+        "Your current plan" if plan.get(CONF_PLAN_FOLLOWS) else plan[CONF_NAME]
+        for plan in plans
+        if plan.get(CONF_PLAN_DEMAND_CHARGE_ENTITY)
+    }
+    assert {name for name, row in rows.items() if "demand_charges" in row} == named
+    for name in named:
+        assert rows[name]["breakdown"]["demand"]["rate"] == pytest.approx(
+            home.demand_rate
         )
     assert bool(result["left_out"]) is home.left_out
 

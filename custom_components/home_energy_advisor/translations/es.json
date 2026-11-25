@@ -257,6 +257,7 @@
           "data": {
             "name": "Nombre",
             "daily_charge": "Cargo diario",
+            "demand_charge_entity": "Cargo por demanda desde un sensor",
             "plan_export_price": "Precio de exportación",
             "plan_export_allowance": "Cupo de exportación (opcional)",
             "plan_export_price_after": "Precio de exportación más allá del cupo (opcional)",
@@ -274,6 +275,7 @@
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
+            "demand_charge_entity": "Opcional. Un sensor que da, por día, un cargo sobre tu pico medido, como un cargo por demanda o por capacidad, calculado con una plantilla u otra integración. Se muestra aparte del cargo diario, y comprar todo de la red lleva el mismo cargo. Un cargo que fija tu distribuidora es el mismo en todas las tarifas, así que indícalo en cada una, o las que no lo tengan parecerán más baratas.",
             "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
             "plan_export_allowance": "Si la tarifa paga su precio de exportación solo por los primeros kWh exportados cada día, cuántos kWh. Déjalo vacío si lo paga por toda la exportación.",
             "plan_export_price_after": "Lo que la tarifa paga por kWh exportado más allá del cupo en un día. Indícalo junto con el cupo.",
@@ -295,6 +297,7 @@
           "data": {
             "name": "Nombre",
             "daily_charge": "Cargo diario",
+            "demand_charge_entity": "Cargo por demanda desde un sensor",
             "plan_export_price": "Precio de exportación",
             "plan_export_allowance": "Cupo de exportación (opcional)",
             "plan_export_price_after": "Precio de exportación más allá del cupo (opcional)",
@@ -312,6 +315,7 @@
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
             "daily_charge": "Lo que la tarifa cobra al día uses lo que uses, como el término de potencia contratada.",
+            "demand_charge_entity": "Opcional. Un sensor que da, por día, un cargo sobre tu pico medido, como un cargo por demanda o por capacidad, calculado con una plantilla u otra integración. Se muestra aparte del cargo diario, y comprar todo de la red lleva el mismo cargo. Un cargo que fija tu distribuidora es el mismo en todas las tarifas, así que indícalo en cada una, o las que no lo tengan parecerán más baratas.",
             "plan_export_price": "Lo que la tarifa paga por kWh exportado, salvo que un precio diga otra cosa.",
             "plan_export_allowance": "Si la tarifa paga su precio de exportación solo por los primeros kWh exportados cada día, cuántos kWh. Déjalo vacío si lo paga por toda la exportación.",
             "plan_export_price_after": "Lo que la tarifa paga por kWh exportado más allá del cupo en un día. Indícalo junto con el cupo.",
@@ -358,6 +362,7 @@
           "data": {
             "daily_charge": "Cargo diario",
             "daily_charge_entity": "Cargo diario desde un sensor",
+            "demand_charge_entity": "Cargo por demanda desde un sensor",
             "daily_charge_source": "Cargo diario desde tu panel de energía",
             "plan_export_cap": "Compensación de excedentes",
             "provides_prices": "Crear mis sensores de precio a partir de las tarifas que he tenido"
@@ -365,6 +370,7 @@
           "data_description": {
             "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
             "daily_charge_entity": "En lugar de escribirlo: un sensor que da tu cargo diario por día, como hacen las integraciones de algunas comercializadoras. Cada día se cobra lo que marcaba. Indica el cargo diario de una sola forma.",
+            "demand_charge_entity": "Opcional. Un sensor que da, por día, un cargo sobre tu pico medido, como un cargo por demanda o por capacidad, calculado con una plantilla u otra integración. Se muestra aparte del cargo diario, y comprar todo de la red lleva el mismo cargo. Un cargo que fija tu distribuidora es el mismo en todas las tarifas, así que indícalo en cada una, o las que no lo tengan parecerán más baratas.",
             "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente, y el cargo diario de esta tarifa es lo que Home Assistant registró que costó. Indica esto o el cargo diario, no ambos.",
             "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes. Los cargos diarios nunca se compensan.",
             "provides_prices": "Home Energy Advisor te da un precio de importación, uno de exportación y su historial, siguiendo cada tarifa que has tenido desde el día en que empezó. Apunta a ellos tu Panel de energía y tus contadores una vez, y un cambio de tarifa es solo añadir la tarifa con su día de inicio."
@@ -735,6 +741,7 @@
             "data": {
               "daily_charge": "Cargo diario",
               "daily_charge_entity": "Cargo diario desde un sensor",
+              "demand_charge_entity": "Cargo por demanda desde un sensor",
               "daily_charge_source": "Cargo diario desde tu panel de energía",
               "plan_export_cap": "Compensación de excedentes",
               "provides_prices": "Crear mis sensores de precio a partir de las tarifas que he tenido"
@@ -742,6 +749,7 @@
             "data_description": {
               "daily_charge": "Lo que tu tarifa cobra al día consumas lo que consumas, como un término fijo o de potencia contratada.",
               "daily_charge_entity": "En lugar de escribirlo: un sensor que da tu cargo diario por día, como hacen las integraciones de algunas comercializadoras. Indica el cargo diario de una sola forma.",
+              "demand_charge_entity": "Opcional. Un sensor que da, por día, un cargo sobre tu pico medido, como un cargo por demanda o por capacidad, calculado con una plantilla u otra integración. Se muestra aparte del cargo diario, y comprar todo de la red lleva el mismo cargo. Un cargo que fija tu distribuidora es el mismo en todas las tarifas, así que indícalo en cada una, o las que no lo tengan parecerán más baratas.",
               "daily_charge_source": "En lugar de escribirlo: si tu panel de energía ya cobra tu término fijo como una fuente de red propia, elige esa fuente. Indica esto o el cargo diario, no ambos.",
               "plan_export_cap": "Si tu tarifa paga toda la exportación, o solo hasta lo que costó la energía de cada mes.",
               "provides_prices": "Home Energy Advisor te da un precio de importación, uno de exportación y su historial, siguiendo cada tarifa que has tenido desde el día en que empezó. Apunta a ellos tu Panel de energía y tus contadores una vez, y un cambio de tarifa es solo añadir la tarifa con su día de inicio."
@@ -1062,6 +1070,8 @@
     "card_plans_flows_import_compared": "Importaste {imported} en las horas comparadas.",
     "card_plans_breakdown_hidden": "El coste de la importación, los ingresos por exportación y los cargos diarios se muestran en una pantalla más ancha.",
     "card_plans_breakdown_hidden_import": "El coste de la importación y los cargos diarios se muestran en una pantalla más ancha.",
+    "card_plans_breakdown_hidden_demand": "El coste de la importación, los ingresos por exportación, los cargos diarios y los cargos por demanda se muestran en una pantalla más ancha.",
+    "card_plans_breakdown_hidden_import_demand": "El coste de la importación, los cargos diarios y los cargos por demanda se muestran en una pantalla más ancha.",
     "card_plans_incomplete": "No todas las horas tienen precio, así que no se puede comparar. Edita la tarifa para completar sus franjas.",
     "card_plans_note": "Para toda la casa: cada tarifa calculada con la electricidad que realmente importaste y exportaste, como si tu batería hubiera funcionado igual. Los precios se comparan tal como los introdujiste.",
     "card_plans_no_readings": "Tus contadores de red no registraron nada en este periodo, así que no hay nada que comparar.",
@@ -1070,6 +1080,9 @@
     "card_plans_your_prices": "Los precios que pagas",
     "card_plans_your_export_price": "Tu precio de exportación",
     "card_plans_daily_missing": "Sin indicar todavía",
+    "card_plans_demand": "Cargos por demanda",
+    "card_plans_demand_missing": "Sin lectura",
+    "card_plans_demand_note": "Los cargos por demanda también se cuentan en Comprándolo todo de la red, así que lo que te ahorra tu instalación no incluye lo que ahorró al bajar tu pico.",
     "card_plans_no_price": "{sensors} no registró estadísticas en este periodo, así que no se puede comparar. Revísalo en Herramientas para desarrolladores > Estadísticas: un sensor de precio necesita la clase de estado measurement para que Home Assistant las guarde.",
     "card_plans_no_price_current": "{sensors} no tiene estadísticas de parte de este periodo, así que tu tarifa actual no se puede calcular. Para calcular esas horas, añade las tarifas que has tenido, cada una con el día en que empezó, en Tarifas que has tenido, en los ajustes de tu tarifa actual. Para guardar sus estadísticas a partir de ahora, dale al sensor la clase de estado measurement.",
     "card_plans_current_history_from": "Las horas en que tus sensores de precio no tienen estadísticas se calculan con la tarifa que tenías ese día: {plans}.",

@@ -38,6 +38,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE_AFTER,
@@ -367,14 +368,15 @@ async def test_editing_the_current_plan_asks_first_for_its_billing_rules(
     form = await _edit_current(hass, entry)
 
     # Then - its daily charge, typed or from a sensor, and cap, with what it
-    # holds filled in, and whether to provide its price sensors; no prices:
-    # those are Paid's. With no grid source in the Energy Dashboard to follow,
-    # there is nothing else
+    # holds filled in, a demand charge from a sensor (HEA-322), and whether to
+    # provide its price sensors; no prices: those are Paid's. With no grid
+    # source in the Energy Dashboard to follow, there is nothing else
     assert form["step_id"] == "current"
     fields = _fields(form)
     assert set(fields) == {
         CONF_PLAN_DAILY_CHARGE,
         CONF_PLAN_DAILY_CHARGE_ENTITY,
+        CONF_PLAN_DEMAND_CHARGE_ENTITY,
         CONF_PLAN_EXPORT_CAP,
         CONF_PLAN_PROVIDES_PRICES,
     }
@@ -724,6 +726,35 @@ async def test_a_daily_charge_from_a_sensor_is_kept_and_is_one_way_of_three(
         **cap,
     }
     assert not current_plan.needs_answer(current)
+
+
+async def test_a_demand_charge_sensor_is_kept_and_cleared_on_the_current_plan(
+    hass: HomeAssistant,
+) -> None:
+    # Given - a household's template giving its capacity charge (HEA-322)
+    entry = _entry(hass, _OFFER, version=8)
+    await _set_up(hass, entry)
+    hass.states.async_set("sensor.capacity_charge_per_day", "0.47")
+    rules = {
+        CONF_PLAN_EXPORT_CAP: ExportCap.NONE.value,
+        CONF_PLAN_DAILY_CHARGE: 0.3,
+    }
+    demand = {CONF_PLAN_DEMAND_CHARGE_ENTITY: "sensor.capacity_charge_per_day"}
+
+    # When - given, then cleared
+    form = await _edit_current(hass, entry)
+    await _answer(hass, form["flow_id"], {**rules, **demand})
+    (given,) = _following(entry)
+    kept = dict(given.data)
+    form = await _edit_current(hass, entry)
+    await _answer(hass, form["flow_id"], rules)
+
+    # Then - kept beside the daily charge, which it never stands in for, and
+    # gone once cleared
+    assert kept[CONF_PLAN_DEMAND_CHARGE_ENTITY] == "sensor.capacity_charge_per_day"
+    assert not current_plan.needs_answer(given)
+    (cleared,) = _following(entry)
+    assert CONF_PLAN_DEMAND_CHARGE_ENTITY not in cleared.data
 
 
 async def test_a_new_plan_cannot_start_from_the_current_plan(

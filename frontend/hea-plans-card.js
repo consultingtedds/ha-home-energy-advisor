@@ -45,6 +45,7 @@ const COMPARE_PLANS = "home_energy_advisor/compare_plans";
 const PARTS = [
   { key: "energy", label: "plans_energy", group: "pay" },
   { key: "daily", label: "plans_daily", figure: "daily_charges", group: "pay" },
+  { key: "demand", label: "plans_demand", figure: "demand_charges", group: "pay" },
   { key: "export", label: "plans_export", figure: "export_credit", group: "earn" },
 ];
 
@@ -57,6 +58,9 @@ const GROUPS = [
   { key: "pay", label: "plans_you_pay" },
   { key: "earn", label: "plans_you_earn" },
 ];
+
+/** A plan given a demand charge sensor, whether or not it read anything (HEA-322). */
+const hasDemand = (plan) => "demand_charges" in plan || Boolean(plan.demand_charge_missing);
 
 /** A plan with no figure: bands that leave hours unpriced, or no market price. */
 const unpriced = (plan) => Boolean(plan.incomplete || plan.no_price);
@@ -290,9 +294,18 @@ class HeaPlansCard extends HeaCard {
     // A home on the grid alone has nothing to export, so it is shown none, as
     // the other cards leave out what such a home can never use (HEA-313).
     this._gridOnly = isAGridOnlyHome(this._hass);
+    // A demand charge only where a plan has one, so other homes see no change
+    // (HEA-322).
+    const demand = plans.some(hasDemand);
     const parts = wide
-      ? PARTS.filter((part) => !this._gridOnly || part.group !== "earn")
+      ? PARTS.filter(
+          (part) =>
+            (!this._gridOnly || part.group !== "earn") && (demand || part.key !== "demand"),
+        )
       : [];
+    // Only for a house with an installation, which is the only kind the
+    // comparison gives the figure for (HEA-293).
+    const without = wide && plans.some((plan) => "without_installation" in plan);
     const notes = [
       this._compared.hours === 0 ? this._labels.plans_no_readings : "",
       this._currentNote(marked),
@@ -308,12 +321,10 @@ class HeaPlansCard extends HeaCard {
       this._labels.plans_note,
       this._archivedNote(),
       priced.some((plan) => plan.breakdown) ? this._labels.plans_open : "",
-      wide ? "" : this._breakdownHidden(),
+      wide ? "" : this._breakdownHidden(demand),
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
+      without && demand ? this._labels.plans_demand_note : "",
     ].filter(Boolean);
-    // Only for a house with an installation, which is the only kind the
-    // comparison gives the figure for (HEA-293).
-    const without = wide && plans.some((plan) => "without_installation" in plan);
     const layout = { current, cheapest, parts, without };
     return `
       ${this._flows(locale)}
@@ -341,7 +352,7 @@ class HeaPlansCard extends HeaCard {
     const columns = [
       cell(this._labels.plans_plan),
       ...parts.map((part, index) =>
-        cell(this._labels[part.label], this._partClasses(part, index)),
+        cell(this._labels[part.label], this._partClasses(parts, index)),
       ),
       ...trailing,
     ].join("");
@@ -384,9 +395,10 @@ class HeaPlansCard extends HeaCard {
     return `<td class="${classes}" data-figure="without:${plan.id}">${cost}<div class="${saves}">${wording}</div></td>`;
   }
 
-  /** Where a part's group starts, a rule; what is earned, a tint. */
-  _partClasses(part, index) {
-    const starts = index === 0 || PARTS[index - 1].group !== part.group;
+  /** Where a part's group starts among those shown, a rule; what is earned, a tint. */
+  _partClasses(parts, index) {
+    const part = parts[index];
+    const starts = index === 0 || parts[index - 1].group !== part.group;
     return [starts ? "rule" : "", part.group === "earn" ? "earn" : ""]
       .filter(Boolean)
       .join(" ");
@@ -404,11 +416,13 @@ class HeaPlansCard extends HeaCard {
    * the hours compared are counted, so with any left out it says so, and the kWh
    * read against the costs beneath them (HEA-299).
    */
-  /** Where the breakdown is on a phone, naming export only where there is any. */
-  _breakdownHidden() {
-    return this._gridOnly
-      ? this._labels.plans_breakdown_hidden_import
-      : this._labels.plans_breakdown_hidden;
+  /**
+   * Where the breakdown is on a phone, naming export only where there is any,
+   * and demand charges only where a plan has them (HEA-322).
+   */
+  _breakdownHidden(demand) {
+    const key = this._gridOnly ? "plans_breakdown_hidden_import" : "plans_breakdown_hidden";
+    return this._labels[demand ? `${key}_demand` : key];
   }
 
   _flows(locale) {
@@ -534,7 +548,7 @@ class HeaPlansCard extends HeaCard {
         <td class="incomplete rule" colspan="${columns - 1}">${why}</td></tr></tbody>`;
     }
     const figures = parts
-      .map((part, index) => this._part(plan, part, locale, this._partClasses(part, index)))
+      .map((part, index) => this._part(plan, part, locale, this._partClasses(parts, index)))
       .join("");
     const difference = current && plan !== current ? this._difference(plan, current, locale) : "<td></td>";
     const notes = this._exportNotes(plan, locale).trim();
@@ -641,19 +655,23 @@ class HeaPlansCard extends HeaCard {
    * so the lines add up to the total as a bill's do (HEA-314).
    */
   _bill(plan, locale) {
-    const { daily } = plan.breakdown;
+    const { daily, demand } = plan.breakdown;
     const days = new Intl.NumberFormat(locale.language, { maximumFractionDigits: 2 });
-    const lines = [
+    const perDay = (charge, name, key) =>
       billRow(locale, {
-        name: this._labels.plans_daily,
-        rate: fill(this._labels.plans_per_day, { amount: formatMoney(daily.rate, locale) }),
-        used: fill(daily.days === 1 ? this._labels.plans_day : this._labels.plans_days, {
-          days: days.format(daily.days),
+        name,
+        rate: fill(this._labels.plans_per_day, { amount: formatMoney(charge.rate, locale) }),
+        used: fill(charge.days === 1 ? this._labels.plans_day : this._labels.plans_days, {
+          days: days.format(charge.days),
         }),
-        amount: daily.amount,
+        amount: charge.amount,
         side: "loss",
-        key: "daily",
-      }),
+        key,
+      });
+    const lines = [
+      perDay(daily, this._labels.plans_daily, "daily"),
+      // Its own line, apart from the daily charge (HEA-322).
+      ...(demand ? [perDay(demand, this._labels.plans_demand, "demand")] : []),
       ...this._importLines(plan, locale),
       ...(this._gridOnly ? [] : this._exportLines(plan, locale)),
       billRow(locale, {
@@ -869,6 +887,12 @@ class HeaPlansCard extends HeaCard {
     if (key === "daily" && plan.daily_charge_missing) {
       // Said to be missing rather than shown as nothing, which reads as free.
       return `<td${classAttribute(classes)} data-figure="${key}:${plan.id}">${this._labels.plans_daily_missing}</td>`;
+    }
+    if (key === "demand" && !(figure in plan)) {
+      // Missing where its sensor read nothing, and blank on a plan with none:
+      // never shown as nothing charged (HEA-322).
+      const text = plan.demand_charge_missing ? this._labels.plans_demand_missing : "";
+      return `<td${classAttribute(classes)} data-figure="${key}:${plan.id}">${text}</td>`;
     }
     const side = group === "earn" ? "gain" : "loss";
     if (key !== "energy" || !plan.breakdown) {

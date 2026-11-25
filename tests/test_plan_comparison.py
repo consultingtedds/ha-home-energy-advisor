@@ -54,6 +54,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_DAILY_CHARGE_SOURCE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
@@ -1952,6 +1953,142 @@ async def test_an_unavailable_daily_charge_sensor_with_no_statistics_is_missing(
 
     # Then - said to be missing, never charged as nothing
     assert _by_name(result)[_CURRENT]["daily_charge_missing"] is True
+
+
+# A demand or capacity charge from a sensor giving its cost per day (HEA-322)
+
+_DEMAND = "sensor.capacity_charge_per_day"
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_demand_charge_sensor_adds_its_own_line_to_a_plan(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - a household's template giving its capacity charge, 0.47 a day
+    hass.states.async_set(_DEMAND, "0.47")
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, {**_FLAT, CONF_PLAN_DEMAND_CHARGE_ENTITY: _DEMAND}),
+        ),
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - a day of it, apart from the daily charge, and in the total
+    assert flat["demand_charges"] == pytest.approx(0.47)
+    assert flat["daily_charges"] == pytest.approx(0.45)
+    assert flat["total"] == pytest.approx(0.935 + 0.47)
+    assert flat["breakdown"]["demand"] == {
+        "rate": pytest.approx(0.47),
+        "days": pytest.approx(1),
+        "amount": pytest.approx(0.47),
+    }
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_plan_without_a_demand_charge_sensor_has_no_demand_line(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - one plan with a demand charge and one without
+    hass.states.async_set(_DEMAND, "0.47")
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, {**_FLAT, CONF_PLAN_DEMAND_CHARGE_ENTITY: _DEMAND}),
+            (SUBENTRY_TYPE_PLAN, _OFFER),
+        ),
+    )
+
+    # When
+    offer = _by_name(await _compare(hass_ws_client, hass))["Night saver"]
+
+    # Then - nothing said about a charge it was never given
+    assert "demand_charges" not in offer
+    assert "demand" not in offer["breakdown"]
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_buying_everything_from_the_grid_carries_the_same_demand_charge(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the day's generation, and the plan's demand charge of 0.47 a day
+    _record(hass, "sensor.generation", {12: 3.0})
+    await async_wait_recording_done(hass)
+    hass.states.async_set(_DEMAND, "0.47")
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _home_with(
+            {CONF_GENERATION_ENTITY: ["sensor.generation"]},
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, {**_FLAT, CONF_PLAN_DEMAND_CHARGE_ENTITY: _DEMAND}),
+        ),
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - the same charge on both sides, so what the installation saves is
+    # what it saved before: a peak it lowered is not counted, not taken off
+    assert flat["without_installation"] == pytest.approx(3.5 * 0.234 + 0.45 + 0.47)
+    assert flat["without_installation"] - flat["total"] == pytest.approx(
+        3.5 * 0.234 + 0.45 - 0.935
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_the_current_plan_takes_a_demand_charge_from_a_sensor(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the current plan with its daily charge typed and a demand sensor
+    hass.states.async_set(_DEMAND, "0.47")
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            _current_plan(
+                **{CONF_PLAN_DAILY_CHARGE: 0.3, CONF_PLAN_DEMAND_CHARGE_ENTITY: _DEMAND}
+            ),
+        ),
+    )
+
+    # When
+    current = _by_name(await _compare(hass_ws_client, hass))[_CURRENT]
+
+    # Then
+    assert current["demand_charges"] == pytest.approx(0.47)
+    assert current["total"] == pytest.approx(2.5 * 0.2 + 0.3 + 0.47)
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_a_demand_charge_sensor_that_reads_nothing_is_said_to_be_missing(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the demand sensor unavailable and never recorded
+    hass.states.async_set(_DEMAND, "unavailable")
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _house(
+            (SUBENTRY_TYPE_GRID, _GRID),
+            (SUBENTRY_TYPE_PLAN, {**_FLAT, CONF_PLAN_DEMAND_CHARGE_ENTITY: _DEMAND}),
+        ),
+    )
+
+    # When
+    flat = _by_name(await _compare(hass_ws_client, hass))["Flat rate"]
+
+    # Then - said to be missing, never charged as nothing, and the total is
+    # what can be priced
+    assert flat["demand_charge_missing"] is True
+    assert "demand_charges" not in flat
+    assert flat["total"] == pytest.approx(0.935)
 
 
 # Hours the current plan's price sensors have no statistics for (HEA-311)

@@ -257,6 +257,7 @@
           "data": {
             "name": "Name",
             "daily_charge": "Daily charge",
+            "demand_charge_entity": "Demand charge from a sensor",
             "plan_export_price": "Export price",
             "plan_export_allowance": "Export allowance (optional)",
             "plan_export_price_after": "Export price beyond the allowance (optional)",
@@ -274,6 +275,7 @@
           "data_description": {
             "name": "How this plan appears on the comparison card.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "demand_charge_entity": "Optional. A sensor giving, per day, a charge on your measured peak, such as a demand or capacity charge, worked out by a template or another integration. It is listed apart from the daily charge, and buying everything from the grid carries the same charge. A charge your grid operator sets is the same on every plan, so give it to each one, or those without it read cheaper.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
             "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
             "plan_export_price_after": "What the plan pays per kWh exported beyond the allowance in a day. Enter it with the allowance.",
@@ -295,6 +297,7 @@
           "data": {
             "name": "Name",
             "daily_charge": "Daily charge",
+            "demand_charge_entity": "Demand charge from a sensor",
             "plan_export_price": "Export price",
             "plan_export_allowance": "Export allowance (optional)",
             "plan_export_price_after": "Export price beyond the allowance (optional)",
@@ -312,6 +315,7 @@
           "data_description": {
             "name": "How this plan appears on the comparison card.",
             "daily_charge": "What the plan charges per day whatever you use, such as a standing or contracted-power charge.",
+            "demand_charge_entity": "Optional. A sensor giving, per day, a charge on your measured peak, such as a demand or capacity charge, worked out by a template or another integration. It is listed apart from the daily charge, and buying everything from the grid carries the same charge. A charge your grid operator sets is the same on every plan, so give it to each one, or those without it read cheaper.",
             "plan_export_price": "What the plan pays per kWh exported, unless a price says otherwise.",
             "plan_export_allowance": "If the plan pays its export price only on the first kWh exported each day, how many kWh. Leave it empty if it pays it on all export.",
             "plan_export_price_after": "What the plan pays per kWh exported beyond the allowance in a day. Enter it with the allowance.",
@@ -358,6 +362,7 @@
           "data": {
             "daily_charge": "Daily charge",
             "daily_charge_entity": "Daily charge from a sensor",
+            "demand_charge_entity": "Demand charge from a sensor",
             "daily_charge_source": "Daily charge from your Energy Dashboard",
             "plan_export_cap": "Export compensation",
             "provides_prices": "Provide my price sensors from the plans I've been on"
@@ -365,6 +370,7 @@
           "data_description": {
             "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
             "daily_charge_entity": "Instead of typing it: a sensor that gives your daily charge per day, as some suppliers' integrations do. Each day is charged what it read. Give the daily charge one way only.",
+            "demand_charge_entity": "Optional. A sensor giving, per day, a charge on your measured peak, such as a demand or capacity charge, worked out by a template or another integration. It is listed apart from the daily charge, and buying everything from the grid carries the same charge. A charge your grid operator sets is the same on every plan, so give it to each one, or those without it read cheaper.",
             "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source, and this plan's daily charge is what Home Assistant recorded it costing. Enter this or the daily charge, not both.",
             "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost. Daily charges are never offset.",
             "provides_prices": "Home Energy Advisor gives you an import price, an export price and their history, following each plan you've been on from the day it started. Point your Energy Dashboard and grid meters at them once, and a change of plan is then just a plan added with its start day."
@@ -735,6 +741,7 @@
             "data": {
               "daily_charge": "Daily charge",
               "daily_charge_entity": "Daily charge from a sensor",
+              "demand_charge_entity": "Demand charge from a sensor",
               "daily_charge_source": "Daily charge from your Energy Dashboard",
               "plan_export_cap": "Export compensation",
               "provides_prices": "Provide my price sensors from the plans I've been on"
@@ -742,6 +749,7 @@
             "data_description": {
               "daily_charge": "What your plan charges per day whatever you use, such as a standing or contracted-power charge.",
               "daily_charge_entity": "Instead of typing it: a sensor that gives your daily charge per day, as some suppliers' integrations do. Give the daily charge one way only.",
+              "demand_charge_entity": "Optional. A sensor giving, per day, a charge on your measured peak, such as a demand or capacity charge, worked out by a template or another integration. It is listed apart from the daily charge, and buying everything from the grid carries the same charge. A charge your grid operator sets is the same on every plan, so give it to each one, or those without it read cheaper.",
               "daily_charge_source": "Instead of typing it: if your Energy Dashboard already charges your standing charge as a grid source of its own, choose that source. Enter this or the daily charge, not both.",
               "plan_export_cap": "Whether your plan pays for all export, or only up to what each month's energy cost.",
               "provides_prices": "Home Energy Advisor gives you an import price, an export price and their history, following each plan you've been on from the day it started. Point your Energy Dashboard and grid meters at them once, and a change of plan is then just a plan added with its start day."
@@ -1062,6 +1070,8 @@
     "card_plans_flows_import_compared": "Imported {imported} in the hours compared.",
     "card_plans_breakdown_hidden": "Import cost, export income and daily charges are shown on a wider screen.",
     "card_plans_breakdown_hidden_import": "Import cost and daily charges are shown on a wider screen.",
+    "card_plans_breakdown_hidden_demand": "Import cost, export income, daily charges and demand charges are shown on a wider screen.",
+    "card_plans_breakdown_hidden_import_demand": "Import cost, daily charges and demand charges are shown on a wider screen.",
     "card_plans_incomplete": "Not every hour has a price, so it cannot be compared. Edit the plan to finish its bands.",
     "card_plans_note": "For the whole home: each plan priced at the electricity you actually imported and exported, as if your battery had run the same way. Prices are compared as you entered them.",
     "card_plans_no_readings": "Your grid meters recorded nothing in this period, so there is nothing to compare.",
@@ -1070,6 +1080,9 @@
     "card_plans_your_prices": "The prices you pay",
     "card_plans_your_export_price": "Your export price",
     "card_plans_daily_missing": "Not given yet",
+    "card_plans_demand": "Demand charges",
+    "card_plans_demand_missing": "No reading",
+    "card_plans_demand_note": "Demand charges are counted in Buying everything from the grid too, so what your installation saves leaves out what it saved by lowering your peak.",
     "card_plans_no_price": "{sensors} recorded no statistics in this period, so it cannot be compared. Check it in Developer Tools > Statistics: a price sensor needs the state class measurement for Home Assistant to keep them.",
     "card_plans_no_price_current": "{sensors} has no statistics for some of this period, so your current plan cannot be priced. To price those hours, add the plans you were on, each with the day it started, under Plans you've been on, in your current plan's settings. To keep its statistics from now on, give the sensor the state class measurement.",
     "card_plans_current_history_from": "Hours your price sensors have no statistics for are priced at the plan you were on that day: {plans}.",

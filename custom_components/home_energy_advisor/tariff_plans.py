@@ -38,6 +38,7 @@ from .const import (
     CONF_BAND_START,
     CONF_BANDS,
     CONF_PLAN_DAILY_CHARGE,
+    CONF_PLAN_DEMAND_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_ALLOWANCE,
     CONF_PLAN_EXPORT_CAP,
     CONF_PLAN_EXPORT_PRICE,
@@ -75,6 +76,8 @@ class TariffPlan:
 
     `import_entity` and `export_entity` are the market prices it imports or
     exports at instead of its schedule, where it has them (ADR-0037).
+    `demand_entity` gives its demand or capacity charge per day, where it has
+    one (HEA-322).
     """
 
     plan: Plan
@@ -82,6 +85,7 @@ class TariffPlan:
     holidays: str | None
     import_entity: str | None = None
     export_entity: str | None = None
+    demand_entity: str | None = None
 
 
 def plans_of(entry: ConfigEntry) -> dict[str, TariffPlan]:
@@ -137,6 +141,7 @@ def tariff_plan_from(name: str, data: Mapping[str, Any]) -> TariffPlan:
         holidays=data.get(CONF_PLAN_HOLIDAYS) or None,
         import_entity=import_entity,
         export_entity=export_entity,
+        demand_entity=data.get(CONF_PLAN_DEMAND_CHARGE_ENTITY) or None,
     )
 
 

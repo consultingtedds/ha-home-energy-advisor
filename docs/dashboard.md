@@ -181,6 +181,9 @@ across a change of plan too. For each plan:
 - **What you pay and what you earn**: its import cost, with the average it came
   to per kWh beneath, its daily charges, and its export income. A home that only
   buys from the grid has nothing to export, so the export column is left out.
+  Where a plan has a demand or capacity charge from a sensor, a **Demand
+  charges** column shows it, blank for a plan without one and "No reading" where
+  its sensor read nothing.
 - **Its total**, and **the difference from your current plan**, as "€8.65
   cheaper" or "€2.55 dearer". What you pay is in red and what you earn in green,
   with no minus on a charge, as on a bill; a total in your favour says "€3.90 in
@@ -189,7 +192,8 @@ across a change of plan too. For each plan:
   **Settings** > **Repairs** that asks for it.
 - **Buying everything from the grid**, where you have generation or a battery:
   what the plan would have cost with neither, and what your installation saves
-  you on it.
+  you on it. A demand charge is counted here too, so the saving leaves out what
+  the installation saved by lowering your peak, and a note says so.
 
 The plans you've been on carry a badge, such as "Your plan since 20 Nov" or
 "Your plan until 19 Nov". A plan ticked **Archived** in its settings is left out

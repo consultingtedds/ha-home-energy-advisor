@@ -61,6 +61,9 @@ CONF_PLAN_DAILY_CHARGE_SOURCE: Final = "daily_charge_source"
 # The current plan's daily charge read from an entity giving it per day, as a
 # supplier's integration publishes it (HEA-317).
 CONF_PLAN_DAILY_CHARGE_ENTITY: Final = "daily_charge_entity"
+# A plan's demand or capacity charge, read from an entity giving its cost per
+# day: a charge on a measured peak the household works out itself (HEA-322).
+CONF_PLAN_DEMAND_CHARGE_ENTITY: Final = "demand_charge_entity"
 # On the current plan, the name of the typed plan it took over from on upgrade,
 # until the household has been told that plan now duplicates it (ADR-0042).
 CONF_PLAN_REPLACED: Final = "replaced_plan"

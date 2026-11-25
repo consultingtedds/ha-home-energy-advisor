@@ -32,6 +32,18 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
+## Unreleased
+
+**A plan can carry a demand or capacity charge from a sensor.** If you pay a
+charge on your measured peak, such as Flanders' capacity tariff or an
+Australian demand tariff, choose a sensor that gives its cost per day under
+**Demand charge from a sensor** on each plan it applies to, including "Your
+current plan". A charge your grid operator sets is the same on every plan, so
+give it to each one. It gets its own column and its own line on the plan's bill.
+"Buying everything from the grid" carries the same charge, so what your
+installation saves leaves out what it saved by lowering your peak. Nothing
+changes for a plan without one.
+
 ## 1.8.0
 
 **Price history from is now Plans you've been on.** If you changed plan during the

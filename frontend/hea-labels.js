@@ -165,6 +165,10 @@ export const DEFAULTS = Object.freeze({
   plans_breakdown_hidden:
     "Import cost, export income and daily charges are shown on a wider screen.",
   plans_breakdown_hidden_import: "Import cost and daily charges are shown on a wider screen.",
+  plans_breakdown_hidden_demand:
+    "Import cost, export income, daily charges and demand charges are shown on a wider screen.",
+  plans_breakdown_hidden_import_demand:
+    "Import cost, daily charges and demand charges are shown on a wider screen.",
   plans_incomplete:
     "Not every hour has a price, so it cannot be compared. Edit the plan to " +
     "finish its bands.",
@@ -182,6 +186,10 @@ export const DEFAULTS = Object.freeze({
   plans_your_prices: "The prices you pay",
   plans_your_export_price: "Your export price",
   plans_daily_missing: "Not given yet",
+  plans_demand: "Demand charges",
+  plans_demand_missing: "No reading",
+  plans_demand_note:
+    "Demand charges are counted in Buying everything from the grid too, so what your installation saves leaves out what it saved by lowering your peak.",
   plans_no_price:
     "{sensors} recorded no statistics in this period, so it cannot be compared. " +
     "Check it in Developer Tools > Statistics: a price sensor needs the state " +
