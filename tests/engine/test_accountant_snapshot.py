@@ -236,7 +236,7 @@ _CONFIG_DERIVED = frozenset(
         "_max_quiet_span",
         "_meters_of",
         "_retention",
-        "_role_of",
+        "_roles_of",
         "_strategy",
         "_upstream",
         "_windows",

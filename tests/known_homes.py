@@ -38,6 +38,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_CURRENCY,
     CONF_GRID_EXPORT_ENTITY,
     CONF_GRID_IMPORT_ENTITY,
+    CONF_HOUSE_CONSUMPTION_ENTITY,
     CONF_PLAN_DAILY_CHARGE,
     CONF_PLAN_DAILY_CHARGE_ENTITY,
     CONF_PLAN_EXPORT_CAP,
@@ -84,6 +85,8 @@ class KnownHome:
     export_price_entity: str | None = None
     # A sensor giving the daily charge per day, each hour's mean by local hour.
     daily_charges: dict[int, float] = field(default_factory=dict)
+    # The house's own settings, beside its currency: its house meter, say.
+    house: dict[str, Any] = field(default_factory=dict)
     # What the home should see.
     periods_after_upgrade: list[dict[str, str]] = field(default_factory=list)
     current_lacks: list[str] = field(default_factory=list)
@@ -305,12 +308,27 @@ GRID_ONLY_DAILY_CHARGE_SENSOR = KnownHome(
     current_daily_rate=2.86,
 )
 
+# GitHub 66's home: the same, its grid meter named as its house consumption
+# too, since on the grid alone they are the same energy.
+GRID_ONLY_HOUSE_IS_GRID = KnownHome(
+    name="grid_only_house_is_grid",
+    time_zone="Pacific/Auckland",
+    currency="NZD",
+    grid=GRID_ONLY.grid,
+    plans={},
+    current=GRID_ONLY.current,
+    imported=GRID_ONLY.imported,
+    prices=GRID_ONLY.prices,
+    house={CONF_HOUSE_CONSUMPTION_ENTITY: _GRID_IMPORT},
+)
+
 KNOWN_HOMES = (
     SPANISH_TIME_OF_USE,
     AUSTRALIAN_MARKET,
     AUSTRALIAN_SHARED_SENSOR,
     GRID_ONLY,
     GRID_ONLY_DAILY_CHARGE_SENSOR,
+    GRID_ONLY_HOUSE_IS_GRID,
 )
 
 
@@ -345,7 +363,7 @@ def entry_of(home: KnownHome) -> MockConfigEntry:
     return MockConfigEntry(
         domain=DOMAIN,
         version=8,
-        data={CONF_CURRENCY: home.currency},
+        data={CONF_CURRENCY: home.currency, **home.house},
         subentries_data=subentries,
     )
 

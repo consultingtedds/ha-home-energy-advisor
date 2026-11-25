@@ -555,6 +555,22 @@ class _Running:
         )
 
 
+def _roles_of_meters(
+    meters_of: Mapping[SourceRole, tuple[str, ...]],
+) -> dict[str, tuple[SourceRole, ...]]:
+    """Every role each meter fills.
+
+    One meter can fill two: on a home with only the grid, the import meter is
+    the house's consumption too, and a household may name it for both (GitHub
+    #66). Its readings then count in each.
+    """
+    roles: dict[str, tuple[SourceRole, ...]] = {}
+    for role, entities in meters_of.items():
+        for entity in entities:
+            roles[entity] = (*roles.get(entity, ()), role)
+    return roles
+
+
 class Accountant:
     """Turns a stream of meter readings into per-device running cost."""
 
@@ -584,11 +600,7 @@ class Accountant:
         self._retention = self._windows.retention
         self._max_quiet_span = self._windows.max_quiet_span
         self._meters_of = {role: meters_of(m) for role, m in house_sources.items()}
-        self._role_of = {
-            entity: role
-            for role, entities in self._meters_of.items()
-            for entity in entities
-        }
+        self._roles_of = _roles_of_meters(self._meters_of)
         self._device_of = {
             entity: device for device, entity in device_energy_entities.items()
         }
@@ -766,14 +778,15 @@ class Accountant:
             source = CumulativeEnergySource(max_quiet_span=self._max_quiet_span)
             self._sources[entity_id] = source
         delta = source.observe(Reading(at=at, value=value, unit=unit))
-        role = self._role_of.get(entity_id)
-        if role is not None:
+        roles = self._roles_of.get(entity_id, ())
+        if roles:
             self._note_meter_health(entity_id, reporting=value is not None)
         if delta is None:
             return
-        if role is not None:
+        if roles:
             self._shares.carried(entity_id, delta.kwh)
-            self._spread_source(entity_id, role, delta, source)
+            for role in roles:
+                self._spread_source(entity_id, role, delta, source)
         elif (device := self._device_of.get(entity_id)) is not None:
             self._spread_device(device, delta, source)
 
@@ -1096,7 +1109,7 @@ class Accountant:
         Untracked remainder, which keeps the split reconciling.
         """
         tracked = set(self._entity_of)
-        known = set(self._role_of) | set(self._device_of)
+        known = set(self._roles_of) | set(self._device_of)
         for entity, source_data in data["sources"].items():
             if entity not in known:
                 continue
@@ -1294,7 +1307,7 @@ class Accountant:
         self._house_meter_steps = {
             entity: Decimal(step)
             for entity, step in data.get("house_meter_steps", {}).items()
-            if entity in self._role_of
+            if entity in self._roles_of
         }
 
     def totals(self) -> Totals:

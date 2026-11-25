@@ -100,6 +100,37 @@ def test_import_only_prices_a_device_at_the_import_rate() -> None:
     assert _total_actual(result) == Decimal("0.30")
 
 
+def test_one_meter_as_grid_import_and_house_consumption_still_prices_the_grid() -> None:
+    # Given - a home on the grid alone, its one meter named as both its grid
+    # import and its house consumption, as on that home they are the same
+    # energy (GitHub #66)
+    acc = Accountant(
+        house_sources={
+            SourceRole.GRID_IMPORT: "sensor.grid_meter",
+            SourceRole.HOUSE_CONSUMPTION: "sensor.grid_meter",
+        },
+        device_energy_entities={"kitchen_fridge": "sensor.fridge_energy"},
+    )
+    acc.record_price(at(0), PEAK)
+    acc.observe("sensor.grid_meter", at(0), Decimal(0))
+    acc.observe("sensor.fridge_energy", at(0), Decimal(0))
+
+    # When - over one interval the meter counts 1 kWh, the fridge 0.6
+    acc.observe("sensor.grid_meter", at(5), Decimal("1.0"))
+    acc.observe("sensor.fridge_energy", at(5), Decimal("0.6"))
+    acc.finalize(at(30))
+
+    # Then - all of it bought from the grid at the import rate, as when the meter
+    # is named once: none of it read as free energy from nowhere
+    result = acc.totals()
+    fridge = result.devices["kitchen_fridge"]
+    assert fridge.energy_kwh == Decimal("0.6")
+    assert fridge.actual_cost == Decimal("0.18")
+    assert fridge.energy_from_grid == Decimal("0.6")
+    assert result.untracked.energy_kwh == Decimal("0.4")
+    assert _total_actual(result) == Decimal("0.30")
+
+
 def test_full_balance_solar_makes_a_device_cheaper_than_grid() -> None:
     # Given - a solar home configured with generation + export (full-balance)
     acc = Accountant(
