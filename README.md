@@ -418,8 +418,9 @@ Add each offer with **Add tariff plan** on the Home Energy Advisor card in
    off-peak; punta, llano and valle) with its import price. A price can carry its
    own export price where the plan pays more at the hours it applies. A fixed
    charge for your connection's capacity or contracted power (potencia
-   contratada, abonnement, capaciteitstarief) is part of the daily charge: add it
-   up per day. Charges on a measured peak in kW are not modelled.
+   contratada, abonnement) is part of the daily charge: add it up per day.
+   Charges on a measured peak in kW, such as a demand or capacity tariff, are
+   not modelled.
 2. **Its time bands, one at a time:** which days (weekdays, weekends and
    holidays, every day, or **Choose days** to tick any of Monday to Sunday and
    public holidays), from which hour to which, and which of the plan's prices it

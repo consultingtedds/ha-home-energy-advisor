@@ -885,11 +885,29 @@ Carried forward rather than closed:
   shares, parked), HEA-307 (switch to this plan: a typed plan provides the price
   sensors), HEA-304 (the Prices column duplicates the bill), and HEA-308 (the
   reference home's standing charge rebuilt, local).
-- **Open after 1.7.0:** HEA-307, then HEA-306, HEA-298 (check prices and meters
-  against a bill), HEA-272 (discussion 58: clear the figures for a chosen
-  period), HEA-304 and HEA-242 (payback). HEA-295, editing plans from the
-  Tariffs tab, is parked: a card cannot open Home Assistant's settings flow
-  robustly.
+- **1.7.0, released 2026-11-20**, carrying HEA-267 and HEA-310 (GitHub 64:
+  Home Assistant froze after 1.6.1).
+- **1.7.1, released 2026-11-22**, carrying HEA-311: Price history from, a typed
+  plan that prices the hours the price sensors have no statistics for.
+- **HEA-307** (ADR-0048): a household can tick **Provide my price sensors from
+  the plans I've been on**, and HEA provides import, export and daily charge
+  sensors that follow the plan in force. Price history from became **Plans
+  you've been on**, a plan per period. Plans get badges and an Archived choice,
+  and the carry-in action writes an old sensor's history behind a new one.
+  HEA-308 rehearsed the carry-in on the reference home. HEA-316 added the known
+  homes every change is tested against, and windowed the carry-in and the
+  impossible-hours check. HEA-317 (discussion 65): the current plan's daily
+  charge can come from a sensor.
+- **HEA-314** (discussion 55): the plan table is signed as a bill is, with no
+  minus on a charge, "in credit" for a total in the household's favour, and
+  "cheaper" or "dearer" against the current plan.
+- **1.8.0, released 2026-11-24**, carrying HEA-307, HEA-314, HEA-316 and HEA-317.
+- **1.8.1, released 2026-11-25**, carrying HEA-320 (an hour with no 5-minute
+  prices is priced at its hourly mean), HEA-313 (a home on the grid alone shows
+  no export), HEA-321 (GitHub 66: one sensor as grid import and house
+  consumption stopped costs) and HEA-304 (the Prices column dropped, since each
+  bill lists them).
+- **Open after 1.8.1:** grouped into Epics 13 to 16, below.
 - **HEA-216** (ADR-0033): count the battery's solar share towards
   self-sufficiency, from Discussion 35. The ledger keeps stored solar in kWh,
   each discharge hands its share to the device that used it, and a new Energy
@@ -1319,6 +1337,35 @@ single-country tickets are parked: HEA-288 (compare on the CNMC, the first to
 return to once nothing else is left), HEA-289 (CDR spike), HEA-266 (Energy
 Manager files) and HEA-290 (supply-meter readings). Where accurate prices come
 from is the household's own bill (HEA-298), which works in every country.
+
+Since 2026-11-25 the parked tickets sit in the epics below: HEA-266 and HEA-289
+in Epic 13, HEA-288 and HEA-290 in Epic 15.
+
+### Epics 13 to 16 (grouped 2026-11-25)
+
+The open backlog after 1.8.1, grouped so each area reads as one piece of work.
+In Linear each epic is a parent ticket, in the project "Home Energy Advisor -
+after 1.0". A part is built only when a household needs it.
+
+- **Epic 13 - What a plan can price (HEA-323).** HEA-322, a demand or capacity
+  charge from a household's sensor as its own bill line (discussion 67), comes
+  next. Parked or waiting for a household: HEA-315 (bands by season), HEA-309
+  (price sensors that follow an allowance), HEA-263 (a measured demand charge,
+  after HEA-322), HEA-266 (Energy Manager files) and HEA-289 (Australian plan
+  data).
+- **Epic 14 - What the installation earns (HEA-324).** HEA-306 (the plan a
+  household would be on without its installation), then HEA-242 (payback),
+  which needs its figure. HEA-305 (the generation's and battery's shares) is
+  parked.
+- **Epic 15 - Checking against the bill (HEA-325).** HEA-298 (prices and meters
+  against a bill). HEA-290 (supply-meter readings) and HEA-288 (compare on the
+  CNMC) are parked.
+- **Epic 16 - Reference home upkeep (HEA-326), local only.** HEA-319 (tidy up
+  after moving to HEA's price sensors, and an audit of every generation,
+  electricity and pricing sensor) and HEA-123 (the post-winter battery review).
+
+Outside any epic: HEA-272 (clear a chosen period's figures) and HEA-295 (edit
+plans from the card, parked).
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled, and Epic 9 closed with

@@ -178,18 +178,22 @@ you and priced at the prices your costs are worked out at, each grid meter's and
 your Energy Dashboard's export price, so it shows what you were actually charged,
 across a change of plan too. For each plan:
 
-- **Its prices**: each of its named prices, what export pays, and its daily
-  charge. Your current plan's say "The prices you pay".
 - **What you pay and what you earn**: its import cost, with the average it came
-  to per kWh beneath, its daily charges, and its export income.
-- **Its total**, and **the difference from your current plan**. Anything you pay
-  is -€ in red, anything in your favour € in green. Until your current plan has
-  its daily charge, it says "Not given yet" there and the differences are held,
-  with a line pointing to the notice in **Settings** > **Repairs** that asks for
-  it.
+  to per kWh beneath, its daily charges, and its export income. A home that only
+  buys from the grid has nothing to export, so the export column is left out.
+- **Its total**, and **the difference from your current plan**, as "€8.65
+  cheaper" or "€2.55 dearer". What you pay is in red and what you earn in green,
+  with no minus on a charge, as on a bill; a total in your favour says "€3.90 in
+  credit". Until your current plan has its daily charge, it says "Not given yet"
+  there and the differences are held, with a line pointing to the notice in
+  **Settings** > **Repairs** that asks for it.
 - **Buying everything from the grid**, where you have generation or a battery:
   what the plan would have cost with neither, and what your installation saves
   you on it.
+
+The plans you've been on carry a badge, such as "Your plan since 20 Nov" or
+"Your plan until 19 Nov". A plan ticked **Archived** in its settings is left out
+of the table, and the card says how many are hidden.
 
 The average import rate is coloured from red at the plan's dearest price to green
 at its cheapest, on the same scale as the device table's verdicts, so the greener
