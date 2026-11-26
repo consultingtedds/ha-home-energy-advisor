@@ -1356,9 +1356,13 @@ after 1.0". A part is built only when a household needs it.
   after HEA-322), HEA-266 (Energy Manager files) and HEA-289 (Australian plan
   data).
 - **Epic 14 - What the installation earns (HEA-324).** HEA-306 (the plan a
-  household would be on without its installation), then HEA-242 (payback),
-  which needs its figure. HEA-305 (the generation's and battery's shares) is
-  parked.
+  household would be on without its installation) is built (1e947c3,
+  unreleased): the card says what the installation saved against it, and
+  `compare_plans` returns it. HEA-242 (payback) goes through BatteryLedger,
+  which already works out whole-installation payback from `compare_plans`:
+  rather than a second figure here, the project offers it dated costs, grants
+  and yearly rebates, and reading the plan ticked here (2026-11-26, waiting on
+  its maintainer). HEA-305 (the generation's and battery's shares) is parked.
 - **Epic 15 - Checking against the bill (HEA-325).** HEA-298 (prices and meters
   against a bill). HEA-290 (supply-meter readings) and HEA-288 (compare on the
   CNMC) are parked.
