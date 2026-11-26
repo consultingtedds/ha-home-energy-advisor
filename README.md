@@ -411,6 +411,14 @@ An offer you're no longer weighing can be ticked **Archived** in its settings: i
 leaves the table, the card says how many are hidden, and it still prices the days
 you were on it. The plan feeding your price sensors can't be archived.
 
+If you have generation or a battery, tick **The plan I'd be on without my
+installation** on the plan you'd choose without them. The card then says, above
+the table, what your installation saved you over the period: that plan's cost
+buying everything from the grid, less what you actually paid. It counts the
+saving from being able to choose a plan that suits your installation, which
+each plan's own "your installation saves you" can't. Only one plan can be
+ticked, and an archived plan still counts.
+
 Add each offer with **Add tariff plan** on the Home Energy Advisor card in
 **Settings** > **Devices & services**:
 
@@ -538,7 +546,10 @@ response_variable: plans
 ```
 
 `plans.plans` then lists each plan with its `total`, `energy`, `export_credit`,
-`daily_charges` and its `breakdown`, line by line.
+`daily_charges` and its `breakdown`, line by line. Where a plan is ticked as the
+one you'd be on without your installation, `plans.installation` gives that
+plan's name, `without_installation`, what you `paid` and what was `saved`: call
+it daily from your installation's date to keep a running total.
 
 **An hour no home could use.** A sensor that briefly reads zero, or a template
 that misfires, can leave an hour in Home Assistant's statistics recording

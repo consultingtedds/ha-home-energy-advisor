@@ -59,6 +59,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_IMPORT_PRICE_MULTIPLY,
     CONF_PLAN_PERIODS,
     CONF_PLAN_PROVIDES_PRICES,
+    CONF_PLAN_WITHOUT_INSTALLATION,
     CONF_PRICES,
     DOMAIN,
     SUBENTRY_TYPE_GRID,
@@ -1500,3 +1501,44 @@ async def test_the_plan_feeding_the_price_sensors_cannot_be_archived(
     # Then - refused: the sensors would follow a plan the card hides
     assert result["step_id"] == "reconfigure"
     assert result["errors"] == {CONF_PLAN_ARCHIVED: "archived_feeds_prices"}
+
+
+# The plan a household would be on without its installation (HEA-306)
+
+
+async def test_the_plan_without_the_installation_moves_to_the_plan_ticked(
+    hass: HomeAssistant,
+) -> None:
+    # Given - the offer ticked as the plan the household would be on without it
+    entry = _house(hass, _CURRENT, {**_OFFER, CONF_PLAN_WITHOUT_INSTALLATION: True})
+    ids = {tariff.plan.name: plan_id for plan_id, tariff in plans_of(entry).items()}
+
+    # When - ticked on the other plan instead
+    result = await _edit(hass, entry, ids["Current plan"])
+    result = await _answer(
+        hass, result, {**_as_edited(_CURRENT), CONF_PLAN_WITHOUT_INSTALLATION: True}
+    )
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - only one plan holds it: the one ticked last
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.subentries[ids["Current plan"]].data[CONF_PLAN_WITHOUT_INSTALLATION]
+    assert CONF_PLAN_WITHOUT_INSTALLATION not in entry.subentries[ids["Offer"]].data
+
+
+async def test_a_plan_not_ticked_as_without_the_installation_keeps_nothing(
+    hass: HomeAssistant,
+) -> None:
+    # Given
+    entry = _house(hass, _CURRENT)
+    (plan_id,) = plans_of(entry)
+
+    # When - saved with the box left unticked
+    result = await _edit(hass, entry, plan_id)
+    result = await _answer(
+        hass, result, {**_as_edited(_CURRENT), CONF_PLAN_WITHOUT_INSTALLATION: False}
+    )
+    result = await _answer(hass, result, _review(result, "save"))
+
+    # Then - nothing stored for it, as for Archived
+    assert CONF_PLAN_WITHOUT_INSTALLATION not in entry.subentries[plan_id].data

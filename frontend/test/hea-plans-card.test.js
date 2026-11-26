@@ -1399,6 +1399,104 @@ describe("archived plans (HEA-307)", () => {
   });
 });
 
+describe("what the installation saved (HEA-306)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const INSTALLED = {
+    ...COMPARED,
+    plans: [
+      { ...FLAT, without_installation: 70.15 },
+      { ...NIGHT, without_installation: 61.4 },
+    ],
+  };
+  const MEASURED = {
+    ...INSTALLED,
+    installation: { plan: "Night saver", without_installation: 61.4, paid: 40.82, saved: 20.58 },
+  };
+  const line = (card) => card.shadowRoot.querySelector(".installation")?.textContent;
+
+  it("says once, above the table, what it saved against the plan ticked", async () => {
+    // Given / When - on a phone, where the per-plan column is hidden
+    onScreen(true);
+    const card = mountCard(TAG, aHome(MEASURED));
+    await settled(expect, card);
+
+    // Then - the plan, what it would have cost and what was paid, so the
+    // household can check the sum
+    expect(line(card)).toBe(
+      "Your installation saved you €20.58: on Night saver, buying everything from the grid, you'd have paid €61.40, and you paid €40.82.",
+    );
+    expect(text(card)).not.toContain(LABELS.plans_installation_hint);
+  });
+
+  it("saves the difference of the figures it shows, so the sum checks", async () => {
+    // Given - figures whose own rounding would put the saving a cent out
+    onScreen(false);
+    const unrounded = {
+      ...INSTALLED,
+      installation: { plan: "Night saver", without_installation: 13.4249, paid: 3.7351, saved: 9.6898 },
+    };
+
+    // When
+    const card = mountCard(TAG, aHome(unrounded));
+    await settled(expect, card);
+
+    // Then - €13.42 less €3.74
+    expect(line(card)).toContain("saved you €9.68:");
+  });
+
+  it("says so where the installation cost more than it saved", async () => {
+    // Given
+    onScreen(false);
+    const dearer = {
+      ...INSTALLED,
+      installation: { plan: "Night saver", without_installation: 38.32, paid: 40.82, saved: -2.5 },
+    };
+
+    // When
+    const card = mountCard(TAG, aHome(dearer));
+    await settled(expect, card);
+
+    // Then - never a saving below nothing
+    expect(line(card)).toContain("Your installation cost you €2.50 more");
+  });
+
+  it("says how to see it where no plan is ticked", async () => {
+    // Given / When
+    onScreen(false);
+    const card = mountCard(TAG, aHome(INSTALLED));
+    await settled(expect, card);
+
+    // Then
+    expect(line(card)).toBeUndefined();
+    expect(text(card)).toContain(LABELS.plans_installation_hint);
+  });
+
+  it("says nothing while the figure is held", async () => {
+    // Given - a plan ticked, the current plan's daily charge not given yet
+    onScreen(false);
+    const held = { ...INSTALLED, installation: { plan: "Night saver" } };
+
+    // When
+    const card = mountCard(TAG, aHome(held));
+    await settled(expect, card);
+
+    // Then - no figure, and no hint to tick what is already ticked
+    expect(line(card)).toBeUndefined();
+    expect(text(card)).not.toContain(LABELS.plans_installation_hint);
+  });
+
+  it("says nothing of it to a home with neither generation nor a battery", async () => {
+    // Given / When
+    onScreen(false);
+    const card = mountCard(TAG, aHome());
+    await settled(expect, card);
+
+    // Then
+    expect(text(card)).not.toContain(LABELS.plans_installation_hint);
+  });
+});
+
 describe("a demand charge from a sensor (HEA-322)", () => {
   afterEach(() => vi.unstubAllGlobals());
 

@@ -195,6 +195,11 @@ across a change of plan too. For each plan:
   you on it. A demand charge is counted here too, so the saving leaves out what
   the installation saved by lowering your peak, and a note says so.
 
+With a plan ticked as **The plan I'd be on without my installation**, a line
+above the table says what your installation saved you over the period: that
+plan buying everything from the grid, less what you paid. Without one ticked, a
+note says where to tick it.
+
 The plans you've been on carry a badge, such as "Your plan since 20 Nov" or
 "Your plan until 19 Nov". A plan ticked **Archived** in its settings is left out
 of the table, and the card says how many are hidden.

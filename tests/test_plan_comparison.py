@@ -65,6 +65,7 @@ from custom_components.home_energy_advisor.const import (
     CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PLAN_PERIODS,
+    CONF_PLAN_WITHOUT_INSTALLATION,
     CONF_PRICE_ENTITY,
     CONF_PRICES,
     DOMAIN,
@@ -1953,6 +1954,109 @@ async def test_an_unavailable_daily_charge_sensor_with_no_statistics_is_missing(
 
     # Then - said to be missing, never charged as nothing
     assert _by_name(result)[_CURRENT]["daily_charge_missing"] is True
+
+
+# What the installation saved, against the plan the household would be on
+# without it (HEA-306)
+
+
+async def _installed_home(hass: HomeAssistant, *plans: dict[str, Any]) -> None:
+    """The day's generation, the grid, the current plan, and these plans."""
+    _record(hass, "sensor.generation", {12: 3.0})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _home_with(
+            {CONF_GENERATION_ENTITY: ["sensor.generation"]},
+            (SUBENTRY_TYPE_GRID, _GRID),
+            _current_plan(**{CONF_PLAN_DAILY_CHARGE: 0.3}),
+            *((SUBENTRY_TYPE_PLAN, plan) for plan in plans),
+        ),
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_the_installation_is_measured_against_the_plan_ticked_without_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the flat rate ticked as the plan the household would be on
+    # without its installation, and the offer not
+    await _installed_home(hass, {**_FLAT, CONF_PLAN_WITHOUT_INSTALLATION: True}, _OFFER)
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the flat rate bought everything from the grid, 3.5 kWh and a day's
+    # charge, less what the current plan actually cost: 2.5 kWh at 0.2 and its
+    # own daily charge
+    without = 3.5 * 0.234 + 0.45
+    paid = 2.5 * 0.2 + 0.3
+    assert result["installation"] == {
+        "plan": "Flat rate",
+        "without_installation": pytest.approx(without),
+        "paid": pytest.approx(paid),
+        "saved": pytest.approx(without - paid),
+    }
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_nothing_is_said_of_the_installation_with_no_plan_ticked(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given
+    await _installed_home(hass, _FLAT, _OFFER)
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - never the cheapest offer chosen for it, unasked
+    assert "installation" not in result
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_an_archived_plan_ticked_without_the_installation_still_measures_it(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the plan ticked, archived to keep the table to offers weighed
+    await _installed_home(
+        hass, {**_FLAT, CONF_PLAN_WITHOUT_INSTALLATION: True, CONF_PLAN_ARCHIVED: True}
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - left out of the table, but still the measure
+    assert "Flat rate" not in _by_name(result)
+    assert result["installation"]["without_installation"] == pytest.approx(
+        3.5 * 0.234 + 0.45
+    )
+
+
+@pytest.mark.usefixtures("recorder_mock", "_a_recorded_day")
+async def test_the_installation_waits_for_the_current_plan_s_daily_charge(
+    hass: HomeAssistant, hass_ws_client: WebSocketGenerator
+) -> None:
+    # Given - the current plan's daily charge not given yet
+    _record(hass, "sensor.generation", {12: 3.0})
+    await async_wait_recording_done(hass)
+    _calendar(hass, [])
+    await _set_up(
+        hass,
+        _home_with(
+            {CONF_GENERATION_ENTITY: ["sensor.generation"]},
+            (SUBENTRY_TYPE_GRID, _GRID),
+            _current_plan(),
+            (SUBENTRY_TYPE_PLAN, {**_FLAT, CONF_PLAN_WITHOUT_INSTALLATION: True}),
+        ),
+    )
+
+    # When
+    result = await _compare(hass_ws_client, hass)
+
+    # Then - the plan named, the figure held: without its daily charge the
+    # current plan would read cheaper, and the saving larger, than it is
+    assert result["installation"] == {"plan": "Flat rate"}
 
 
 # A demand or capacity charge from a sensor giving its cost per day (HEA-322)

@@ -186,6 +186,12 @@ export const DEFAULTS = Object.freeze({
   plans_your_prices: "The prices you pay",
   plans_your_export_price: "Your export price",
   plans_daily_missing: "Not given yet",
+  plans_installation_saved:
+    "Your installation saved you {saved}: on {plan}, buying everything from the grid, you'd have paid {without}, and you paid {paid}.",
+  plans_installation_cost_more:
+    "Your installation cost you {saved} more: on {plan}, buying everything from the grid, you'd have paid {without}, and you paid {paid}.",
+  plans_installation_hint:
+    "To see what your installation saved you, tick The plan I'd be on without my installation in that plan's settings.",
   plans_demand: "Demand charges",
   plans_demand_missing: "No reading",
   plans_demand_note:

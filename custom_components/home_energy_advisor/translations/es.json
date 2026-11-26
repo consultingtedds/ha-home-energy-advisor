@@ -270,7 +270,8 @@
             "import_price_add": "Sumado al precio de importación de mercado (opcional)",
             "import_price_multiply": "Precio de importación de mercado multiplicado por (opcional)",
             "prices": "Precios",
-            "archived": "Archivada"
+            "archived": "Archivada",
+            "plan_without_installation": "La tarifa que tendría sin mi instalación"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
@@ -288,7 +289,8 @@
             "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
             "import_price_multiply": "Para un precio mayorista: por cuánto se multiplican el precio y lo sumado, como 1,21 para un IVA del 21 %.",
             "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado.",
-            "archived": "Deja esta tarifa fuera de la comparación, para que la tabla muestre solo las ofertas que estás valorando. Sigue calculando los días en que la tuviste."
+            "archived": "Deja esta tarifa fuera de la comparación, para que la tabla muestre solo las ofertas que estás valorando. Sigue calculando los días en que la tuviste.",
+            "plan_without_installation": "Marca la tarifa que elegirías si no tuvieras generación ni batería. Lo que te ahorró tu instalación se mide frente a ella: comprarlo todo de la red con esta tarifa, menos lo que pagaste. Solo se puede marcar una tarifa: al marcarla aquí se desmarca en cualquier otra."
           }
         },
         "reconfigure": {
@@ -310,7 +312,8 @@
             "import_price_add": "Sumado al precio de importación de mercado (opcional)",
             "import_price_multiply": "Precio de importación de mercado multiplicado por (opcional)",
             "prices": "Precios",
-            "archived": "Archivada"
+            "archived": "Archivada",
+            "plan_without_installation": "La tarifa que tendría sin mi instalación"
           },
           "data_description": {
             "name": "Cómo aparece esta tarifa en la tarjeta de comparación.",
@@ -328,7 +331,8 @@
             "import_price_add": "Para un precio mayorista, como el de Nord Pool, EnergyZero o easyEnergy: lo que la tarifa suma por kWh antes del IVA, como impuestos sobre la energía y el margen de la comercializadora. Déjalo vacío si el sensor ya da el precio que pagas, como hacen Amber, PVPC, Tibber y Octopus.",
             "import_price_multiply": "Para un precio mayorista: por cuánto se multiplican el precio y lo sumado, como 1,21 para un IVA del 21 %.",
             "prices": "Cada precio que cobra la tarifa, con el nombre que le da la oferta, por kWh en tu moneda: 0,1399, no 13,99 céntimos. Un precio puede pagar su propio precio de exportación en las horas en que se aplica, si la tarifa paga más entonces, y un cupo de exportación si lo paga solo por los primeros kWh exportados cada día en esas horas; más allá del cupo, la exportación cobra el precio de exportación de la tarifa. Deja la lista vacía para una tarifa que importa a precio de mercado.",
-            "archived": "Deja esta tarifa fuera de la comparación, para que la tabla muestre solo las ofertas que estás valorando. Sigue calculando los días en que la tuviste."
+            "archived": "Deja esta tarifa fuera de la comparación, para que la tabla muestre solo las ofertas que estás valorando. Sigue calculando los días en que la tuviste.",
+            "plan_without_installation": "Marca la tarifa que elegirías si no tuvieras generación ni batería. Lo que te ahorró tu instalación se mide frente a ella: comprarlo todo de la red con esta tarifa, menos lo que pagaste. Solo se puede marcar una tarifa: al marcarla aquí se desmarca en cualquier otra."
           }
         },
         "band": {
@@ -1080,6 +1084,9 @@
     "card_plans_your_prices": "Los precios que pagas",
     "card_plans_your_export_price": "Tu precio de exportación",
     "card_plans_daily_missing": "Sin indicar todavía",
+    "card_plans_installation_saved": "Tu instalación te ahorró {saved}: con {plan}, comprándolo todo de la red, habrías pagado {without}, y pagaste {paid}.",
+    "card_plans_installation_cost_more": "Tu instalación te costó {saved} más: con {plan}, comprándolo todo de la red, habrías pagado {without}, y pagaste {paid}.",
+    "card_plans_installation_hint": "Para ver lo que te ahorró tu instalación, marca La tarifa que tendría sin mi instalación en los ajustes de esa tarifa.",
     "card_plans_demand": "Cargos por demanda",
     "card_plans_demand_missing": "Sin lectura",
     "card_plans_demand_note": "Los cargos por demanda también se cuentan en Comprándolo todo de la red, así que lo que te ahorra tu instalación no incluye lo que ahorró al bajar tu pico.",

@@ -94,6 +94,10 @@ class HeaPlansCard extends HeaCard {
       color: var(--secondary-text-color);
       font-size: 0.9em;
     }
+    /* What the installation saved, the period's one figure for it (HEA-306). */
+    .installation {
+      margin-bottom: var(--hea-space-m);
+    }
     /* As wide as the figures, not the card: spread across a full-width tab, a
        plan's figures sat too far apart to read across (HEA-280). The wrapper
        hugs the table too, so its scroll shadows sit at the table's own edges. */
@@ -324,10 +328,12 @@ class HeaPlansCard extends HeaCard {
       wide ? "" : this._breakdownHidden(demand),
       priced.some(followsTheMarket) ? this._resolution(locale) : "",
       without && demand ? this._labels.plans_demand_note : "",
+      this._installationHint(plans),
     ].filter(Boolean);
     const layout = { current, cheapest, parts, without };
     return `
       ${this._flows(locale)}
+      ${this._installation(locale)}
       ${this._leftOut(locale)}
       <div class="scroll">
         <table class="plans">
@@ -435,6 +441,35 @@ class HeaPlansCard extends HeaCard {
       imported: formatEnergy(this._compared.imported_kwh, locale),
       exported: formatEnergy(this._compared.exported_kwh, locale),
     })}</div>`;
+  }
+
+  /**
+   * What the installation saved over the period, said once above the table:
+   * the plan ticked as the one the household would be on without it, bought
+   * everything from the grid, less what was paid (HEA-306). The same on a
+   * phone. Nothing until it can be worked out.
+   */
+  _installation(locale) {
+    const figures = this._compared.installation;
+    if (!figures || !("saved" in figures)) return "";
+    // From the two figures as shown, so the sentence's sum checks to the cent.
+    const cents = (amount) => Math.round(amount * 100);
+    const saved = (cents(figures.without_installation) - cents(figures.paid)) / 100;
+    const tone = savingTone(saved, locale);
+    const key = tone === "loss" ? "plans_installation_cost_more" : "plans_installation_saved";
+    const wording = fill(this._labels[key], {
+      saved: formatMoney(Math.abs(saved), locale),
+      plan: escape(figures.plan),
+      without: formatMoney(figures.without_installation, locale),
+      paid: formatMoney(figures.paid, locale),
+    });
+    return `<div class="installation">${wording}</div>`;
+  }
+
+  /** Where a home with an installation has ticked no plan to measure it by. */
+  _installationHint(plans) {
+    const installed = plans.some((plan) => "without_installation" in plan);
+    return installed && !this._compared.installation ? this._labels.plans_installation_hint : "";
   }
 
   /**

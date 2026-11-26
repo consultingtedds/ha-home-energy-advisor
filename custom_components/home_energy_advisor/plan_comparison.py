@@ -60,6 +60,7 @@ from .const import (
     CONF_PLAN_EXPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PLAN_PERIODS,
+    CONF_PLAN_WITHOUT_INSTALLATION,
     DOMAIN,
     IMPOSSIBLE_KWH_PER_HOUR,
     SERVICE_COMPARE_PLANS,
@@ -745,7 +746,9 @@ async def async_compare_plans(
             else [e for e in (tariff.import_entity, tariff.export_entity) if e]
         )
         plans.append(await _plan_row(basis, tariff, named, followed))
+    installation = await _installation(basis, entry, everything, plans)
     return {
+        **({"installation": installation} if installation else {}),
         "hours": len(intervals),
         "archived": len(archived),
         "days": float(days),
@@ -762,6 +765,58 @@ async def async_compare_plans(
             for stretch in left_out
         ],
         "plans": plans,
+    }
+
+
+async def _installation(
+    basis: _Basis,
+    entry: ConfigEntry,
+    everything: Mapping[str, TariffPlan],
+    plans: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """What the installation saved, against the plan ticked as without it.
+
+    That plan bought everything from the grid, less what the current plan
+    actually cost: a home can choose a plan it would not without its
+    installation, and that choice is part of what it saves (HEA-306). An
+    archived plan still measures it. Held, naming the plan, until both are
+    priced and the current plan has its daily charge, which would otherwise
+    make it read cheaper and the saving larger. Nothing where no plan is ticked.
+    """
+    plan_id = next(
+        (
+            subentry_id
+            for subentry_id, subentry in entry.subentries.items()
+            if subentry_id in everything
+            and subentry.data.get(CONF_PLAN_WITHOUT_INSTALLATION)
+        ),
+        None,
+    )
+    if plan_id is None:
+        return {}
+    tariff = everything[plan_id]
+    row = next((row for row in plans if row["id"] == plan_id), None)
+    if row is None:
+        followed = [e for e in (tariff.import_entity, tariff.export_entity) if e]
+        row = await _plan_row(
+            basis, tariff, {"id": plan_id, "name": tariff.plan.name}, followed
+        )
+    named = {"plan": tariff.plan.name}
+    current = next((row for row in plans if row.get("current")), None)
+    if (
+        "without_installation" not in row
+        or current is None
+        or "total" not in current
+        or current.get("daily_charge_missing")
+    ):
+        return named
+    without = Decimal(str(row["without_installation"]))
+    paid = Decimal(str(current["total"]))
+    return {
+        **named,
+        "without_installation": _number(without),
+        "paid": _number(paid),
+        "saved": _number(without - paid),
     }
 
 

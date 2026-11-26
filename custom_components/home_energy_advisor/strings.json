@@ -270,7 +270,8 @@
             "import_price_add": "Added to the market import price (optional)",
             "import_price_multiply": "Market import price multiplied by (optional)",
             "prices": "Prices",
-            "archived": "Archived"
+            "archived": "Archived",
+            "plan_without_installation": "The plan I'd be on without my installation"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
@@ -288,7 +289,8 @@
             "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
             "import_price_multiply": "For a wholesale price: what the price and the amount added are multiplied by, such as 1.21 for 21% VAT.",
             "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price.",
-            "archived": "Leave this plan out of the comparison, to keep the table to the offers you're weighing. It still prices the days you were on it."
+            "archived": "Leave this plan out of the comparison, to keep the table to the offers you're weighing. It still prices the days you were on it.",
+            "plan_without_installation": "Tick the plan you'd choose if you had no generation or battery. What your installation saved you is measured against it: buying everything from the grid on this plan, less what you paid. Only one plan can be ticked: ticking it here unticks it on any other."
           }
         },
         "reconfigure": {
@@ -310,7 +312,8 @@
             "import_price_add": "Added to the market import price (optional)",
             "import_price_multiply": "Market import price multiplied by (optional)",
             "prices": "Prices",
-            "archived": "Archived"
+            "archived": "Archived",
+            "plan_without_installation": "The plan I'd be on without my installation"
           },
           "data_description": {
             "name": "How this plan appears on the comparison card.",
@@ -328,7 +331,8 @@
             "import_price_add": "For a wholesale price, such as Nord Pool's, EnergyZero's or easyEnergy's: what the plan adds per kWh before VAT, such as energy tax and the supplier's markup. Leave it empty if the sensor already gives the price you pay, as Amber, PVPC, Tibber and Octopus do.",
             "import_price_multiply": "For a wholesale price: what the price and the amount added are multiplied by, such as 1.21 for 21% VAT.",
             "prices": "Each price the plan charges, named as the offer names it, per kWh in your currency: 0.4371, not 43.71 cents. A price can pay its own export price at the hours it applies, if the plan pays more then, and an export allowance if it pays that only on the first kWh exported each day at those hours; beyond it, export earns the plan's export price. Leave the list empty for a plan importing at a market price.",
-            "archived": "Leave this plan out of the comparison, to keep the table to the offers you're weighing. It still prices the days you were on it."
+            "archived": "Leave this plan out of the comparison, to keep the table to the offers you're weighing. It still prices the days you were on it.",
+            "plan_without_installation": "Tick the plan you'd choose if you had no generation or battery. What your installation saved you is measured against it: buying everything from the grid on this plan, less what you paid. Only one plan can be ticked: ticking it here unticks it on any other."
           }
         },
         "band": {
@@ -1080,6 +1084,9 @@
     "card_plans_your_prices": "The prices you pay",
     "card_plans_your_export_price": "Your export price",
     "card_plans_daily_missing": "Not given yet",
+    "card_plans_installation_saved": "Your installation saved you {saved}: on {plan}, buying everything from the grid, you'd have paid {without}, and you paid {paid}.",
+    "card_plans_installation_cost_more": "Your installation cost you {saved} more: on {plan}, buying everything from the grid, you'd have paid {without}, and you paid {paid}.",
+    "card_plans_installation_hint": "To see what your installation saved you, tick The plan I'd be on without my installation in that plan's settings.",
     "card_plans_demand": "Demand charges",
     "card_plans_demand_missing": "No reading",
     "card_plans_demand_note": "Demand charges are counted in Buying everything from the grid too, so what your installation saves leaves out what it saved by lowering your peak.",

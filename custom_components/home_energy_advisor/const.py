@@ -78,6 +78,10 @@ CONF_PLAN_PROVIDES_PRICES: Final = "provides_prices"
 # On a typed plan: left out of the comparison's table and action, and counted;
 # still read for the days the household was on it (HEA-307).
 CONF_PLAN_ARCHIVED: Final = "archived"
+# On one typed plan at most: the plan the household would be on without its
+# generation or battery, which what the installation saved is measured against
+# (HEA-306).
+CONF_PLAN_WITHOUT_INSTALLATION: Final = "plan_without_installation"
 # On the current plan, for one reload: the old sources the household chose to
 # carry the price history in from when it ticked "Provide my price sensors",
 # by sensor key, run once those sensors exist (ADR-0048 decision 4).

@@ -44,6 +44,12 @@ give it to each one. It gets its own column and its own line on the plan's bill.
 installation saves leaves out what it saved by lowering your peak. Nothing
 changes for a plan without one.
 
+**See what your installation saved you.** If you have generation or a battery,
+tick **The plan I'd be on without my installation** on the plan you'd choose
+without them. The tariff comparison then says, above the table, what your
+installation saved over the period, counting what being able to choose a
+different plan is worth. The `compare_plans` action returns the same figure.
+
 ## 1.8.0
 
 **Price history from is now Plans you've been on.** If you changed plan during the

@@ -73,6 +73,7 @@ from .const import (
     CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_MULTIPLY,
+    CONF_PLAN_WITHOUT_INSTALLATION,
     CONF_PRICES,
     DEFAULT_CURRENCY,
 )
@@ -126,6 +127,7 @@ _DETAIL_KEYS = (
     CONF_PLAN_IMPORT_PRICE_ADD,
     CONF_PLAN_IMPORT_PRICE_ENTITY,
     CONF_PLAN_IMPORT_PRICE_MULTIPLY,
+    CONF_PLAN_WITHOUT_INSTALLATION,
 )
 # What a plan does to each market price it takes, with the entity it adjusts.
 _ADJUSTMENTS = (
@@ -635,6 +637,10 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
                 vol.Optional(CONF_PLAN_ARCHIVED, default=False): (
                     selector.BooleanSelector()
                 ),
+                # One plan at most: ticking it here moves it (HEA-306).
+                vol.Optional(CONF_PLAN_WITHOUT_INSTALLATION, default=False): (
+                    selector.BooleanSelector()
+                ),
             }
         )
 
@@ -730,9 +736,36 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
         return f"{price[CONF_NAME]} ({figures})"
 
     def _save(self) -> SubentryFlowResult:
-        """Save the plan."""
+        """Save the plan.
+
+        Ticked as the plan the household would be on without its installation,
+        it takes that from any other plan: only one can be (HEA-306).
+        """
         data = self._data()
         entry = self._get_entry()
+        if data.get(CONF_PLAN_WITHOUT_INSTALLATION):
+            editing = (
+                self._get_reconfigure_subentry().subentry_id
+                if self.source == "reconfigure"
+                else None
+            )
+            ticked = [
+                subentry
+                for subentry in entry.subentries.values()
+                if subentry.subentry_id != editing
+                and subentry.data.get(CONF_PLAN_WITHOUT_INSTALLATION)
+            ]
+            # Collected first: updating a subentry replaces the mapping read.
+            for subentry in ticked:
+                self.hass.config_entries.async_update_subentry(
+                    entry,
+                    subentry,
+                    data={
+                        key: value
+                        for key, value in subentry.data.items()
+                        if key != CONF_PLAN_WITHOUT_INSTALLATION
+                    },
+                )
         if self.source == "reconfigure":
             return self.async_update_and_abort(
                 entry,
@@ -744,10 +777,11 @@ class PlanSubentryFlowHandler(PlansBeenOnSteps, ConfigSubentryFlow):
 
 
 def _details_of(answers: Mapping[str, Any]) -> dict[str, Any]:
-    """A plan's details from the form's answers; Archived only where ticked."""
+    """A plan's details from the form's answers; each tick box only where ticked."""
     details = {key: answers[key] for key in _DETAIL_KEYS if key in answers}
-    if not details.get(CONF_PLAN_ARCHIVED):
-        details.pop(CONF_PLAN_ARCHIVED, None)
+    for ticked in (CONF_PLAN_ARCHIVED, CONF_PLAN_WITHOUT_INSTALLATION):
+        if not details.get(ticked):
+            details.pop(ticked, None)
     return details
 
 
