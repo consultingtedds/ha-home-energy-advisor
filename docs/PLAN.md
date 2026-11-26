@@ -1348,8 +1348,10 @@ In Linear each epic is a parent ticket, in the project "Home Energy Advisor -
 after 1.0". A part is built only when a household needs it.
 
 - **Epic 13 - What a plan can price (HEA-323).** HEA-322, a demand or capacity
-  charge from a household's sensor as its own bill line (discussion 67), comes
-  next. Parked or waiting for a household: HEA-315 (bands by season), HEA-309
+  charge from a household's sensor as its own bill line (discussion 67), is
+  built (768003d, unreleased): each plan can name the sensor, "Buying everything
+  from the grid" carries the same charge, and it waits for hlps4 to check it
+  against their invoices on a release. Parked or waiting for a household: HEA-315 (bands by season), HEA-309
   (price sensors that follow an allowance), HEA-263 (a measured demand charge,
   after HEA-322), HEA-266 (Energy Manager files) and HEA-289 (Australian plan
   data).
