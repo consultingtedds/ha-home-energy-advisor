@@ -548,7 +548,7 @@ response_variable: plans
 `plans.plans` then lists each plan with its `total`, `energy`, `export_credit`,
 `daily_charges` and its `breakdown`, line by line. Where a plan is ticked as the
 one you'd be on without your installation, `plans.installation` gives that
-plan's name, `without_installation`, what you `paid` and what was `saved`: call
+plan's `id` and name, `without_installation`, what you `paid` and what was `saved`: call
 it daily from your installation's date to keep a running total.
 
 **An hour no home could use.** A sensor that briefly reads zero, or a template

@@ -801,7 +801,8 @@ async def _installation(
         row = await _plan_row(
             basis, tariff, {"id": plan_id, "name": tariff.plan.name}, followed
         )
-    named = {"plan": tariff.plan.name}
+    # By id too, so another tool can match the plan it was given (BatteryLedger).
+    named = {"id": plan_id, "plan": tariff.plan.name}
     current = next((row for row in plans if row.get("current")), None)
     if (
         "without_installation" not in row

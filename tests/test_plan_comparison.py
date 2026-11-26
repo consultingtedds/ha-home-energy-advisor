@@ -1992,7 +1992,9 @@ async def test_the_installation_is_measured_against_the_plan_ticked_without_it(
     # own daily charge
     without = 3.5 * 0.234 + 0.45
     paid = 2.5 * 0.2 + 0.3
+    flat = _by_name(result)["Flat rate"]
     assert result["installation"] == {
+        "id": flat["id"],
         "plan": "Flat rate",
         "without_installation": pytest.approx(without),
         "paid": pytest.approx(paid),
@@ -2056,7 +2058,10 @@ async def test_the_installation_waits_for_the_current_plan_s_daily_charge(
 
     # Then - the plan named, the figure held: without its daily charge the
     # current plan would read cheaper, and the saving larger, than it is
-    assert result["installation"] == {"plan": "Flat rate"}
+    assert result["installation"] == {
+        "id": _by_name(result)["Flat rate"]["id"],
+        "plan": "Flat rate",
+    }
 
 
 # A demand or capacity charge from a sensor giving its cost per day (HEA-322)
