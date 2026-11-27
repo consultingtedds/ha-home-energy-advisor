@@ -624,6 +624,18 @@ The integration's settings menu also carries:
 - **Per-device cost range** - publishes a lowest and highest possible cost for
   each device, not just for the house. See
   [What the figures cannot know](#what-the-figures-cannot-know).
+- **Clear the figures for a period** - clears whole hours of figures that went
+  wrong, for every device, the Untracked remainder, the battery and the whole
+  home, and shows what it will remove before it does. The period's history is
+  cleared and every later period lowered to match, so the dashboard and the
+  plan comparison stop counting it. Running money totals, such as cost and
+  savings to date, drop by the same amounts. **Running energy totals keep the
+  period:** Home Assistant only lets an energy counter go up, so lowering one
+  would be read as a meter reset. Their history is still cleared. Daily and
+  monthly totals show the change in the hour you clear it. There is also a
+  `home_energy_advisor.clear_period` service, which returns the whole home's
+  energy, cost and savings removed. Both are for administrators only, and
+  neither can be undone.
 - **Reset all totals to zero** - starts every figure again and clears the
   history behind them. There is also a `home_energy_advisor.reset_totals`
   service for the same thing. Both are for administrators only, and neither can

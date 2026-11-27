@@ -162,13 +162,19 @@ IMPOSSIBLE_KWH_PER_HOUR: Final = 100
 SERVICE_RESET_TOTALS: Final = "reset_totals"
 SERVICE_COMPARE_PLANS: Final = "compare_plans"
 SERVICE_CARRY_IN_HISTORY: Final = "carry_in_history"
+SERVICE_CLEAR_PERIOD: Final = "clear_period"
 ATTR_CONFIG_ENTRY_ID: Final = "config_entry_id"
+ATTR_START: Final = "start"
+ATTR_END: Final = "end"
 
 # Dispatcher signal telling a household's sensors to drop the restore baseline
 # they add on top of the runtime's running total, when those totals are rebased
 # to zero (HEA-57). Formatted per config entry so one household's reset never
 # touches another's figures.
 SIGNAL_RESET_TOTALS: Final = f"{DOMAIN}_reset_totals_{{entry_id}}"
+# Dispatcher signal carrying, per entity id, what a cleared period added to a
+# money figure, so the sensor lowers its restore baseline by it (HEA-272).
+SIGNAL_CLEAR_PERIOD: Final = f"{DOMAIN}_clear_period_{{entry_id}}"
 
 # Optional cycle totals (options flow). Daily and monthly are always on; these
 # are opt-in to keep the entity count in check (ADR-0004 / PLAN.md).

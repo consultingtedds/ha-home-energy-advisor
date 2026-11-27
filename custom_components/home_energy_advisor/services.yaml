@@ -17,6 +17,21 @@ reset_totals:
       selector:
         config_entry:
           integration: home_energy_advisor
+clear_period:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: home_energy_advisor
+    start:
+      required: true
+      selector:
+        datetime:
+    end:
+      required: true
+      selector:
+        datetime:
 carry_in_history:
   fields:
     import_price_from:

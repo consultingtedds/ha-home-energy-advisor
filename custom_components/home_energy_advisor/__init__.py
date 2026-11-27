@@ -21,7 +21,14 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import CONF_NAME, Platform
 
-from . import current_plan, history_carry, impossible_hours, plan_comparison, reset
+from . import (
+    clear_period,
+    current_plan,
+    history_carry,
+    impossible_hours,
+    plan_comparison,
+    reset,
+)
 from .accountant_store import AccountantStore
 from .cards import async_register_cards
 from .const import (
@@ -84,6 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HeaConfigEntry) -> bool:
     # Registered here rather than in async_setup: the reset action needs a loaded
     # entry to act on, and re-registering the same handler is a no-op (HEA-57).
     reset.async_register(hass)
+    clear_period.async_register(hass)
     plan_comparison.async_register(hass)
     history_carry.async_register(hass)
     await async_register_cards(hass)

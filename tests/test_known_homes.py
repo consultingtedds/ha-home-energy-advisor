@@ -169,6 +169,33 @@ async def test_it_provides_its_price_sensors_when_asked(
         assert state.state == STATE_UNAVAILABLE
 
 
+async def test_it_clears_a_period_and_carries_on(
+    hass: HomeAssistant, home: KnownHome
+) -> None:
+    # Given - set up, with no figures of its own recorded for its recorded day
+    entry = await _set_up(hass, home)
+
+    # When - that day is cleared (HEA-272)
+    response = await hass.services.async_call(
+        DOMAIN,
+        "clear_period",
+        {
+            "config_entry_id": entry.entry_id,
+            "start": home.day,
+            "end": home.day + timedelta(days=1),
+        },
+        blocking=True,
+        return_response=True,
+    )
+    await hass.async_block_till_done()
+
+    # Then - nothing of its own to remove, whatever its shape, and still loaded
+    assert response == {
+        "removed": {"energy_used": 0.0, "actual_cost": 0.0, "cost_savings": 0.0}
+    }
+    assert entry.state is ConfigEntryState.LOADED
+
+
 async def _compare(
     hass: HomeAssistant, hass_ws_client: WebSocketGenerator, home: KnownHome
 ) -> dict[str, Any]:

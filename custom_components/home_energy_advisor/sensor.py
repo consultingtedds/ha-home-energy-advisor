@@ -60,6 +60,7 @@ from .const import (
     CONF_POWER_ENTITY,
     DEFAULT_CURRENCY,
     DOMAIN,
+    SIGNAL_CLEAR_PERIOD,
     SIGNAL_RESET_TOTALS,
     SUBENTRY_TYPE_DEVICE,
     WHOLE_HOME_KEY,
@@ -796,6 +797,13 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
                 self._handle_reset,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_CLEAR_PERIOD.format(entry_id=self._entry_id),
+                self._handle_clear,
+            )
+        )
 
     async def _async_restored_zero_point(self) -> datetime | None:
         """The zero point this figure published before the restart, if it had one.
@@ -829,6 +837,23 @@ class _HeaRestoringSensor(CoordinatorEntity["HeaCoordinator"], RestoreSensor):
         """
         self._baseline = Decimal(0)
         self._last_reset = dt_util.utcnow()
+
+    @callback
+    def _handle_clear(self, removed: Mapping[str, Decimal]) -> None:
+        """Take a cleared period's share off this figure's lifetime total (HEA-272).
+
+        Only a `total` figure falls. The zero point does not move: the compiler
+        would start a new accumulation at the lowered value and book the whole
+        of it as a change. The fall is booked as an ordinary negative change
+        instead, which the clear has already allowed for in the history. A
+        `total_increasing` figure keeps its lifetime: the compiler reads any fall
+        in one as a loss or a meter reset.
+        """
+        amount = removed.get(self.entity_id)
+        if not amount or self.state_class is not SensorStateClass.TOTAL:
+            return
+        self._baseline -= amount
+        self.async_write_ha_state()
 
 
 class HeaCostSensor(_HeaRestoringSensor):

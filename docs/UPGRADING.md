@@ -50,6 +50,16 @@ without them. The tariff comparison then says, above the table, what your
 installation saved over the period, counting what being able to choose a
 different plan is worth. The `compare_plans` action returns the same figure.
 
+**Clear the figures for a period, rather than resetting everything.** If a
+stretch of figures went wrong, for example while a meter misbehaved, use
+**Configure > Clear the figures for a period**. It shows the energy, cost and
+savings it will remove before anything changes. The period's history is
+cleared and later periods are lowered to match, and running money totals such
+as savings to date drop by the same amounts. Running energy totals keep the
+period, because Home Assistant only lets an energy counter go up. There is also
+an admin-only `home_energy_advisor.clear_period` action. Nothing changes unless
+you use it.
+
 ## 1.8.0
 
 **Price history from is now Plans you've been on.** If you changed plan during the

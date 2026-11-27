@@ -92,8 +92,21 @@
           "cycles": "Cycle totals",
           "cost_bounds": "Per-device cost range",
           "discover_devices": "Discover devices to track",
+          "clear_period": "Clear the figures for a period",
           "reset_totals": "Reset all totals to zero"
         }
+      },
+      "clear_period": {
+        "title": "Clear the figures for a period",
+        "description": "Choose a stretch of time whose figures went wrong, for example while a meter misbehaved or after removing devices. Every figure for that time is cleared: energy, costs and savings for each device, the Untracked remainder, the battery and the whole home. Whole hours are cleared, so the start goes back to its hour and the end on to the next. The period has to have finished. You'll see what will be removed before anything changes.",
+        "data": {
+          "start": "From",
+          "end": "To"
+        }
+      },
+      "clear_period_confirm": {
+        "title": "Clear {start} to {end}?",
+        "description": "For the whole home, this removes **{energy}** of energy used, **{cost}** of cost and **{savings}** of savings, along with every device's, the Untracked remainder's and the battery's figures for the same time.\n\nThe history for the period is cleared, and every later period is lowered to match, so the dashboard and the plan comparison no longer count it. The running money totals, such as cost and savings to date, are lowered by the same amounts. The running energy totals are not: Home Assistant only lets an energy counter go up, so they keep the period. Their history is still cleared.\n\nDaily and monthly totals show the change in the hour you clear it, not in the period itself. **This cannot be undone.** Submit to clear, or go back to leave everything as it is."
       },
       "cost_bounds": {
         "title": "Per-device cost range",
@@ -126,9 +139,14 @@
         "description": "This starts every figure again from zero: energy, costs and savings for each device, the Untracked remainder and the whole home, along with their daily and monthly totals. The recorded history behind them is cleared too, so past periods can no longer be looked up. **This cannot be undone.** Your devices and settings are untouched, as is any helper you created yourself. Submit to reset, or go back to leave everything as it is."
       }
     },
+    "error": {
+      "clear_period_order": "The end has to come after the start.",
+      "clear_period_unfinished": "The period has to have finished. Choose an end no later than the start of the current hour."
+    },
     "abort": {
       "no_candidates": "No untracked energy or power sensors were found to add.{not_offered}",
-      "reset_totals_done": "Every total has been reset to zero. Accounting continues from here."
+      "reset_totals_done": "Every total has been reset to zero. Accounting continues from here.",
+      "clear_period_done": "The period has been cleared. Accounting continues as before."
     }
   },
   "config_subentries": {
@@ -880,6 +898,24 @@
         }
       }
     },
+    "clear_period": {
+      "name": "Clear a period",
+      "description": "Clears every Home Energy Advisor figure for whole hours from the start to the end: their history, and the running money totals. The running energy totals keep the period. Returns the whole home's energy, cost and savings removed. Cannot be undone.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Household",
+          "description": "The Home Energy Advisor configuration whose figures to clear."
+        },
+        "start": {
+          "name": "From",
+          "description": "The start of the period, taken back to its hour."
+        },
+        "end": {
+          "name": "To",
+          "description": "The end of the period, taken on to the next hour. It has to have passed."
+        }
+      }
+    },
     "compare_plans": {
       "name": "Compare tariff plans",
       "description": "Prices every tariff plan you have entered over a period, as the Compare tariff plans card does, and returns the figures for a script, an automation or another tool to use.",
@@ -931,6 +967,12 @@
     },
     "reset_entry_not_loaded": {
       "message": "That Home Energy Advisor configuration is not loaded, so its totals cannot be reset. Try again once it has started."
+    },
+    "clear_period_order": {
+      "message": "The end of the period has to come after its start."
+    },
+    "clear_period_unfinished": {
+      "message": "The period has to have finished: its end can be no later than the start of the current hour."
     },
     "compare_end_before_start": {
       "message": "The period ends before it starts. Give an end after the start."

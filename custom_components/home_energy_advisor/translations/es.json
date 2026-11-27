@@ -92,8 +92,21 @@
           "cycles": "Totales por ciclo",
           "cost_bounds": "Rango de coste por dispositivo",
           "discover_devices": "Descubrir dispositivos para seguir",
+          "clear_period": "Borrar las cifras de un periodo",
           "reset_totals": "Poner todos los totales a cero"
         }
+      },
+      "clear_period": {
+        "title": "Borrar las cifras de un periodo",
+        "description": "Elige un intervalo cuyas cifras salieron mal, por ejemplo mientras un contador fallaba o después de quitar dispositivos. Se borran todas las cifras de ese intervalo: energía, costes y ahorros de cada dispositivo, del resto sin seguimiento, de la batería y de toda la casa. Se borran horas completas, así que el inicio retrocede a su hora y el fin avanza a la siguiente. El periodo tiene que haber terminado. Verás lo que se va a quitar antes de que cambie nada.",
+        "data": {
+          "start": "Desde",
+          "end": "Hasta"
+        }
+      },
+      "clear_period_confirm": {
+        "title": "¿Borrar de {start} a {end}?",
+        "description": "Para toda la casa, esto quita **{energy}** de energía consumida, **{cost}** de coste y **{savings}** de ahorro, junto con las cifras de cada dispositivo, del resto sin seguimiento y de la batería en el mismo intervalo.\n\nSe borra el historial del periodo y todos los periodos posteriores se rebajan para cuadrar, así que el panel y la comparación de tarifas dejan de contarlo. Los totales acumulados de dinero, como el coste y el ahorro hasta la fecha, se rebajan en las mismas cantidades. Los totales acumulados de energía no: Home Assistant solo deja subir un contador de energía, así que conservan el periodo. Su historial sí se borra.\n\nLos totales diarios y mensuales muestran el cambio en la hora en que lo borras, no en el propio periodo. **No se puede deshacer.** Envía para borrar, o vuelve atrás para dejarlo todo como está."
       },
       "cost_bounds": {
         "title": "Rango de coste por dispositivo",
@@ -128,7 +141,12 @@
     },
     "abort": {
       "no_candidates": "No se encontraron sensores de energía o potencia sin seguimiento para añadir.{not_offered}",
-      "reset_totals_done": "Todos los totales se han puesto a cero. La contabilidad continúa desde aquí."
+      "reset_totals_done": "Todos los totales se han puesto a cero. La contabilidad continúa desde aquí.",
+      "clear_period_done": "Se ha borrado el periodo. La contabilidad continúa como antes."
+    },
+    "error": {
+      "clear_period_order": "El fin tiene que ser posterior al inicio.",
+      "clear_period_unfinished": "El periodo tiene que haber terminado. Elige un fin no posterior al inicio de la hora actual."
     }
   },
   "config_subentries": {
@@ -880,6 +898,24 @@
         }
       }
     },
+    "clear_period": {
+      "name": "Borrar un periodo",
+      "description": "Borra todas las cifras de Home Energy Advisor en horas completas del inicio al fin: su historial y los totales acumulados de dinero. Los totales acumulados de energía conservan el periodo. Devuelve la energía, el coste y el ahorro de toda la casa que se han quitado. No se puede deshacer.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Hogar",
+          "description": "La configuración de Home Energy Advisor cuyas cifras borrar."
+        },
+        "start": {
+          "name": "Desde",
+          "description": "El inicio del periodo, retrocedido a su hora."
+        },
+        "end": {
+          "name": "Hasta",
+          "description": "El fin del periodo, avanzado a la hora siguiente. Tiene que haber pasado."
+        }
+      }
+    },
     "compare_plans": {
       "name": "Comparar tarifas",
       "description": "Calcula el coste de cada tarifa que has introducido durante un periodo, como hace la tarjeta de comparar tarifas, y devuelve las cifras para que las use un script, una automatización u otra herramienta.",
@@ -931,6 +967,12 @@
     },
     "reset_entry_not_loaded": {
       "message": "Esa configuración de Home Energy Advisor no está cargada, así que no se pueden reiniciar sus totales. Inténtalo de nuevo cuando haya arrancado."
+    },
+    "clear_period_order": {
+      "message": "El fin del periodo tiene que ser posterior a su inicio."
+    },
+    "clear_period_unfinished": {
+      "message": "El periodo tiene que haber terminado: su fin no puede ser posterior al inicio de la hora actual."
     },
     "compare_end_before_start": {
       "message": "El periodo termina antes de empezar. Indica un fin posterior al inicio."

@@ -10,6 +10,7 @@ afterwards as config subentries, not here.
 
 from __future__ import annotations
 
+from datetime import timedelta
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
@@ -25,9 +26,21 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import selector, translation
+from homeassistant.util import dt as dt_util
 
+from .clear_period import (
+    Period,
+    async_clear_period,
+    async_measure,
+    currency_of,
+    summary,
+    whole_hours,
+)
 from .const import (
+    ATTR_END,
+    ATTR_START,
     CONF_BATTERY_CAPACITY_ENTITY,
     CONF_BATTERY_CAPACITY_KWH,
     CONF_BATTERY_CHARGE_ENTITY,
@@ -82,6 +95,7 @@ from .schemas import vol
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+    from datetime import datetime
 
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
@@ -967,6 +981,26 @@ _STATE_CLASS_ERROR = {
 }
 
 
+def _local(chosen: str) -> datetime:
+    """A time from the date and time picker, which gives the household's own."""
+    moment = dt_util.parse_datetime(chosen)
+    if moment is None:
+        raise ServiceValidationError(
+            translation_domain=DOMAIN, translation_key="clear_period_order"
+        )
+    return moment
+
+
+def _picked(moment: datetime) -> str:
+    """A time as the date and time picker gives one, in the household's own."""
+    return dt_util.as_local(moment).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _shown_time(moment: datetime) -> str:
+    """A period boundary in the household's own time, as the form shows it."""
+    return dt_util.as_local(moment).strftime("%Y-%m-%d %H:%M")
+
+
 class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
     """Options: the opt-in toggles and the guided device-discovery step.
 
@@ -980,6 +1014,9 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
     All are re-runnable from Configure.
     """
 
+    # The period being cleared, between asking for it and confirming (HEA-272).
+    _clearing: Period
+
     async def async_step_init(
         self,
         user_input: dict[str, Any] | None = None,  # noqa: ARG002 - HA menu step signature
@@ -991,6 +1028,7 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
                 "cycles",
                 "cost_bounds",
                 "discover_devices",
+                "clear_period",
                 "reset_totals",
             ],
         )
@@ -1064,6 +1102,69 @@ class HomeEnergyAdvisorOptionsFlow(OptionsFlow):
             )
         await async_reset_totals(self.hass, self.config_entry)
         return self.async_abort(reason="reset_totals_done")
+
+    async def async_step_clear_period(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the period to clear, then show what clearing it removes (HEA-272)."""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                self._clearing = whole_hours(
+                    _local(user_input[ATTR_START]), _local(user_input[ATTR_END])
+                )
+            except ServiceValidationError as refused:
+                errors["base"] = str(refused.translation_key)
+            else:
+                return await self.async_step_clear_period_confirm()
+        # Filled in with the last finished hour. The picker sends a malformed
+        # value when only its time is changed on an empty date, so the date
+        # part has to start out set.
+        end = dt_util.as_local(dt_util.utcnow()).replace(
+            minute=0, second=0, microsecond=0
+        )
+        start = end - timedelta(hours=1)
+        return self.async_show_form(
+            step_id="clear_period",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        ATTR_START, default=_picked(start)
+                    ): selector.DateTimeSelector(),
+                    vol.Required(
+                        ATTR_END, default=_picked(end)
+                    ): selector.DateTimeSelector(),
+                }
+            ),
+            errors=errors,
+        )
+
+    async def async_step_clear_period_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the amounts the clear removes; only submitting clears them.
+
+        Aborts rather than creating an entry, as the reset does: the options are
+        unchanged, and rewriting them would reload the entry for nothing.
+        """
+        period = self._clearing
+        if user_input is None:
+            removed = await async_measure(self.hass, self.config_entry, period)
+            shown = summary(self.hass, self.config_entry, removed)
+            currency = currency_of(self.config_entry)
+            return self.async_show_form(
+                step_id="clear_period_confirm",
+                data_schema=vol.Schema({}),
+                description_placeholders={
+                    "start": _shown_time(period.start),
+                    "end": _shown_time(period.end),
+                    "energy": f"{shown['energy_used']:.2f} kWh",
+                    "cost": f"{shown['actual_cost']:.2f} {currency}",
+                    "savings": f"{shown['cost_savings']:.2f} {currency}",
+                },
+            )
+        await async_clear_period(self.hass, self.config_entry, period)
+        return self.async_abort(reason="clear_period_done")
 
     async def async_step_discover_devices(
         self, user_input: dict[str, Any] | None = None
