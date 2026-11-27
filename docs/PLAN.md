@@ -1370,8 +1370,14 @@ after 1.0". A part is built only when a household needs it.
   after moving to HEA's price sensors, and an audit of every generation,
   electricity and pricing sensor) and HEA-123 (the post-winter battery review).
 
-Outside any epic: HEA-272 (clear a chosen period's figures) and HEA-295 (edit
-plans from the card, parked).
+Outside any epic: HEA-295 (edit plans from the card, parked). HEA-272 (clear a
+chosen period's figures, discussion 58) is built (72328c0, unreleased): a
+Configure step that shows what it will remove, and an admin-only `clear_period`
+action. Every figure's history for the period is cleared and money totals drop
+with it; energy totals keep the period, because Home Assistant reads any fall
+in a `total_increasing` counter as a loss or a meter reset.
+
+1.9.0, when released, carries HEA-322, HEA-306 and HEA-272.
 
 Sequencing: 1 → 2 → 3 → 4 → 5 → 6 → 8. Epic 3 had no HA dependencies and could
 start as soon as Epic 1 landed. Epic 7 is cancelled, and Epic 9 closed with
