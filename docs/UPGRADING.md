@@ -32,7 +32,7 @@ only; this file began with the mechanism that writes it.
 below**, because a pending section ends at the next one - so prose after the last
 section is read as part of it and printed to a household.
 
-## Unreleased
+## 1.9.0
 
 **A plan can carry a demand or capacity charge from a sensor.** If you pay a
 charge on your measured peak, such as Flanders' capacity tariff or an
